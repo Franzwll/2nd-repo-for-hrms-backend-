@@ -1,0 +1,11 @@
+{
+    "name": "EmployeeSelfService",
+    "alias": "employeeselfservice",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\EmployeeSelfService\\Providers\\EmployeeSelfServiceServiceProvider"
+    ],
+    "files": []
+}

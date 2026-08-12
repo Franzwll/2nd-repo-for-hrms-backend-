@@ -1,0 +1,11 @@
+{
+    "name": "ApplicantManagement",
+    "alias": "applicantmanagement",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\ApplicantManagement\\Providers\\ApplicantManagementServiceProvider"
+    ],
+    "files": []
+}

@@ -1,0 +1,30 @@
+{
+    "name": "nwidart/corehcm",
+    "description": "",
+    "authors": [
+        {
+            "name": "Nicolas Widart",
+            "email": "n.widart@gmail.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {
+
+            }
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\CoreHCM\\": "app/",
+            "Modules\\CoreHCM\\Database\\Factories\\": "database/factories/",
+            "Modules\\CoreHCM\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\CoreHCM\\Tests\\": "tests/"
+        }
+    }
+}

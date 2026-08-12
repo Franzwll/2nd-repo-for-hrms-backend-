@@ -1,0 +1,30 @@
+{
+    "name": "nwidart/newhireonboarding",
+    "description": "",
+    "authors": [
+        {
+            "name": "Nicolas Widart",
+            "email": "n.widart@gmail.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {
+
+            }
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\NewHireOnboarding\\": "app/",
+            "Modules\\NewHireOnboarding\\Database\\Factories\\": "database/factories/",
+            "Modules\\NewHireOnboarding\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\NewHireOnboarding\\Tests\\": "tests/"
+        }
+    }
+}
