@@ -1,0 +1,11 @@
+{
+    "name": "RecruitmentManagement",
+    "alias": "recruitmentmanagement",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\RecruitmentManagement\\Providers\\RecruitmentManagementServiceProvider"
+    ],
+    "files": []
+}

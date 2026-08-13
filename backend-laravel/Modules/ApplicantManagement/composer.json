@@ -1,0 +1,30 @@
+{
+    "name": "nwidart/applicantmanagement",
+    "description": "",
+    "authors": [
+        {
+            "name": "Nicolas Widart",
+            "email": "n.widart@gmail.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {
+
+            }
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\ApplicantManagement\\": "app/",
+            "Modules\\ApplicantManagement\\Database\\Factories\\": "database/factories/",
+            "Modules\\ApplicantManagement\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\ApplicantManagement\\Tests\\": "tests/"
+        }
+    }
+}

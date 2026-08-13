@@ -1,0 +1,30 @@
+{
+    "name": "nwidart/recruitmentmanagement",
+    "description": "",
+    "authors": [
+        {
+            "name": "Nicolas Widart",
+            "email": "n.widart@gmail.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {
+
+            }
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\RecruitmentManagement\\": "app/",
+            "Modules\\RecruitmentManagement\\Database\\Factories\\": "database/factories/",
+            "Modules\\RecruitmentManagement\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\RecruitmentManagement\\Tests\\": "tests/"
+        }
+    }
+}

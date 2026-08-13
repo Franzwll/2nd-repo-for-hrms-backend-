@@ -1,0 +1,30 @@
+{
+    "name": "nwidart/employeeselfservice",
+    "description": "",
+    "authors": [
+        {
+            "name": "Nicolas Widart",
+            "email": "n.widart@gmail.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {
+
+            }
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\EmployeeSelfService\\": "app/",
+            "Modules\\EmployeeSelfService\\Database\\Factories\\": "database/factories/",
+            "Modules\\EmployeeSelfService\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\EmployeeSelfService\\Tests\\": "tests/"
+        }
+    }
+}

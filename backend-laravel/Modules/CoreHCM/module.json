@@ -1,0 +1,11 @@
+{
+    "name": "CoreHCM",
+    "alias": "corehcm",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\CoreHCM\\Providers\\CoreHCMServiceProvider"
+    ],
+    "files": []
+}

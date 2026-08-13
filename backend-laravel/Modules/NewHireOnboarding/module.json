@@ -1,0 +1,11 @@
+{
+    "name": "NewHireOnboarding",
+    "alias": "newhireonboarding",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\NewHireOnboarding\\Providers\\NewHireOnboardingServiceProvider"
+    ],
+    "files": []
+}

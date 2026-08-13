@@ -1,0 +1,10 @@
+{
+    "ApplicantManagement": true,
+    "RecruitmentManagement": true,
+    "NewHireOnboarding": true,
+    "CoreHCM": true,
+    "EmployeeSelfService": true,
+    "EmployeeRecords": true,
+    "UserManagement": true,
+    "AuditLog": true
+}
