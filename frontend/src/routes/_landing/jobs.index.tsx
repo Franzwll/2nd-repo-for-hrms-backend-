@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { jobs, peso } from "@/data/jobs";
 
-export const Route = createFileRoute("/jobs/")({
+export const Route = createFileRoute("/_landing/jobs/")({
   head: () => ({
     meta: [
       { title: "Find Jobs — Oxford Suites Makati Careers" },

@@ -9,20 +9,20 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AboutRouteImport } from './routes/about'
 import { Route as AdminRouteImport } from './routes/admin'
-import { Route as ContactRouteImport } from './routes/contact'
 import { Route as EmployeeRouteImport } from './routes/employee'
-import { Route as FaqRouteImport } from './routes/faq'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as OtpRouteImport } from './routes/otp'
 import { Route as SuperadminRouteImport } from './routes/superadmin'
-import { Route as AdminIndexRouteImport } from './routes/admin.index'
-import { Route as EmployeeIndexRouteImport } from './routes/employee.index'
-import { Route as JobsIndexRouteImport } from './routes/jobs.index'
-import { Route as JobsJobIdRouteImport } from './routes/jobs.$jobId'
-import { Route as SuperadminIndexRouteImport } from './routes/superadmin.index'
+import { Route as LandingIndexRouteImport } from './routes/_landing/index'
+import { Route as LandingAboutRouteImport } from './routes/_landing/about'
+import { Route as LandingContactRouteImport } from './routes/_landing/contact'
+import { Route as LandingFaqRouteImport } from './routes/_landing/faq'
+import { Route as LoginLoginRouteImport } from './routes/_login/login'
+import { Route as LoginOtpRouteImport } from './routes/_login/otp'
+import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as EmployeeIndexRouteImport } from './routes/employee/index'
+import { Route as SuperadminIndexRouteImport } from './routes/superadmin/index'
+import { Route as LandingJobsIndexRouteImport } from './routes/_landing/jobs.index'
+import { Route as LandingJobsJobIdRouteImport } from './routes/_landing/jobs.$jobId'
 import { Route as AdminApplicantManagementApplicantsRouteImport } from './routes/admin/_applicant-management/applicants'
 import { Route as AdminCorehcmDeptPosRouteImport } from './routes/admin/_corehcm/dept-pos'
 import { Route as AdminCorehcmHcmRouteImport } from './routes/admin/_corehcm/hcm'
@@ -50,24 +50,9 @@ import { Route as SuperadminRecruitmentmanagementRecruitmentRouteImport } from '
 import { Route as SuperadminSettingsSettingsRouteImport } from './routes/superadmin/_settings/settings'
 import { Route as SuperadminUsermanagementUsersRouteImport } from './routes/superadmin/_usermanagement/users'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AboutRoute = AboutRouteImport.update({
-  id: '/about',
-  path: '/about',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ContactRoute = ContactRouteImport.update({
-  id: '/contact',
-  path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EmployeeRoute = EmployeeRouteImport.update({
@@ -75,24 +60,39 @@ const EmployeeRoute = EmployeeRouteImport.update({
   path: '/employee',
   getParentRoute: () => rootRouteImport,
 } as any)
-const FaqRoute = FaqRouteImport.update({
-  id: '/faq',
-  path: '/faq',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OtpRoute = OtpRouteImport.update({
-  id: '/otp',
-  path: '/otp',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SuperadminRoute = SuperadminRouteImport.update({
   id: '/superadmin',
   path: '/superadmin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LandingIndexRoute = LandingIndexRouteImport.update({
+  id: '/_landing/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LandingAboutRoute = LandingAboutRouteImport.update({
+  id: '/_landing/about',
+  path: '/about',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LandingContactRoute = LandingContactRouteImport.update({
+  id: '/_landing/contact',
+  path: '/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LandingFaqRoute = LandingFaqRouteImport.update({
+  id: '/_landing/faq',
+  path: '/faq',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginLoginRoute = LoginLoginRouteImport.update({
+  id: '/_login/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginOtpRoute = LoginOtpRouteImport.update({
+  id: '/_login/otp',
+  path: '/otp',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -105,20 +105,20 @@ const EmployeeIndexRoute = EmployeeIndexRouteImport.update({
   path: '/',
   getParentRoute: () => EmployeeRoute,
 } as any)
-const JobsIndexRoute = JobsIndexRouteImport.update({
-  id: '/jobs/',
-  path: '/jobs/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const JobsJobIdRoute = JobsJobIdRouteImport.update({
-  id: '/jobs/$jobId',
-  path: '/jobs/$jobId',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SuperadminIndexRoute = SuperadminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => SuperadminRoute,
+} as any)
+const LandingJobsIndexRoute = LandingJobsIndexRouteImport.update({
+  id: '/_landing/jobs/',
+  path: '/jobs/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LandingJobsJobIdRoute = LandingJobsJobIdRouteImport.update({
+  id: '/_landing/jobs/$jobId',
+  path: '/jobs/$jobId',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AdminApplicantManagementApplicantsRoute =
   AdminApplicantManagementApplicantsRouteImport.update({
@@ -271,20 +271,19 @@ const SuperadminUsermanagementUsersRoute =
   } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/about': typeof AboutRoute
   '/admin': typeof AdminRouteWithChildren
-  '/contact': typeof ContactRoute
   '/employee': typeof EmployeeRouteWithChildren
-  '/faq': typeof FaqRoute
-  '/login': typeof LoginRoute
-  '/otp': typeof OtpRoute
   '/superadmin': typeof SuperadminRouteWithChildren
-  '/jobs/$jobId': typeof JobsJobIdRoute
+  '/about': typeof LandingAboutRoute
+  '/contact': typeof LandingContactRoute
+  '/faq': typeof LandingFaqRoute
+  '/login': typeof LoginLoginRoute
+  '/otp': typeof LoginOtpRoute
+  '/': typeof LandingIndexRoute
   '/admin/': typeof AdminIndexRoute
   '/employee/': typeof EmployeeIndexRoute
-  '/jobs/': typeof JobsIndexRoute
   '/superadmin/': typeof SuperadminIndexRoute
+  '/jobs/$jobId': typeof LandingJobsJobIdRoute
   '/admin/applicants': typeof AdminApplicantManagementApplicantsRoute
   '/admin/dept-pos': typeof AdminCorehcmDeptPosRoute
   '/admin/hcm': typeof AdminCorehcmHcmRoute
@@ -311,19 +310,19 @@ export interface FileRoutesByFullPath {
   '/superadmin/recruitment': typeof SuperadminRecruitmentmanagementRecruitmentRoute
   '/superadmin/settings': typeof SuperadminSettingsSettingsRoute
   '/superadmin/users': typeof SuperadminUsermanagementUsersRoute
+  '/jobs/': typeof LandingJobsIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/about': typeof AboutRoute
-  '/contact': typeof ContactRoute
-  '/faq': typeof FaqRoute
-  '/login': typeof LoginRoute
-  '/otp': typeof OtpRoute
-  '/jobs/$jobId': typeof JobsJobIdRoute
+  '/about': typeof LandingAboutRoute
+  '/contact': typeof LandingContactRoute
+  '/faq': typeof LandingFaqRoute
+  '/login': typeof LoginLoginRoute
+  '/otp': typeof LoginOtpRoute
+  '/': typeof LandingIndexRoute
   '/admin': typeof AdminIndexRoute
   '/employee': typeof EmployeeIndexRoute
-  '/jobs': typeof JobsIndexRoute
   '/superadmin': typeof SuperadminIndexRoute
+  '/jobs/$jobId': typeof LandingJobsJobIdRoute
   '/admin/applicants': typeof AdminApplicantManagementApplicantsRoute
   '/admin/dept-pos': typeof AdminCorehcmDeptPosRoute
   '/admin/hcm': typeof AdminCorehcmHcmRoute
@@ -350,23 +349,23 @@ export interface FileRoutesByTo {
   '/superadmin/recruitment': typeof SuperadminRecruitmentmanagementRecruitmentRoute
   '/superadmin/settings': typeof SuperadminSettingsSettingsRoute
   '/superadmin/users': typeof SuperadminUsermanagementUsersRoute
+  '/jobs': typeof LandingJobsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/about': typeof AboutRoute
   '/admin': typeof AdminRouteWithChildren
-  '/contact': typeof ContactRoute
   '/employee': typeof EmployeeRouteWithChildren
-  '/faq': typeof FaqRoute
-  '/login': typeof LoginRoute
-  '/otp': typeof OtpRoute
   '/superadmin': typeof SuperadminRouteWithChildren
-  '/jobs/$jobId': typeof JobsJobIdRoute
+  '/_landing/about': typeof LandingAboutRoute
+  '/_landing/contact': typeof LandingContactRoute
+  '/_landing/faq': typeof LandingFaqRoute
+  '/_login/login': typeof LoginLoginRoute
+  '/_login/otp': typeof LoginOtpRoute
+  '/_landing/': typeof LandingIndexRoute
   '/admin/': typeof AdminIndexRoute
   '/employee/': typeof EmployeeIndexRoute
-  '/jobs/': typeof JobsIndexRoute
   '/superadmin/': typeof SuperadminIndexRoute
+  '/_landing/jobs/$jobId': typeof LandingJobsJobIdRoute
   '/admin/_applicant-management/applicants': typeof AdminApplicantManagementApplicantsRoute
   '/admin/_corehcm/dept-pos': typeof AdminCorehcmDeptPosRoute
   '/admin/_corehcm/hcm': typeof AdminCorehcmHcmRoute
@@ -393,24 +392,24 @@ export interface FileRoutesById {
   '/superadmin/_recruitmentmanagement/recruitment': typeof SuperadminRecruitmentmanagementRecruitmentRoute
   '/superadmin/_settings/settings': typeof SuperadminSettingsSettingsRoute
   '/superadmin/_usermanagement/users': typeof SuperadminUsermanagementUsersRoute
+  '/_landing/jobs/': typeof LandingJobsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/'
-    | '/about'
     | '/admin'
-    | '/contact'
     | '/employee'
+    | '/superadmin'
+    | '/about'
+    | '/contact'
     | '/faq'
     | '/login'
     | '/otp'
-    | '/superadmin'
-    | '/jobs/$jobId'
+    | '/'
     | '/admin/'
     | '/employee/'
-    | '/jobs/'
     | '/superadmin/'
+    | '/jobs/$jobId'
     | '/admin/applicants'
     | '/admin/dept-pos'
     | '/admin/hcm'
@@ -437,19 +436,19 @@ export interface FileRouteTypes {
     | '/superadmin/recruitment'
     | '/superadmin/settings'
     | '/superadmin/users'
+    | '/jobs/'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
     | '/about'
     | '/contact'
     | '/faq'
     | '/login'
     | '/otp'
-    | '/jobs/$jobId'
+    | '/'
     | '/admin'
     | '/employee'
-    | '/jobs'
     | '/superadmin'
+    | '/jobs/$jobId'
     | '/admin/applicants'
     | '/admin/dept-pos'
     | '/admin/hcm'
@@ -476,22 +475,22 @@ export interface FileRouteTypes {
     | '/superadmin/recruitment'
     | '/superadmin/settings'
     | '/superadmin/users'
+    | '/jobs'
   id:
     | '__root__'
-    | '/'
-    | '/about'
     | '/admin'
-    | '/contact'
     | '/employee'
-    | '/faq'
-    | '/login'
-    | '/otp'
     | '/superadmin'
-    | '/jobs/$jobId'
+    | '/_landing/about'
+    | '/_landing/contact'
+    | '/_landing/faq'
+    | '/_login/login'
+    | '/_login/otp'
+    | '/_landing/'
     | '/admin/'
     | '/employee/'
-    | '/jobs/'
     | '/superadmin/'
+    | '/_landing/jobs/$jobId'
     | '/admin/_applicant-management/applicants'
     | '/admin/_corehcm/dept-pos'
     | '/admin/_corehcm/hcm'
@@ -518,50 +517,30 @@ export interface FileRouteTypes {
     | '/superadmin/_recruitmentmanagement/recruitment'
     | '/superadmin/_settings/settings'
     | '/superadmin/_usermanagement/users'
+    | '/_landing/jobs/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AboutRoute: typeof AboutRoute
   AdminRoute: typeof AdminRouteWithChildren
-  ContactRoute: typeof ContactRoute
   EmployeeRoute: typeof EmployeeRouteWithChildren
-  FaqRoute: typeof FaqRoute
-  LoginRoute: typeof LoginRoute
-  OtpRoute: typeof OtpRoute
   SuperadminRoute: typeof SuperadminRouteWithChildren
-  JobsJobIdRoute: typeof JobsJobIdRoute
-  JobsIndexRoute: typeof JobsIndexRoute
+  LandingAboutRoute: typeof LandingAboutRoute
+  LandingContactRoute: typeof LandingContactRoute
+  LandingFaqRoute: typeof LandingFaqRoute
+  LoginLoginRoute: typeof LoginLoginRoute
+  LoginOtpRoute: typeof LoginOtpRoute
+  LandingIndexRoute: typeof LandingIndexRoute
+  LandingJobsJobIdRoute: typeof LandingJobsJobIdRoute
+  LandingJobsIndexRoute: typeof LandingJobsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/about': {
-      id: '/about'
-      path: '/about'
-      fullPath: '/about'
-      preLoaderRoute: typeof AboutRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/admin': {
       id: '/admin'
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/contact': {
-      id: '/contact'
-      path: '/contact'
-      fullPath: '/contact'
-      preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/employee': {
@@ -571,32 +550,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EmployeeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/faq': {
-      id: '/faq'
-      path: '/faq'
-      fullPath: '/faq'
-      preLoaderRoute: typeof FaqRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/otp': {
-      id: '/otp'
-      path: '/otp'
-      fullPath: '/otp'
-      preLoaderRoute: typeof OtpRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/superadmin': {
       id: '/superadmin'
       path: '/superadmin'
       fullPath: '/superadmin'
       preLoaderRoute: typeof SuperadminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_landing/': {
+      id: '/_landing/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof LandingIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_landing/about': {
+      id: '/_landing/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof LandingAboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_landing/contact': {
+      id: '/_landing/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof LandingContactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_landing/faq': {
+      id: '/_landing/faq'
+      path: '/faq'
+      fullPath: '/faq'
+      preLoaderRoute: typeof LandingFaqRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_login/login': {
+      id: '/_login/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_login/otp': {
+      id: '/_login/otp'
+      path: '/otp'
+      fullPath: '/otp'
+      preLoaderRoute: typeof LoginOtpRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -613,26 +613,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EmployeeIndexRouteImport
       parentRoute: typeof EmployeeRoute
     }
-    '/jobs/': {
-      id: '/jobs/'
-      path: '/jobs'
-      fullPath: '/jobs/'
-      preLoaderRoute: typeof JobsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/jobs/$jobId': {
-      id: '/jobs/$jobId'
-      path: '/jobs/$jobId'
-      fullPath: '/jobs/$jobId'
-      preLoaderRoute: typeof JobsJobIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/superadmin/': {
       id: '/superadmin/'
       path: '/'
       fullPath: '/superadmin/'
       preLoaderRoute: typeof SuperadminIndexRouteImport
       parentRoute: typeof SuperadminRoute
+    }
+    '/_landing/jobs/': {
+      id: '/_landing/jobs/'
+      path: '/jobs'
+      fullPath: '/jobs/'
+      preLoaderRoute: typeof LandingJobsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_landing/jobs/$jobId': {
+      id: '/_landing/jobs/$jobId'
+      path: '/jobs/$jobId'
+      fullPath: '/jobs/$jobId'
+      preLoaderRoute: typeof LandingJobsJobIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/admin/_applicant-management/applicants': {
       id: '/admin/_applicant-management/applicants'
@@ -913,17 +913,17 @@ const SuperadminRouteWithChildren = SuperadminRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  AboutRoute: AboutRoute,
   AdminRoute: AdminRouteWithChildren,
-  ContactRoute: ContactRoute,
   EmployeeRoute: EmployeeRouteWithChildren,
-  FaqRoute: FaqRoute,
-  LoginRoute: LoginRoute,
-  OtpRoute: OtpRoute,
   SuperadminRoute: SuperadminRouteWithChildren,
-  JobsJobIdRoute: JobsJobIdRoute,
-  JobsIndexRoute: JobsIndexRoute,
+  LandingAboutRoute: LandingAboutRoute,
+  LandingContactRoute: LandingContactRoute,
+  LandingFaqRoute: LandingFaqRoute,
+  LoginLoginRoute: LoginLoginRoute,
+  LoginOtpRoute: LoginOtpRoute,
+  LandingIndexRoute: LandingIndexRoute,
+  LandingJobsJobIdRoute: LandingJobsJobIdRoute,
+  LandingJobsIndexRoute: LandingJobsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
