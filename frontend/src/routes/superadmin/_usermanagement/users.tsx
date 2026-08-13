@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { UserManagement } from "@/components/modules/Settings";
+import { UserManagement } from "@/components/modules/UserManagement";
 export const Route = createFileRoute("/superadmin/_usermanagement/users")({
   head: () => ({
     meta: [

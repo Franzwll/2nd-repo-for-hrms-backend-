@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
 import { systemUsers } from "@/data/users";
 import { newHires } from "@/data/hr";
 
-export const Route = createFileRoute("/login")({
+export const Route = createFileRoute("/_login/login")({
   head: () => ({
     meta: [
       { title: "Portal Login — Oxford Suites Makati HRMS" },

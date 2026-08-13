@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { company } from "@/data/company";
 
-export const Route = createFileRoute("/contact")({
+export const Route = createFileRoute("/_landing/contact")({
   head: () => ({
     meta: [
       { title: "Contact HR — Oxford Suites Makati" },

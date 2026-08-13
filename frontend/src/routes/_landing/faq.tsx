@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/accordion";
 import { faqs } from "@/data/company";
 
-export const Route = createFileRoute("/faq")({
+export const Route = createFileRoute("/_landing/faq")({
   head: () => ({
     meta: [
       { title: "Applicant FAQs — Oxford Suites Makati Careers" },

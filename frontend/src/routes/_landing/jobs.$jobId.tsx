@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { getJob, peso } from "@/data/jobs";
 
-export const Route = createFileRoute("/jobs/$jobId")({
+export const Route = createFileRoute("/_landing/jobs/$jobId")({
   loader: ({ params }) => {
     const job = getJob(params.jobId);
     if (!job) throw notFound();

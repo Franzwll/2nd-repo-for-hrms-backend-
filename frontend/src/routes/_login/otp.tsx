@@ -7,7 +7,7 @@ import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/otp")({
+export const Route = createFileRoute("/_login/otp")({
   validateSearch: (search: Record<string, unknown>) => ({
     role: (search["role"] as string) ?? "/superadmin",
   }),

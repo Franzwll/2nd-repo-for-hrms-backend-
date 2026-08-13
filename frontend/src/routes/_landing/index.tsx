@@ -9,7 +9,7 @@ import { company, facilities } from "@/data/company";
 import { jobs, peso } from "@/data/jobs";
 import heroImage from "@/assets/hero-oxford-suites.jpg";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/_landing/")({
   head: () => ({
     meta: [
       { title: "Oxford Suites Makati — Hotel, Dining & Careers" },

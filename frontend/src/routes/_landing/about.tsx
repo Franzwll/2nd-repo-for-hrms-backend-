@@ -15,7 +15,7 @@ import { PublicShell } from "@/components/public/PublicShell";
 import { Card, CardContent } from "@/components/ui/card";
 import { company } from "@/data/company";
 
-export const Route = createFileRoute("/about")({
+export const Route = createFileRoute("/_landing/about")({
   head: () => ({
     meta: [
       { title: "About Us — Oxford Suites Makati" },
