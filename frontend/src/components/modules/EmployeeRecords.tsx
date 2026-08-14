@@ -7,6 +7,7 @@ import {
   Download,
   FileText,
   FolderOpen,
+  History,
   Pencil,
   Minus,
   Plus,
@@ -205,7 +206,7 @@ function olderThanYears(dateStr: string, years: number, now: Date = new Date()) 
 const civil = ["Single", "Married", "Widowed", "Separated"];
 const genders = ["Female", "Male"];
 
-function buildProfile(e: Employee): Profile {
+export function buildProfile(e: Employee): Profile {
   const s = seedOf(e.id);
   const missingPool = [
     "PSA Birth Certificate",
@@ -704,8 +705,8 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
 
       <Tabs defaultValue="list" className="mt-6">
         <TabsList className="flex h-auto flex-wrap justify-start">
-          <TabsTrigger value="list">Employee List</TabsTrigger>
-          <TabsTrigger value="history">Record History</TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5" value="list"><Users className="h-3.5 w-3.5" /> Employee List</TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5" value="history"><History className="h-3.5 w-3.5" /> Record History</TabsTrigger>
         </TabsList>
 
         <TabsContent value="list" className="mt-4">
@@ -713,7 +714,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="font-display text-2xl font-semibold">Employee List</h2>
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Users className="h-5 w-5 text-primary" /> Employee List</h2>
                   <p className="text-xs text-muted-foreground">
                     {listView === "archived"
                       ? "Records inactive/unmodified for 10+ years (DOLE/BIR retention). Hidden from the default list."
@@ -955,7 +956,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="font-display text-2xl font-semibold">Record History</h2>
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><History className="h-5 w-5 text-primary" /> Record History</h2>
                   <p className="text-xs text-muted-foreground">
                     Log of who added, edited, or deleted employee records and files.
                   </p>
@@ -1869,7 +1870,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+export function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-md border border-border px-3 py-1.5">
       <p className="eyebrow mb-1">{title}</p>
@@ -1878,7 +1879,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Field({ k, v, wide }: { k: string; v: string; wide?: boolean }) {
+export function Field({ k, v, wide }: { k: string; v: string; wide?: boolean }) {
   return (
     <div className={wide ? "sm:col-span-2" : undefined}>
       <p className="text-[0.62rem] uppercase leading-tight tracking-wide text-muted-foreground">

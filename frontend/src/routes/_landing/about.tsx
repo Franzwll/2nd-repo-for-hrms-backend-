@@ -112,7 +112,7 @@ function About() {
             const Icon = valueIcons[v.title] ?? Star;
             return (
               <div key={v.title} className="flex gap-4 rounded-md border border-border bg-card p-5">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center">
                   <Icon className="h-5 w-5 text-primary" />
                 </div>
                 <div>

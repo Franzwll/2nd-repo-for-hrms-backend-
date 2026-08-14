@@ -214,7 +214,7 @@ export function ProfilePage({ role }: { role: Role }) {
                 { icon: Clock, label: "Last Login", value: value.lastLogin },
               ].map((row) => (
                 <div key={row.label} className="flex items-center gap-3">
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center text-primary">
                     <row.icon className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
@@ -256,7 +256,7 @@ export function ProfilePage({ role }: { role: Role }) {
               <TabsContent value="profile" className="mt-6">
                 <div className="rounded-lg border border-border/70 p-6">
                   <div className="flex items-center gap-3">
-                    <span className="grid h-9 w-9 place-items-center rounded-md bg-primary/10 text-primary">
+                    <span className="grid h-9 w-9 place-items-center text-primary">
                       <User className="h-4 w-4" />
                     </span>
                     <h3 className="font-display text-xl font-semibold">
@@ -383,7 +383,7 @@ export function ProfilePage({ role }: { role: Role }) {
               <TabsContent value="account" className="mt-6">
                 <div className="rounded-lg border border-border/70 p-6">
                   <div className="flex items-center gap-3">
-                    <span className="grid h-9 w-9 place-items-center rounded-md bg-primary/10 text-primary">
+                    <span className="grid h-9 w-9 place-items-center text-primary">
                       <Lock className="h-4 w-4" />
                     </span>
                     <h3 className="font-display text-xl font-semibold">

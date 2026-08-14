@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, Search } from "lucide-react";
+import { Activity, AlertTriangle, Download, ScrollText, Search, ShieldAlert, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
@@ -137,16 +137,44 @@ export function AuditLogs() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total Events" value={totalEvents} tone="primary" />
-        <StatCard label="Critical" value={criticalCount} tone="caution" />
-        <StatCard label="Warnings" value={warningCount} tone="gold" />
-        <StatCard label="Unique Actors" value={uniqueActors} tone="success" />
+        <StatCard
+          label="Total Events"
+          value={totalEvents}
+          tone="primary"
+          icon={Activity}
+          onClick={() => setSeverity("all")}
+          hint="Click to view all"
+        />
+        <StatCard
+          label="Critical"
+          value={criticalCount}
+          tone="caution"
+          icon={ShieldAlert}
+          onClick={() => setSeverity("Critical")}
+          hint="Click to filter critical"
+        />
+        <StatCard
+          label="Warnings"
+          value={warningCount}
+          tone="gold"
+          icon={AlertTriangle}
+          onClick={() => setSeverity("Warning")}
+          hint="Click to filter warnings"
+        />
+        <StatCard
+          label="Unique Actors"
+          value={uniqueActors}
+          tone="success"
+          icon={Users}
+          onClick={() => setSeverity("Info")}
+          hint="Click to filter info"
+        />
       </div>
 
       <Card className="mt-4 border-border/70">
         <CardContent className="p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-display text-2xl font-semibold">System Activity</h2>
+            <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><ScrollText className="h-5 w-5 text-primary" /> System Activity</h2>
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative min-w-[14rem] flex-1">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -193,8 +221,9 @@ export function AuditLogs() {
                     Timestamp
                   </SortHead>
                   <SortHead sortKey="user" sort={sort} onSort={toggle}>
-                    User &amp; Role
+                    User
                   </SortHead>
+                  <SortHead sortKey="role" sort={sort} onSort={toggle}>Role</SortHead>
                   <TableHead>Action Type</TableHead>
                   <SortHead sortKey="action" sort={sort} onSort={toggle}>
                     Action Details
@@ -236,10 +265,8 @@ export function AuditLogs() {
                       <TableCell className="text-xs text-muted-foreground">{a.timestamp}</TableCell>
                       <TableCell className="text-xs">
                         <div className="font-semibold text-foreground">{a.user}</div>
-                        <Badge variant="outline" className="mt-0.5 text-[10px] py-0 h-4 border-border/60 text-muted-foreground font-normal">
-                          {a.role}
-                        </Badge>
                       </TableCell>
+                      <TableCell><Badge variant="outline" className="text-[10px] font-medium">{a.role}</Badge></TableCell>
                       <TableCell>
                         <Badge variant="outline" className={cn("text-[10px] font-semibold", actionTypeTone)}>
                           {actionType}
@@ -271,7 +298,7 @@ export function AuditLogs() {
                 {rows.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={8}
                       className="py-8 text-center text-sm text-muted-foreground"
                     >
                       No activity matches your filters.

@@ -104,7 +104,7 @@ function LoginPage() {
       const img = new Image();
       img.src = s.src;
     });
-    const safety = window.setTimeout(done, 1500);
+    const safety = window.setTimeout(done, 700);
     return () => {
       cancelled = true;
       window.clearTimeout(safety);
