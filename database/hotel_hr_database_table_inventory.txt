@@ -1,3 +1,6 @@
+Hotel & Restaurant HR1 - Final Database Table Inventory (Revision 2.2)
+=======================================================================
+
 01. departments
 02. salary_grades
 03. positions
@@ -12,28 +15,59 @@
 12. applicant_screening_entities
 13. applicant_screening_scores
 14. interviews
-15. requisitions
-16. new_hires
-17. onboarding_checklist_templates
-18. onboarding_checklist_items
-19. employee_onboarding_items
-20. ess_requests
-21. leave_balances
-22. attendance_records
-23. work_schedules
-24. payroll_records
-25. payroll_items
-26. employee_benefits
-27. learning_courses
-28. employee_learning
-29. performance_reviews
-30. hr3_recommendations
-31. system_roles
-32. system_permissions
-33. system_role_permissions
-34. system_users
-35. audit_logs
-36. announcements
-37. system_settings
+15. applicant_assessments          [NEW]
+16. requisitions
+17. new_hires
+18. onboarding_checklist_templates
+19. onboarding_checklist_items
+20. employee_onboarding_items
+21. checklist_requests             [NEW]
+22. ess_categories                 [NEW]
+23. ess_requests
+24. leave_balances
+25. attendance_records
+26. work_schedules
+27. payroll_periods                [NEW rev 2.1]
+28. payroll_records
+29. payroll_items
+30. employee_benefits
+31. learning_courses
+32. employee_learning
+33. performance_reviews
+34. hr3_recommendations
+35. system_roles
+36. role_permissions               [MERGE: system_permissions + system_role_permissions]
+37. system_users
+38. notifications                  [NEW rev 2.1]
+39. user_login_activity            [NEW rev 2.1]
+40. audit_logs
+41. announcements
+42. system_settings
 
-TOTAL TABLES: 37
+TOTAL TABLES: 42
+
+Revision 2.0 changes vs revision 1.0 (37 tables):
+- MERGED system_permissions + system_role_permissions -> role_permissions
+- ADDED applicant_assessments, checklist_requests, ess_categories
+- MODIFIED employees, positions, employee_position_history,
+  employee_documents, requisitions, ess_requests, performance_reviews,
+  hr3_recommendations, system_users, audit_logs, announcements
+
+Revision 2.1 changes vs revision 2.0 (39 tables):
+- ADDED notifications, user_login_activity, payroll_periods
+- MODIFIED payroll_records (nullable payroll_period_id FK)
+
+Revision 2.2 changes vs revision 2.1:
+- ADDED 43 CHECK constraints (enum/domain guards; identical in both SQL files)
+- ADDED SQL comments on derived counters (positions.filled_count,
+  job_posts.filled_count, employees.onboarding_complete): must be maintained
+  in the same transaction as the triggering event
+- No table/column/FK/unique/index metric changes
+
+Verified metrics (parsed from hotel_hr_schema_mysql.sql rev 2.2):
+- Columns: 443
+- Primary keys: 42
+- Foreign keys: 68
+- Unique constraints: 29
+- Non-unique indexes: 90
+- CHECK constraints: 43
