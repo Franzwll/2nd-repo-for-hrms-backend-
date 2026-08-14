@@ -18,6 +18,13 @@
 -- not auto-create indexes for FK columns, unlike MySQL).
 -- ============================================================================
 
+-- Self-contained: create the database if missing, then connect to it.
+-- Run with: psql -U postgres -f hotel_hr_schema_postgres.sql
+-- NOTE: "\connect" is a psql meta-command. When using pgAdmin instead,
+-- create the "hotel_hr" database manually and remove these two lines.
+CREATE DATABASE hotel_hr WITH ENCODING 'UTF8';
+\connect hotel_hr
+
 -- ---------------------------------------------------------------------------
 -- Domain 1: Organization & Core HCM
 -- ---------------------------------------------------------------------------
