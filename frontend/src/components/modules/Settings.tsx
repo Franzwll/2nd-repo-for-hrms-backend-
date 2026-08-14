@@ -91,7 +91,7 @@ function SettingsCard({
       <CardContent className="flex flex-1 flex-col p-6">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+            <span className="grid h-10 w-10 shrink-0 place-items-center text-primary">
               {icon}
             </span>
             <div>
@@ -467,7 +467,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
           <Card id="change-password" className="flex h-full flex-col scroll-mt-20 rounded-xl border-border/70 shadow-sm">
             <CardContent className="flex flex-1 flex-col space-y-4 p-6">
               <div className="flex items-center gap-3">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                <span className="grid h-10 w-10 shrink-0 place-items-center text-primary">
                   <KeyRound className="h-5 w-5" />
                 </span>
                 <div>
@@ -702,7 +702,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
             <CardContent className="flex flex-1 flex-col space-y-4 p-6">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center text-primary">
                     <Database className="h-5 w-5" />
                   </span>
                   <div>

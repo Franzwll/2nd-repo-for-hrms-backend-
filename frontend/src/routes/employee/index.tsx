@@ -17,8 +17,7 @@ import { StatCard } from "@/components/portal/StatCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { myProfile, wireframeActivity } from "@/data/ess";
+import { myAttendance, myEmployeeDocuments, myPayroll, myPerformance, myProfile, wireframeActivity } from "@/data/ess";
 
 export const Route = createFileRoute("/employee/")({
   component: EmployeeDashboard,
@@ -41,7 +40,7 @@ function EmployeeDashboard() {
         description="Here's what's happening with your employment today."
         actions={
           <Button asChild>
-            <Link to="/employee/ess">Go to ESS Management</Link>
+            <Link to="/employee/ess" search={{}}>Go to ESS Management</Link>
           </Button>
         }
       />
@@ -58,19 +57,19 @@ function EmployeeDashboard() {
             <CardTitle className="font-display text-xl font-semibold">Quick Actions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
               <Button
                 asChild
                 variant="outline"
-                className="h-auto flex-col items-start gap-2 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all"
+                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all"
               >
-                <Link to="/employee/ess?category=Attendance">
-                  <div className="rounded-md bg-primary/10 p-2 text-primary">
+                <Link to="/employee/ess" search={{ category: "Attendance" }}>
+                  <div className="p-2 text-primary">
                     <Clock className="h-5 w-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-semibold text-sm">Attendance</p>
-                    <p className="text-xs text-muted-foreground font-normal">File time-in/out correction</p>
+                    <p className="text-xs text-muted-foreground font-normal">Time in/out &amp; corrections</p>
                   </div>
                 </Link>
               </Button>
@@ -78,15 +77,15 @@ function EmployeeDashboard() {
               <Button
                 asChild
                 variant="outline"
-                className="h-auto flex-col items-start gap-2 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all"
+                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all"
               >
-                <Link to="/employee/ess?category=Payroll">
-                  <div className="rounded-md bg-primary/10 p-2 text-primary">
+                <Link to="/employee/ess" search={{ category: "Payroll" }}>
+                  <div className="rounded-md bg-emerald-500/10 p-2 text-emerald-600">
                     <FileText className="h-5 w-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-semibold text-sm">Payroll</p>
-                    <p className="text-xs text-muted-foreground font-normal">Overtime &amp; payslip inquiry</p>
+                    <p className="text-xs text-muted-foreground font-normal">Payslips &amp; overtime</p>
                   </div>
                 </Link>
               </Button>
@@ -94,31 +93,15 @@ function EmployeeDashboard() {
               <Button
                 asChild
                 variant="outline"
-                className="h-auto flex-col items-start gap-2 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all"
+                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all"
               >
-                <Link to="/employee/ess?category=Documents">
-                  <div className="rounded-md bg-primary/10 p-2 text-primary">
+                <Link to="/employee/ess" search={{ category: "Documents" }}>
+                  <div className="rounded-md bg-blue-500/10 p-2 text-blue-600">
                     <FileCheck className="h-5 w-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-semibold text-sm">Document</p>
                     <p className="text-xs text-muted-foreground font-normal">COE, BIR 2316, clearances</p>
-                  </div>
-                </Link>
-              </Button>
-
-              <Button
-                asChild
-                variant="outline"
-                className="h-auto flex-col items-start gap-2 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all"
-              >
-                <Link to="/employee/ess?category=Performance">
-                  <div className="rounded-md bg-primary/10 p-2 text-primary">
-                    <TrendingUp className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">Performance &amp; Promotion</p>
-                    <p className="text-xs text-muted-foreground font-normal">Review goals &amp; apply</p>
                   </div>
                 </Link>
               </Button>
@@ -128,41 +111,69 @@ function EmployeeDashboard() {
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        {/* Onboarding Progress Card */}
+        {/* ESS Overview Card (analytics + logs, replaces Onboarding Overview) */}
         <Card className="border-border/70 flex flex-col justify-between">
           <CardContent className="p-6">
-            <div className="flex items-center gap-2 font-display text-xl font-semibold">
-              <ClipboardCheck className="h-5 w-5 text-primary" />
-              Onboarding Progress
-            </div>
-            <div className="mt-4">
-              <div className="flex justify-between text-sm mb-1 font-medium">
-                <span>Overall Progress</span>
-                <span className="text-primary font-semibold">60% complete</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-display text-xl font-semibold">
+                <Activity className="h-5 w-5 text-primary" />
+                ESS Overview
               </div>
-              <Progress value={60} className="h-2.5" />
-            </div>
-
-            <div className="mt-4 space-y-2 text-sm border-t border-border pt-3">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Overall progress</span>
-                <span className="font-semibold">60% complete</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Pending requirements</span>
-                <span className="font-semibold">{pendingOnboardingTasks.length} items remaining</span>
-              </div>
+              <Button asChild variant="ghost" size="sm" className="text-primary">
+                <Link to="/employee/ess" search={{}}>
+                  Open ESS <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                </Link>
+              </Button>
             </div>
 
-            <Button asChild size="sm" className="mt-5 w-full sm:w-auto">
-              <Link to="/employee/onboarding">
-                Continue Onboarding <ArrowRight className="ml-2 h-4 w-4" />
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <Link to="/employee/ess" search={{ category: "Attendance" }} className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5 text-primary" /> Attendance
+                </div>
+                <p className="mt-1 text-lg font-bold font-display">{myAttendance.monthly.present} Present</p>
+                <p className="text-xs text-muted-foreground">Time In {myAttendance.today.timeIn} · {myAttendance.monthly.late} late</p>
               </Link>
-            </Button>
+              <Link to="/employee/ess" search={{ category: "Payroll" }} className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <FileText className="h-3.5 w-3.5 text-emerald-600" /> Payroll
+                </div>
+                <p className="mt-1 text-lg font-bold font-display">₱{myPayroll.net.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Next payout {myPayroll.nextPayout}</p>
+              </Link>
+              <Link to="/employee/ess" search={{ category: "Performance" }} className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <TrendingUp className="h-3.5 w-3.5 text-purple-600" /> Performance
+                </div>
+                <p className="mt-1 text-lg font-bold font-display">{myPerformance.lmsCoursesCompleted}/{myPerformance.lmsCoursesAssigned} Courses</p>
+                <p className="text-xs text-muted-foreground">Avg {myPerformance.averageScore} · {myPerformance.competencyLevel}</p>
+              </Link>
+              <Link to="/employee/ess" search={{ category: "Documents" }} className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <FileCheck className="h-3.5 w-3.5 text-blue-600" /> Documents
+                </div>
+                <p className="mt-1 text-lg font-bold font-display">{myEmployeeDocuments.filter((d) => d.status !== "Missing").length} Submitted</p>
+                <p className="text-xs text-amber-600">{myEmployeeDocuments.filter((d) => d.status === "Missing").length} missing requirement</p>
+              </Link>
+            </div>
+
+            {/* Recent activities log */}
+            <div className="mt-4 space-y-2 border-t border-border pt-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent activities</p>
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">Top 5 Latest</Badge>
+              </div>
+              {topActions.map((act, index) => (
+                <div key={index} className="flex items-center justify-between gap-2 text-xs border-b border-border/50 pb-1.5">
+                  <span className="font-medium text-foreground truncate">{act.type}</span>
+                  <span className="shrink-0 text-muted-foreground">{act.date}</span>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
 
-        {/* Recent Actions Card (Replaces ESS Overview) */}
+        {/* Recent Actions Card (Top 5 Latest + Unfinished Onboarding Tasks) */}
         <Card className="border-border/70 flex flex-col justify-between">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -220,7 +231,7 @@ function EmployeeDashboard() {
             </div>
 
             <Button asChild variant="outline" size="sm" className="mt-4 w-full sm:w-auto">
-              <Link to="/employee/ess">
+              <Link to="/employee/ess" search={{}}>
                 View All Actions <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>

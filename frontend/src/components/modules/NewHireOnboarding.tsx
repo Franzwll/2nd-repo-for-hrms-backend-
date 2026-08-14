@@ -269,27 +269,26 @@ export function EmployeeOnboarding() {
       <div className="grid gap-6">
         <Card className="border-border/70 overflow-hidden">
           <CardContent className="p-6 space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <p className="eyebrow text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                  NEW HIRE ONBOARDING
-                </p>
-                <h2 className="text-2xl font-bold font-display text-foreground mt-1">
-                  {myProfile.name}
-                </h2>
-                <p className="text-sm font-medium text-muted-foreground mt-0.5">
-                  Employee ID: <span className="text-foreground font-mono font-semibold">{myProfile.employeeId}</span>
-                </p>
-              </div>
-
-              <div className="flex flex-col sm:items-end">
-                <Badge
-                  variant="outline"
-                  className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40 text-base sm:text-lg px-4 py-1.5 font-bold uppercase tracking-widest self-start sm:self-auto shadow-xs"
-                >
-                  {myProfile.employmentType.toUpperCase()}
-                </Badge>
-                <span className="text-xs text-muted-foreground mt-1 font-medium">Employment Status</span>
+            {/* Prominent employment status banner at the top */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 rounded-xl border border-purple-500/40 bg-gradient-to-r from-purple-500/15 via-purple-500/5 to-transparent p-4">
+              <Badge
+                variant="outline"
+                className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40 text-xl px-6 py-2 font-bold uppercase tracking-widest self-start sm:self-auto shadow-xs shrink-0"
+              >
+                {myProfile.employmentType.toUpperCase()}
+              </Badge>
+              <div className="flex items-center gap-3 min-w-0">
+                <Avatar className="h-11 w-11 border border-purple-500/40 shadow-xs shrink-0">
+                  <AvatarFallback className="bg-purple-500/20 text-purple-700 dark:text-purple-300 font-semibold">
+                    {myProfile.initials}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="text-lg font-bold font-display text-foreground truncate">{myProfile.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Employee ID: <span className="font-mono font-semibold text-foreground">{myProfile.employeeId}</span> · {myProfile.position}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -915,15 +914,15 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
         <TabsList className="flex h-auto flex-wrap justify-start">
-          <TabsTrigger value="pipeline">Onboarding Pipeline</TabsTrigger>
-          <TabsTrigger value="checklists">Requested Checklists</TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5" value="pipeline"><ClipboardList className="h-3.5 w-3.5" /> Onboarding Pipeline</TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5" value="checklists"><Send className="h-3.5 w-3.5" /> Requested Checklists</TabsTrigger>
         </TabsList>
 
         <TabsContent value="pipeline" className="mt-4 space-y-6">
           {/* HORIZONTAL TRACKER */}
           <Card className="border-border/70">
             <CardContent className="p-6">
-              <h2 className="font-display text-2xl font-semibold">Onboarding Status Tracker</h2>
+              <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><ClipboardList className="h-5 w-5 text-primary" /> Onboarding Status Tracker</h2>
               <p className="text-xs text-muted-foreground">
                 Applicant and candidate stages are handled in Applicant Management — onboarding
                 starts once a candidate is hired.
@@ -992,7 +991,8 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                 <div className="flex flex-col gap-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <h2 className="font-display text-2xl font-semibold">
+                      <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                        <Users className="h-5 w-5 text-primary" />
                         {awaitingOnly
                           ? "Awaiting Evaluation"
                           : showAllStages
@@ -1463,7 +1463,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                 {isWaiting ? (
                                   <div className="animate-in overflow-hidden rounded-xl border border-gold/40 bg-gold/5 fade-in duration-500">
                                     <div className="flex items-center gap-3 border-b border-gold/30 bg-gold/10 px-4 py-3">
-                                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold/25">
+                                      <span className="flex h-9 w-9 shrink-0 items-center justify-center">
                                         <Loader2 className="h-4.5 w-4.5 animate-spin text-gold-foreground" />
                                       </span>
                                       <div className="min-w-0 flex-1">
@@ -1507,7 +1507,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   checklistSaved.includes(selected.id) ? (
                                   <div className="animate-in overflow-hidden rounded-xl border border-gold/45 bg-card shadow-[0_10px_30px_-18px_var(--gold)] fade-in duration-500">
                                     <div className="relative flex items-center gap-3 border-b border-gold/30 bg-gradient-to-r from-gold/15 via-gold/5 to-transparent px-4 py-3">
-                                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/20 ring-1 ring-gold/40">
+                                      <span className="flex h-10 w-10 shrink-0 items-center justify-center">
                                         <ClipboardCheck className="h-5 w-5 text-gold-foreground" />
                                       </span>
                                       <div className="min-w-0 flex-1">
@@ -1601,7 +1601,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               <CardContent className="flex min-h-0 flex-1 flex-col p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="font-display text-2xl font-semibold">Checklist Builder</h2>
+                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><ClipboardCheck className="h-5 w-5 text-primary" /> Checklist Builder</h2>
                     <p className="text-xs text-muted-foreground">
                       Create the checklists shown in Pre-onboarding or Probationary. Active
                       Probationary checklists become the starting requirements of every new
@@ -1972,7 +1972,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               <CardContent className="flex min-h-0 flex-1 flex-col p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="font-display text-2xl font-semibold">Requested Checklists</h2>
+                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Send className="h-5 w-5 text-primary" /> Requested Checklists</h2>
                     <p className="text-xs text-muted-foreground">
                       Items requested by Performance. Use them as reference when building checklists
                       in the Checklist Builder — they are not attached to any single employee.

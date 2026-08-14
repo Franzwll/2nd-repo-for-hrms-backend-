@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { EssManagement } from "@/components/modules/EssManagement";
 export const Route = createFileRoute("/employee/_essmanagement/ess")({
+  validateSearch: (search: Record<string, unknown>): { category?: string } => ({
+    category: (search["category"] as string) ?? undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Employee Self-Service — Oxford Suites Makati HRMS" },

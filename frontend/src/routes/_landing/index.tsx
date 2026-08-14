@@ -99,7 +99,6 @@ function Landing() {
         </div>
       </section>
 
-
       {/* Facilities */}
       <section className="border-y border-border bg-secondary/50">
         <div className="mx-auto max-w-7xl px-4 py-16 md:px-8">
@@ -152,8 +151,6 @@ function Landing() {
           ))}
         </div>
       </section>
-
-
     </PublicShell>
   );
 }
