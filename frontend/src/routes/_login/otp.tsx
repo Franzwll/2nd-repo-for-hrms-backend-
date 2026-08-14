@@ -29,7 +29,7 @@ const DEMO_OTP = "123456";
 
 function OTPPage() {
   const navigate = useNavigate();
-  const { role } = useSearch({ from: "/otp" });
+  const { role } = useSearch({ from: "/_login/otp" });
 
   const [digits, setDigits] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [error, setError] = useState("");
