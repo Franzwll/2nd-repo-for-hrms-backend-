@@ -1,6 +1,6 @@
 -- ============================================================================
 -- Hotel & Restaurant HR1 - Final Database Schema (MySQL 8.0+)
--- Revision: 2.2 (rev 2.1 + CHECK constraints + derived-counter notes). 42 tables.
+-- Revision: 2.3 (rev 2.2 + job_posts.position_id required). 42 tables.
 -- Source of truth: frontend/src of Hotel-and-Restaurant-HR1 (data + workflow
 -- analysis) and docs/hotel_hr_database_audit_report.md.
 -- Change summary vs revision 1.0 (37 tables):
@@ -13,6 +13,9 @@
 -- Change summary vs revision 2.0 (39 tables):
 --   ADD    : notifications, user_login_activity, payroll_periods
 --   MODIFY : payroll_records (nullable payroll_period_id FK)
+-- Change summary vs revision 2.2 (42 tables):
+--   MODIFY : job_posts (position_id NOT NULL; title and slug always derive
+--            from the linked Core HR position title via position_id)
 -- ============================================================================
 
 -- Self-contained: create the database if missing, then switch to it.
@@ -203,7 +206,10 @@ CREATE TABLE `job_posts` (
   `slug` VARCHAR(120) NOT NULL UNIQUE,
   `title` VARCHAR(150) NOT NULL,
   `department_id` BIGINT UNSIGNED NOT NULL,
-  `position_id` BIGINT UNSIGNED NULL,
+  -- NOTE: required FK to the Core HR position. `title` and `slug` always
+  -- derive from the linked position's title (positions.title) so they can
+  -- never drift out of sync with the Job Post Builder dropdown.
+  `position_id` BIGINT UNSIGNED NOT NULL,
   `employment_type` VARCHAR(30) NOT NULL,
   `schedule` VARCHAR(120) NULL,
   `salary_min` DECIMAL(12,2) NULL,
