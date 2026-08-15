@@ -524,10 +524,14 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setSavedSnapshot(snapshotOf(blankDraft, []));
 
     // Persist to backend database API
+    const selectedPosition = positions.find((p) => p.title === draft.title);
+    const selectedDept = departments.find((d) => d.name === draft.department);
     try {
       if (editingJobId) {
         const existing = jobList.find((j) => j.id === editingJobId);
         await jobPostsApi.update(existing?.dbId ?? editingJobId, {
+          position_id: selectedPosition?.dbId,
+          department_id: selectedDept?.dbId,
           title: jobPayload.title,
           employment_type: jobPayload.employmentType,
           schedule: jobPayload.schedule,
@@ -546,8 +550,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         });
       } else {
         const created = await jobPostsApi.create({
+          position_id: selectedPosition?.dbId,
+          department_id: selectedDept?.dbId ?? 1,
           title: jobPayload.title,
-          department_id: 1,
           employment_type: jobPayload.employmentType,
           schedule: jobPayload.schedule,
           salary_min: jobPayload.salaryMin,
@@ -1895,13 +1900,29 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                   <div className="grid gap-2 sm:grid-cols-2">
                                     <div className="space-y-1">
                                       <Label className="text-[0.7rem]">Job title</Label>
-                                      <Input
-                                        className="h-8 text-xs"
+                                      <Select
                                         value={draft.title}
-                                        onChange={(e) =>
-                                          setDraft({ ...draft, title: e.target.value })
+                                        onValueChange={(v) =>
+                                          setDraft({
+                                            ...draft,
+                                            title: v,
+                                            department:
+                                              positions.find((p) => p.title === v)
+                                                ?.department ?? draft.department,
+                                          })
                                         }
-                                      />
+                                      >
+                                        <SelectTrigger className="h-8 text-xs">
+                                          <SelectValue placeholder="Select a position from Core HR" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {positions.map((p) => (
+                                            <SelectItem key={p.id} value={p.title}>
+                                              {p.title}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
                                     </div>
                                     <div className="space-y-1">
                                       <Label className="text-[0.7rem]">Department</Label>

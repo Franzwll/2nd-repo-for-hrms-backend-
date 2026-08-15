@@ -14,7 +14,7 @@ class SettingsController extends Controller
 {
     /* ------------------------------------------------------------------ */
     /* GET /api/v1/settings                                                */
-    /* Returns all settings as a flat key в†’ value map (plus full rows)    */
+    /* Returns all settings as a flat key → value map (plus full rows)    */
     /* ------------------------------------------------------------------ */
 
     public function index(): JsonResponse
