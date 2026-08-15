@@ -1255,18 +1255,18 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       </div>
 
       <Tabs value={tab} onValueChange={handleTabChange} className="mt-6">
-        <TabsList className="flex h-auto flex-wrap justify-start">
-          <TabsTrigger value="postings">Vacancies & Postings</TabsTrigger>
-          <TabsTrigger value="builder">Job Post Builder</TabsTrigger>
-          <TabsTrigger value="requisitions">
-            Requisitions from Core HCM
+        <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
+          <TabsTrigger className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer" value="postings"><Briefcase className="mr-1.5 h-4 w-4" /> Vacancies &amp; Postings</TabsTrigger>
+          <TabsTrigger className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer" value="builder"><FilePlus2 className="mr-1.5 h-4 w-4" /> Job Post Builder</TabsTrigger>
+          <TabsTrigger className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer" value="requisitions">
+            <Send className="mr-1.5 h-4 w-4" /> Requisitions from Core HCM
             {pendingRequisitions.length ? ` (${pendingRequisitions.length})` : ""}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent id="recruitment-postings" value="postings" className="mt-4 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-display text-lg font-semibold">Vacancies &amp; Postings</h2>
+            <h2 className="flex items-center gap-2 font-display text-lg font-semibold"><Briefcase className="h-4 w-4 text-primary" /> Vacancies &amp; Postings</h2>
             <div className="flex flex-wrap items-center justify-end gap-3">
               <div className="relative w-56">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1537,7 +1537,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             <CardContent className="p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="font-display text-2xl font-semibold">Vacancy Requisitions</h2>
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Send className="h-5 w-5 text-primary" /> Vacancy Requisitions</h2>
                   <p className="text-xs text-muted-foreground">
                     Requests raised from Core HCM's job position list, pending conversion into a job
                     post.
@@ -1746,7 +1746,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               }}
               className="group flex min-h-[520px] w-full flex-col items-center justify-center gap-5 rounded-2xl border-2 border-dashed border-border bg-muted/20 p-12 text-center transition-all hover:border-primary/60 hover:bg-primary/5 active:scale-[0.995]"
             >
-              <span className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+              <span className="flex h-20 w-20 items-center justify-center text-primary transition-transform group-hover:scale-105">
                 <FilePlus2 className="h-9 w-9" />
               </span>
               <span className="font-display text-3xl font-semibold">Create a job posting</span>
@@ -1846,7 +1846,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 <Card className="border-border/70">
                   <CardContent className="space-y-3 p-4">
                     <div className="flex items-center justify-between">
-                      <h2 className="font-display text-xl font-semibold">
+                      <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
+                        <FilePlus2 className="h-4 w-4 text-primary" />
                         {editingJobId ? "Edit Your Job Post" : "Edit Your Job Post"}
                       </h2>
                     </div>

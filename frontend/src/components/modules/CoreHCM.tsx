@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ArrowLeftRight,
   Award,
+  Briefcase,
   Building2,
   CheckCircle2,
   ChevronDown,
@@ -12,6 +13,7 @@ import {
   FileText,
   Filter,
   GitBranch,
+  History,
   Info,
   Layers,
   Plus,
@@ -26,6 +28,8 @@ import {
   UserPlus,
   Users,
   UserX,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -101,6 +105,7 @@ import {
 import { cn } from "@/lib/utils";
 import { requisitionStore, useRequisitions } from "@/data/requisitions";
 import { type Role } from "@/lib/nav";
+import { buildProfile, Field, Section } from "./EmployeeRecords";
 
 const initialsOf = (name: string) =>
   name
@@ -119,6 +124,13 @@ const formatMoney = (val: number) =>
 
 export function OrgChartModule({ role = "admin" }: { role?: Role }) {
   const [activeTab, setActiveTab] = useState<"org" | "employees" | "logs">("org");
+  const [empSearch, setEmpSearch] = useState("");
+
+  /** Jump to the Employee List tab with the chosen employee pre-searched. */
+  const viewEmployeeInList = (name: string) => {
+    setEmpSearch(name);
+    setActiveTab("employees");
+  };
 
   return (
     <div className="space-y-6">
@@ -130,33 +142,33 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
 
       {/* ICON-STYLED TABS AT TOP OF SECTION */}
       <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
-        <TabsList className="inline-flex h-11 items-center justify-start rounded-xl bg-muted/80 p-1 text-muted-foreground w-fit border border-border/70 shadow-2xs">
+        <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
           <TabsTrigger
             value="org"
-            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-xs"
+            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
           >
-            <GitBranch className="h-4 w-4" /> Org Chart
+            <GitBranch className="mr-1.5 h-4 w-4" /> Org Chart
           </TabsTrigger>
           <TabsTrigger
             value="employees"
-            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-xs"
+            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
           >
-            <Users className="h-4 w-4" /> Employee List
+            <Users className="mr-1.5 h-4 w-4" /> Employee List
           </TabsTrigger>
           <TabsTrigger
             value="logs"
-            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-xs"
+            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
           >
-            <FileText className="h-4 w-4" /> Lifecycle Logs
+            <History className="mr-1.5 h-4 w-4" /> Lifecycle Logs
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="org" className="space-y-6">
-          <OrgChartVisualizer />
+<TabsContent value="org" className="space-y-6">
+          <OrgChartVisualizer onViewEmployee={viewEmployeeInList} />
         </TabsContent>
 
         <TabsContent value="employees" className="space-y-6">
-          <EmployeeListManager role={role} />
+          <EmployeeListManager role={role} empSearch={empSearch} onEmpSearchChange={setEmpSearch} />
         </TabsContent>
 
         <TabsContent value="logs" className="space-y-6">
@@ -168,77 +180,116 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
 }
 
 /* --- Org Chart Visualizer Sub-Component --- */
-function OrgChartVisualizer() {
+function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string) => void }) {
   const [selectedNode, setSelectedNode] = useState<OrgNode | null>(null);
+  const [scale, setScale] = useState(0.58);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragStart = useRef<{ x: number; y: number; offsetX: number; offsetY: number; moved: boolean } | null>(null);
+  const selectedEmployee = seedEmployees.find((employee) => employee.name === selectedNode?.name);
+  const selectedDepartment = seedDepartments.find(
+    (d) => d.head === selectedNode?.name || d.name === selectedEmployee?.department,
+  );
+  const departmentStaff = selectedDepartment
+    ? seedEmployees.filter((employee) => employee.department === selectedDepartment.name)
+    : [];
+  const headEmployee = selectedDepartment
+    ? seedEmployees.find((employee) => employee.name === selectedDepartment.head)
+    : null;
+
+  const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    dragStart.current = { x: event.clientX, y: event.clientY, offsetX: offset.x, offsetY: offset.y, moved: false };
+  };
+  const drag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragStart.current) return;
+    const dx = event.clientX - dragStart.current.x;
+    const dy = event.clientY - dragStart.current.y;
+    if (!dragStart.current.moved) {
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      dragStart.current.moved = true;
+      setDragging(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    setOffset({ x: dragStart.current.offsetX + dx, y: dragStart.current.offsetY + dy });
+  };
+  const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (dragStart.current?.moved) {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        /* capture may already have been released */
+      }
+    }
+    dragStart.current = null;
+    setDragging(false);
+  };
 
   return (
     <Card className="border-border/70 shadow-sm">
       <CardContent className="p-6">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-border/60 pb-4">
-          <div>
-            <h2 className="font-display text-xl font-semibold">Hierarchy Chart</h2>
-            <p className="text-xs text-muted-foreground">
-              Property reporting lines from General Management to department staff.
-            </p>
-          </div>
-          <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary text-xs">
-            Interactive Hierarchy Tree
-          </Badge>
+        <div className="mb-6 border-b border-border/60 pb-4">
+          <h2 className="font-display text-xl font-semibold">Hierarchy Chart</h2>
+          <p className="text-xs text-muted-foreground">
+            Property reporting lines from General Management to department staff.
+          </p>
         </div>
 
-        <div className="overflow-x-auto py-8">
-          <OrgTree node={seedOrgChart} root onSelect={setSelectedNode} />
-        </div>
+<div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+          <div
+            className="relative min-h-[35rem] touch-none overflow-hidden rounded-xl border border-border bg-[radial-gradient(var(--color-border)_1px,transparent_1px)] bg-[size:16px_16px] cursor-grab active:cursor-grabbing"
+onPointerDown={beginDrag}
+            onPointerMove={drag}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+          >
+            {!dragging && (
+              <div className="pointer-events-none absolute left-4 top-4 z-20 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground shadow-sm">Drag to explore · click any card for details</div>
+            )}
 
-        {/* Node detail modal */}
-        <Dialog open={!!selectedNode} onOpenChange={(open) => !open && setSelectedNode(null)}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-3">
-                <Avatar className="h-10 w-10">
-                  <AvatarFallback className="bg-primary text-primary-foreground font-semibold">
-                    {selectedNode ? initialsOf(selectedNode.name) : ""}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <div className="font-display text-xl font-bold">{selectedNode?.name}</div>
-                  <div className="text-xs font-medium text-muted-foreground">{selectedNode?.title}</div>
-                </div>
-              </DialogTitle>
-            </DialogHeader>
-
-            <div className="space-y-3 py-2 text-sm">
-              <div className="flex justify-between border-b border-border/50 py-2">
-                <span className="text-muted-foreground">Direct Reports:</span>
-                <span className="font-semibold">{selectedNode?.children?.length || 0} teams</span>
-              </div>
-              <div className="flex justify-between border-b border-border/50 py-2">
-                <span className="text-muted-foreground">Status:</span>
-                <Badge variant="outline" className="border-success/40 bg-success/10 text-success">
-                  Active Duty
-                </Badge>
-              </div>
-              {selectedNode?.children && selectedNode.children.length > 0 && (
-                <div className="space-y-1.5 pt-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Supervised Personnel:
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedNode.children.map((child) => (
-                      <Badge key={child.name} variant="secondary" className="text-xs font-normal">
-                        {child.name} ({child.title})
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
+            {/* Internal Zoom Controls Floating Toolbar at Top Right */}
+            <div className="absolute top-4 right-4 z-10 flex items-center gap-1 rounded-xl border border-border/80 bg-card/95 backdrop-blur-md p-1 shadow-lg">
+              <Button size="icon" variant="ghost" className="h-7 w-7 cursor-pointer" aria-label="Zoom out" onClick={() => setScale((value) => Math.max(0.35, value - 0.08))}><ZoomOut className="h-4 w-4" /></Button>
+              <span className="min-w-10 text-center text-xs font-semibold">{Math.round(scale * 100)}%</span>
+              <Button size="icon" variant="ghost" className="h-7 w-7 cursor-pointer" aria-label="Zoom in" onClick={() => setScale((value) => Math.min(1.25, value + 0.08))}><ZoomIn className="h-4 w-4" /></Button>
+              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs font-semibold cursor-pointer" onClick={() => { setScale(0.58); setOffset({ x: 0, y: 0 }); }}>Reset</Button>
             </div>
 
-            <DialogFooter>
-              <Button onClick={() => setSelectedNode(null)}>Close</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            <div className="absolute left-1/2 top-8 origin-top" style={{ transform: `translate(calc(-50% + ${offset.x}px), ${offset.y}px) scale(${scale})`, transition: dragStart.current ? "none" : "transform 150ms ease-out" }}>
+              <div className="min-w-[980px] py-4"><OrgTree node={seedOrgChart} root onSelect={setSelectedNode} /></div>
+            </div>
+          </div>
+
+<aside className="space-y-4 rounded-xl border border-border bg-muted/25 p-4">
+            {selectedDepartment ? (
+              <div>
+                <p className="eyebrow">Department overview</p>
+                <h3 className="mt-1 font-display text-2xl font-semibold">{selectedDepartment.name}</h3>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{selectedDepartment.description}</p>
+
+                {/* Head Supervisor Card */}
+                <button
+                  type="button"
+                  onClick={() => onViewEmployee(selectedDepartment.head)}
+                  className="mt-4 w-full text-left rounded-xl border border-primary/30 bg-card p-3 shadow-xs transition-all hover:border-primary hover:bg-primary/5 hover:shadow-md cursor-pointer group"
+                >
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Head supervisor</p>
+                  <p className="mt-1 text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{selectedDepartment.head}</p>
+                  <p className="text-xs text-muted-foreground">{headEmployee?.position ?? "Department Head"}</p>
+                </button>
+
+                <div className="mt-4 flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Team members</p><Badge variant="secondary">{departmentStaff.length}</Badge></div>
+                <div className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1">
+                  {departmentStaff.map((employee) => <button key={employee.id} type="button" onClick={() => onViewEmployee(employee.name)} className="flex w-full items-center justify-between rounded-md bg-card px-2.5 py-2 text-left text-xs transition-colors hover:bg-primary/5 cursor-pointer"><span><span className="block font-medium">{employee.name}</span><span className="text-muted-foreground">{employee.position}</span></span><span className="text-primary font-medium">View</span></button>)}
+                </div>
+              </div>
+            ) : (
+              <div className="flex h-full items-center rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+                Select an employee card on the chart to view their department here.
+              </div>
+            )}
+          </aside>
+        </div>
       </CardContent>
     </Card>
   );
@@ -250,16 +301,16 @@ function OrgNodeCard({ node, root = false, onSelect }: { node: OrgNode; root?: b
       type="button"
       onClick={() => onSelect(node)}
       className={cn(
-        "inline-flex min-w-[200px] flex-col items-center rounded-lg border px-4 py-3.5 text-center shadow-sm transition-all hover:border-primary hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        root ? "border-primary bg-primary/10 ring-1 ring-primary/30" : "border-border/80 bg-card"
+        "group relative inline-flex min-w-[200px] flex-col items-center rounded-xl border px-4 py-3.5 text-center shadow-md transition-all cursor-pointer hover:scale-[1.03] hover:border-primary hover:ring-2 hover:ring-gold/60 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        root ? "border-primary bg-primary/10 ring-2 ring-primary/40" : "border-border/80 bg-card"
       )}
     >
-      <Avatar className="h-10 w-10">
-        <AvatarFallback className={cn("text-xs font-semibold", root ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground")}>
+      <Avatar className="h-11 w-11 shadow-xs border border-border/60">
+        <AvatarFallback className={cn("text-xs font-bold", root ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground")}>
           {initialsOf(node.name)}
         </AvatarFallback>
       </Avatar>
-      <p className="mt-2 text-sm font-semibold leading-tight">{node.name}</p>
+      <p className="mt-2 text-sm font-semibold leading-tight text-foreground group-hover:text-primary transition-colors">{node.name}</p>
       <p className="text-xs text-muted-foreground">{node.title}</p>
     </button>
   );
@@ -292,28 +343,30 @@ function OrgTree({ node, root = false, onSelect }: { node: OrgNode; root?: boole
 }
 
 /* --- Employee List Manager Sub-Component --- */
-function EmployeeListManager({ role }: { role: Role }) {
+function EmployeeListManager({
+  role,
+  empSearch,
+  onEmpSearchChange,
+}: {
+  role: Role;
+  empSearch: string;
+  onEmpSearchChange: (value: string) => void;
+}) {
   const [empList, setEmpList] = useState<Employee[]>(seedEmployees);
-  const [recommendations, setRecommendations] = useState<HR3Recommendation[]>(seedHr3Recommendations);
-  const [empSearch, setEmpSearch] = useState("");
   const [empDeptFilter, setEmpDeptFilter] = useState("all");
   const [empStatusFilter, setEmpStatusFilter] = useState("all");
   const [empTypeFilter, setEmpTypeFilter] = useState("all");
 
-  // Acknowledged employee IDs — gates Regularize/Promote in the roster
   const [acknowledgedIds, setAcknowledgedIds] = useState<Set<string>>(new Set());
-
-  // View All HR3 Recommendations dialog
   const [showViewAllRecs, setShowViewAllRecs] = useState(false);
+  const [recommendations, setRecommendations] = useState<HR3Recommendation[]>(seedHr3Recommendations);
 
-  // Selection & Modal States
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
   const [viewingEmpInfo, setViewingEmpInfo] = useState<Employee | null>(null);
 
   const [showPromoteModal, setShowPromoteModal] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
 
-  // Form States
   const [newPosition, setNewPosition] = useState("");
   const [newSalaryGrade, setNewSalaryGrade] = useState("SG-10");
   const [promotionNotes, setPromotionNotes] = useState("");
@@ -321,21 +374,15 @@ function EmployeeListManager({ role }: { role: Role }) {
   const [exitType, setExitType] = useState<"Resigned" | "Retired" | "Terminated">("Resigned");
   const [exitNotes, setExitNotes] = useState("");
 
-  // Confirmation Alert Dialog States
   const [pendingConfirm, setPendingConfirm] = useState<{ type: "save_promote" | "save_exit" | "regularize"; data?: any } | null>(null);
   const [pendingUnsavedExit, setPendingUnsavedExit] = useState<{ target: "promote" | "exit" } | null>(null);
 
-  // Helpers: determine if an employee has a pending recommendation that needs acknowledgement
   const hasPendingRec = (empId: string) =>
     recommendations.some((r) => r.employeeId === empId && r.status === "Pending HR Action");
 
   const isAcknowledged = (empId: string) => acknowledgedIds.has(empId);
 
-  // An employee's action buttons are accessible if:
-  // 1. Their recommendation has been acknowledged, OR
-  // 2. They have no pending recommendation at all (free-standing regular staff)
-  const canActOnEmployee = (empId: string) =>
-    isAcknowledged(empId) || !hasPendingRec(empId);
+  const canActOnEmployee = (empId: string) => isAcknowledged(empId) || !hasPendingRec(empId);
 
   const filteredEmployees = empList.filter((e) => {
     const q = empSearch.trim().toLowerCase();
@@ -354,7 +401,6 @@ function EmployeeListManager({ role }: { role: Role }) {
   const empPage = usePagination(filteredEmployees);
   const deptOptions = Array.from(new Set(seedEmployees.map((e) => e.department))).sort();
 
-  // Regularize Handler
   const executeRegularization = (emp: Employee) => {
     const updated = empList.map((e) =>
       e.id === emp.id ? { ...e, employmentType: "Regular" as const, status: "Active" as const } : e
@@ -372,7 +418,6 @@ function EmployeeListManager({ role }: { role: Role }) {
       device: "Chrome on Windows",
     });
 
-    // Update recommendation status if present
     setRecommendations((prev) =>
       prev.map((r) => (r.employeeId === emp.id ? { ...r, status: "Approved & Processed" as const } : r))
     );
@@ -380,7 +425,6 @@ function EmployeeListManager({ role }: { role: Role }) {
     toast.success(`${emp.name} has passed evaluation and is now a Regular Employee! User account active.`);
   };
 
-  // Promotion Handler
   const executePromotion = () => {
     if (!selectedEmp || !newPosition) return;
     const oldPosition = selectedEmp.position;
@@ -481,7 +525,7 @@ function EmployeeListManager({ role }: { role: Role }) {
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <span className="grid h-8 w-8 place-items-center rounded-md bg-gold/20 text-gold-foreground">
+              <span className="grid h-8 w-8 place-items-center text-gold">
                 <Sparkles className="h-4 w-4" />
               </span>
               <div>
@@ -647,7 +691,7 @@ function EmployeeListManager({ role }: { role: Role }) {
           {/* SEARCH & FILTER CONTROLS (UNIFIED HEIGHT & STYLES) */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="font-display text-xl font-semibold">Employee Roster</h2>
+              <h2 className="flex items-center gap-2 font-display text-xl font-semibold"><Users className="h-5 w-5 text-primary" /> Employee Roster</h2>
               <p className="text-xs text-muted-foreground">
                 {filteredEmployees.length} record{filteredEmployees.length !== 1 ? "s" : ""} found
               </p>
@@ -659,7 +703,7 @@ function EmployeeListManager({ role }: { role: Role }) {
                   className="h-9 border-border bg-card pl-8 text-xs shadow-2xs"
                   placeholder="Search name, ID, position…"
                   value={empSearch}
-                  onChange={(e) => setEmpSearch(e.target.value)}
+                  onChange={(e) => onEmpSearchChange(e.target.value)}
                 />
               </div>
               <Select value={empDeptFilter} onValueChange={setEmpDeptFilter}>
@@ -834,75 +878,75 @@ function EmployeeListManager({ role }: { role: Role }) {
         </CardContent>
       </Card>
 
-      {/* VIEW EMPLOYEE INFO MODAL */}
+      {/* VIEW EMPLOYEE INFO MODAL (mirrors Employee Records 201 file, without documents & history) */}
       <Dialog open={!!viewingEmpInfo} onOpenChange={(open) => !open && setViewingEmpInfo(null)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-3">
-              <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-primary text-primary-foreground font-semibold">
-                  {viewingEmpInfo ? initialsOf(viewingEmpInfo.name) : ""}
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <div className="font-display text-xl font-bold">{viewingEmpInfo?.name}</div>
-                <div className="text-xs text-muted-foreground">{viewingEmpInfo?.id} · {viewingEmpInfo?.department}</div>
-              </div>
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2 text-sm">
-            <div className="grid grid-cols-2 gap-4 rounded-lg border p-3 bg-muted/20">
-              <div>
-                <span className="text-xs text-muted-foreground">Current Position:</span>
-                <p className="font-semibold">{viewingEmpInfo?.position}</p>
-              </div>
-              <div>
-                <span className="text-xs text-muted-foreground">Salary Grade:</span>
-                <p className="font-semibold text-primary">{viewingEmpInfo?.salaryGrade || "SG-08 (₱18,000 – ₱22,000)"}</p>
-              </div>
-              <div>
-                <span className="text-xs text-muted-foreground">Employment Type:</span>
-                <p className="font-semibold">{viewingEmpInfo?.employmentType}</p>
-              </div>
-              <div>
-                <span className="text-xs text-muted-foreground">Date Hired:</span>
-                <p className="font-semibold">{viewingEmpInfo?.dateHired}</p>
-              </div>
-              <div>
-                <span className="text-xs text-muted-foreground">Work Email:</span>
-                <p className="font-medium text-xs truncate">{viewingEmpInfo?.email}</p>
-              </div>
-              <div>
-                <span className="text-xs text-muted-foreground">Supervisor:</span>
-                <p className="font-medium text-xs">{viewingEmpInfo?.supervisor}</p>
-              </div>
-            </div>
-
-            {viewingEmpInfo?.promotionHistory && viewingEmpInfo.promotionHistory.length > 0 && (
-              <div className="space-y-2 border-t pt-3">
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Promotion &amp; Career Progression Log:
-                </span>
-                <div className="space-y-2">
-                  {viewingEmpInfo.promotionHistory.map((h, i) => (
-                    <div key={i} className="rounded-md border p-2.5 text-xs space-y-1 bg-card">
-                      <div className="flex justify-between font-semibold">
-                        <span>{h.oldPosition} ➔ {h.newPosition}</span>
-                        <span className="text-muted-foreground">{h.date}</span>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          {viewingEmpInfo &&
+            (() => {
+              const p = buildProfile(viewingEmpInfo);
+              return (
+                <>
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-3">
+                      <Avatar className="h-11 w-11">
+                        <AvatarFallback className="bg-primary text-primary-foreground font-semibold">
+                          {initialsOf(viewingEmpInfo.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <div className="font-display text-xl font-bold">{viewingEmpInfo.name}</div>
+                        <div className="text-xs text-muted-foreground">{viewingEmpInfo.position} · {viewingEmpInfo.department} · {viewingEmpInfo.id}</div>
                       </div>
-                      <div className="text-muted-foreground">Salary: {h.oldSalaryGrade} ➔ {h.newSalaryGrade}</div>
-                      <div className="italic text-muted-foreground">{h.notes}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+                    </DialogTitle>
+                  </DialogHeader>
 
-          <DialogFooter>
-            <Button onClick={() => setViewingEmpInfo(null)}>Close</Button>
-          </DialogFooter>
+                  <div className="space-y-1.5 text-sm">
+                    <Section title="Personal details">
+                      <Field k="Full name" v={viewingEmpInfo.name} />
+                      <Field k="Birth date" v={p.birthDate} />
+                      <Field k="Gender" v={p.gender} />
+                      <Field k="Civil status" v={p.civilStatus} />
+                      <Field k="Nationality" v={p.nationality} />
+                    </Section>
+                    <Section title="Contact information">
+                      <Field k="Company email" v={viewingEmpInfo.email} />
+                      <Field k="Personal email" v={p.personalEmail} />
+                      <Field k="Mobile number" v={viewingEmpInfo.phone} />
+                      <Field k="Home address" v={p.address} wide />
+                    </Section>
+                    <Section title="Family information">
+                      <Field k="Family" v={p.family} wide />
+                    </Section>
+                    <Section title="Emergency contact">
+                      <Field k="Name" v={p.emergencyName} />
+                      <Field k="Relationship" v={p.emergencyRelation} />
+                      <Field k="Contact number" v={p.emergencyPhone} />
+                    </Section>
+                    <Section title="Employment information">
+                      <Field k="Employee number" v={viewingEmpInfo.id} />
+                      <Field k="Position" v={viewingEmpInfo.position} />
+                      <Field k="Department" v={viewingEmpInfo.department} />
+                      <Field k="Outlet / Branch" v="Oxford Suites Makati" />
+                      <Field k="Status" v={viewingEmpInfo.status} />
+                      <Field k="Date hired" v={viewingEmpInfo.dateHired} />
+                      <Field k="Immediate supervisor" v={viewingEmpInfo.supervisor} />
+                      <Field k="Shift" v="AM Shift · 07:00 – 16:00" />
+                      <Field k="Rate" v={`${viewingEmpInfo.employmentType} · ${p.contract.split(" · ")[0]}`} />
+                    </Section>
+                    <Section title="Government IDs">
+                      <Field k="SSS number" v={p.sss} />
+                      <Field k="Pag-IBIG MID" v={p.pagibig} />
+                      <Field k="PhilHealth number" v={p.philhealth} />
+                      <Field k="TIN" v={p.tin} />
+                    </Section>
+                  </div>
+
+                  <DialogFooter>
+                    <Button onClick={() => setViewingEmpInfo(null)}>Close</Button>
+                  </DialogFooter>
+                </>
+              );
+            })()}
         </DialogContent>
       </Dialog>
 
@@ -1233,7 +1277,7 @@ function LifecycleLogsViewer() {
       <CardContent className="p-6">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
-            <h2 className="font-display text-xl font-semibold">Lifecycle Transition Logs</h2>
+            <h2 className="flex items-center gap-2 font-display text-xl font-semibold"><History className="h-5 w-5 text-primary" /> Lifecycle Transition Logs</h2>
             <p className="text-xs text-muted-foreground">
               Audit log records of employee regularizations, promotions, resignations, terminations, and retirements.
             </p>
@@ -1353,26 +1397,25 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
         description="Configure property departments, define position headcounts, manage salary grade structures, and approve requisitions."
       />
 
-      {/* ICON-STYLED TABS AT TOP OF SECTION */}
       <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
-        <TabsList className="inline-flex h-11 items-center justify-start rounded-xl bg-muted/80 p-1 text-muted-foreground w-fit border border-border/70 shadow-2xs">
+        <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
           <TabsTrigger
             value="deptpos"
-            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-xs"
+            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
           >
-            <Building2 className="h-4 w-4" /> Department and Position
+            <Building2 className="mr-1.5 h-4 w-4" /> Department and Position
           </TabsTrigger>
           <TabsTrigger
             value="salary"
-            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-xs"
+            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
           >
-            <DollarSign className="h-4 w-4" /> Salary Grade Management
+            <DollarSign className="mr-1.5 h-4 w-4" /> Salary Grade Management
           </TabsTrigger>
           <TabsTrigger
             value="reqs"
-            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-xs"
+            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
           >
-            <FileCheck className="h-4 w-4" /> Requisitions
+            <Send className="mr-1.5 h-4 w-4" /> Requisitions
           </TabsTrigger>
         </TabsList>
 
@@ -1542,7 +1585,7 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
         <CardHeader className="border-b border-border/50 pb-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <CardTitle className="font-display text-xl font-semibold">Hotel &amp; Restaurant Departments</CardTitle>
+              <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold"><Building2 className="h-4 w-4 text-primary" /> Hotel &amp; Restaurant Departments</CardTitle>
               <p className="text-xs text-muted-foreground">
                 {filteredDepts.length} department{filteredDepts.length !== 1 ? "s" : ""} found
               </p>
@@ -1643,7 +1686,7 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
         <CardHeader className="border-b border-border/50 pb-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <CardTitle className="font-display text-xl font-semibold">Job Positions &amp; Salary Bands</CardTitle>
+              <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold"><Briefcase className="h-4 w-4 text-primary" /> Job Positions &amp; Salary Bands</CardTitle>
               <p className="text-xs text-muted-foreground">
                 {filteredPositions.length} position{filteredPositions.length !== 1 ? "s" : ""} found
               </p>
@@ -2100,7 +2143,7 @@ function SalaryGradeManager() {
       <CardHeader className="border-b border-border/50 pb-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <CardTitle className="font-display text-xl font-semibold">Salary Grade &amp; Compensation Management</CardTitle>
+            <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold"><DollarSign className="h-4 w-4 text-primary" /> Salary Grade &amp; Compensation Management</CardTitle>
             <p className="text-xs text-muted-foreground">
               {filteredGrades.length} grade structure{filteredGrades.length !== 1 ? "s" : ""} found
             </p>
@@ -2364,7 +2407,7 @@ function RequisitionManager() {
       <CardHeader className="border-b border-border/50 pb-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <CardTitle className="font-display text-xl font-semibold">Vacancy Requisitions</CardTitle>
+            <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold"><Send className="h-4 w-4 text-primary" /> Vacancy Requisitions</CardTitle>
             <p className="text-xs text-muted-foreground">
               {filteredReqs.length} requisition{filteredReqs.length !== 1 ? "s" : ""} found
             </p>
@@ -2457,7 +2500,7 @@ function RequisitionManager() {
                   <Badge
                     variant="outline"
                     className={
-                      r.status === "Approved"
+                      r.status === "Done"
                         ? "border-success/40 bg-success/10 text-success text-[10px]"
                         : r.status === "Converted"
                         ? "border-primary/40 bg-primary/10 text-primary text-[10px]"

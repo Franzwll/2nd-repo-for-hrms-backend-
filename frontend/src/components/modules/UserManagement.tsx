@@ -76,7 +76,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { departments } from "@/data/hr";
 import { systemUsers, type SystemUser } from "@/data/users";
-const ListBody = TableBody;
+import { ListBody } from "@/hooks/use-list-animation";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { cn } from "@/lib/utils";
@@ -469,7 +469,7 @@ export function UserManagement() {
                           </SelectTrigger>
                           <SelectContent>
                             {departments.map((d) => (
-                              <SelectItem key={d.name} value={d.name}>
+                              <SelectItem key={d.id} value={d.name}>
                                 {d.name}
                               </SelectItem>
                             ))}
@@ -1012,7 +1012,7 @@ export function UserManagement() {
                   </SelectTrigger>
                   <SelectContent>
                     {departments.map((d) => (
-                      <SelectItem key={d.name} value={d.name}>
+                      <SelectItem key={d.id} value={d.name}>
                         {d.name}
                       </SelectItem>
                     ))}

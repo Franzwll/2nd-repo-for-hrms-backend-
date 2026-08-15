@@ -1386,11 +1386,11 @@ export function ApplicantManagement({
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
-        <TabsList className="flex h-auto flex-wrap justify-start">
-          <TabsTrigger value="ranking">Ranking &amp; Applicants</TabsTrigger>
-          <TabsTrigger value="scheduling">Interview Scheduling</TabsTrigger>
-          <TabsTrigger value="assessment">Assessment</TabsTrigger>
-          <TabsTrigger value="history">History &amp; Audit</TabsTrigger>
+        <TabsList className="flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm">
+<TabsTrigger className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="ranking"><Trophy className="h-3.5 w-3.5" /> Ranking &amp; Applicants</TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="scheduling"><CalendarClock className="h-3.5 w-3.5" /> Interview Scheduling</TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="assessment"><ClipboardCheck className="h-3.5 w-3.5" /> Assessment</TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="history"><History className="h-3.5 w-3.5" /> History &amp; Audit</TabsTrigger>
         </TabsList>
 
         {/* RANKING + TABLE */}
@@ -1400,7 +1400,8 @@ export function ApplicantManagement({
               <CardContent className="p-6">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h2 className="font-display text-2xl font-semibold">
+                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                      <Trophy className="h-5 w-5 text-primary" />
                       Candidate Ranking
                     </h2>
                     <p className="text-xs text-muted-foreground">
@@ -1612,7 +1613,8 @@ export function ApplicantManagement({
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="font-display text-2xl font-semibold">
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                    <Users className="h-5 w-5 text-primary" />
                     Applicant List
                   </h2>
                   <p className="text-xs text-muted-foreground">
@@ -1887,7 +1889,7 @@ export function ApplicantManagement({
               <CardContent className="flex flex-1 flex-col p-5">
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
                   <div className="flex min-w-0 items-start gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center text-primary">
                       <CalendarDays className="h-5 w-5" />
                     </span>
                     <div className="min-w-0">
@@ -2211,7 +2213,7 @@ export function ApplicantManagement({
             <Card className="flex h-full flex-col rounded-xl border-border/70 shadow-sm">
               <CardContent className="flex flex-1 flex-col p-5">
                 <div className="flex items-start gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center text-primary">
                     <CalendarClock className="h-5 w-5" />
                   </span>
                   <div className="min-w-0">
@@ -2883,7 +2885,8 @@ export function ApplicantManagement({
           <Card className="border-border/70">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="font-display text-2xl font-semibold">
+                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                  <CalendarClock className="h-5 w-5 text-primary" />
                   Scheduled Interviews
                 </h2>
                 <div className="flex flex-wrap items-center gap-2">
@@ -3080,7 +3083,8 @@ export function ApplicantManagement({
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="font-display text-2xl font-semibold">
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                    <ClipboardCheck className="h-5 w-5 text-primary" />
                     Assessments
                   </h2>
                   <p className="text-xs text-muted-foreground">

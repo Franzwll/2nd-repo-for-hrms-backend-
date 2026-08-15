@@ -371,7 +371,7 @@ export function EmployeeEss() {
               <CardContent className="p-5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Attendance</span>
-                  <div className="rounded-md bg-primary/10 p-2 text-primary">
+                  <div className="p-2 text-primary">
                     <Clock className="h-4 w-4" />
                   </div>
                 </div>
@@ -1750,16 +1750,16 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
 
       <Tabs defaultValue="requests" className="mt-6">
         <TabsList className="flex h-auto flex-wrap justify-start">
-          <TabsTrigger value="requests">Request Queue</TabsTrigger>
-          {role === "superadmin" && <TabsTrigger value="config">ESS Administration</TabsTrigger>}
-          {role === "superadmin" && <TabsTrigger value="audit">Audit &amp; Compliance</TabsTrigger>}
+          <TabsTrigger className="flex items-center gap-1.5" value="requests"><ListChecks className="h-3.5 w-3.5" /> Request Queue</TabsTrigger>
+          {role === "superadmin" && <TabsTrigger className="flex items-center gap-1.5" value="config"><Settings2 className="h-3.5 w-3.5" /> ESS Administration</TabsTrigger>}
+          {role === "superadmin" && <TabsTrigger className="flex items-center gap-1.5" value="audit"><FileCheck className="h-3.5 w-3.5" /> Audit &amp; Compliance</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="requests" className="mt-4">
           <Card className="border-border/70">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="font-display text-2xl font-semibold">Employee Requests</h2>
+                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Send className="h-5 w-5 text-primary" /> Employee Requests</h2>
                 <div className="flex flex-wrap gap-2">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -2070,7 +2070,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
               <Card className="border-border/70">
                 <CardContent className="p-6">
                   <div>
-                    <h2 className="font-display text-2xl font-semibold">Category Management</h2>
+                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Cog className="h-5 w-5 text-primary" /> Category Management</h2>
                     <p className="text-xs text-muted-foreground">
                       Create, edit and remove ESS request categories. Description shows to employees
                       as the request-form placeholder.
@@ -2329,7 +2329,8 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
               <Card className="border-border/70">
                 <CardContent className="space-y-5 p-6">
                   <div>
-                    <h2 className="font-display text-2xl font-semibold">
+                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                      <Settings2 className="h-5 w-5 text-primary" />
                       Request Management Settings
                     </h2>
                     <p className="text-xs text-muted-foreground">
@@ -2397,7 +2398,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
             <Card className="border-border/70">
               <CardContent className="p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="font-display text-2xl font-semibold">ESS Activity Log</h2>
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Clock className="h-5 w-5 text-primary" /> ESS Activity Log</h2>
                   <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
