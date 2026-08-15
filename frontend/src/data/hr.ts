@@ -185,6 +185,7 @@ export const orgChart: OrgNode = {
 
 export type NewHire = {
   id: string;
+  dbId?: number;
   name: string;
   position: string;
   department: string;

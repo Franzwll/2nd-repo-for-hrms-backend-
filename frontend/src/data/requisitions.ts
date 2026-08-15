@@ -1,7 +1,9 @@
 import { useSyncExternalStore } from "react";
+import { requisitionsApi, type ApiRequisition } from "@/lib/api";
 
 export type Requisition = {
   id: string;
+  dbId?: number;
   position: string;
   department: string;
   count: number;
@@ -67,77 +69,21 @@ const seedRequisitions: Requisition[] = [
     status: "Done",
     requestedAt: "2024-04-20",
   },
-  {
-    id: "REQ-1006",
-    position: "Spa Therapist",
-    department: "Wellness",
-    count: 1,
-    urgency: "Low",
-    justification: "Guest demand for spa bookings has grown following the new wellness package launch.",
-    status: "Pending",
-    requestedAt: "2024-05-14",
-  },
-  {
-    id: "REQ-1007",
-    position: "Reservations Agent",
-    department: "Front Office",
-    count: 2,
-    urgency: "Normal",
-    justification: "Call volume has outpaced current agent capacity during the booking surge.",
-    status: "Converted",
-    requestedAt: "2024-03-30",
-  },
-  {
-    id: "REQ-1008",
-    position: "Sous Chef",
-    department: "Food & Beverage",
-    count: 1,
-    urgency: "Urgent",
-    justification: "Kitchen leadership gap after recent promotion; needs immediate backfill.",
-    status: "Pending",
-    requestedAt: "2024-05-16",
-  },
-  {
-    id: "REQ-1009",
-    position: "Housekeeping Supervisor",
-    department: "Housekeeping",
-    count: 1,
-    urgency: "High",
-    justification: "Additional shift supervisor required to oversee the expanded night cleaning crew.",
-    status: "Done",
-    requestedAt: "2024-04-05",
-  },
-  {
-    id: "REQ-1010",
-    position: "Accounting Clerk",
-    department: "Finance",
-    count: 1,
-    urgency: "Normal",
-    justification: "Month-end close workload has increased with the new property management system rollout.",
-    status: "Pending",
-    requestedAt: "2024-05-18",
-  },
-  {
-    id: "REQ-1011",
-    position: "Maintenance Technician",
-    department: "Engineering",
-    count: 2,
-    urgency: "High",
-    justification: "Preventive maintenance backlog requires two more technicians to stay on schedule.",
-    status: "Pending",
-    requestedAt: "2024-05-19",
-  },
-  {
-    id: "REQ-1012",
-    position: "Guest Relations Officer",
-    department: "Front Office",
-    count: 1,
-    urgency: "Normal",
-    justification: "VIP guest volume has increased, requiring dedicated relations coverage.",
-    status: "Converted",
-    requestedAt: "2024-03-12",
-  },
 ];
+
+function transformApiRequisition(r: ApiRequisition): Requisition {
+  return {
+    id: r.requisition_code || `REQ-${r.requisition_id}`,
+    dbId: r.requisition_id,
+    position: r.position_title || "Unknown Position",
+    department: r.department || "General",
+    count: r.requested_count || 1,
+    urgency: r.urgency || "Normal",
+    justification: r.justification || "",
+    status: r.status,
+    requestedAt: r.requested_at || new Date().toISOString().slice(0, 10),
+  };
+}
 
 let requisitions: Requisition[] = [...seedRequisitions];
 const listeners = new Set<() => void>();
@@ -146,20 +92,73 @@ function emit() {
   listeners.forEach((l) => l());
 }
 
+// Fetch live from Laravel MySQL API on load
+let hasFetched = false;
+async function fetchRequisitionsFromApi() {
+  if (hasFetched) return;
+  hasFetched = true;
+  try {
+    const res = await requisitionsApi.list({ per_page: 100 });
+    if (res?.data && res.data.length > 0) {
+      requisitions = res.data.map(transformApiRequisition);
+      emit();
+    }
+  } catch (err) {
+    console.warn("Could not fetch requisitions from backend API, using cached data.", err);
+  }
+}
+if (typeof window !== "undefined") {
+  fetchRequisitionsFromApi();
+}
+
 export const requisitionStore = {
   getSnapshot: () => requisitions,
   subscribe: (listener: () => void) => {
     listeners.add(listener);
+    if (!hasFetched) fetchRequisitionsFromApi();
     return () => listeners.delete(listener);
   },
-  add: (r: Requisition) => {
+  add: async (r: Requisition) => {
     requisitions = [r, ...requisitions];
     emit();
+    try {
+      await requisitionsApi.create({
+        position_title: r.position,
+        department_id: 1,
+        requested_count: r.count,
+        urgency: r.urgency,
+        justification: r.justification,
+        status: r.status,
+        requested_at: r.requestedAt,
+      });
+    } catch (e) {
+      console.warn("API requisition create error:", e);
+    }
   },
-  update: (id: string, patch: Partial<Requisition>) => {
+  update: async (id: string, patch: Partial<Requisition>) => {
+    const target = requisitions.find((r) => r.id === id);
     requisitions = requisitions.map((r) => (r.id === id ? { ...r, ...patch } : r));
     emit();
+    try {
+      if (target?.dbId) {
+        await requisitionsApi.update(target.dbId, {
+          position_title: patch.position ?? target.position,
+          department_id: 1,
+          requested_count: patch.count ?? target.count,
+          urgency: patch.urgency ?? target.urgency,
+          justification: patch.justification ?? target.justification,
+          status: patch.status ?? target.status,
+          requested_at: patch.requestedAt ?? target.requestedAt,
+        });
+      }
+    } catch (e) {
+      console.warn("API requisition update error:", e);
+    }
   },
+  refresh: () => {
+    hasFetched = false;
+    return fetchRequisitionsFromApi();
+  }
 };
 
 export function useRequisitions() {

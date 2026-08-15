@@ -3,54 +3,89 @@
 namespace Modules\Settings\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Settings\Http\Requests\BulkUpsertSettingRequest;
+use Modules\Settings\Http\Requests\UpsertSettingRequest;
+use Modules\Settings\Http\Resources\SystemSettingResource;
+use Modules\Settings\Models\SystemSetting;
 
 class SettingsController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    /* ------------------------------------------------------------------ */
+    /* GET /api/v1/settings                                                */
+    /* Returns all settings as a flat key в†’ value map (plus full rows)    */
+    /* ------------------------------------------------------------------ */
+
+    public function index(): JsonResponse
     {
-        return view('settings::index');
+        $settings = SystemSetting::orderBy('setting_key')->get();
+
+        return response()->json([
+            // Full row collection (for admin table view)
+            'data' => SystemSettingResource::collection($settings),
+
+            // Convenience map:  { "some_key": <value>, ... }
+            'map'  => $settings->pluck('setting_value', 'setting_key'),
+        ]);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
+    /* ------------------------------------------------------------------ */
+    /* GET /api/v1/settings/{key}                                          */
+    /* ------------------------------------------------------------------ */
+
+    public function show(string $key): JsonResponse
     {
-        return view('settings::create');
+        $setting = SystemSetting::where('setting_key', $key)->firstOrFail();
+        return response()->json(new SystemSettingResource($setting));
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request) {}
+    /* ------------------------------------------------------------------ */
+    /* PUT /api/v1/settings/{key}                                          */
+    /* Create-or-update a single setting by its key                        */
+    /* ------------------------------------------------------------------ */
 
-    /**
-     * Show the specified resource.
-     */
-    public function show($id)
+    public function upsert(UpsertSettingRequest $request, string $key): JsonResponse
     {
-        return view('settings::show');
+        $userId  = $request->user()?->id ?? null;
+        $setting = SystemSetting::setValue($key, $request->validated('setting_value'), $userId);
+
+        return response()->json(new SystemSettingResource($setting));
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit($id)
+    /* ------------------------------------------------------------------ */
+    /* PATCH /api/v1/settings/bulk                                         */
+    /* Save multiple settings in a single request                          */
+    /* ------------------------------------------------------------------ */
+
+    public function bulkUpsert(BulkUpsertSettingRequest $request): JsonResponse
     {
-        return view('settings::edit');
+        $userId  = $request->user()?->id ?? null;
+        $updated = [];
+
+        foreach ($request->validated('settings') as $entry) {
+            $updated[] = SystemSetting::setValue($entry['key'], $entry['value'], $userId);
+        }
+
+        return response()->json([
+            'message' => count($updated) . ' setting(s) saved.',
+            'data'    => SystemSettingResource::collection(collect($updated)),
+        ]);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, $id) {}
+    /* ------------------------------------------------------------------ */
+    /* DELETE /api/v1/settings/{key}                                       */
+    /* Remove a setting entirely (use with caution)                        */
+    /* ------------------------------------------------------------------ */
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy($id) {}
+    public function destroy(string $key): JsonResponse
+    {
+        $deleted = SystemSetting::where('setting_key', $key)->delete();
+
+        if (! $deleted) {
+            return response()->json(['message' => "Setting '{$key}' not found."], 404);
+        }
+
+        return response()->json(['message' => "Setting '{$key}' deleted."]);
+    }
 }
