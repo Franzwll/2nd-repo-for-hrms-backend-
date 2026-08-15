@@ -1,6 +1,6 @@
 -- ============================================================================
 -- Hotel & Restaurant HR1 - Seed Data (MySQL 8.0+)
--- Revision: matches schema rev 2.2 (42 tables)
+-- Revision: matches schema rev 2.3 (42 tables)
 -- Source: frontend/src/data/*.ts fixtures (hr, jobs, applicants, requisitions,
 --         hires, ess, users, records, company) so the initial UI stays
 --         recognizable during migration. See PRD Section 11.
@@ -170,7 +170,8 @@ INSERT INTO `employee_documents` (`employee_id`, `document_code`, `title`, `cate
 -- Domain 2: Recruitment
 -- ---------------------------------------------------------------------------
 
--- job_posts (ids 1-6)
+-- job_posts (ids 1-6). position_id is required and references the Core HR
+-- position; slug/title mirror positions.title (kept in sync by the app).
 INSERT INTO `job_posts` (
   `job_post_id`, `slug`, `title`, `department_id`, `position_id`, `employment_type`, `schedule`,
   `salary_min`, `salary_max`, `vacancies`, `filled_count`, `posted_date`, `status`, `active`,
