@@ -5,8 +5,8 @@ import { PublicShell } from "@/components/public/PublicShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { company, facilities } from "@/data/company";
-import { jobs, peso } from "@/data/jobs";
+import { facilities } from "@/data/company";
+import { peso, useCompany, useLandingJobs } from "@/lib/landing";
 import heroImage from "@/assets/hero-oxford-suites.jpg";
 
 export const Route = createFileRoute("/_landing/")({
@@ -30,7 +30,9 @@ export const Route = createFileRoute("/_landing/")({
 });
 
 function Landing() {
-  const featured = jobs.filter((j) => j.active).slice(0, 3);
+  const { company } = useCompany();
+  const { jobs } = useLandingJobs();
+  const featured = jobs.slice(0, 3);
 
   return (
     <PublicShell>
@@ -75,7 +77,7 @@ function Landing() {
             {
               icon: Briefcase,
               title: "Open Vacancies",
-              body: `${jobs.filter((j) => j.active).length} live openings across front office, housekeeping, kitchen and service — updated daily.`,
+              body: `${jobs.length} live openings across front office, housekeeping, kitchen and service — updated daily.`,
             },
             {
               icon: Sparkles,

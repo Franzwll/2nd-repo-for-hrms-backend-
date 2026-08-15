@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   Check,
@@ -74,12 +74,62 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { departments } from "@/data/hr";
-import { systemUsers, type SystemUser } from "@/data/users";
 const ListBody = TableBody;
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
+import { hcmApi, userManagementApi, type ApiSystemUser } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+type SystemUserRole = "Super Admin" | "Admin" | "Employee";
+type SystemUserStatus = "Active" | "Suspended" | "Disabled";
+
+interface SystemUser {
+  id: string;
+  dbId?: number;
+  name: string;
+  username: string;
+  email: string;
+  role: SystemUserRole;
+  department: string;
+  status: SystemUserStatus;
+  lastLogin: string;
+  ipAddress: string;
+}
+
+const ROLE_ID_BY_NAME: Record<string, number> = { "Super Admin": 1, Admin: 2, Employee: 3 };
+
+const FALLBACK_DEPARTMENTS = [
+  "Administration / HR",
+  "Front Office",
+  "Food & Beverage",
+  "Kitchen / Culinary",
+  "Housekeeping",
+];
+
+const formatLastLogin = (iso: string | null) => {
+  if (!iso) return "Never";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+const toUiUser = (u: ApiSystemUser): SystemUser => ({
+  id: String(u.system_user_id),
+  dbId: u.system_user_id,
+  name: u.full_name || u.username,
+  username: u.username,
+  email: u.email,
+  role: (u.role as SystemUserRole) ?? "Employee",
+  department: u.department_name ?? "",
+  status: u.status === "Inactive" ? "Disabled" : (u.status as SystemUserStatus),
+  lastLogin: formatLastLogin(u.last_login_at),
+  ipAddress: u.last_login_ip ?? "—",
+});
 
 const DEFAULT_PASSWORD = "Password123!";
 
@@ -216,8 +266,65 @@ const permissionLevelTone: Record<PermissionLevel, string> = {
   None: "border-border bg-muted/20 text-muted-foreground",
 };
 
+const GROUP_MODULE_MAP: Record<PermissionGroup, string[]> = {
+  "Dashboard Analytics": ["Dashboard"],
+  "Employee Records": ["Employee Records", "Core HCM"],
+  "Lifecycle Actions": ["New Hire Onboarding", "Core HCM"],
+  "Request Queue & ESS": ["ESS Management", "Employee Records"],
+  "Audit & Compliance": ["Audit Logs"],
+  "User Management": ["User Management", "Settings"],
+};
+
+const groupToBackendLevel = (level: PermissionLevel): string => {
+  if (level === "Full") return "Full";
+  if (level === "Edit") return "Write";
+  if (level === "View") return "View";
+  return "None";
+};
+
+const buildMatrixFromBackend = (
+  roles: { role_id: number; role_name: string; permissions: { module_name: string; permission_level: string }[] }[]
+): Record<SystemUserRole, Record<PermissionGroup, PermissionLevel>> => {
+  const next: Record<SystemUserRole, Record<PermissionGroup, PermissionLevel>> = JSON.parse(
+    JSON.stringify(roleGroupMatrix)
+  );
+  roles.forEach((r) => {
+    const name = r.role_name as SystemUserRole;
+    if (!next[name]) return;
+    const levels: Record<string, string> = {};
+    r.permissions.forEach((p) => {
+      levels[p.module_name] = p.permission_level;
+    });
+    permissionGroups.forEach((g) => {
+      let hasFull = false;
+      let hasEdit = false;
+      let hasView = false;
+      GROUP_MODULE_MAP[g].forEach((m) => {
+        const lvl = levels[m];
+        if (!lvl || lvl === "None") return;
+        if (lvl === "Full") hasFull = true;
+        else if (["Write", "Edit", "Approve / Reject Only", "Delete"].includes(lvl)) hasEdit = true;
+        else if (["View", "Read"].includes(lvl)) hasView = true;
+      });
+      let level: PermissionLevel = "None";
+      if (hasFull) level = "Full";
+      else if (hasEdit) level = "Edit";
+      else if (hasView) level = "View";
+      next[name][g] = level;
+    });
+  });
+  return next;
+};
+
 export function UserManagement() {
-  const [users, setUsers] = useState<SystemUser[]>(systemUsers);
+  const [users, setUsers] = useState<SystemUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [deptOptions, setDeptOptions] = useState<string[]>(FALLBACK_DEPARTMENTS);
+  const [roleIdByName, setRoleIdByName] = useState<Record<string, number>>({});
+  const [existingPerms, setExistingPerms] = useState<
+    Record<number, { module_name: string; permission_level: string }[]>
+  >({});
+  const [savingMatrix, setSavingMatrix] = useState(false);
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -252,6 +359,47 @@ export function UserManagement() {
   const [sessionTimeout, setSessionTimeout] = useState("30");
   const [maxAttempts, setMaxAttempts] = useState("3");
 
+  const loadUsers = async () => {
+    try {
+      const res = await userManagementApi.users.list({ per_page: 100 });
+      setUsers(res.data.map(toUiUser));
+    } catch (e: any) {
+      toast.error(e?.message || "Unable to load users.");
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  useEffect(() => {
+    hcmApi.departments
+      .list({ per_page: 100 })
+      .then((res) => {
+        const names = res.data.map((d) => d.name);
+        if (names.length) setDeptOptions(names);
+      })
+      .catch(() => {});
+    userManagementApi.roles
+      .list()
+      .then(async (rolesRes) => {
+        const byName: Record<string, number> = {};
+        const perms: Record<number, { module_name: string; permission_level: string }[]> = {};
+        for (const r of rolesRes.data) {
+          byName[r.role_name] = r.role_id;
+          perms[r.role_id] = r.permissions;
+        }
+        setRoleIdByName(byName);
+        setExistingPerms(perms);
+        const built = buildMatrixFromBackend(rolesRes.data);
+        setMatrix(built);
+        setMatrixDraft(built);
+      })
+      .catch(() => {});
+  }, []);
+
   const filteredUsers = users.filter((u) => {
     const q = search.trim().toLowerCase();
     const matchesSearch =
@@ -270,59 +418,107 @@ export function UserManagement() {
     setEditUser(u);
     setEditDraft({ ...u });
   };
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editDraft) return;
-    setUsers((p) => p.map((x) => (x.id === editDraft.id ? editDraft : x)));
-    toast.success(`${editDraft.username} updated`);
-    setEditUser(null);
+    try {
+      await userManagementApi.users.update(Number(editDraft.id), {
+        username: editDraft.username,
+        email: editDraft.email,
+        full_name: editDraft.name,
+        department_name:
+          editDraft.role === "Super Admin" ? "Administration / HR" : editDraft.department,
+        role_id: ROLE_ID_BY_NAME[editDraft.role],
+        status: editDraft.status === "Disabled" ? "Inactive" : editDraft.status,
+      });
+      toast.success(`${editDraft.username} updated`);
+      setEditUser(null);
+      await loadUsers();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update user.");
+    }
   };
 
   const openReset = (u: SystemUser) => {
     setResetUser(u);
     setResetPassword("");
   };
-  const submitReset = () => {
+  const submitReset = async () => {
     if (!resetUser) return;
-    toast.success(`Password reset for ${resetUser.username}`, {
-      description: resetPassword ? "New password saved." : "No password set.",
-    });
-    setResetUser(null);
+    try {
+      await userManagementApi.users.update(Number(resetUser.id), {
+        password: resetPassword || DEFAULT_PASSWORD,
+      });
+      toast.success(`Password reset for ${resetUser.username}`);
+      setResetUser(null);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to reset password.");
+    }
   };
 
-  const createUser = () => {
+  const createUser = async () => {
     if (!newUser.name || !newUser.username) {
       toast.error("Full name and username are required");
       return;
     }
-    const id = `USR-${String(users.length + 1).padStart(3, "0")}`;
-    setUsers((p) => [
-      ...p,
-      {
-        id,
-        name: newUser.name,
+    if (!newUser.email) {
+      toast.error("Email is required");
+      return;
+    }
+    try {
+      await userManagementApi.users.create({
         username: newUser.username,
         email: newUser.email,
-        role: newUser.role as SystemUser["role"],
-        department:
-          newUser.role === "Super Admin"
-            ? "Administration / HR"
-            : newUser.department || departments[0]?.name || "",
+        password: newUser.password || DEFAULT_PASSWORD,
+        full_name: newUser.name,
+        department_name:
+          newUser.role === "Super Admin" ? "Administration / HR" : newUser.department || undefined,
+        role_id: ROLE_ID_BY_NAME[newUser.role],
         status: "Active",
-        lastLogin: "вЂ”",
-        ipAddress: "вЂ”",
-      },
-    ]);
-    toast.success(`${newUser.name} created`);
-    setCreateOpen(false);
-    setNewUser({
-      name: "",
-      username: "",
-      email: "",
-      phone: "",
-      role: "Employee",
-      department: "",
-      password: "",
-    });
+      });
+      toast.success(`${newUser.name} created`);
+      setCreateOpen(false);
+      setNewUser({
+        name: "",
+        username: "",
+        email: "",
+        phone: "",
+        role: "Employee",
+        department: "",
+        password: "",
+      });
+      await loadUsers();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to create user.");
+    }
+  };
+
+  const saveMatrix = async () => {
+    setSavingMatrix(true);
+    try {
+      for (const roleName of ["Super Admin", "Admin", "Employee"] as const) {
+        const roleId = roleIdByName[roleName];
+        if (!roleId) continue;
+        const merged = new Map<string, string>();
+        (existingPerms[roleId] ?? []).forEach((p) => merged.set(p.module_name, p.permission_level));
+        for (const group of permissionGroups) {
+          const level = matrixDraft[roleName]?.[group] ?? "None";
+          const mapped = groupToBackendLevel(level);
+          GROUP_MODULE_MAP[group].forEach((m) => merged.set(m, mapped));
+        }
+        const permissions = Array.from(merged.entries()).map(([module_name, permission_level]) => ({
+          module_name,
+          permission_level,
+        }));
+        await userManagementApi.roles.updatePermissions(roleId, permissions);
+      }
+      setMatrix({ ...matrixDraft });
+      setIsEditingMatrix(false);
+      toast.success("Permission matrix saved successfully");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to save permission matrix.");
+    } finally {
+      setSavingMatrix(false);
+    }
   };
 
   const revokeSession = (id: string) => {
@@ -468,9 +664,9 @@ export function UserManagement() {
                             <SelectValue placeholder="Select department" />
                           </SelectTrigger>
                           <SelectContent>
-                            {departments.map((d) => (
-                              <SelectItem key={d.name} value={d.name}>
-                                {d.name}
+                            {deptOptions.map((d) => (
+                              <SelectItem key={d} value={d}>
+                                {d}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -596,9 +792,14 @@ export function UserManagement() {
                                   <KeyRound className="mr-2 h-4 w-4" />Reset password
                                 </DropdownMenuItem>
                                 {u.status !== "Active" && (
-                                  <DropdownMenuItem onClick={() => {
-                                    setUsers((p) => p.map((x) => (x.id === u.id ? { ...x, status: "Active" } : x)));
-                                    toast.success(`${u.username} account recovered`);
+                                  <DropdownMenuItem onClick={async () => {
+                                    try {
+                                      await userManagementApi.users.update(Number(u.id), { status: "Active" });
+                                      await loadUsers();
+                                      toast.success(`${u.username} account recovered`);
+                                    } catch (e: any) {
+                                      toast.error(e?.message || "Failed to recover account.");
+                                    }
                                   }}>
                                     <RotateCcw className="mr-2 h-4 w-4" />Recover account
                                   </DropdownMenuItem>
@@ -621,9 +822,14 @@ export function UserManagement() {
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                                   <AlertDialogAction
-                                    onClick={() => {
-                                      setUsers((p) => p.filter((x) => x.id !== u.id));
-                                      toast(`${u.username} deleted`);
+                                    onClick={async () => {
+                                      try {
+                                        await userManagementApi.users.remove(Number(u.id));
+                                        await loadUsers();
+                                        toast(`${u.username} deleted`);
+                                      } catch (e: any) {
+                                        toast.error(e?.message || "Failed to delete user.");
+                                      }
                                     }}
                                   >
                                     Delete
@@ -635,7 +841,14 @@ export function UserManagement() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {filteredUsers.length === 0 && (
+                    {loadingUsers && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
+                          Loading users…
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {!loadingUsers && filteredUsers.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
                           No users match your filters.
@@ -696,13 +909,10 @@ export function UserManagement() {
                     <>
                       <Button
                         size="sm"
-                        onClick={() => {
-                          setMatrix({ ...matrixDraft });
-                          setIsEditingMatrix(false);
-                          toast.success("Permission matrix saved successfully");
-                        }}
+                        onClick={saveMatrix}
+                        disabled={savingMatrix}
                       >
-                        Save
+                        {savingMatrix ? "Saving…" : "Save"}
                       </Button>
                       <Button
                         size="sm"
@@ -1011,9 +1221,9 @@ export function UserManagement() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {departments.map((d) => (
-                      <SelectItem key={d.name} value={d.name}>
-                        {d.name}
+                    {deptOptions.map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {d}
                       </SelectItem>
                     ))}
                   </SelectContent>

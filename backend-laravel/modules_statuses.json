@@ -8,5 +8,7 @@
     "UserManagement": true,
     "AuditLog": true,
     "Settings": true,
-    "Profile": true
+    "Profile": true,
+    "Auth": true,
+    "Landing": true
 }

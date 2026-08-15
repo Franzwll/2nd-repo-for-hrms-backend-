@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Timer } from "lucide-react";
 import { toast } from "sonner";
@@ -13,10 +13,11 @@ import suite2b from "@/assets/o-suite(2)b.png";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+import { authApi } from "@/lib/api";
+import { setToken, setUser } from "@/lib/auth";
+import { clearLoginContext, getLoginContext, persistLoginContext } from "./login";
+
 export const Route = createFileRoute("/_login/otp")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    role: (search["role"] as string) ?? "/superadmin",
-  }),
   head: () => ({
     meta: [
       { title: "OTP Verification — Oxford Suites Makati HRMS" },
@@ -30,8 +31,6 @@ export const Route = createFileRoute("/_login/otp")({
 });
 
 const OTP_LENGTH = 6;
-// Demo OTP — always valid
-const DEMO_OTP = "123456";
 
 const montageImages = [
   {
@@ -68,16 +67,27 @@ const montageImages = [
 
 function OTPPage() {
   const navigate = useNavigate();
-  const { role } = useSearch({ from: "/_login/otp" });
+  const loginCtx = getLoginContext();
 
-  const [digits, setDigits] = useState<string[]>(Array(OTP_LENGTH).fill(""));
+  const [digits, setDigits] = useState<string[]>(() => {
+    const otp = loginCtx?.debug_otp ?? "";
+    return Array.from({ length: OTP_LENGTH }, (_, i) => otp[i] ?? "");
+  });
   const [error, setError] = useState("");
   const [verified, setVerified] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [timeLeft, setTimeLeft] = useState(60);
   const [resendDisabled, setResendDisabled] = useState(true);
   const [currentSlide, setCurrentSlide] = useState(0);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  useEffect(() => {
+    if (!getLoginContext()) {
+      toast.error("Please sign in to continue.");
+      navigate({ to: "/login" });
+    }
+  }, [navigate]);
 
   // Montage slideshow transition
   useEffect(() => {
@@ -126,30 +136,63 @@ function OTPPage() {
     e.preventDefault();
   };
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     const code = digits.join("");
     if (code.length < OTP_LENGTH) {
       setError("Please enter the complete 6-digit OTP.");
       return;
     }
-    if (code !== DEMO_OTP) {
-      setError("Incorrect OTP. Try 123456 for the demo.");
-      setDigits(Array(OTP_LENGTH).fill(""));
-      inputRefs.current[0]?.focus();
+    const ctx = getLoginContext();
+    if (!ctx) {
+      setError("Your login session has expired. Please sign in again.");
+      navigate({ to: "/login" });
       return;
     }
-    setVerified(true);
-    toast.success("Identity verified — signing you in…");
-    setTimeout(() => navigate({ to: role as string }), 1200);
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await authApi.verifyOtp(ctx.login_token, code);
+      setToken(res.token);
+      setUser(res.user);
+      clearLoginContext();
+      setVerified(true);
+      toast.success("Identity verified — signing you in…");
+      const target =
+        res.user.role === "Super Admin" ? "/superadmin" : res.user.role === "Admin" ? "/admin" : "/employee";
+      setTimeout(() => navigate({ to: target }), 1200);
+    } catch (err: any) {
+      setError(err?.message || "Invalid or expired OTP.");
+      setDigits(Array(OTP_LENGTH).fill(""));
+      inputRefs.current[0]?.focus();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleResend = () => {
-    setTimeLeft(60);
-    setResendDisabled(true);
-    setDigits(Array(OTP_LENGTH).fill(""));
-    setError("");
-    toast("A new OTP has been sent to your work email.");
-    inputRefs.current[0]?.focus();
+  const handleResend = async () => {
+    const ctx = getLoginContext();
+    if (!ctx) return;
+    setSubmitting(true);
+    try {
+      const res = await authApi.resendOtp(ctx.login_token);
+      persistLoginContext({
+        login_token: ctx.login_token,
+        debug_otp: res.debug_otp,
+        email: ctx.email,
+        expires_in: res.expires_in,
+      });
+      const otp = res.debug_otp ?? "";
+      setDigits(Array.from({ length: OTP_LENGTH }, (_, i) => otp[i] ?? ""));
+      setTimeLeft(60);
+      setResendDisabled(true);
+      setError("");
+      toast("A new OTP has been sent to your work email.");
+      inputRefs.current[0]?.focus();
+    } catch (err: any) {
+      setError(err?.message || "Unable to resend OTP. Please sign in again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -198,10 +241,12 @@ function OTPPage() {
               <p className="mt-2 text-sm text-muted-foreground">
                 We've sent a 6-digit code to your registered work email. Enter it below to continue.
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                (Demo: use{" "}
-                <span className="font-mono font-semibold text-primary">123456</span>)
-              </p>
+              {loginCtx?.debug_otp && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  (Development OTP:{" "}
+                  <span className="font-mono font-semibold text-primary">{loginCtx.debug_otp}</span>)
+                </p>
+              )}
             </div>
 
             {/* OTP boxes */}
@@ -256,10 +301,10 @@ function OTPPage() {
               className="mt-6 w-full cursor-pointer"
               size="lg"
               onClick={handleVerify}
-              disabled={digits.join("").length < OTP_LENGTH}
+              disabled={digits.join("").length < OTP_LENGTH || submitting}
               id="otp-verify-btn"
             >
-              Verify &amp; Sign In
+              {submitting ? "Verifying…" : "Verify & Sign In"}
             </Button>
 
             {/* Back link */}
