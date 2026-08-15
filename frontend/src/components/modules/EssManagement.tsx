@@ -2237,7 +2237,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                           <div className="min-w-0">
                             <p className="flex items-center gap-1.5 text-sm font-medium">
                               <span className="truncate">{c.name}</span>
-                              {c.custom && (
+                              {(c as any).custom && (
                                 <Badge variant="secondary" className="shrink-0 text-[0.6rem]">
                                   Custom
                                 </Badge>
