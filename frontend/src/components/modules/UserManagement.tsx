@@ -76,7 +76,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { departments } from "@/data/hr";
 import { systemUsers, type SystemUser } from "@/data/users";
-import { ListBody } from "@/hooks/use-list-animation";
+const ListBody = TableBody;
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { cn } from "@/lib/utils";
@@ -308,8 +308,8 @@ export function UserManagement() {
             ? "Administration / HR"
             : newUser.department || departments[0]?.name || "",
         status: "Active",
-        lastLogin: "—",
-        ipAddress: "—",
+        lastLogin: "вЂ”",
+        ipAddress: "вЂ”",
       },
     ]);
     toast.success(`${newUser.name} created`);
@@ -469,7 +469,7 @@ export function UserManagement() {
                           </SelectTrigger>
                           <SelectContent>
                             {departments.map((d) => (
-                              <SelectItem key={d.id} value={d.name}>
+                              <SelectItem key={d.name} value={d.name}>
                                 {d.name}
                               </SelectItem>
                             ))}
@@ -511,7 +511,7 @@ export function UserManagement() {
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     className="pl-8"
-                    placeholder="Search users…"
+                    placeholder="Search usersвЂ¦"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
@@ -665,7 +665,7 @@ export function UserManagement() {
                 <div>
                   <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><ShieldCheck className="h-5 w-5 text-primary" /> Permission Matrix</h2>
                   <p className="text-xs text-muted-foreground">
-                    Role-based access matrix — click Edit to modify checkbox permissions.
+                    Role-based access matrix вЂ” click Edit to modify checkbox permissions.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -819,7 +819,7 @@ export function UserManagement() {
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
                 {isEditingMatrix
-                  ? "Checkboxes active — click Save when finished editing permissions."
+                  ? "Checkboxes active вЂ” click Save when finished editing permissions."
                   : "Click the 'Edit matrix' button above to unlock and modify role permission checkboxes."}
               </p>
             </CardContent>
@@ -920,10 +920,10 @@ export function UserManagement() {
                           )}
                         </div>
                         <p className="text-muted-foreground">
-                          {s.position} · {s.department}
+                          {s.position} В· {s.department}
                         </p>
                         <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-                          {s.device} ({s.browserOs}) · {s.ipAddress} ({s.location})
+                          {s.device} ({s.browserOs}) В· {s.ipAddress} ({s.location})
                         </p>
                       </div>
                       {!s.current && (
@@ -1012,7 +1012,7 @@ export function UserManagement() {
                   </SelectTrigger>
                   <SelectContent>
                     {departments.map((d) => (
-                      <SelectItem key={d.id} value={d.name}>
+                      <SelectItem key={d.name} value={d.name}>
                         {d.name}
                       </SelectItem>
                     ))}
