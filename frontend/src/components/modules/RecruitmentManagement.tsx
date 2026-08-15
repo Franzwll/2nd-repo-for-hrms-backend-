@@ -71,6 +71,35 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useSort } from "@/components/portal/sortable";
 import { cn } from "@/lib/utils";
 import hiringTemplate from "@/assets/hiring-template.png.asset.json";
+import { jobPostsApi, requisitionsApi, type ApiJobPost } from "@/lib/api";
+
+function transformApiJob(j: ApiJobPost): Job {
+  return {
+    id: j.slug || String(j.job_post_id),
+    dbId: j.job_post_id,
+    title: j.title,
+    department: j.department || "Front Office",
+    employmentType: j.employment_type,
+    schedule: j.schedule || "Shifting Schedule",
+    salaryMin: Number(j.salary_min) || 0,
+    salaryMax: Number(j.salary_max) || 0,
+    vacancies: Number(j.vacancies) || 1,
+    filled: Number(j.filled_count) || 0,
+    posted: j.posted_date || new Date().toISOString().slice(0, 10),
+    status: j.status,
+    active: Boolean(j.active),
+    experience: (j.experience_level || "1-2 Years") as any,
+    education: (j.education_level || "High School Graduate") as any,
+    summary: j.summary || "",
+    description: j.description || "",
+    responsibilities: j.responsibilities || [],
+    qualifications: j.qualifications || [],
+    skills: j.skills || [],
+    benefits: j.benefits || [],
+    applicants: Number(j.applicants_count) || 0,
+    platforms: j.platforms && j.platforms.length > 0 ? j.platforms : ["Website"],
+  };
+}
 
 /** Colour-coded urgency badge classes. */
 const urgencyBadge = (urgency: string) =>
@@ -276,6 +305,17 @@ function snapshotOf(d: Draft, b: BlockId[]) {
 
 export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }) {
   const [jobList, setJobList] = useState<Job[]>(seedJobs);
+
+  useEffect(() => {
+    jobPostsApi.list({ per_page: 100 }).then((res) => {
+      if (res?.data && res.data.length > 0) {
+        setJobList(res.data.map(transformApiJob));
+      }
+    }).catch((err) => {
+      console.warn("Could not fetch jobs from API:", err);
+    });
+  }, []);
+
   const [tab, setTab] = useState("postings");
   const [mode, setMode] = useState<"template" | "custom">("custom");
   const [newOpen, setNewOpen] = useState(false);
@@ -386,7 +426,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     toast.success(`Draft saved — “${title}” is in your postings as a draft`);
   };
 
-  const toggleActive = (id: string) =>
+  const toggleActive = async (id: string) => {
+    const target = jobList.find((j) => j.id === id);
     setJobList((prev) =>
       prev.map((j) =>
         j.id === id
@@ -394,6 +435,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           : j,
       ),
     );
+    try {
+      await jobPostsApi.toggle(target?.dbId ?? id);
+      toast.success("Job post status updated in database");
+    } catch (e) {
+      console.warn("Could not toggle job on API:", e);
+    }
+  };
 
   const totalVacancies = jobList.reduce((t, j) => t + j.vacancies, 0);
   const totalFilled = jobList.reduce((t, j) => t + j.filled, 0);
@@ -416,7 +464,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     toast.success(`${t.name} applied to the draft`);
   };
 
-  const publish = () => {
+  const publish = async () => {
     const chosen = Object.keys(platforms).filter((k) => platforms[k]);
     if (!draft.title.trim()) {
       toast.error("Job title is required");
@@ -474,6 +522,63 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setSourceReqId(null);
     setBuilderStarted(false);
     setSavedSnapshot(snapshotOf(blankDraft, []));
+
+    // Persist to backend database API
+    try {
+      if (editingJobId) {
+        const existing = jobList.find((j) => j.id === editingJobId);
+        await jobPostsApi.update(existing?.dbId ?? editingJobId, {
+          title: jobPayload.title,
+          employment_type: jobPayload.employmentType,
+          schedule: jobPayload.schedule,
+          salary_min: jobPayload.salaryMin,
+          salary_max: jobPayload.salaryMax,
+          vacancies: jobPayload.vacancies,
+          status: jobPayload.status,
+          active: jobPayload.active,
+          summary: jobPayload.summary,
+          description: jobPayload.description,
+          responsibilities: jobPayload.responsibilities,
+          qualifications: jobPayload.qualifications,
+          skills: jobPayload.skills,
+          benefits: jobPayload.benefits,
+          platforms: chosen,
+        });
+      } else {
+        const created = await jobPostsApi.create({
+          title: jobPayload.title,
+          department_id: 1,
+          employment_type: jobPayload.employmentType,
+          schedule: jobPayload.schedule,
+          salary_min: jobPayload.salaryMin,
+          salary_max: jobPayload.salaryMax,
+          vacancies: jobPayload.vacancies,
+          status: jobPayload.status,
+          active: jobPayload.active,
+          summary: jobPayload.summary,
+          description: jobPayload.description,
+          responsibilities: jobPayload.responsibilities,
+          qualifications: jobPayload.qualifications,
+          skills: jobPayload.skills,
+          benefits: jobPayload.benefits,
+          platforms: chosen,
+        });
+        setJobList((prev) =>
+          prev.map((j) =>
+            j.id === jobPayload.id
+              ? { ...j, dbId: created.job_post_id }
+              : j,
+          ),
+        );
+      }
+      if (sourceReqId) {
+        const srcReq = requisitions.find((r) => r.id === sourceReqId);
+        const createdJob = jobList.find((j) => j.id === jobPayload.id);
+        await requisitionsApi.convert(srcReq?.dbId ?? sourceReqId, createdJob?.dbId);
+      }
+    } catch (e) {
+      console.warn("Could not persist job post to database API:", e);
+    }
   };
 
   const startNewPost = (department: string, position?: string) => {

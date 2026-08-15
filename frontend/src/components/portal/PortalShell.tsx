@@ -73,8 +73,8 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
   useEffect(() => {
     const owner = nav.find((i) =>
       i.children?.some((c) => {
-        const [cPath] = c.to.split("?");
-        return pathname === cPath || pathname.startsWith(cPath);
+        const [cPath] = (c.to ?? "").split("?");
+        return cPath ? pathname === cPath || pathname.startsWith(cPath) : false;
       }),
     );
     if (owner) setExpanded((prev) => (prev.includes(owner.label) ? prev : [...prev, owner.label]));
@@ -98,8 +98,8 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
               const hasChildren = !!item.children?.length;
               const groupActive = hasChildren
                 ? item.children!.some((c) => {
-                    const [cPath] = c.to.split("?");
-                    return pathname === cPath || pathname.startsWith(cPath);
+                    const [cPath] = (c.to ?? "").split("?");
+                    return cPath ? pathname === cPath || pathname.startsWith(cPath) : false;
                   })
                 : isActive(item.to);
               const isOpen = expanded.includes(item.label);

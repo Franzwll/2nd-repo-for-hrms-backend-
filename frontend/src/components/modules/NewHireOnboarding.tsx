@@ -79,6 +79,11 @@ import {
 import { myProfile } from "@/data/ess";
 import { cn } from "@/lib/utils";
 import { SortHead, useSort } from "@/components/portal/sortable";
+import {
+  checklistRequestsApi,
+  onboardingItemsApi,
+  type ApiChecklistRequest,
+} from "@/lib/api";
 
 /** Today's date in yyyy-mm-dd, used as the default start date for new hires. */
 const todayIso = new Date().toISOString().slice(0, 10);
@@ -125,6 +130,16 @@ const seedRequestedItems: RequestedChecklistItem[] = seedChecklistRequests.flatM
     requestedAt: r.requestedAt,
   }));
 });
+
+function transformApiRequest(r: ApiChecklistRequest): RequestedChecklistItem {
+  return {
+    id: r.request_code || `CR-${r.checklist_request_id}`,
+    item: r.items_json?.[0] ?? r.template_title ?? "Checklist requirement",
+    position: r.template_title ?? "All positions",
+    requestedBy: "Performance",
+    requestedAt: r.requested_at ? r.requested_at.slice(0, 10) : todayIso,
+  };
+}
 
 const freshChecklist = (stage: Stage, probationaryItems: string[]) =>
   (stage === "Pre-onboarding" ? defaultChecklist : probationaryItems).map((item) => ({
@@ -213,7 +228,7 @@ export function EmployeeOnboarding() {
   const totalCount = items.length;
   const pct = Math.round((completedCount / totalCount) * 100);
 
-  const handleComplete = (id: string, title: string) => {
+  const handleComplete = async (id: string, title: string) => {
     const todayIso = new Date().toISOString().slice(0, 10);
     setItems((prev) =>
       prev.map((i) => {
@@ -233,6 +248,13 @@ export function EmployeeOnboarding() {
       setTimeout(() => {
         toast.success("Onboarding checklist complete! Awaiting HR verification.");
       }, 500);
+    }
+
+    try {
+      const idNum = parseInt(id.replace(/\D/g, ""), 10) || 1;
+      await onboardingItemsApi.toggle(idNum);
+    } catch (e) {
+      console.warn("Could not toggle onboarding item on API:", e);
     }
   };
 
@@ -410,6 +432,20 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   /** Reference-only checklist items requested by Performance, scoped to a position. */
   const [requestedItems, setRequestedItems] =
     useState<RequestedChecklistItem[]>(seedRequestedItems);
+
+  useEffect(() => {
+    checklistRequestsApi
+      .list({ per_page: 100 })
+      .then((res) => {
+        if (res?.data && res.data.length > 0) {
+          setRequestedItems(res.data.map(transformApiRequest));
+        }
+      })
+      .catch((err) =>
+        console.warn("Could not fetch checklist requests from API:", err),
+      );
+  }, []);
+
   const [reqItemDraft, setReqItemDraft] = useState("");
   const [reqPositionDraft, setReqPositionDraft] = useState("all");
   const [editingReqId, setEditingReqId] = useState<string | null>(null);
@@ -592,6 +628,17 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     setReqItemDraft("");
     setReqPositionDraft("all");
     toast.success("Requested checklist item added");
+
+    try {
+      checklistRequestsApi.create({
+        employee_id: 1,
+        phase: "Probationary",
+        items_json: [item],
+        requested_at: todayIso,
+      });
+    } catch (e) {
+      console.warn("Could not persist checklist request to database API:", e);
+    }
   };
 
   const startEditRequestedItem = (r: RequestedChecklistItem) => {
@@ -843,6 +890,13 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       toast.success(
         `${name} moved to Probationary — portal account created (default password ${DEFAULT_ACCOUNT_PASSWORD})`,
       );
+      hireStore.updateHire(id, {
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        startDate: form.startDate,
+      });
+      hireStore.promoteHire(id);
       return;
     }
 

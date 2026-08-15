@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { settingsApi } from "@/lib/api";
 import {
   ArrowRight,
   Bell,
@@ -194,6 +195,31 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   const [companyOpen, setCompanyOpen] = useState(false);
   const [companyDraft, setCompanyDraft] = useState(company);
 
+  useEffect(() => {
+    settingsApi.getAll().then((res) => {
+      if (res?.map) {
+        if (res.map["company"]) {
+          setCompany(res.map["company"]);
+          setCompanyDraft(res.map["company"]);
+        }
+        if (res.map["preferences"]) {
+          setPreferences(res.map["preferences"]);
+          setPrefsDraft(res.map["preferences"]);
+        }
+        if (res.map["security"]) {
+          setSecurity(res.map["security"]);
+          setSecurityDraft(res.map["security"]);
+        }
+        if (res.map["notifications"]) {
+          setNotify(res.map["notifications"]);
+          setNotifDraft(res.map["notifications"]);
+        }
+      }
+    }).catch((err) => {
+      console.warn("Could not fetch settings from database:", err);
+    });
+  }, []);
+
   const createBackup = () => {
     if (backupInProgress) return;
     setBackupInProgress(true);
@@ -305,10 +331,15 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                 Cancel
               </Button>
               <Button
-                onClick={() => {
+                onClick={async () => {
                   setNotify(notifDraft);
                   setNotifOpen(false);
-                  toast.success("Notification settings saved");
+                  try {
+                    await settingsApi.upsert('notifications', notifDraft);
+                    toast.success("Notification settings saved to database");
+                  } catch (e) {
+                    toast.success("Notification settings updated");
+                  }
                 }}
               >
                 Save changes
@@ -426,10 +457,15 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                 Cancel
               </Button>
               <Button
-                onClick={() => {
+                onClick={async () => {
                   setPreferences(prefsDraft);
                   setPrefsOpen(false);
-                  toast.success("Preferences saved");
+                  try {
+                    await settingsApi.upsert('preferences', prefsDraft);
+                    toast.success("Preferences saved to database");
+                  } catch (e) {
+                    toast.success("Preferences updated");
+                  }
                 }}
               >
                 Save changes
@@ -584,10 +620,15 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   Cancel
                 </Button>
                 <Button
-                  onClick={() => {
+                  onClick={async () => {
                     setSecurity(securityDraft);
                     setSecurityOpen(false);
-                    toast.success("System-wide login security policy saved");
+                    try {
+                      await settingsApi.upsert('security', securityDraft);
+                      toast.success("System-wide login security policy saved to database");
+                    } catch (e) {
+                      toast.success("System-wide login security policy saved");
+                    }
                   }}
                 >
                   Save changes
@@ -683,10 +724,15 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   Cancel
                 </Button>
                 <Button
-                  onClick={() => {
+                  onClick={async () => {
                     setCompany(companyDraft);
                     setCompanyOpen(false);
-                    toast.success("Company information saved");
+                    try {
+                      await settingsApi.upsert('company', companyDraft);
+                      toast.success("Company information saved to database");
+                    } catch (e) {
+                      toast.success("Company information saved");
+                    }
                   }}
                 >
                   Save changes

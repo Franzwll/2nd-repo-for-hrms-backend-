@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
-
 import { newHires as seedHires, type Employee, type NewHire } from "@/data/hr";
+import { newHiresApi, checklistTemplatesApi, type ApiNewHire, type ApiChecklistTemplate } from "@/lib/api";
 
 /** Draft handed over from Applicant Management when an assessment is accepted. */
 export type PendingHire = {
@@ -13,12 +13,10 @@ export type PendingHire = {
 
 /**
  * A master checklist template built from Performance's checklist requests.
- * Every checklist created here applies to *all* employees entering
- * Probationary — their starting checklist is the combined items of every
- * template below.
  */
 export type MasterChecklistTemplate = {
   id: string;
+  dbId?: number;
   title: string;
   items: string[];
   /** Stage the checklist applies to. */
@@ -28,8 +26,40 @@ export type MasterChecklistTemplate = {
   status?: "Active" | "Closed";
 };
 
+function transformApiNewHire(h: ApiNewHire): NewHire {
+  const parts = h.name.split(" ");
+  const initials = parts.map((p) => p[0]).slice(0, 3).join("").toUpperCase();
+  return {
+    id: h.new_hire_code || `NH-${h.new_hire_id}`,
+    dbId: h.new_hire_id,
+    name: h.name,
+    initials,
+    position: h.position || "Staff",
+    department: h.department || "General",
+    email: h.email || "",
+    phone: h.phone || "",
+    stage: h.stage as "Pre-onboarding" | "Probationary",
+    startDate: h.start_date || new Date().toISOString().slice(0, 10),
+    checklist: (h.onboarding_items || []).map((i) => ({
+      item: i.item_text,
+      done: i.done,
+    })),
+  };
+}
+
+function transformApiTemplate(t: ApiChecklistTemplate): MasterChecklistTemplate {
+  return {
+    id: t.template_code || `OCT-${t.template_id}`,
+    dbId: t.template_id,
+    title: t.title,
+    items: (t.items || []).map((i) => i.item_text),
+    phase: (t.phase === "Pre-onboarding" ? "Pre-onboarding" : "Probationary") as any,
+    positions: "all",
+    status: t.status === "Active" ? "Active" : "Closed",
+  };
+}
+
 let hires: NewHire[] = [...seedHires];
-/** Employees created from hires — merged into Employee Records. */
 let hireEmployees: Employee[] = [];
 let pendingHire: PendingHire | null = null;
 
@@ -56,8 +86,35 @@ const emit = () => listeners.forEach((l) => l());
 
 const subscribe = (listener: () => void) => {
   listeners.add(listener);
+  if (!hasFetched) fetchHiresFromApi();
   return () => listeners.delete(listener);
 };
+
+let hasFetched = false;
+async function fetchHiresFromApi() {
+  if (hasFetched) return;
+  hasFetched = true;
+  try {
+    const [hiresRes, tmplRes] = await Promise.allSettled([
+      newHiresApi.list({ per_page: 100 }),
+      checklistTemplatesApi.list({ per_page: 100 }),
+    ]);
+
+    if (hiresRes.status === "fulfilled" && hiresRes.value?.data?.length > 0) {
+      hires = hiresRes.value.data.map(transformApiNewHire);
+    }
+    if (tmplRes.status === "fulfilled" && tmplRes.value?.data?.length > 0) {
+      masterChecklists = tmplRes.value.data.map(transformApiTemplate);
+    }
+    emit();
+  } catch (err) {
+    console.warn("Could not fetch new hires from backend API, using cached data.", err);
+  }
+}
+
+if (typeof window !== "undefined") {
+  fetchHiresFromApi();
+}
 
 export const DEFAULT_ACCOUNT_PASSWORD = "Oxford@2026";
 
@@ -72,7 +129,7 @@ export const hireStore = {
     emit();
   },
   /** Adds a hire and mirrors them into Employee Records straight away. */
-  add: (hire: NewHire) => {
+  add: async (hire: NewHire) => {
     hires = [hire, ...hires];
     hireEmployees = [
       {
@@ -90,6 +147,18 @@ export const hireStore = {
       ...hireEmployees,
     ];
     emit();
+
+    try {
+      await newHiresApi.create({
+        name: hire.name,
+        email: hire.email,
+        phone: hire.phone,
+        stage: hire.stage,
+        start_date: hire.startDate,
+      });
+    } catch (e) {
+      console.warn("API new hire create error:", e);
+    }
   },
   setPending: (p: PendingHire | null) => {
     pendingHire = p;
@@ -111,35 +180,97 @@ export const hireStore = {
     masterChecklists
       .filter((c) => (c.phase ?? "Probationary") === "Probationary" && (c.status ?? "Active") === "Active")
       .flatMap((c) => c.items),
-  addMasterChecklist: (
+  addMasterChecklist: async (
     title: string,
     items: string[],
     meta?: Pick<MasterChecklistTemplate, "phase" | "positions" | "status">,
   ) => {
-    masterChecklists = [
-      ...masterChecklists,
-      {
-        id: `MC-${String(masterChecklists.length + 1).padStart(3, "0")}-${Date.now()}`,
-        title,
-        items,
-        phase: meta?.phase ?? "Probationary",
-        positions: meta?.positions ?? "all",
-        status: meta?.status ?? "Active",
-      },
-    ];
+    const newTemplate: MasterChecklistTemplate = {
+      id: `MC-${String(masterChecklists.length + 1).padStart(3, "0")}-${Date.now()}`,
+      title,
+      items,
+      phase: meta?.phase ?? "Probationary",
+      positions: meta?.positions ?? "all",
+      status: meta?.status ?? "Active",
+    };
+    masterChecklists = [...masterChecklists, newTemplate];
     emit();
+
+    try {
+      await checklistTemplatesApi.create({
+        title,
+        phase: meta?.phase ?? "Probationary",
+        status: meta?.status ?? "Active",
+        items: items.map((item_text, sort_order) => ({ item_text, sort_order })),
+      });
+    } catch (e) {
+      console.warn("API checklist template create error:", e);
+    }
   },
-  updateMasterChecklist: (
+  updateMasterChecklist: async (
     id: string,
     patch: Partial<Pick<MasterChecklistTemplate, "title" | "items" | "phase" | "positions" | "status">>,
   ) => {
+    const target = masterChecklists.find((c) => c.id === id);
     masterChecklists = masterChecklists.map((c) => (c.id === id ? { ...c, ...patch } : c));
     emit();
+
+    try {
+      if (target?.dbId) {
+        await checklistTemplatesApi.update(target.dbId, {
+          title: patch.title ?? target.title,
+          phase: patch.phase ?? target.phase,
+          status: patch.status ?? target.status,
+          items: (patch.items ?? target.items).map((item_text, sort_order) => ({
+            item_text,
+            sort_order,
+          })),
+        });
+      }
+    } catch (e) {
+      console.warn("API checklist template update error:", e);
+    }
   },
   deleteMasterChecklist: (id: string) => {
+    const target = masterChecklists.find((c) => c.id === id);
     masterChecklists = masterChecklists.filter((c) => c.id !== id);
     emit();
+
+    try {
+      if (target?.dbId) checklistTemplatesApi.delete(target.dbId);
+    } catch (e) {
+      console.warn("API checklist template delete error:", e);
+    }
   },
+  /** Updates a hire's details on the database API. */
+  updateHire: async (id: string, patch: Partial<Pick<NewHire, "name" | "email" | "phone" | "position" | "department" | "startDate">>) => {
+    const target = hires.find((h) => h.id === id);
+    if (!target?.dbId) return;
+    try {
+      await newHiresApi.update(target.dbId, {
+        name: patch.name ?? target.name,
+        email: patch.email ?? target.email,
+        phone: patch.phone ?? target.phone,
+        start_date: patch.startDate ?? target.startDate,
+      });
+    } catch (e) {
+      console.warn("API new hire update error:", e);
+    }
+  },
+  /** Promotes a hire to the next stage (Pre-onboarding → Probationary → Regular). */
+  promoteHire: async (id: string) => {
+    const target = hires.find((h) => h.id === id);
+    if (!target?.dbId) return;
+    try {
+      await newHiresApi.promoteStage(target.dbId);
+    } catch (e) {
+      console.warn("API new hire promote error:", e);
+    }
+  },
+  refresh: () => {
+    hasFetched = false;
+    return fetchHiresFromApi();
+  }
 };
 
 export function useHires() {
