@@ -54,7 +54,7 @@ export interface ApiApplicant {
   applied_at: string | null;
   fit_score: number | null;
   status: "fit" | "other-role" | "credential" | "not-fit";
-  stage: "Screened" | "Interview Scheduled" | "Assessed" | "Offer" | "Hired" | "Rejected";
+  stage: "Screened" | "Interview Scheduled" | "Assessed" | "Offer" | "Hired" | "Rejected" | "Accepted";
   source: string | null;
   summary: string | null;
   flags_json: string[];
@@ -171,6 +171,8 @@ export interface ApiJobPost {
   skills: string[];
   benefits: string[];
   platforms?: string[];
+  picture: string | null;
+  picture_url: string | null;
   applicants_count?: number;
 }
 
@@ -196,16 +198,20 @@ export const jobPostsApi = {
     return request<{ data: ApiJobPost[]; meta: any }>(`/job-posts${qs ? `?${qs}` : ''}`);
   },
   get: (id: number | string) => request<ApiJobPost>(`/job-posts/${id}`),
-  create: (data: Record<string, any>) =>
-    request<ApiJobPost>('/job-posts', {
+  create: (data: FormData | Record<string, any>) => {
+    const isForm = data instanceof FormData;
+    return request<ApiJobPost>('/job-posts', {
       method: 'POST',
-      body: JSON.stringify(data),
-    }),
-  update: (id: number | string, data: Record<string, any>) =>
-    request<ApiJobPost>(`/job-posts/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
+      body: isForm ? data : JSON.stringify(data),
+    });
+  },
+  update: (id: number | string, data: FormData | Record<string, any>) => {
+    const isForm = data instanceof FormData;
+    return request<ApiJobPost>(`/job-posts/${id}`, {
+      method: isForm ? 'POST' : 'PUT',
+      body: isForm ? data : JSON.stringify(data),
+    });
+  },
   delete: (id: number | string) =>
     request<{ message: string }>(`/job-posts/${id}`, { method: 'DELETE' }),
   toggle: (id: number | string) =>
@@ -393,6 +399,13 @@ export interface ApiSystemSetting {
   updated_by_user_id: number | null;
 }
 
+export interface ApiSystemUser {
+  system_user_id: number;
+  full_name: string;
+  username: string;
+  department_name: string | null;
+}
+
 export const settingsApi = {
   getAll: () => request<{ data: ApiSystemSetting[]; map: Record<string, any> }>('/settings'),
   get: (key: string) => request<ApiSystemSetting>(`/settings/${key}`),
@@ -407,4 +420,10 @@ export const settingsApi = {
       body: JSON.stringify({ settings }),
     }),
   delete: (key: string) => request<{ message: string }>(`/settings/${key}`, { method: 'DELETE' }),
+  listSystemUsers: () => request<{ data: ApiSystemUser[] }>('/system-users'),
+  resetDefaultPassword: (password: string) =>
+    request<{ message: string; updated: number }>('/reset-default-password', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
 };

@@ -58,6 +58,21 @@ class NewHireController extends Controller
         $data = $request->validated();
         $data['new_hire_code'] = NewHire::generateCode();
 
+        // Derive position/department from the source applicant's job post
+        // when the payload does not carry them, so new hires never end up
+        // with NULL position_id / department_id (which surfaces as
+        // "Position: Staff, Department: General" in the pre-onboarding list).
+        if (isset($data['applicant_id'])
+            && (empty($data['position_id']) || empty($data['department_id']))) {
+            $jobPost = \Modules\ApplicantManagement\Models\Applicant::with('jobPost')
+                ->find($data['applicant_id'])?->jobPost;
+
+            if ($jobPost) {
+                $data['position_id']   = $data['position_id']   ?? $jobPost->position_id;
+                $data['department_id'] = $data['department_id'] ?? $jobPost->department_id;
+            }
+        }
+
         $newHire = NewHire::create($data);
 
         return response()->json(

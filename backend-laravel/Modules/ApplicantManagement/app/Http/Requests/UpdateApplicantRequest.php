@@ -23,7 +23,7 @@ class UpdateApplicantRequest extends FormRequest
             'fit_score'    => ['nullable', 'numeric', 'min:0', 'max:100'],
             'flags_json'   => ['nullable', 'array'],
             'status'       => ['sometimes', 'string', 'in:fit,other-role,credential,not-fit'],
-            'stage'        => ['sometimes', 'string', 'in:Screened,Interview Scheduled,Assessed,Offer,Hired,Rejected'],
+            'stage'        => ['sometimes', 'string', 'in:Screened,Interview Scheduled,Assessed,Offer,Hired,Rejected,Accepted'],
             'resume'       => ['nullable', 'file', 'mimes:pdf,doc,docx', 'max:10240'],
         ];
     }

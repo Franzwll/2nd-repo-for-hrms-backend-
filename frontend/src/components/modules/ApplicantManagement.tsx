@@ -113,7 +113,7 @@ import { jobs } from "@/data/jobs";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { SortHead, useSort } from "@/components/portal/sortable";
-import { applicantsApi, interviewsApi, type ApiApplicant, type ApiInterview } from "@/lib/api";
+import { applicantsApi, interviewsApi, settingsApi, type ApiApplicant, type ApiInterview, type ApiSystemUser } from "@/lib/api";
 
 function transformApiApplicant(a: ApiApplicant): Applicant {
   return {
@@ -246,6 +246,26 @@ const suggestedSlots = [
   { date: "2026-08-04", times: ["09:00 AM", "01:30 PM"] },
   { date: "2026-08-05", times: ["10:00 AM", "03:00 PM", "04:30 PM"] },
   { date: "2026-08-06", times: ["09:30 AM", "02:30 PM"] },
+];
+
+/** Day-of-week names aligned with Date.prototype.getDay() (0 = Sunday). */
+const DAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
+/** Default schedulable interview days, overridable in Slot Settings. */
+const DEFAULT_SCHEDULABLE_DAYS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
 ];
 
 type AssessmentResult = {
@@ -476,6 +496,37 @@ export function ApplicantManagement({
     });
   }, []);
 
+  // Schedulable interview days (Mon–Sun setter) persisted via system_settings
+  const [schedulableDays, setSchedulableDays] = useState<string[]>(
+    DEFAULT_SCHEDULABLE_DAYS,
+  );
+  const [schedulableDaysDraft, setSchedulableDaysDraft] = useState<string[]>(
+    DEFAULT_SCHEDULABLE_DAYS,
+  );
+  // System users for the assessment assessor selector
+  const [assessors, setAssessors] = useState<ApiSystemUser[]>([]);
+
+  useEffect(() => {
+    settingsApi
+      .get("interview.schedulable_days")
+      .then((res) => {
+        const days = Array.isArray(res.setting_value) ? res.setting_value : [];
+        if (days.length) {
+          setSchedulableDays(days);
+          setSchedulableDaysDraft(days);
+        }
+      })
+      .catch(() => {
+        console.warn("Could not fetch schedulable days, using default.");
+      });
+    settingsApi
+      .listSystemUsers()
+      .then((res) => setAssessors(res.data))
+      .catch(() => {
+        console.warn("Could not fetch system users for assessor selector.");
+      });
+  }, []);
+
   const [tab, setTab] = useState("ranking");
   const [positionFilter, setPositionFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -514,6 +565,8 @@ export function ApplicantManagement({
   const [assessmentOutcome, setAssessmentOutcome] = useState<string>("all");
   const [evalScores, setEvalScores] = useState<Record<string, number>>({});
   const [evalRemarks, setEvalRemarks] = useState("");
+  const [evalAssessor, setEvalAssessor] = useState("");
+  const [evalDateTime, setEvalDateTime] = useState(() => isoOf(new Date()));
   const [viewMonth, setViewMonth] = useState<Date>(new Date(2026, 7, 1));
   const [reportsOpen, setReportsOpen] = useState(false);
   const [screeningOpen, setScreeningOpen] = useState(false);
@@ -576,6 +629,7 @@ export function ApplicantManagement({
   const [addStep, setAddStep] = useState<1 | 2 | 3>(1);
   const [addMethod, setAddMethod] = useState<"file" | "image">("file");
   const [addFileName, setAddFileName] = useState("");
+  const [addResumeFile, setAddResumeFile] = useState<File | null>(null);
   const [addDept, setAddDept] = useState<string>(positions[0]!.department);
   const [addForm, setAddForm] = useState({
     name: "",
@@ -701,6 +755,7 @@ export function ApplicantManagement({
         positions.find((p) => p.title === r.position)?.department ?? "",
       email: applicant?.email ?? "",
       phone: applicant?.phone ?? "",
+      ...(applicant?.dbId !== undefined ? { applicantId: applicant.dbId } : {}),
     });
     setAssessments((prev) =>
       prev.filter((a) => a.applicantId !== r.applicantId),
@@ -709,7 +764,6 @@ export function ApplicantManagement({
 
     try {
       const appId = applicant?.dbId ?? r.applicantId;
-      await applicantsApi.hire(appId);
       await applicantsApi.hire(appId);
     } catch (e) {
       console.warn("Could not advance applicant stage on database API:", e);
@@ -750,16 +804,31 @@ export function ApplicantManagement({
       dept && departments.some((d) => d.name === dept) ? dept : "all";
     setScheduleDept(known);
     setSchedule((s) => ({ ...s, applicant: a.name }));
+    // Accepted applicants (stage) become selectable for interview booking
+    setStage(a.id, "Accepted");
     setReview(null);
     setTab("scheduling");
     toast.success(`${a.name} moved to scheduling`, {
       description: "Pick a suggested date and slot on the interview calendar.",
     });
+
+    try {
+      if (a.dbId) applicantsApi.update(a.dbId, { stage: "Accepted" });
+    } catch (e) {
+      console.warn("Could not mark applicant as Accepted on database API:", e);
+    }
   };
 
   const confirmSchedule = async () => {
     if (!schedule.applicant) {
       toast.error("Select an applicant first");
+      return;
+    }
+    // An applicant can only be booked/scheduled once
+    if (interviews.some((i) => i.applicant === schedule.applicant)) {
+      toast.error(
+        `${schedule.applicant} already has a booked interview and can only be scheduled once.`,
+      );
       return;
     }
     const taken = interviews.filter(
@@ -804,7 +873,11 @@ export function ApplicantManagement({
         status: "Scheduled",
       });
     } catch (e) {
-      console.warn("Could not persist interview to database API:", e);
+      if (e instanceof Error && /already has a booked interview/i.test(e.message)) {
+        toast.error(e.message);
+      } else {
+        console.warn("Could not persist interview to database API:", e);
+      }
     }
   };
 
@@ -951,9 +1024,11 @@ export function ApplicantManagement({
 
     try {
       if (evaluating.dbId) {
+        const datePart = evalDateTime.slice(0, 10) || isoOf(new Date());
         await applicantsApi.createAssessment(evaluating.dbId, {
           applicant_id: evaluating.dbId,
-          assessment_date: isoOf(new Date()),
+          assessor_user_id: evalAssessor ? Number(evalAssessor) : null,
+          assessment_date: datePart,
           scores_json: evalScores,
           total_score: total,
           outcome,
@@ -1060,6 +1135,7 @@ export function ApplicantManagement({
     setAddStep(1);
     setScreenResult(null);
     setAddFileName("");
+    setAddResumeFile(null);
     setAddForm({
       name: "",
       email: "",
@@ -1069,7 +1145,7 @@ export function ApplicantManagement({
     });
 
     try {
-      const created = await applicantsApi.create({
+      const base = {
         job_post_id: 1,
         name: newApp.name,
         email: newApp.email,
@@ -1079,7 +1155,17 @@ export function ApplicantManagement({
         status: newApp.status,
         stage: newApp.stage,
         flags_json: newApp.flags,
-      });
+        // persist the screening score so it isn't 0% after a refresh
+        fit_score: res.score,
+      };
+      let payload: FormData | Record<string, any> = base;
+      if (addResumeFile) {
+        const fd = new FormData();
+        Object.entries(base).forEach(([k, v]) => fd.append(k, String(v)));
+        fd.append("resume", addResumeFile);
+        payload = fd;
+      }
+      const created = await applicantsApi.create(payload);
       setRows((prev) =>
         prev.map((x) =>
           x.id === newApp.id ? { ...x, dbId: created.applicant_id } : x,
@@ -1163,8 +1249,8 @@ export function ApplicantManagement({
   const needSchedule: InterviewRow[] = rows
     .filter(
       (a) =>
+        a.stage === "Accepted" &&
         a.status === "fit" &&
-        a.stage === "Screened" &&
         !interviews.some((i) => i.applicant === a.name),
     )
     .map((a) => ({
@@ -1211,7 +1297,11 @@ export function ApplicantManagement({
         a: Applicant;
         iv?: (typeof interviews)[number] | undefined;
       }
-    | { kind: "completed"; r: AssessmentResult };
+    | {
+        kind: "completed";
+        r: AssessmentResult;
+        iv?: (typeof interviews)[number] | undefined;
+      };
 
   const deptForPosition = (position: string) =>
     positions.find((p) => p.title === position)?.department ?? "�";
@@ -1225,7 +1315,11 @@ export function ApplicantManagement({
         }))
       : []),
     ...(assessmentFilter !== "ready"
-      ? assessments.map((r) => ({ kind: "completed" as const, r }))
+      ? assessments.map((r) => ({
+          kind: "completed" as const,
+          r,
+          iv: interviews.find((i) => i.applicant === r.name),
+        }))
       : []),
   ];
 
@@ -1301,11 +1395,19 @@ export function ApplicantManagement({
     new Set(applicantAuditLog.map((e) => e.actorName)),
   ).sort();
 
+  /**
+   * Applicants available in "1. Select Applicant":
+   * only accepted ones (Accept &amp; Schedule), no applicant that is already
+   * booked, and none that moved past the interview stage (assessment etc.).
+   */
   const scheduleApplicants = rows.filter(
     (a) =>
-      scheduleDept === "all" ||
-      positions.find((p) => p.title === a.position)?.department ===
-        scheduleDept,
+      a.stage === "Accepted" &&
+      !interviews.some((i) => i.applicant === a.name) &&
+      !["Assessed", "Offer", "Hired", "Rejected"].includes(a.stage) &&
+      (scheduleDept === "all" ||
+        positions.find((p) => p.title === a.position)?.department ===
+          scheduleDept),
   );
   const scheduleInterviewers = interviewers.filter(
     (s) => scheduleDept === "all" || s.department === scheduleDept,
@@ -1689,6 +1791,7 @@ export function ApplicantManagement({
                       <SelectItem value="all">All stages</SelectItem>
                       {[
                         "Screened",
+                        "Accepted",
                         "Interview Scheduled",
                         "Assessed",
                         "Offer",
@@ -2032,9 +2135,10 @@ export function ApplicantManagement({
                     const count = interviews.filter(
                       (i) => i.date === iso,
                     ).length;
-                    const suggested = suggestedSlots.some(
-                      (s) => s.date === iso,
-                    );
+                    // A day is a free day only if the setter says it is
+                    const dayName = DAY_NAMES[cell.date.getDay()]!;
+                    const schedulable = schedulableDays.includes(dayName);
+                    const free = count === 0 && schedulable && cell.inMonth;
                     const selected = schedule.date === iso;
                     return (
                       <button
@@ -2051,6 +2155,10 @@ export function ApplicantManagement({
                           !cell.inMonth &&
                             "bg-muted/20 text-muted-foreground/50",
                           cell.inMonth && !selected && "hover:bg-muted/50",
+                          cell.inMonth &&
+                            count === 0 &&
+                            !schedulable &&
+                            "text-muted-foreground/40",
                           count > 0 &&
                             !selected &&
                             "bg-primary/5 font-semibold text-primary",
@@ -2067,7 +2175,7 @@ export function ApplicantManagement({
                             )}
                           />
                         )}
-                        {count === 0 && suggested && cell.inMonth && (
+                        {free && (
                           <span className="absolute bottom-1.5 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-gold" />
                         )}
                         {count > 1 && (
@@ -2085,12 +2193,12 @@ export function ApplicantManagement({
                     <span className="h-2 w-2 rounded-full bg-primary" /> Booked
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-gold" /> Suggested
-                    free day
+                    <span className="h-2 w-2 rounded-full bg-gold" /> Free
+                    day (schedulable)
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-muted-foreground/30" />{" "}
-                    No availability
+                    Not schedulable / No availability
                   </span>
                 </div>
 
@@ -2434,6 +2542,44 @@ export function ApplicantManagement({
                             </div>
                           </div>
 
+                          <div className="space-y-3 border-t border-border/70 pt-4">
+                            <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground">
+                              <CalendarDays className="h-3.5 w-3.5" />{" "}
+                              SCHEDULABLE DAYS
+                            </p>
+                            <p className="text-[0.7rem] text-muted-foreground">
+                              Free-day indicators on the interview calendar
+                              only apply to the days selected here.
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {DAY_NAMES.map((day) => {
+                                const active =
+                                  schedulableDaysDraft.includes(day);
+                                return (
+                                  <button
+                                    key={day}
+                                    type="button"
+                                    onClick={() =>
+                                      setSchedulableDaysDraft((prev) =>
+                                        active
+                                          ? prev.filter((d) => d !== day)
+                                          : [...prev, day],
+                                      )
+                                    }
+                                    className={cn(
+                                      "h-8 rounded-md border px-3 text-xs font-medium transition-colors",
+                                      active
+                                        ? "border-primary/40 bg-primary/10 text-primary"
+                                        : "border-border bg-muted/20 text-muted-foreground",
+                                    )}
+                                  >
+                                    {day.slice(0, 3).toUpperCase()}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
                           <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
                             <div className="flex items-center justify-between">
                               <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground">
@@ -2656,6 +2802,13 @@ export function ApplicantManagement({
                                   ? "Walk-ins allowed"
                                   : "Walk-ins not allowed",
                                 `Default type: ${slotSettings.defaultMode}`,
+                                `Schedulable days: ${
+                                  schedulableDays.length
+                                    ? schedulableDays
+                                        .map((d) => d.slice(0, 3))
+                                        .join(", ")
+                                    : "None"
+                                }`,
                               ].map((line) => (
                                 <span
                                   key={line}
@@ -2673,11 +2826,29 @@ export function ApplicantManagement({
                       <DialogFooter className="gap-2">
                         <Button
                           variant="outline"
-                          onClick={() => setSlotSettings(DEFAULT_SLOT_SETTINGS)}
+                          onClick={() => {
+                            setSlotSettings(DEFAULT_SLOT_SETTINGS);
+                            setSchedulableDaysDraft(DEFAULT_SCHEDULABLE_DAYS);
+                          }}
                         >
                           Reset to default
                         </Button>
-                        <Button onClick={() => setSlotDialogOpen(false)}>
+                        <Button
+                          onClick={() => {
+                            setSchedulableDays(schedulableDaysDraft);
+                            setSlotDialogOpen(false);
+                            settingsApi
+                              .upsert("interview.schedulable_days", schedulableDaysDraft)
+                              .then(() =>
+                                toast.success(
+                                  "Slot settings saved — schedulable days updated",
+                                ),
+                              )
+                              .catch(() => {
+                                toast.success("Slot settings saved");
+                              });
+                          }}
+                        >
                           Save settings
                         </Button>
                       </DialogFooter>
@@ -2723,12 +2894,13 @@ export function ApplicantManagement({
                       <SelectContent>
                         {scheduleApplicants.length === 0 && (
                           <div className="px-2 py-3 text-xs text-muted-foreground">
-                            No applicants in this department.
+                            No accepted applicants available in this
+                            department.
                           </div>
                         )}
                         {scheduleApplicants.map((a) => (
                           <SelectItem key={a.id} value={a.name}>
-                            {a.name} � {a.position}
+                            {a.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -3205,6 +3377,8 @@ export function ApplicantManagement({
                         >
                           Details
                         </SortHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Time</TableHead>
                         <TableHead className="text-right">Action</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -3231,20 +3405,26 @@ export function ApplicantManagement({
                               </Badge>
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground">
-                              {row.iv
-                                ? `Interviewed ${row.iv.date} � ${row.iv.time}`
-                                : "Interview not booked"}
+                              {row.iv ? "Interview booked" : "Interview not booked"}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {row.iv?.date ?? "—"}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {row.iv?.time ?? "—"}
                             </TableCell>
                             <TableCell className="text-right">
                               <Button
                                 size="sm"
-                                disabled={!row.iv || row.iv.date > TODAY_ISO}
+                                disabled={!row.iv || row.iv.date !== TODAY_ISO}
                                 title={
                                   !row.iv
                                     ? "Interview not booked yet"
                                     : row.iv.date > TODAY_ISO
-                                      ? `Available on ${row.iv.date}`
-                                      : "Start assessment"
+                                      ? `Assessment available on interview day (${row.iv.date})`
+                                      : row.iv.date < TODAY_ISO
+                                        ? "Assessment window for this interview has passed"
+                                        : "Start assessment"
                                 }
                                 onClick={() => {
                                   setEvaluating(row.a);
@@ -3254,6 +3434,8 @@ export function ApplicantManagement({
                                     ),
                                   );
                                   setEvalRemarks("");
+                                  setEvalAssessor("");
+                                  setEvalDateTime(isoOf(new Date()));
                                 }}
                               >
                                 Start assessment
@@ -3296,6 +3478,12 @@ export function ApplicantManagement({
                             >
                               Assessed {row.r.date} � {row.r.remarks}
                             </TableCell>
+                            <TableCell className="text-xs">
+                              {row.iv?.date ?? "—"}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {row.iv?.time ?? "—"}
+                            </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
                                 <Button
@@ -3333,7 +3521,7 @@ export function ApplicantManagement({
                       {assessmentSort.sorted.length === 0 && (
                         <TableRow>
                           <TableCell
-                            colSpan={7}
+                            colSpan={9}
                             className="text-sm text-muted-foreground"
                           >
                             Nothing to show for this filter yet.
@@ -4296,6 +4484,45 @@ export function ApplicantManagement({
                   {evaluating.name} � {evaluating.position}
                 </DialogDescription>
               </DialogHeader>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Assessor</Label>
+                  <Select
+                    value={evalAssessor}
+                    onValueChange={setEvalAssessor}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select assessor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {assessors.length === 0 && (
+                        <div className="px-2 py-3 text-xs text-muted-foreground">
+                          No system users found.
+                        </div>
+                      )}
+                      {assessors.map((u) => (
+                        <SelectItem
+                          key={u.system_user_id}
+                          value={String(u.system_user_id)}
+                        >
+                          {u.full_name}
+                          {u.department_name
+                            ? ` � ${u.department_name}`
+                            : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Assessment date</Label>
+                  <Input
+                    type="date"
+                    value={evalDateTime}
+                    onChange={(e) => setEvalDateTime(e.target.value)}
+                  />
+                </div>
+              </div>
               <div className="space-y-3">
                 {assessmentCriteria.map((c) => (
                   <div
@@ -4378,6 +4605,7 @@ export function ApplicantManagement({
           if (!o) {
             setAddStep(1);
             setScreenResult(null);
+            setAddResumeFile(null);
           }
         }}
       >
@@ -4546,9 +4774,11 @@ export function ApplicantManagement({
                   type="file"
                   className="hidden"
                   accept={addMethod === "image" ? "image/*" : ".pdf,.doc,.docx"}
-                  onChange={(e) =>
-                    setAddFileName(e.target.files?.[0]?.name ?? "")
-                  }
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    setAddResumeFile(file);
+                    setAddFileName(file?.name ?? "");
+                  }}
                 />
               </label>
 

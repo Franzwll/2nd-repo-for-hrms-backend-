@@ -28,4 +28,12 @@ Route::prefix('v1')->group(function () {
     // Delete a setting
     Route::delete('settings/{key}', [SettingsController::class, 'destroy'])
          ->name('settings.destroy');
+
+    // List system users (e.g. for the assessment assessor selector)
+    Route::get('system-users', [SettingsController::class, 'listSystemUsers'])
+         ->name('settings.system-users');
+
+    // Reset the password of every system user to the given default
+    Route::post('reset-default-password', [SettingsController::class, 'resetDefaultPassword'])
+         ->name('settings.reset-default-password');
 });

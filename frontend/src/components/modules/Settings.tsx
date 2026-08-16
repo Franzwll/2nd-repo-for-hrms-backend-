@@ -32,6 +32,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -183,6 +184,11 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   const [securityOpen, setSecurityOpen] = useState(false);
   const [securityDraft, setSecurityDraft] = useState(security);
 
+  // Change default password of all users (superadmin)
+  const [resetPwOpen, setResetPwOpen] = useState(false);
+  const [resetPw, setResetPw] = useState("");
+  const [resetPwConfirm, setResetPwConfirm] = useState("");
+
   // Company info
   const [company, setCompany] = useState({
     name: "Oxford Suites Makati",
@@ -264,6 +270,27 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
     setConfirmPassword("");
   };
 
+  /** Changes the default password of ALL active system users. */
+  const resetDefaultPassword = async () => {
+    if (!resetPw || resetPw.length < 8) {
+      toast.error("Default password must be at least 8 characters");
+      return;
+    }
+    if (resetPw !== resetPwConfirm) {
+      toast.error("New password and confirmation must match");
+      return;
+    }
+    try {
+      const res = await settingsApi.resetDefaultPassword(resetPw);
+      toast.success(res.message);
+      setResetPwOpen(false);
+      setResetPw("");
+      setResetPwConfirm("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update the default password");
+    }
+  };
+
   const isSuperAdmin = role === "superadmin";
 
   return (
@@ -338,7 +365,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                     await settingsApi.upsert('notifications', notifDraft);
                     toast.success("Notification settings saved to database");
                   } catch (e) {
-                    toast.success("Notification settings updated");
+                    toast.error(e instanceof Error ? e.message : "Could not save notification settings");
                   }
                 }}
               >
@@ -464,7 +491,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                     await settingsApi.upsert('preferences', prefsDraft);
                     toast.success("Preferences saved to database");
                   } catch (e) {
-                    toast.success("Preferences updated");
+                    toast.error(e instanceof Error ? e.message : "Could not save preferences");
                   }
                 }}
               >
@@ -489,8 +516,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
             }}
           >
             <div className="divide-y divide-border/60">
-              <InfoRow
-                label="Two-factor authentication"
+              <InfoRow label="Two-factor authentication"
                 value={security.twoFactor ? "Enabled" : "Disabled"}
                 tone={security.twoFactor ? "success" : "default"}
               />
@@ -498,6 +524,17 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
               <InfoRow label="Session timeout" value={security.sessionTimeout} />
               <InfoRow label="Max login attempts" value={security.maxLoginAttempts} />
             </div>
+            <Button
+              variant="outline"
+              className="mt-3 w-full"
+              onClick={() => {
+                setResetPw("");
+                setResetPwConfirm("");
+                setResetPwOpen(true);
+              }}
+            >
+              <KeyRound className="mr-1.5 h-4 w-4" /> Change default password of all users
+            </Button>
           </SettingsCard>
         ) : (
           <Card id="change-password" className="flex h-full flex-col scroll-mt-20 rounded-xl border-border/70 shadow-sm">
@@ -627,12 +664,57 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                       await settingsApi.upsert('security', securityDraft);
                       toast.success("System-wide login security policy saved to database");
                     } catch (e) {
-                      toast.success("System-wide login security policy saved");
+                      toast.error(e instanceof Error ? e.message : "Could not save security policy");
                     }
                   }}
                 >
                   Save changes
                 </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Change default password of ALL active system users (superadmin) */}
+        {isSuperAdmin && (
+          <Dialog open={resetPwOpen} onOpenChange={setResetPwOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="font-display text-2xl">
+                  Change default password of all users
+                </DialogTitle>
+                <DialogDescription>
+                  Sets the same default password for every active system user account. Users will
+                  need to log in with the new password.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="reset-pw">New default password</Label>
+                  <Input
+                    id="reset-pw"
+                    type="password"
+                    value={resetPw}
+                    onChange={(e) => setResetPw(e.target.value)}
+                    placeholder="At least 8 characters"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reset-pw-confirm">Confirm new default password</Label>
+                  <Input
+                    id="reset-pw-confirm"
+                    type="password"
+                    value={resetPwConfirm}
+                    onChange={(e) => setResetPwConfirm(e.target.value)}
+                    placeholder="Repeat the new password"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setResetPwOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={resetDefaultPassword}>Update all users</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -731,7 +813,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                       await settingsApi.upsert('company', companyDraft);
                       toast.success("Company information saved to database");
                     } catch (e) {
-                      toast.success("Company information saved");
+                      toast.error(e instanceof Error ? e.message : "Could not save company information");
                     }
                   }}
                 >

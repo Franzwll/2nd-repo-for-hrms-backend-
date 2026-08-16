@@ -75,7 +75,7 @@ class ApplicantManagementController extends Controller
 
         // Handle resume upload
         if ($request->hasFile('resume')) {
-            $path = $request->file('resume')->store('resumes', 'local');
+            $path = $request->file('resume')->store('resumes', 'public');
             $data['resume_file_path'] = $path;
         }
         unset($data['resume']);
@@ -119,10 +119,10 @@ class ApplicantManagementController extends Controller
         // Handle resume replacement
         if ($request->hasFile('resume')) {
             // Delete old file if it exists
-            if ($model->resume_file_path && Storage::disk('local')->exists($model->resume_file_path)) {
-                Storage::disk('local')->delete($model->resume_file_path);
+            if ($model->resume_file_path && Storage::disk('public')->exists($model->resume_file_path)) {
+                Storage::disk('public')->delete($model->resume_file_path);
             }
-            $data['resume_file_path'] = $request->file('resume')->store('resumes', 'local');
+            $data['resume_file_path'] = $request->file('resume')->store('resumes', 'public');
         }
         unset($data['resume']);
 
@@ -142,8 +142,8 @@ class ApplicantManagementController extends Controller
         $model = Applicant::findOrFail($applicant);
 
         // Clean up resume file
-        if ($model->resume_file_path && Storage::disk('local')->exists($model->resume_file_path)) {
-            Storage::disk('local')->delete($model->resume_file_path);
+        if ($model->resume_file_path && Storage::disk('public')->exists($model->resume_file_path)) {
+            Storage::disk('public')->delete($model->resume_file_path);
         }
 
         $model->delete();
@@ -163,6 +163,7 @@ class ApplicantManagementController extends Controller
         $nextStage = match ($model->stage) {
             'Assessed'            => 'Offer',
             'Offer'               => 'Hired',
+            'Accepted'            => 'Offer',
             default               => null,
         };
 

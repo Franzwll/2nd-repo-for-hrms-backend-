@@ -5,10 +5,13 @@ namespace Modules\Settings\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 use Modules\Settings\Http\Requests\BulkUpsertSettingRequest;
 use Modules\Settings\Http\Requests\UpsertSettingRequest;
 use Modules\Settings\Http\Resources\SystemSettingResource;
 use Modules\Settings\Models\SystemSetting;
+use Modules\Settings\Models\SystemUser;
 
 class SettingsController extends Controller
 {
@@ -87,5 +90,46 @@ class SettingsController extends Controller
         }
 
         return response()->json(['message' => "Setting '{$key}' deleted."]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* GET /api/v1/system-users                                            */
+    /* Lightweight user list (id + name) for pickers like the assessor     */
+    /* selector in the applicant assessment dialog.                        */
+    /* ------------------------------------------------------------------ */
+
+    public function listSystemUsers(): JsonResponse
+    {
+        $users = SystemUser::orderBy('full_name')
+            ->get()
+            ->map(fn ($user) => [
+                'system_user_id' => $user->system_user_id,
+                'full_name'      => $user->full_name ?? $user->username,
+                'username'       => $user->username,
+                'department_name'=> $user->department_name,
+            ]);
+
+        return response()->json(['data' => $users]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/reset-default-password                                 */
+    /* Change the default password of ALL system users at once.            */
+    /* ------------------------------------------------------------------ */
+
+    public function resetDefaultPassword(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'password' => ['required', 'string', 'min:8', 'max:72'],
+        ]);
+
+        $updated = SystemUser::query()
+            ->where('status', 'Active')
+            ->update(['password_hash' => Hash::make($data['password'])]);
+
+        return response()->json([
+            'message' => "Default password changed for {$updated} active user(s).",
+            'updated' => $updated,
+        ]);
     }
 }

@@ -11,7 +11,7 @@ export type Applicant = {
   appliedAt: string;
   score: number;
   status: ApplicantStatus;
-  stage: "Screened" | "Interview Scheduled" | "Assessed" | "Offer" | "Hired" | "Rejected";
+  stage: "Screened" | "Interview Scheduled" | "Assessed" | "Offer" | "Hired" | "Rejected" | "Accepted";
   source: "Online Portal" | "Walk-in" | "Referral" | "Indeed" | "Facebook";
   entities: { label: string; value: string }[];
   breakdown: { criterion: string; score: number }[];
@@ -85,7 +85,7 @@ export const applicants: Applicant[] = [
     appliedAt: "2026-07-25 22:40",
     score: 88,
     status: "fit",
-    stage: "Screened",
+    stage: "Accepted",
     source: "Referral",
     entities: [
       { label: "SKILL", value: "Table Service" },
@@ -322,7 +322,10 @@ export const screeningCriteria = [
   { name: "Certifications", weight: 10, enabled: true },
 ];
 
-export const TODAY_ISO = "2026-08-03";
+const toIsoDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+export const TODAY_ISO = toIsoDate(new Date());
 
 export const interviewers = [
   { id: "S1", name: "Ana Ramos", role: "Front Office Manager", department: "Front Office" },

@@ -54,6 +54,18 @@ class InterviewController extends Controller
     public function store(StoreInterviewRequest $request): JsonResponse
     {
         $data = $request->validated();
+
+        // An applicant can only be booked/scheduled once
+        $alreadyBooked = Interview::where('applicant_id', $data['applicant_id'])
+            ->whereIn('status', ['Scheduled', 'Completed'])
+            ->exists();
+
+        if ($alreadyBooked) {
+            return response()->json([
+                'message' => 'This applicant already has a booked interview and can only be scheduled once.',
+            ], 422);
+        }
+
         $data['status'] = $data['status'] ?? 'Scheduled';
         $data['interview_code'] = Interview::generateCode();
 
@@ -61,7 +73,7 @@ class InterviewController extends Controller
 
         // Advance applicant to "Interview Scheduled" stage
         $applicant = Applicant::findOrFail($data['applicant_id']);
-        if (in_array($applicant->stage, ['Screened'])) {
+        if (in_array($applicant->stage, ['Screened', 'Accepted'])) {
             $applicant->update(['stage' => 'Interview Scheduled']);
         }
 

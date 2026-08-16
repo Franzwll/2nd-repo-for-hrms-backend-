@@ -51,6 +51,7 @@ class JobPost extends Model
         'qualifications_json',
         'skills_json',
         'benefits_json',
+        'picture',
     ];
 
     protected $casts = [

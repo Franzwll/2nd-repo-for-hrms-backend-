@@ -29,9 +29,9 @@ class Applicant extends Model
     ];
 
     protected $casts = [
-        'flags_json'  => 'array',
-        'applied_at'  => 'datetime',
-        'fit_score'   => 'decimal:2',
+        'flags_json'              => 'array',
+        'applied_at'              => 'datetime',
+        'fit_score'               => 'decimal:2',
     ];
 
     /* ------------------------------------------------------------------ */

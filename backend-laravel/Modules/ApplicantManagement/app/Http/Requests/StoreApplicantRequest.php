@@ -22,7 +22,8 @@ class StoreApplicantRequest extends FormRequest
             'summary'      => ['nullable', 'string'],
             'flags_json'   => ['nullable', 'array'],
             'status'       => ['required', 'string', 'in:fit,other-role,credential,not-fit'],
-            'stage'        => ['required', 'string', 'in:Screened,Interview Scheduled,Assessed,Offer,Hired,Rejected'],
+            'stage'        => ['required', 'string', 'in:Screened,Interview Scheduled,Assessed,Offer,Hired,Rejected,Accepted'],
+            'fit_score'    => ['nullable', 'numeric', 'min:0', 'max:100'],
             'resume'       => ['nullable', 'file', 'mimes:pdf,doc,docx', 'max:10240'],
         ];
     }

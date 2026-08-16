@@ -9,6 +9,8 @@ export type PendingHire = {
   department: string;
   email: string;
   phone: string;
+  /** Database applicant id — lets the backend derive position/department. */
+  applicantId?: number;
 };
 
 /**
@@ -129,7 +131,7 @@ export const hireStore = {
     emit();
   },
   /** Adds a hire and mirrors them into Employee Records straight away. */
-  add: async (hire: NewHire) => {
+  add: async (hire: NewHire, applicantId?: number) => {
     hires = [hire, ...hires];
     hireEmployees = [
       {
@@ -149,7 +151,10 @@ export const hireStore = {
     emit();
 
     try {
+      // applicant_id lets the backend fill position_id/department_id from
+      // the applicant's job post, so the hire never shows Staff/General.
       await newHiresApi.create({
+        applicant_id: applicantId ?? null,
         name: hire.name,
         email: hire.email,
         phone: hire.phone,

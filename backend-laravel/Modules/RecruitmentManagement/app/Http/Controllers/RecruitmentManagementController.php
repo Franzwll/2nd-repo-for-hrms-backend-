@@ -5,6 +5,7 @@ namespace Modules\RecruitmentManagement\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Modules\RecruitmentManagement\Http\Requests\StoreJobPostRequest;
 use Modules\RecruitmentManagement\Http\Requests\UpdateJobPostRequest;
 use Modules\RecruitmentManagement\Http\Resources\JobPostResource;
@@ -80,6 +81,12 @@ class RecruitmentManagementController extends Controller
         $platforms = $data['platforms'] ?? [];
         unset($data['responsibilities'], $data['qualifications'], $data['skills'], $data['benefits'], $data['platforms']);
 
+        // Handle poster picture upload
+        if ($request->hasFile('picture')) {
+            $data['picture'] = $request->file('picture')->store('job-post-pictures', 'public');
+        }
+        unset($data['picture_file']);
+
         $jobPost = JobPost::create($data);
 
         // Write platform rows
@@ -131,6 +138,15 @@ class RecruitmentManagementController extends Controller
         $platforms = $data['platforms'] ?? null;
         unset($data['platforms']);
 
+        // Handle poster picture replacement
+        if ($request->hasFile('picture')) {
+            if ($model->picture && Storage::disk('public')->exists($model->picture)) {
+                Storage::disk('public')->delete($model->picture);
+            }
+            $data['picture'] = $request->file('picture')->store('job-post-pictures', 'public');
+        }
+        unset($data['picture_file']);
+
         $model->update($data);
 
         if ($platforms !== null) {
@@ -146,7 +162,14 @@ class RecruitmentManagementController extends Controller
 
     public function destroy(int $job_post): JsonResponse
     {
-        JobPost::findOrFail($job_post)->delete();
+        $model = JobPost::findOrFail($job_post);
+
+        // Clean up poster picture
+        if ($model->picture && Storage::disk('public')->exists($model->picture)) {
+            Storage::disk('public')->delete($model->picture);
+        }
+
+        $model->delete();
 
         return response()->json(['message' => 'Job post deleted.']);
     }

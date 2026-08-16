@@ -529,7 +529,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       email: intake.email,
       phone: intake.phone,
       checklist: defaultChecklist.map((item) => ({ item, done: false })),
-    });
+    }, intake.applicantId);
     setSelectedId(id);
     setStage("Pre-onboarding");
     setShowAllStages(false);

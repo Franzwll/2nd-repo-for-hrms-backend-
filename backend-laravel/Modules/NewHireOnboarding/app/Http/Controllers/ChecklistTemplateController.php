@@ -91,10 +91,32 @@ class ChecklistTemplateController extends Controller
             'title'               => ['sometimes', 'string', 'max:200'],
             'phase'               => ['sometimes', 'string', 'in:Pre-onboarding,Onboarding,Probationary,Regular'],
             'position_scope_json' => ['nullable', 'array'],
-            'status'              => ['sometimes', 'string', 'in:Active,Inactive'],
+            'status'              => ['sometimes', 'string', 'in:Active,Inactive,Closed'],
+            'items'               => ['nullable', 'array'],
+            'items.*.item_text'   => ['required', 'string'],
+            'items.*.sort_order'  => ['nullable', 'integer', 'min:0'],
         ]);
 
+        // "Closed" is the builder's label; the DB only stores Active/Inactive.
+        if (isset($data['status']) && $data['status'] === 'Closed') {
+            $data['status'] = 'Inactive';
+        }
+
+        // Replace the item set so the built checklist persists after refresh
+        $items = $data['items'] ?? null;
+        unset($data['items']);
+
         $model->update($data);
+
+        if ($items !== null) {
+            $model->items()->delete();
+            foreach ($items as $index => $item) {
+                $model->items()->create([
+                    'item_text'  => $item['item_text'],
+                    'sort_order' => $item['sort_order'] ?? $index,
+                ]);
+            }
+        }
 
         return response()->json(new ChecklistTemplateResource($model->load('items')));
     }

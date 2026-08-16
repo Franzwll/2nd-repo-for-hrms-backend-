@@ -15,7 +15,7 @@ class StoreAssessmentRequest extends FormRequest
     {
         return [
             'applicant_id'    => ['required', 'integer', 'exists:applicants,applicant_id'],
-            'assessor_user_id'=> ['nullable', 'integer'],
+            'assessor_user_id'=> ['nullable', 'integer', 'exists:system_users,system_user_id'],
             'assessment_date' => ['required', 'date'],
             'scores_json'     => ['nullable', 'array'],
             'total_score'     => ['nullable', 'numeric', 'min:0', 'max:100'],

@@ -74,7 +74,7 @@ import hiringTemplate from "@/assets/hiring-template.png.asset.json";
 import { jobPostsApi, requisitionsApi, type ApiJobPost } from "@/lib/api";
 
 function transformApiJob(j: ApiJobPost): Job {
-  return {
+  const job: Job = {
     id: j.slug || String(j.job_post_id),
     dbId: j.job_post_id,
     title: j.title,
@@ -99,6 +99,8 @@ function transformApiJob(j: ApiJobPost): Job {
     applicants: Number(j.applicants_count) || 0,
     platforms: j.platforms && j.platforms.length > 0 ? j.platforms : ["Website"],
   };
+  if (j.picture_url) job.picture = j.picture_url;
+  return job;
 }
 
 /** Colour-coded urgency badge classes. */
@@ -352,6 +354,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [dialogPreview, setDialogPreview] = useState("Website");
   const [customPosterUrl, setCustomPosterUrl] = useState<string | null>(null);
+  /** The actual File object, uploaded with the job post on publish. */
+  const [posterFile, setPosterFile] = useState<File | null>(null);
 
   const [deptDialogOpen, setDeptDialogOpen] = useState(false);
   const [pendingDept, setPendingDept] = useState(departments[0]?.name ?? "Front Office");
@@ -501,6 +505,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       applicants: editingJobId ? (jobList.find((j) => j.id === editingJobId)?.applicants ?? 0) : 0,
       platforms: chosen,
     };
+    const posterUrl = customPosterUrl ?? jobList.find((j) => j.id === editingJobId)?.picture;
+    if (posterUrl) jobPayload.picture = posterUrl;
 
     setJobList((prev) =>
       editingJobId
@@ -526,48 +532,46 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     // Persist to backend database API
     const selectedPosition = positions.find((p) => p.title === draft.title);
     const selectedDept = departments.find((d) => d.name === draft.department);
+    const basePayload = {
+      position_id: selectedPosition?.dbId,
+      department_id: selectedDept?.dbId,
+      title: jobPayload.title,
+      employment_type: jobPayload.employmentType,
+      schedule: jobPayload.schedule,
+      salary_min: jobPayload.salaryMin,
+      salary_max: jobPayload.salaryMax,
+      vacancies: jobPayload.vacancies,
+      status: jobPayload.status,
+      active: jobPayload.active,
+      summary: jobPayload.summary,
+      description: jobPayload.description,
+      responsibilities: jobPayload.responsibilities,
+      qualifications: jobPayload.qualifications,
+      skills: jobPayload.skills,
+      benefits: jobPayload.benefits,
+      platforms: chosen,
+    };
+    // Uploaded poster picture rides along as multipart/form-data
+    let payload: Record<string, any> | FormData = basePayload;
+    if (posterFile) {
+      const fd = new FormData();
+      Object.entries(basePayload).forEach(([k, v]) => {
+        if (Array.isArray(v)) {
+          // Laravel reads repeated keys as an array
+          v.forEach((item) => fd.append(k, String(item)));
+        } else {
+          fd.append(k, String(v));
+        }
+      });
+      fd.append("picture", posterFile);
+      payload = fd;
+    }
     try {
       if (editingJobId) {
         const existing = jobList.find((j) => j.id === editingJobId);
-        await jobPostsApi.update(existing?.dbId ?? editingJobId, {
-          position_id: selectedPosition?.dbId,
-          department_id: selectedDept?.dbId,
-          title: jobPayload.title,
-          employment_type: jobPayload.employmentType,
-          schedule: jobPayload.schedule,
-          salary_min: jobPayload.salaryMin,
-          salary_max: jobPayload.salaryMax,
-          vacancies: jobPayload.vacancies,
-          status: jobPayload.status,
-          active: jobPayload.active,
-          summary: jobPayload.summary,
-          description: jobPayload.description,
-          responsibilities: jobPayload.responsibilities,
-          qualifications: jobPayload.qualifications,
-          skills: jobPayload.skills,
-          benefits: jobPayload.benefits,
-          platforms: chosen,
-        });
+        await jobPostsApi.update(existing?.dbId ?? editingJobId, payload);
       } else {
-        const created = await jobPostsApi.create({
-          position_id: selectedPosition?.dbId,
-          department_id: selectedDept?.dbId ?? 1,
-          title: jobPayload.title,
-          employment_type: jobPayload.employmentType,
-          schedule: jobPayload.schedule,
-          salary_min: jobPayload.salaryMin,
-          salary_max: jobPayload.salaryMax,
-          vacancies: jobPayload.vacancies,
-          status: jobPayload.status,
-          active: jobPayload.active,
-          summary: jobPayload.summary,
-          description: jobPayload.description,
-          responsibilities: jobPayload.responsibilities,
-          qualifications: jobPayload.qualifications,
-          skills: jobPayload.skills,
-          benefits: jobPayload.benefits,
-          platforms: chosen,
-        });
+        const created = await jobPostsApi.create(payload);
         setJobList((prev) =>
           prev.map((j) =>
             j.id === jobPayload.id
@@ -871,6 +875,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
   const handlePosterUpload = (file: File | null) => {
     if (!file) return;
+    setPosterFile(file);
     const url = URL.createObjectURL(file);
     setCustomPosterUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -879,6 +884,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   };
 
   const handlePosterRemove = () => {
+    setPosterFile(null);
     setCustomPosterUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return null;
@@ -1453,6 +1459,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     className={j.active ? "border-success/40" : "border-border/70 opacity-80"}
                   >
                     <CardContent className="p-5">
+                      {j.picture && (
+                        <img
+                          src={j.picture}
+                          alt={`${j.title} hiring poster`}
+                          className="mb-3 aspect-video w-full rounded-md border border-border object-cover"
+                        />
+                      )}
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="eyebrow">{j.department}</p>
