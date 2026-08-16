@@ -104,6 +104,25 @@ type Row = Omit<ESSRequest, "status" | "note"> & {
   returnedCount?: number | undefined;
 };
 
+const statusClass: Record<Status, string> = {
+  Pending: "bg-amber-500/10 text-amber-600 border-amber-500/30",
+  "Under Review": "bg-blue-500/10 text-blue-600 border-blue-500/30",
+  Approved: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
+  Rejected: "bg-rose-500/10 text-rose-600 border-rose-500/30",
+  Completed: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
+  "Returned for Clarification": "bg-orange-500/10 text-orange-600 border-orange-500/30",
+};
+
+const reportOptions = [
+  "ESS Requests Summary",
+  "Pending Requests by Department",
+  "Approval Turnaround Time",
+  "Returned Requests Analysis",
+  "Branch Performance",
+  "Approval Performance",
+  "ESS Usage Statistics",
+];
+
 export function EssManagement({ role }: { role: "employee" | "admin" | "superadmin" }) {
   if (role === "employee") return <EmployeeEss />;
   return <AdminEssManagement role={role === "superadmin" ? "superadmin" : "admin"} />;
