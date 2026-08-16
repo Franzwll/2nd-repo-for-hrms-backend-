@@ -41,6 +41,7 @@ class EmployeeResource extends JsonResource
             'pagibig_number' => $this->pagibig_number,
             'tin_number' => $this->tin_number,
             'salary_step' => $this->salary_step,
+            'employee_record_last_updated_at' => $this->employee_record_last_updated_at?->toDateString(),
             'emergency_contacts' => EmergencyContactResource::collection($this->whenLoaded('emergencyContacts')),
             'documents' => DocumentResource::collection($this->whenLoaded('documents')),
             'position_history' => PositionHistoryResource::collection($this->whenLoaded('positionHistory')),

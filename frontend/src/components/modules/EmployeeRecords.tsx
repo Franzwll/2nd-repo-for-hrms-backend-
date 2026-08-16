@@ -55,11 +55,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { departments, employees as seedEmployees, type Employee } from "@/data/hr";
+import type { Employee } from "@/data/hr";
 import { useHireEmployees } from "@/data/hires";
 import { TablePagination } from "@/components/ui/table-pagination";
 
-import { isArchivable, lastUpdatedFor, recordMeta } from "@/data/records";
+import { auditLogApi, hcmApi, type ApiAuditLog, type ApiEmployee } from "@/lib/api";
+import {
+  getEmployeeByCode,
+  getRecordDetail,
+  refreshRoster,
+  toUiEmployee,
+  useRecordDetail,
+  useRoster,
+} from "@/lib/employeerecords";
 import { usePagination } from "@/hooks/usePagination";
 
 const documentTypes = [
@@ -87,9 +95,6 @@ const initials = (name: string) =>
     .slice(0, 2)
     .join("");
 
-/** Deterministic pseudo-random helper so demo records stay stable per employee. */
-const seedOf = (id: string) => id.split("").reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 9973, 7);
-
 type GeneratedDoc = {
   id: string;
   employeeName: string;
@@ -107,62 +112,25 @@ type RecordLog = {
   notes: string;
 };
 
-const recordLogs: RecordLog[] = [
-  {
-    id: "LOG-001",
-    timestamp: "2026-01-14 09:12",
-    actor: "Juan Dela Cruz",
-    action: "Added",
-    target: "EMP-0004 · Camille Ortega (201 file)",
-    department: "Front Office",
-    notes: "New employee record created after onboarding approval.",
-  },
-  {
-    id: "LOG-002",
-    timestamp: "2026-01-15 13:47",
-    actor: "Maria Lim",
-    action: "Edited",
-    target: "EMP-0006 · Marjun Devera (Employment information)",
-    department: "Housekeeping",
-    notes: "Updated department assignment after transfer.",
-  },
-  {
-    id: "LOG-003",
-    timestamp: "2026-01-16 10:05",
-    actor: "Juan Dela Cruz",
-    action: "Edited",
-    target: "EMP-0002 · Chef Gabriel Mendoza (Personal information)",
-    department: "Food & Beverage",
-    notes: "Corrected contact number.",
-  },
-  {
-    id: "LOG-004",
-    timestamp: "2026-01-18 16:30",
-    actor: "Paolo Cruz",
-    action: "Deleted",
-    target: "EMP-0009 · Test Record",
-    department: "Human Resources",
-    notes: "Removed duplicate record created in error.",
-  },
-  {
-    id: "LOG-005",
-    timestamp: "2026-01-20 08:55",
-    actor: "Maria Lim",
-    action: "Added",
-    target: "EMP-0005 · Kevin Dela Cruz (NBI Clearance file)",
-    department: "Engineering",
-    notes: "Uploaded renewed NBI clearance to 201 file.",
-  },
-  {
-    id: "LOG-006",
-    timestamp: "2026-01-21 11:20",
-    actor: "Juan Dela Cruz",
-    action: "Deleted",
-    target: "EMP-0003 · Lourdes Bautista (Expired Health Certificate)",
-    department: "Front Office",
-    notes: "Removed expired document after renewal was uploaded.",
-  },
-];
+function mapAuditToRecordLog(l: ApiAuditLog): RecordLog {
+  const lower = l.action.toLowerCase();
+  const action: RecordLog["action"] =
+    lower.includes("creat") || lower.includes("add")
+      ? "Added"
+      : lower.includes("delet") || lower.includes("remov")
+        ? "Deleted"
+        : "Edited";
+  const timestamp = l.timestamp ? l.timestamp.replace("T", " ").slice(0, 16) : l.occurred_at ?? "";
+  return {
+    id: `LOG-${l.audit_log_id}`,
+    timestamp,
+    actor: l.user,
+    action,
+    target: l.target_id ? `${l.target_id} · ${l.action}` : l.action,
+    department: l.department || "—",
+    notes: l.details ?? "",
+  };
+}
 
 type HistoryEntry = {
   id: string;
@@ -203,57 +171,83 @@ function olderThanYears(dateStr: string, years: number, now: Date = new Date()) 
   return now.getTime() - t >= years * 365.25 * 24 * 60 * 60 * 1000;
 }
 
-const civil = ["Single", "Married", "Widowed", "Separated"];
-const genders = ["Female", "Male"];
+function lastUpdatedForEmployee(code: string): string {
+  return getEmployeeByCode(code)?.employee_record_last_updated_at ?? "";
+}
+
+function classifyDocuments(api: ApiEmployee | undefined) {
+  const certificates: string[] = [];
+  const licenses: string[] = [];
+  const medical: string[] = [];
+  const missing: string[] = [];
+  for (const d of api?.documents ?? []) {
+    const cat = d.category.toLowerCase();
+    if (d.document_status !== "Submitted") {
+      missing.push(d.title);
+    } else if (cat.includes("medical") || cat.includes("onboard") || cat.includes("exam")) {
+      medical.push(d.title);
+    } else if (
+      cat.includes("license") ||
+      cat.includes("clearance") ||
+      cat.includes("permit") ||
+      cat.includes("government") ||
+      cat.includes("tax") ||
+      cat.includes("id")
+    ) {
+      licenses.push(d.title);
+    } else {
+      certificates.push(d.title);
+    }
+  }
+  return { certificates, licenses, medical, missing };
+}
 
 export function buildProfile(e: Employee): Profile {
-  const s = seedOf(e.id);
-  const missingPool = [
-    "PSA Birth Certificate",
-    "NBI Clearance (renewal)",
-    "Latest Medical Exam",
-    "TESDA Certificate",
-  ];
-  const missingCount = s % 3;
+  const api = getRecordDetail(e.id) ?? getEmployeeByCode(e.id);
+  const emergency =
+    api?.emergency_contacts?.find((c) => c.is_primary) ?? api?.emergency_contacts?.[0];
+  const { certificates, licenses, medical, missing } = classifyDocuments(api);
   return {
-    birthDate: `19${80 + (s % 18)}-${String((s % 12) + 1).padStart(2, "0")}-${String(
-      (s % 27) + 1,
-    ).padStart(2, "0")}`,
-    civilStatus: civil[s % civil.length]!,
-    gender: genders[s % 2]!,
-    nationality: "Filipino",
-    address: `${(s % 300) + 1} Kalayaan Ave., Barangay Poblacion, Makati City`,
-    personalEmail: `${e.name.split(" ")[0]!.toLowerCase()}.personal@email.com`,
-    family: `Spouse / Parent: ${["Elena", "Ramon", "Teresa", "Miguel"][s % 4]} ${
-      e.name.split(" ").slice(-1)[0]
-    } · ${s % 4} dependent(s)`,
-    emergencyName: `${["Elena", "Ramon", "Teresa", "Miguel"][(s + 1) % 4]} ${
-      e.name.split(" ").slice(-1)[0]
-    }`,
-    emergencyPhone: `0917 ${String(100 + (s % 800))} ${String(1000 + (s % 8000))}`,
-    emergencyRelation: ["Spouse", "Parent", "Sibling", "Guardian"][s % 4]!,
-    sss: `34-${String(1000000 + ((s * 971) % 8999999))}-${s % 10}`,
-    pagibig: `1211-${String(1000 + (s % 8999))}-${String(1000 + ((s * 7) % 8999))}`,
-    philhealth: `02-${String(100000000 + ((s * 613) % 899999999))}-${s % 10}`,
-    tin: `${String(100 + (s % 800))}-${String(100 + ((s * 3) % 800))}-${String(
-      100 + ((s * 5) % 800),
-    )}-000`,
+    birthDate: api?.birth_date ?? "",
+    civilStatus: api?.civil_status ?? "",
+    gender: api?.gender ?? "",
+    nationality: api?.nationality ?? "",
+    address: api?.address ?? "",
+    personalEmail: api?.personal_email ?? "",
+    family: emergency ? `${emergency.relationship}: ${emergency.name}` : "—",
+    emergencyName: emergency?.name ?? "—",
+    emergencyPhone: emergency?.phone ?? "",
+    emergencyRelation: emergency?.relationship ?? "—",
+    sss: api?.sss_number ?? "",
+    pagibig: api?.pagibig_number ?? "",
+    philhealth: api?.philhealth_number ?? "",
+    tin: api?.tin_number ?? "",
     contract: `${e.employmentType} Employment Contract · signed ${e.dateHired}`,
-    certificates: [
-      "Basic Occupational Safety & Health",
-      "Guest Service Excellence Training",
-      ...(s % 2 ? ["TESDA NC II"] : []),
-    ],
-    licenses:
-      s % 3 === 0 ? ["Food Handler's Permit", "Health Certificate"] : ["Health Certificate"],
-    medical: ["Annual Physical Exam (2026)", "Drug Test Clearance"],
-    missing: missingPool.slice(0, missingCount),
+    certificates,
+    licenses,
+    medical,
+    missing,
   };
 }
 
+function mapChangeType(t: string): HistoryEntry["type"] {
+  if (/promot|regular/.test(t)) return "Promotion";
+  if (/transfer|exit|relocat/.test(t)) return "Transfer";
+  return "Employment";
+}
+
 function buildHistory(e: Employee): HistoryEntry[] {
-  const s = seedOf(e.id);
-  const list: HistoryEntry[] = [
+  const detail = getRecordDetail(e.id);
+  const rows = detail?.position_history ?? [];
+  if (rows.length) {
+    return rows.map((h) => ({
+      id: `PH-${h.position_history_id}`,
+      type: mapChangeType(h.change_type),
+      date: h.effective_date ?? "",
+      detail: h.notes ?? h.change_type,
+    }));
+  }
+  return [
     {
       id: `${e.id}-H1`,
       type: "Employment",
@@ -261,27 +255,12 @@ function buildHistory(e: Employee): HistoryEntry[] {
       detail: `Hired as ${e.position} (${e.department})`,
     },
   ];
-  if (s % 2 === 0)
-    list.push({
-      id: `${e.id}-H2`,
-      type: "Promotion",
-      date: `20${22 + (s % 3)}-0${(s % 8) + 1}-15`,
-      detail: `Promoted to ${e.position}`,
-    });
-  if (s % 3 === 0)
-    list.push({
-      id: `${e.id}-H3`,
-      type: "Transfer",
-      date: `20${21 + (s % 4)}-1${s % 2}-02`,
-      detail: `Transferred to ${e.department}`,
-    });
-  return list;
 }
 
 const emptyEmployee = {
   name: "",
   position: "",
-  department: departments[0]?.name ?? "Front Office",
+  department: "Front Office",
   employmentType: "Probationary" as Employee["employmentType"],
   dateHired: new Date().toISOString().slice(0, 10),
   email: "",
@@ -293,7 +272,12 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const isSuper = role === "superadmin";
 
   const hireEmployees = useHireEmployees();
-  const [list, setList] = useState<Employee[]>(seedEmployees);
+  const roster = useRoster();
+  const [list, setList] = useState<Employee[]>([]);
+
+  useEffect(() => {
+    setList(roster.employees.map(toUiEmployee));
+  }, [roster.employees]);
 
   /** Hires created in New Hire Onboarding show up here immediately. */
   useEffect(() => {
@@ -311,6 +295,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const supervisorOptions = ["—", ...Array.from(new Set(list.map((e) => e.name)))];
   const [selected, setSelected] = useState<string[]>([]);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const recordDetail = useRecordDetail(profileId);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [docType, setDocType] = useState(documentTypes[0]!);
@@ -318,9 +303,31 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const [generatedOpen, setGeneratedOpen] = useState(false);
   const [logSearch, setLogSearch] = useState("");
   const [logDept, setLogDept] = useState("all");
-  const [archivedIds, setArchivedIds] = useState<string[]>(() =>
-    recordMeta.filter((m) => isArchivable(m.lastUpdated)).map((m) => m.employeeId),
-  );
+  const [recordLogs, setRecordLogs] = useState<RecordLog[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    auditLogApi
+      .list({ per_page: 200 })
+      .then((res) => {
+        if (!cancelled) setRecordLogs((res.data ?? []).map(mapAuditToRecordLog));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const [archivedIds, setArchivedIds] = useState<string[]>([]);
+
+  /** Auto-archive records untouched for 10+ years once the roster loads. */
+  useEffect(() => {
+    if (!roster.loaded) return;
+    const auto = roster.employees
+      .filter((e) => olderThanYears(e.employee_record_last_updated_at ?? "", 10))
+      .map((e) => e.employee_code);
+    setArchivedIds((prev) => Array.from(new Set([...prev, ...auto])));
+  }, [roster.loaded, roster.employees]);
   const [listView, setListView] = useState<"active" | "archived">("active");
   const [form, setForm] = useState(emptyEmployee);
   const [history, setHistory] = useState<Record<string, HistoryEntry[]>>({});
@@ -460,26 +467,66 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   };
 
 
-  const createEmployee = () => {
+  const createEmployee = async () => {
     if (!form.name.trim() || !form.position.trim()) {
       toast.error("Name and position are required");
       return;
     }
-    const emp: Employee = {
-      ...form,
-      id: `EMP-${String(list.length + 1).padStart(4, "0")}`,
-      status: "Active",
-    };
-    setList((prev) => [emp, ...prev]);
-    setForm(emptyEmployee);
-    setAddOpen(false);
-    toast.success(`${emp.name} added to employee records`);
+    const nameParts = form.name.trim().split(" ");
+    const dept = roster.departments.find((d) => d.name === form.department);
+    const pos = roster.positions.find(
+      (p) => p.title.toLowerCase() === form.position.trim().toLowerCase(),
+    );
+    if (!dept) {
+      toast.error("Department not found");
+      return;
+    }
+    if (!pos) {
+      toast.error("Position not found — create it under Core HCM first");
+      return;
+    }
+    const supervisor =
+      form.supervisor && form.supervisor !== "—"
+        ? roster.employees.find((e) => e.full_name === form.supervisor)?.employee_id ?? null
+        : null;
+    try {
+      const res = await hcmApi.employees.create({
+        first_name: nameParts[0] ?? "",
+        last_name: (nameParts.slice(1).join(" ") || nameParts[0]) ?? "",
+        email: form.email,
+        phone: form.phone,
+        department_id: dept.department_id,
+        position_id: pos.position_id,
+        supervisor_employee_id: supervisor,
+        employment_type: form.employmentType,
+        status: "Active",
+        date_hired: form.dateHired,
+      });
+      setList((prev) => [toUiEmployee(res.data), ...prev]);
+      setForm(emptyEmployee);
+      setAddOpen(false);
+      refreshRoster();
+      toast.success(`${res.data.full_name} added to employee records`);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not create employee record");
+    }
   };
 
-  const removeEmployee = (id: string) => {
-    setList((prev) => prev.filter((e) => e.id !== id));
-    setProfileId(null);
-    toast.success("Employee record deleted");
+  const removeEmployee = async (id: string) => {
+    const api = getEmployeeByCode(id);
+    if (api && (api.status === "Active" || api.status === "On Leave")) {
+      toast.error("Use the exit process to off-board an active employee");
+      return;
+    }
+    try {
+      if (api) await hcmApi.employees.remove(api.employee_id);
+      setList((prev) => prev.filter((e) => e.id !== id));
+      setProfileId(null);
+      refreshRoster();
+      toast.success("Employee record deleted");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not delete employee record");
+    }
   };
 
   const archiveEmployee = (id: string) => {
@@ -497,17 +544,25 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   /** Re-runs auto-archiving with a new retention threshold. */
   const applyArchiveYears = (years: string) => {
     setArchiveYears(years);
-    const auto = recordMeta
-      .filter((m) => olderThanYears(m.lastUpdated, Number(years)))
-      .map((m) => m.employeeId);
+    const auto = roster.employees
+      .filter((e) => olderThanYears(e.employee_record_last_updated_at ?? "", Number(years)))
+      .map((e) => e.employee_code);
     setArchivedIds(Array.from(new Set([...manualArchived, ...auto])));
     toast.success(`Auto-archiving records inactive for ${years}+ years`);
   };
 
-  /** Documents currently on a 201 file (seeded from the fixture, then edited in place). */
+  /** Documents currently on a 201 file (from the DB, then edited in place). */
   const docsFor = (emp: Employee): ProfileDoc[] => {
     const existing = docsById[emp.id];
     if (existing) return existing;
+    const detail = getRecordDetail(emp.id);
+    if (detail?.documents?.length) {
+      return detail.documents.map((d) => ({
+        name: d.title,
+        status: d.document_status === "Submitted" ? "Submitted" as const : "Missing" as const,
+        file: d.file_path ?? undefined,
+      }));
+    }
     const p = buildProfile(emp);
     return [
       ...p.certificates.map((d) => ({ name: d, status: "Submitted" as const })),
@@ -630,11 +685,45 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     setEditMode(true);
   };
 
-  const saveEdit = () => {
-    savePersonal();
-    saveEmployment();
-    setEditMode(false);
-    toast.success("Record updated");
+  const saveEdit = async () => {
+    if (!profile) return;
+    const api = getEmployeeByCode(profile.id);
+    const name = (personalForm["name"] ?? profile.name).trim();
+    const nameParts = name.split(" ");
+    const dept = roster.departments.find(
+      (d) => d.name === (employmentForm["department"] ?? profile.department),
+    );
+    const posTitle = (employmentForm["position"] ?? profile.position).trim();
+    const pos = roster.positions.find((p) => p.title.toLowerCase() === posTitle.toLowerCase());
+    const supervisorName = employmentForm["supervisor"] ?? profile.supervisor;
+    const supervisor =
+      supervisorName && supervisorName !== "—"
+        ? roster.employees.find((e) => e.full_name === supervisorName)?.employee_id ?? null
+        : null;
+    try {
+      if (api) {
+        await hcmApi.employees.update(api.employee_id, {
+          first_name: nameParts[0] ?? api.first_name,
+          last_name: nameParts.slice(1).join(" ") || nameParts[0] || api.last_name,
+          email: employmentForm["email"] ?? api.email,
+          phone: personalForm["phone"] ?? api.phone ?? "",
+          department_id: dept?.department_id ?? api.department_id,
+          position_id: pos?.position_id ?? api.position_id,
+          supervisor_employee_id: supervisor,
+          employment_type:
+            (employmentForm["employmentType"] as ApiEmployee["employment_type"]) ?? api.employment_type,
+          status: (employmentForm["status"] as ApiEmployee["status"]) ?? api.status,
+          date_hired: employmentForm["dateHired"] ?? api.date_hired,
+        });
+      }
+      savePersonal();
+      saveEmployment();
+      setEditMode(false);
+      refreshRoster();
+      toast.success("Record updated");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not update record");
+    }
   };
 
   const cancelEdit = () => setEditMode(false);
@@ -739,7 +828,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All departments</SelectItem>
-                      {departments.map((d) => (
+                      {roster.departments.map((d) => (
                         <SelectItem key={d.code} value={d.name}>
                           {d.name}
                         </SelectItem>
@@ -891,9 +980,9 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                               <Badge
                                 variant="outline"
                                 className="border-gold/40 bg-gold-soft text-foreground"
-                                title={`Last updated ${lastUpdatedFor(e.id)}`}
+                                title={`Last updated ${lastUpdatedForEmployee(e.id)}`}
                               >
-                                Archived · since {lastUpdatedFor(e.id)}
+                                Archived · since {lastUpdatedForEmployee(e.id)}
                               </Badge>
                             )}
                           </div>
@@ -977,7 +1066,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All departments</SelectItem>
-                      {departments.map((d) => (
+                      {roster.departments.map((d) => (
                         <SelectItem key={d.code} value={d.name}>
                           {d.name}
                         </SelectItem>
@@ -1328,7 +1417,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                             editMode ? (employmentForm["department"] ?? "") : profile.department
                           }
                           editing={editMode}
-                          options={departments.map((d) => d.name)}
+                          options={roster.departments.map((d) => d.name)}
                           onChange={(v) =>
                             setEmploymentForm((prev) => ({ ...prev, department: v }))
                           }
@@ -1633,11 +1722,11 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {departments.map((d) => (
-                    <SelectItem key={d.code} value={d.name}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
+{roster.departments.map((d) => (
+                        <SelectItem key={d.code} value={d.name}>
+                          {d.name}
+                        </SelectItem>
+                      ))}
                 </SelectContent>
               </Select>
             </div>

@@ -74,9 +74,7 @@ import {
   type Position,
   type Employee,
   type SalaryGrade,
-  type HR3Recommendation,
 } from "@/data/hr";
-import { hr3Recommendations as seedHr3Recommendations } from "@/data/hr";
 import { cn } from "@/lib/utils";
 import { useRequisitions } from "@/data/requisitions";
 import { type Role } from "@/lib/nav";
@@ -87,6 +85,7 @@ import {
   type ApiAuditLog,
   type ApiDepartment,
   type ApiEmployee,
+  type ApiHR3Recommendation,
   type ApiOrgNode,
   type ApiPosition,
   type ApiSalaryGrade,
@@ -192,6 +191,40 @@ function toUiEmployee(e: ApiEmployee, employees: ApiEmployee[], sGrades: ApiSala
     supervisor: supervisor?.full_name ?? "",
     status,
     salaryGrade: sg?.code ?? "SG-08",
+  };
+}
+
+type HR3Recommendation = {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  currentType: "Probationary" | "Regular";
+  recommendationType: "Regularization" | "Promotion" | "Performance Review";
+  evaluationScore: number;
+  evaluator: string;
+  dateSubmitted: string;
+  status: "Pending HR Action" | "Approved & Processed" | "Deferred";
+  suggestedPosition?: string;
+  suggestedSalaryGrade?: string;
+  comments: string;
+};
+
+function toUiRecommendation(r: ApiHR3Recommendation): HR3Recommendation {
+  return {
+    id: r.id,
+    employeeId: r.employee_code ?? String(r.employee_id ?? ""),
+    employeeName: r.employee_name,
+    department: r.department,
+    currentType: r.current_employment_type === "Regular" ? "Regular" : "Probationary",
+    recommendationType: r.recommendation_type,
+    evaluationScore: r.evaluation_score,
+    evaluator: r.evaluator,
+    dateSubmitted: r.date_submitted ?? "",
+    status: r.status,
+    ...(r.suggested_position ? { suggestedPosition: r.suggested_position } : {}),
+    ...(r.suggested_salary_grade ? { suggestedSalaryGrade: r.suggested_salary_grade } : {}),
+    comments: r.comments ?? "",
   };
 }
 
@@ -530,7 +563,23 @@ function EmployeeListManager({
 
   const [acknowledgedIds, setAcknowledgedIds] = useState<Set<string>>(new Set());
   const [showViewAllRecs, setShowViewAllRecs] = useState(false);
-  const [recommendations, setRecommendations] = useState<HR3Recommendation[]>(seedHr3Recommendations);
+  const [recommendations, setRecommendations] = useState<HR3Recommendation[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    hcmApi.hr3Recommendations
+      .list()
+      .then((res) => {
+        if (!cancelled) setRecommendations(res.data.map(toUiRecommendation));
+      })
+      .catch(() => {
+        if (!cancelled) setRecommendations([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const [recStatusFilter, setRecStatusFilter] = useState("all");
   const [recTypeFilter, setRecTypeFilter] = useState("all");
   const filteredRecs = recommendations.filter(

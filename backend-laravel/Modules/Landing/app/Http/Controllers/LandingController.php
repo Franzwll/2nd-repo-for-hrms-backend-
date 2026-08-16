@@ -17,20 +17,39 @@ class LandingController extends Controller
 {
     public function company(): JsonResponse
     {
-        $settings = SystemSetting::whereIn('setting_key', ['company.name', 'company.timezone'])
+        $keys = [
+            'company.name',
+            'company.timezone',
+            'company.address',
+            'company.phone',
+            'company.email',
+            'company.hours',
+            'company.facilities',
+            'company.faqs',
+            'company.socials',
+        ];
+        $settings = SystemSetting::whereIn('setting_key', $keys)
             ->pluck('setting_value', 'setting_key');
 
         $decode = fn ($value) => json_decode($value, true);
+        $value = fn (string $key, mixed $default) => $decode($settings[$key] ?? null)['value'] ?? $default;
 
         return response()->json([
             'data' => [
-                'name' => $decode($settings['company.name'] ?? '{"value":"Oxford Suites Makati"}')['value'] ?? 'Oxford Suites Makati',
-                'timezone' => $decode($settings['company.timezone'] ?? '{"value":"Asia/Manila"}')['value'] ?? 'Asia/Manila',
+                'name' => $value('company.name', 'Oxford Suites Makati'),
+                'timezone' => $value('company.timezone', 'Asia/Manila'),
                 'tagline' => 'Boutique hospitality, home to passionate people.',
                 'about' => 'Oxford Suites Makati is a boutique hotel delivering warm Filipino hospitality in the heart of Makati. We invest in our people because they are the heart of every guest experience.',
                 'mission' => 'To provide outstanding service and create memorable experiences for every guest, while nurturing a workplace where every employee can grow and thrive.',
                 'vision' => 'To be the preferred boutique hotel in the Philippines, known for genuine care, consistency, and an engaged, empowered workforce.',
                 'values' => ['Care', 'Integrity', 'Excellence', 'Teamwork', 'Hospitality'],
+                'address' => $value('company.address', '528 P. Burgos Street, Makati City, Metro Manila, Philippines 1210'),
+                'phone' => $value('company.phone', '+63 2 8888 8688'),
+                'email' => $value('company.email', 'hr@oxfordsuites.com.ph'),
+                'hours' => $value('company.hours', '24 Hours'),
+                'facilities' => $value('company.facilities', []),
+                'faqs' => $value('company.faqs', []),
+                'socials' => $value('company.socials', []),
             ],
         ]);
     }

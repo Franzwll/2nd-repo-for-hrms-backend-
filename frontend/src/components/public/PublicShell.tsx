@@ -6,7 +6,7 @@ import { Mail, MapPin, Menu, Phone, X } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { Chatbot } from "@/components/public/Chatbot";
 import { Button } from "@/components/ui/button";
-import { company } from "@/data/company";
+import { useCompany } from "@/lib/landing";
 
 const links = [
   { label: "Home", to: "/" },
@@ -17,6 +17,7 @@ const links = [
 ];
 
 export function PublicShell({ children }: { children: ReactNode }) {
+  const { company } = useCompany();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (

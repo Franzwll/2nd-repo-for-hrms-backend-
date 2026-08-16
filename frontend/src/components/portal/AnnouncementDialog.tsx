@@ -41,17 +41,26 @@ export function AnnouncementDialog({
   const [body, setBody] = useState("");
   const [audience, setAudience] = useState<Announcement["audience"]>("All");
 
-  const submit = () => {
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async () => {
     if (!title.trim() || !body.trim()) {
       toast.error("Add a title and message before posting.");
       return;
     }
-    addAnnouncement({ title: title.trim(), body: body.trim(), audience, author });
-    toast.success("Announcement posted to the dashboards.");
-    setTitle("");
-    setBody("");
-    setAudience("All");
-    onOpenChange(false);
+    setSubmitting(true);
+    try {
+      await addAnnouncement({ title: title.trim(), body: body.trim(), audience, author });
+      toast.success("Announcement posted to the dashboards.");
+      setTitle("");
+      setBody("");
+      setAudience("All");
+      onOpenChange(false);
+    } catch {
+      toast.error("Could not post the announcement. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -110,7 +119,9 @@ export function AnnouncementDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={submit}>Post announcement</Button>
+          <Button onClick={submit} disabled={submitting}>
+            {submitting ? "Posting…" : "Post announcement"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

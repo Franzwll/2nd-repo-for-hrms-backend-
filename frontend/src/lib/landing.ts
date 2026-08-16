@@ -43,6 +43,16 @@ export function mapJob(j: ApiLandingJob): LandingJob {
   };
 }
 
+export interface LandingFacility {
+  name: string;
+  body: string;
+}
+
+export interface LandingFaq {
+  q: string;
+  a: string;
+}
+
 export interface CompanyInfo {
   name: string;
   timezone: string;
@@ -51,6 +61,13 @@ export interface CompanyInfo {
   mission: string;
   vision: string;
   values: string[];
+  address: string;
+  phone: string;
+  email: string;
+  hours: string;
+  facilities: LandingFacility[];
+  faqs: LandingFaq[];
+  socials: string[];
 }
 
 export const FALLBACK_COMPANY: CompanyInfo = {
@@ -64,6 +81,13 @@ export const FALLBACK_COMPANY: CompanyInfo = {
   vision:
     "To be the preferred boutique hotel in the Philippines, known for genuine care, consistency, and an engaged, empowered workforce.",
   values: ["Care", "Integrity", "Excellence", "Teamwork", "Hospitality"],
+  address: "528 P. Burgos Street, Makati City, Metro Manila, Philippines 1210",
+  phone: "+63 2 8888 8688",
+  email: "hr@oxfordsuites.com.ph",
+  hours: "24 Hours",
+  facilities: [],
+  faqs: [],
+  socials: ["Facebook", "Instagram", "LinkedIn", "Indeed"],
 };
 
 function mapCompany(c: ApiLandingCompany): CompanyInfo {
@@ -75,6 +99,13 @@ function mapCompany(c: ApiLandingCompany): CompanyInfo {
     mission: c.mission,
     vision: c.vision,
     values: c.values,
+    address: c.address ?? FALLBACK_COMPANY.address,
+    phone: c.phone ?? FALLBACK_COMPANY.phone,
+    email: c.email ?? FALLBACK_COMPANY.email,
+    hours: c.hours ?? FALLBACK_COMPANY.hours,
+    facilities: c.facilities ?? [],
+    faqs: c.faqs ?? [],
+    socials: c.socials ?? FALLBACK_COMPANY.socials,
   };
 }
 

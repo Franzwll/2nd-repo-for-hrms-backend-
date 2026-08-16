@@ -6,6 +6,11 @@ import { clearSession, getToken } from "./auth";
 
 const BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string) || 'http://127.0.0.1:8000/api/v1';
 
+/* Lightweight GET cache: dedupes in-flight requests and caches responses for
+   a short TTL so overlapping module fetches don't hit the server repeatedly. */
+const GET_CACHE_TTL_MS = 15_000;
+const getCache = new Map<string, { expiresAt: number; promise: Promise<any> }>();
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
   
@@ -23,39 +28,54 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers['Content-Type'] = 'application/json';
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  const doFetch = async (): Promise<T> => {
+    const response = await fetch(url, { ...options, headers });
 
-  if (!response.ok) {
-    if (response.status === 401 && typeof window !== "undefined") {
-      clearSession();
-      if (!window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/otp")) {
-        window.location.href = "/login";
+    if (!response.ok) {
+      if (response.status === 401 && typeof window !== "undefined") {
+        clearSession();
+        if (!window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/otp")) {
+          window.location.href = "/login";
+        }
       }
+      let errorData: any = null;
+      try {
+        errorData = await response.json();
+      } catch {
+        // response wasn't JSON
+      }
+      const message = errorData?.message || `Request failed with status ${response.status}: ${response.statusText}`;
+      const error = new Error(message) as Error & { status?: number; errors?: Record<string, string[]> };
+      error.status = response.status;
+      if (errorData?.errors) {
+        error.errors = errorData.errors;
+      }
+      throw error;
     }
-    let errorData: any = null;
-    try {
-      errorData = await response.json();
-    } catch {
-      // response wasn't JSON
+
+    // If 204 No Content
+    if (response.status === 204) {
+      return {} as T;
     }
-    const message = errorData?.message || `Request failed with status ${response.status}: ${response.statusText}`;
-    const error = new Error(message) as Error & { status?: number; errors?: Record<string, string[]> };
-    error.status = response.status;
-    if (errorData?.errors) {
-      error.errors = errorData.errors;
-    }
-    throw error;
+
+    return response.json();
+  };
+
+  const isGet = !options.method || options.method.toUpperCase() === 'GET';
+  if (!isGet) return doFetch();
+
+  const cached = getCache.get(url);
+  if (cached) {
+    if (cached.expiresAt > Date.now()) return cached.promise;
+    getCache.delete(url);
   }
 
-  // If 204 No Content
-  if (response.status === 204) {
-    return {} as T;
-  }
-
-  return response.json();
+  const promise = doFetch().catch((err) => {
+    getCache.delete(url);
+    throw err;
+  });
+  getCache.set(url, { expiresAt: Date.now() + GET_CACHE_TTL_MS, promise });
+  return promise;
 }
 
 /* ========================================================================= */
@@ -510,11 +530,73 @@ export interface ApiEmployee {
   pagibig_number: string | null;
   tin_number: string | null;
   salary_step: string | null;
-  emergency_contacts?: any[];
-  position_history?: any[];
-  exit_record?: any | null;
+  employee_record_last_updated_at: string | null;
+  emergency_contacts?: ApiEmergencyContact[];
+  documents?: ApiDocument[];
+  position_history?: ApiPositionHistory[];
+  exit_record?: ApiExitRecord | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ApiEmergencyContact {
+  emergency_contact_id: number;
+  name: string;
+  relationship: string;
+  phone: string | null;
+  address: string | null;
+  is_primary: boolean;
+}
+
+export interface ApiDocument {
+  document_id: number;
+  document_code: string;
+  title: string;
+  category: string;
+  file_path: string | null;
+  mime_type: string | null;
+  file_size_bytes: number | null;
+  document_status: string;
+  document_date: string | null;
+  expiry_date: string | null;
+}
+
+export interface ApiPositionHistory {
+  position_history_id: number;
+  effective_date: string | null;
+  change_type: string;
+  old_position_id: number | null;
+  new_position_id: number | null;
+  old_salary_grade_id: number | null;
+  new_salary_grade_id: number | null;
+  notes: string | null;
+}
+
+export interface ApiExitRecord {
+  exit_record_id: number;
+  exit_type: string;
+  exit_date: string | null;
+  clearance_status: string;
+  coe_status: string;
+  notes: string | null;
+}
+
+export interface ApiHR3Recommendation {
+  id: string;
+  recommendation_id: number;
+  employee_id: number | null;
+  employee_code: string | null;
+  employee_name: string;
+  department: string;
+  current_employment_type: string | null;
+  recommendation_type: "Regularization" | "Promotion" | "Performance Review";
+  evaluation_score: number;
+  evaluator: string;
+  date_submitted: string | null;
+  status: "Pending HR Action" | "Approved & Processed" | "Deferred";
+  suggested_position: string | null;
+  suggested_salary_grade: string | null;
+  comments: string | null;
 }
 
 export interface ApiDepartment {
@@ -645,6 +727,9 @@ export const hcmApi = {
   },
   orgChart: {
     list: () => request<{ data: ApiOrgNode[] }>('/org-chart'),
+  },
+  hr3Recommendations: {
+    list: () => request<{ data: ApiHR3Recommendation[] }>('/hr3-recommendations'),
   },
 };
 
@@ -789,6 +874,13 @@ export interface ApiLandingCompany {
   mission: string;
   vision: string;
   values: string[];
+  address?: string;
+  phone?: string;
+  email?: string;
+  hours?: string;
+  facilities?: { name: string; body: string }[];
+  faqs?: { q: string; a: string }[];
+  socials?: string[];
 }
 
 export interface ApiLandingJob {
@@ -816,12 +908,70 @@ export interface ApiLandingJob {
 }
 
 export interface ApiAnnouncement {
+  id: string;
   announcement_id: number;
   title: string;
   body: string;
   published_date: string | null;
   audience: string;
+  status: string;
+  author: string | null;
+  created_at: string | null;
 }
+
+export const announcementsApi = {
+  list: (params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiAnnouncement[] }>(`/announcements${qs ? `?${qs}` : ''}`);
+  },
+  create: (data: { title: string; body: string; audience: string; status?: string }) =>
+    request<{ message: string; data: ApiAnnouncement }>('/announcements', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  update: (id: number | string, data: { title: string; body: string; audience: string; status?: string }) =>
+    request<{ message: string; data: ApiAnnouncement }>(`/announcements/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  remove: (id: number | string) => request<{ message: string }>(`/announcements/${id}`, { method: 'DELETE' }),
+};
+
+export interface ApiDashboardStats {
+  applicants: {
+    total: number;
+    fit: number;
+    by_status: Record<string, number>;
+    by_stage: Record<string, number>;
+    by_source: Record<string, number>;
+    avg_fit_score: number;
+    trend: { day: string; applications: number; screened: number }[];
+  };
+  interviews: { scheduled: number };
+  job_posts: { open: number; total_applicants: number };
+  new_hires: { total: number; by_stage: Record<string, number> };
+  employees: {
+    total: number;
+    active: number;
+    trend_6m: { month: string; headcount: number; hires: number; exits: number }[];
+    trend_ytd: { month: string; headcount: number; hires: number; exits: number }[];
+  };
+  departments: { name: string; staff: number; open: number }[];
+  system_users: {
+    total: number;
+    by_role: Record<string, number>;
+    by_status: Record<string, number>;
+    recent: { id: number; name: string; department: string | null; status: string; last_login_at: string | null }[];
+  };
+  audit: {
+    total: number;
+    recent: { id: number; action: string; severity: string; user: string; timestamp: string | null }[];
+  };
+}
+
+export const dashboardApi = {
+  stats: () => request<{ data: ApiDashboardStats }>('/dashboard/stats'),
+};
 
 export const landingApi = {
   company: () => request<{ data: ApiLandingCompany }>('/landing/company'),
