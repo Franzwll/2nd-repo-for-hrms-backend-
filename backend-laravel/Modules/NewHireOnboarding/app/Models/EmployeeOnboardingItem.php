@@ -29,4 +29,14 @@ class EmployeeOnboardingItem extends Model
     {
         return $this->belongsTo(NewHire::class, 'new_hire_id', 'new_hire_id');
     }
+
+    /** The template item this was copied from (determines its phase). */
+    public function templateItem(): BelongsTo
+    {
+        return $this->belongsTo(
+            OnboardingChecklistItem::class,
+            'template_item_id',
+            'template_item_id',
+        );
+    }
 }

@@ -209,7 +209,14 @@ export type NewHire = {
   stage: "Pre-onboarding" | "Probationary" | "Regular";
   startDate: string;
   initials: string;
-  checklist: { item: string; done: boolean }[];
+  checklist: {
+    item: string;
+    done: boolean;
+    /** Database onboarding item id — used to persist toggles via the API. */
+    dbId?: number;
+    /** Which stage's checklist template the item belongs to. */
+    phase?: "Pre-onboarding" | "Probationary";
+  }[];
   email: string;
   phone: string;
 };

@@ -9,6 +9,8 @@ class InterviewResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $applicant = $this->whenLoaded('applicant');
+
         return [
             'interview_id'            => $this->interview_id,
             'interview_code'          => $this->interview_code,
@@ -21,6 +23,17 @@ class InterviewResource extends JsonResource
             'status'                  => $this->status,
             'created_at'              => $this->created_at?->toISOString(),
             'updated_at'              => $this->updated_at?->toISOString(),
+            'applicant'               => $applicant ? [
+                'applicant_id'   => $applicant->applicant_id,
+                'applicant_code' => $applicant->applicant_code,
+                'name'           => $applicant->name,
+                'email'          => $applicant->email,
+                'phone'          => $applicant->phone,
+                'position'       => $applicant->jobPost?->title,
+                'department'     => $applicant->jobPost?->department?->name,
+                'stage'          => $applicant->stage,
+                'fit_score'      => $applicant->fit_score !== null ? (float) $applicant->fit_score : null,
+            ] : null,
         ];
     }
 }

@@ -755,7 +755,8 @@ INSERT INTO "announcements" ("published_date", "title", "body", "audience", "cre
 INSERT INTO "system_settings" ("setting_key", "setting_value", "updated_by_user_id") VALUES
 ('company', '{"name": "Oxford Suites Makati", "email": "info@oxfordsuites.com.ph", "contact": "(02) 8888-0000", "businessHours": "24/7 Front Desk Operations", "address": "Ayala Center, Makati City", "tin": "000-000-000-000", "timezone": "Asia/Manila"}'::jsonb, 1),
 ('preferences', '{"theme": "Light", "language": "English", "dateFormat": "MM/DD/YYYY", "timeFormat": "12-hour", "timeZone": "Asia/Manila (GMT+8)"}'::jsonb, 1),
-('security', '{"twoFactor": true, "passwordPolicy": "Strong", "sessionTimeout": "30 minutes", "maxLoginAttempts": "3 attempts", "passwordPolicyRules": {"minLength": 8, "requireUppercase": true, "requireLowercase": true, "requireNumber": true, "requireSymbol": true}}'::jsonb, 1),
+('security', '{"twoFactor": true, "sessionTimeout": "30 minutes", "maxLoginAttempts": "3 attempts", "minLength": 8, "requireUppercase": true, "requireLowercase": true, "requireNumber": true, "requireSymbol": true}'::jsonb, 1),
 ('notifications', '{"Email notifications": true, "Browser notifications": true, "System announcements": true}'::jsonb, 1),
+('default_password', '{"password": "Oxford@2026"}'::jsonb, 1),
 ('recruitment.screening.enabled', '{"value": true}'::jsonb, 1),
 ('interview.schedulable_days', '["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]'::jsonb, 1);

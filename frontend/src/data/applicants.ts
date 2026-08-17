@@ -413,6 +413,7 @@ export type AuditActionType =
   | "Interview Scheduled"
   | "Interview Completed"
   | "Interview Cancelled"
+  | "Interview Rescheduled"
   | "Interview No-Show"
   | "Applicant Accepted"
   | "Applicant Rejected"

@@ -373,7 +373,7 @@ CREATE TABLE "onboarding_checklist_items" (
 
 CREATE TABLE "employee_onboarding_items" (
   "employee_onboarding_item_id" BIGSERIAL,
-  "employee_id" BIGINT NOT NULL,
+  "employee_id" BIGINT NULL,
   "new_hire_id" BIGINT NULL,
   "template_item_id" BIGINT NULL,
   "item_text" TEXT NOT NULL,

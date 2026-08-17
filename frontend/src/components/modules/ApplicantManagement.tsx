@@ -23,6 +23,7 @@ import {
   Sliders,
   Sparkles,
   Star,
+  Trash2,
   Trophy,
   Upload,
   UserPlus,
@@ -99,13 +100,13 @@ import {
   applicants as seedApplicants,
   assessmentCriteria,
   interviewers,
-  interviews as seedInterviews,
   screeningCriteria,
   statusMeta,
   TODAY_ISO,
   type Applicant,
   type ApplicantStatus,
   type AuditEntry,
+  type Interview,
 } from "@/data/applicants";
 import { departments, positions } from "@/data/hr";
 import { hireStore } from "@/data/hires";
@@ -113,7 +114,7 @@ import { jobs } from "@/data/jobs";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { SortHead, useSort } from "@/components/portal/sortable";
-import { applicantsApi, interviewsApi, settingsApi, type ApiApplicant, type ApiInterview, type ApiSystemUser } from "@/lib/api";
+import { applicantsApi, assessmentsApi, interviewsApi, settingsApi, type ApiApplicant, type ApiInterview, type ApiSystemUser } from "@/lib/api";
 
 function transformApiApplicant(a: ApiApplicant): Applicant {
   return {
@@ -136,20 +137,29 @@ function transformApiApplicant(a: ApiApplicant): Applicant {
   };
 }
 
-function transformApiInterview(i: ApiInterview): (typeof seedInterviews)[number] {
+/** Converts "HH:MM" from the API into the "HH:MM AM/PM" slot format. */
+const formatApiTime = (t: string | null | undefined) => {
+  if (!t) return "—";
+  if (/AM|PM/i.test(t)) return t;
+  const [h, m] = t.split(":").map(Number);
+  const hour = h ?? 12;
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const h12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${String(h12).padStart(2, "0")}:${String(m ?? 0).padStart(2, "0")} ${suffix}`;
+};
+
+function transformApiInterview(i: ApiInterview): Interview {
   return {
     id: i.interview_code || `INT-${i.interview_id}`,
     dbId: i.interview_id,
-    applicant: `Applicant #${i.applicant_id}`,
-    applicantId: `APP-${i.applicant_id}`,
-    applicantName: "Candidate",
-    position: "Front Desk Receptionist",
+    applicant: i.applicant?.name ?? `Applicant #${i.applicant_id}`,
+    position: i.applicant?.position || "Front Desk Receptionist",
     date: i.scheduled_date,
-    time: i.scheduled_time,
+    time: formatApiTime(i.scheduled_time),
     interviewer: i.interviewer_name || "HR Officer",
     mode: i.mode,
     status: i.status,
-  } as any;
+  };
 }
 
 /** Badge tone per audit action type in the History & Audit log. */
@@ -278,40 +288,6 @@ type AssessmentResult = {
   date: string;
   outcome: "Recommended" | "Hold" | "Not Recommended";
 };
-
-const seedAssessments: AssessmentResult[] = [
-  {
-    applicantId: "APP-1032",
-    name: "Camille Ortega",
-    position: "Front Desk Receptionist",
-    scores: {},
-    total: 94,
-    remarks:
-      "Excellent guest-facing presence; completed practical front desk simulation.",
-    date: "2026-07-23",
-    outcome: "Recommended",
-  },
-  {
-    applicantId: "APP-1035",
-    name: "Jompaks Berdugo",
-    position: "Bartender",
-    scores: {},
-    total: 88,
-    remarks: "Strong mixology demo, needs coaching on upselling scripts.",
-    date: "2026-07-25",
-    outcome: "Recommended",
-  },
-  {
-    applicantId: "APP-1036",
-    name: "Kevin Dela Cruz",
-    position: "Line Cook",
-    scores: {},
-    total: 82,
-    remarks: "Solid knife skills and station timing during the cook test.",
-    date: "2026-07-26",
-    outcome: "Recommended",
-  },
-];
 
 const initials = (name: string) =>
   name
@@ -481,18 +457,36 @@ export function ApplicantManagement({
   const [rows, setRows] = useState<Applicant[]>(seedApplicants);
 
   useEffect(() => {
+    const excludeStages =
+      role === "admin" ? "Hired,Rejected" : "Hired";
     Promise.allSettled([
-      applicantsApi.list({ per_page: 100 }),
+      applicantsApi.list({ per_page: 100, exclude_stages: excludeStages }),
       interviewsApi.list({ per_page: 100 }),
-    ]).then(([appRes, intRes]) => {
+      assessmentsApi.list({ per_page: 100 }),
+    ]).then(([appRes, intRes, asmRes]) => {
       if (appRes.status === "fulfilled" && appRes.value?.data?.length > 0) {
         setRows(appRes.value.data.map(transformApiApplicant));
       }
       if (intRes.status === "fulfilled" && intRes.value?.data?.length > 0) {
         setInterviews(intRes.value.data.map(transformApiInterview));
       }
-    }).catch((err) => {
-      console.warn("Could not fetch applicants/interviews from API:", err);
+      if (asmRes.status === "fulfilled" && asmRes.value?.data?.length > 0) {
+        setAssessments(
+          asmRes.value.data.map((a) => ({
+            applicantId:
+              a.applicant?.applicant_code ?? `APP-${a.applicant_id}`,
+            name: a.applicant?.name ?? `Applicant #${a.applicant_id}`,
+            position: a.applicant?.position ?? "—",
+            scores: a.scores_json ?? {},
+            total: Math.round(a.total_score ?? 0),
+            remarks: a.remarks ?? "",
+            date: a.assessment_date,
+            outcome: a.outcome,
+          })),
+        );
+      }
+      }).catch((err) => {
+      console.warn("Could not fetch applicants/interviews/assessments from API:", err);
     });
   }, []);
 
@@ -549,9 +543,8 @@ export function ApplicantManagement({
   const [keywords, setKeywords] = useState(
     "guest relations, opera pms, tesda, food handler, mixology, housekeeping",
   );
-  const [interviews, setInterviews] = useState(seedInterviews);
-  const [assessments, setAssessments] =
-    useState<AssessmentResult[]>(seedAssessments);
+  const [interviews, setInterviews] = useState<Interview[]>([]);
+  const [assessments, setAssessments] = useState<AssessmentResult[]>([]);
   const [assessmentFilter, setAssessmentFilter] = useState<
     "ready" | "completed" | "all"
   >("all");
@@ -580,9 +573,9 @@ export function ApplicantManagement({
   const [slotDialogOpen, setSlotDialogOpen] = useState(false);
 
   /** Interview pending cancellation confirmation. */
-  const [cancelInterview, setCancelInterview] = useState<
-    (typeof seedInterviews)[number] | null
-  >(null);
+  const [cancelInterview, setCancelInterview] = useState<Interview | null>(
+    null,
+  );
   const [schedule, setSchedule] = useState({
     applicant: "",
     date: "2026-08-03",
@@ -595,8 +588,10 @@ export function ApplicantManagement({
     interviewer: interviewers[0]!.name,
   });
   const [scheduleDept, setScheduleDept] = useState<string>("all");
+  /** Interview being rescheduled — prefills Book an Interview and updates the record on confirm. */
+  const [rescheduling, setRescheduling] = useState<Interview | null>(null);
 
-  // Audit / history log
+  // Audit / history log — local audit trail (applicant management only)
   const [auditLog, setAuditLog] = useState<AuditEntry[]>(applicantAuditLog);
   const [auditSearch, setAuditSearch] = useState("");
   const [auditActionFilter, setAuditActionFilter] = useState<string>("all");
@@ -610,18 +605,16 @@ export function ApplicantManagement({
     >,
   ) => {
     const now = new Date();
-    setAuditLog((prev) => [
-      {
-        id: `AUD-${String(prev.length + 1).padStart(3, "0")}-${now.getTime()}`,
-        date: isoOf(now),
-        time: timeOf(now),
-        actorName: CURRENT_ACTOR.name,
-        actorPosition: CURRENT_ACTOR.position,
-        actorDepartment: CURRENT_ACTOR.department,
-        ...entry,
-      },
-      ...prev,
-    ]);
+    const next = {
+      id: `AUD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      date: isoOf(now),
+      time: timeOf(now),
+      actorName: CURRENT_ACTOR.name,
+      actorPosition: CURRENT_ACTOR.position,
+      actorDepartment: CURRENT_ACTOR.department,
+      ...entry,
+    };
+    setAuditLog((prev) => [next, ...prev]);
   };
 
   // Add-applicant flow
@@ -644,6 +637,14 @@ export function ApplicantManagement({
     entities: { label: string; value: string }[];
   } | null>(null);
 
+  /**
+   * Stages hidden from the active pipeline lists.
+   * Hired applicants move to New Hire Onboarding and are no longer shown;
+   * rejected applicants stay visible to the super admin only.
+   */
+  const hiddenStages = role === "admin" ? ["Hired", "Rejected"] : ["Hired"];
+  const isHiddenStage = (a: Applicant) => hiddenStages.includes(a.stage);
+
   const distribution = useMemo(() => {
     const scoped =
       positionFilter === "all"
@@ -661,13 +662,14 @@ export function ApplicantManagement({
   const topFiveToday = useMemo(
     () =>
       [...rows]
-        .filter((a) => a.stage !== "Rejected")
+        .filter((a) => !isHiddenStage(a))
         .sort((a, b) => b.score - a.score)
         .slice(0, 5),
-    [rows],
+    [rows, isHiddenStage],
   );
 
   const filtered = rows.filter((a) => {
+    if (isHiddenStage(a)) return false;
     if (positionFilter !== "all" && a.position !== positionFilter) return false;
     if (statusFilter !== "all" && a.status !== statusFilter) return false;
     if (stageFilter !== "all" && a.stage !== stageFilter) return false;
@@ -819,16 +821,38 @@ export function ApplicantManagement({
     }
   };
 
+  /** Reschedule — prefills the Book an Interview card with the current interview data
+   *  (department, applicant, date, time slot, mode, interviewer) and updates the
+   *  existing record when confirmed. */
+  const rescheduleInterview = (i: Interview) => {
+    const src = rows.find((r) => r.name === i.applicant);
+    const dept = src
+      ? positions.find((p) => p.title === src.position)?.department ??
+        jobs.find((j) => j.id === src.jobId)?.department
+      : undefined;
+    const known =
+      dept && departments.some((d) => d.name === dept) ? dept : "all";
+    const slotTime = slotsForSelected.includes(i.time) ? i.time : slotsForSelected[0]!;
+    setScheduleDept(known);
+    setSchedule({
+      applicant: i.applicant,
+      date: i.date,
+      time: slotTime,
+      mode: i.mode,
+      interviewer: scheduleInterviewers.some((s) => s.name === i.interviewer)
+        ? i.interviewer
+        : scheduleInterviewers[0]?.name ?? i.interviewer,
+    });
+    setRescheduling(i);
+    setTab("scheduling");
+    toast.success(`Rescheduling ${i.applicant}`, {
+      description: `Current: ${i.date} · ${i.time} — pick a new date and slot.`,
+    });
+  };
+
   const confirmSchedule = async () => {
     if (!schedule.applicant) {
       toast.error("Select an applicant first");
-      return;
-    }
-    // An applicant can only be booked/scheduled once
-    if (interviews.some((i) => i.applicant === schedule.applicant)) {
-      toast.error(
-        `${schedule.applicant} already has a booked interview and can only be scheduled once.`,
-      );
       return;
     }
     const taken = interviews.filter(
@@ -837,6 +861,53 @@ export function ApplicantManagement({
     if (taken >= capacityPerSlot) {
       toast.error(
         `That slot is full — ${capacityPerSlot} applicants already booked for ${schedule.time}.`,
+      );
+      return;
+    }
+
+    // Reschedule — update the existing interview record instead of creating a new one
+    if (rescheduling) {
+      const updated: Interview = {
+        ...rescheduling,
+        date: schedule.date,
+        time: schedule.time,
+        mode: schedule.mode as "On-site" | "Virtual",
+        interviewer: schedule.interviewer,
+        status: "Scheduled",
+      };
+      setInterviews((prev) =>
+        prev.map((x) => (x.id === rescheduling.id ? updated : x)),
+      );
+      addAudit({
+        actionType: "Interview Rescheduled",
+        target: schedule.applicant,
+        module: "Interview Scheduling",
+        details: `Rescheduled to ${schedule.date} · ${schedule.time} · ${schedule.mode} with ${schedule.interviewer}.`,
+      });
+      toast.success(`Interview rescheduled for ${schedule.applicant}`, {
+        description: `${schedule.date} · ${schedule.time} · ${schedule.mode}`,
+      });
+      try {
+        if (rescheduling.dbId) {
+          await interviewsApi.update(rescheduling.dbId, {
+            scheduled_date: schedule.date,
+            scheduled_time: schedule.time.includes(":") ? schedule.time.slice(0, 5) : "09:00",
+            mode: schedule.mode,
+            interviewer_name: schedule.interviewer,
+            status: "Scheduled",
+          });
+        }
+      } catch (e) {
+        console.warn("Could not persist interview reschedule to database API:", e);
+      }
+      setRescheduling(null);
+      return;
+    }
+
+    // An applicant can only be booked/scheduled once
+    if (interviews.some((i) => i.applicant === schedule.applicant)) {
+      toast.error(
+        `${schedule.applicant} already has a booked interview and can only be scheduled once.`,
       );
       return;
     }
@@ -1130,6 +1201,12 @@ export function ApplicantManagement({
       summary: `Added via ${addMethod === "image" ? "image (OCR)" : "document"} screening — ${addFileName || "uploaded resume"}.`,
     };
     setRows((prev) => [newApp, ...prev]);
+    addAudit({
+      actionType: "Applicant Added",
+      target: newApp.name,
+      module: "Screening",
+      details: `Added via ${addMethod === "image" ? "image (OCR)" : "document"} screening — ${addFileName || "uploaded resume"}, scored ${res.score}%.`,
+    });
     toast.success(`${addForm.name} added to the applicant list`);
     setAddOpen(false);
     setAddStep(1);
@@ -1265,7 +1342,20 @@ export function ApplicantManagement({
       pending: true,
     }));
 
-  const interviewRows: InterviewRow[] = [...needSchedule, ...interviews];
+  /**
+   * Interviews visible in the Scheduled Interviews list.
+   * Hired / rejected (admin only) applicants are gone from the pipeline, and
+   * once an applicant is assessed their interview is no longer shown here.
+   */
+  const interviewRows: InterviewRow[] = [
+    ...needSchedule,
+    ...interviews.filter((i) => {
+      const src = rows.find((r) => r.name === i.applicant);
+      if (!src) return true;
+      if (isHiddenStage(src)) return false;
+      return src.stage !== "Assessed";
+    }),
+  ];
 
   const interviewFiltered = interviewRows
     .filter((i) =>
@@ -1308,18 +1398,26 @@ export function ApplicantManagement({
 
   const assessmentRowsAll: AssessmentRow[] = [
     ...(assessmentFilter !== "completed"
-      ? readyToAssess.map((a) => ({
-          kind: "ready" as const,
-          a,
-          iv: interviews.find((i) => i.applicant === a.name),
-        }))
+      ? readyToAssess
+          .filter((a) => !isHiddenStage(a))
+          .map((a) => ({
+            kind: "ready" as const,
+            a,
+            iv: interviews.find((i) => i.applicant === a.name),
+          }))
       : []),
     ...(assessmentFilter !== "ready"
-      ? assessments.map((r) => ({
-          kind: "completed" as const,
-          r,
-          iv: interviews.find((i) => i.applicant === r.name),
-        }))
+      ? assessments
+          .filter((r) => {
+            const src = rows.find((a) => a.id === r.applicantId);
+            if (!src) return true;
+            return !isHiddenStage(src);
+          })
+          .map((r) => ({
+            kind: "completed" as const,
+            r,
+            iv: interviews.find((i) => i.applicant === r.name),
+          }))
       : []),
   ];
 
@@ -1389,10 +1487,10 @@ export function ApplicantManagement({
   const auditPage = usePagination(auditSort.sorted);
 
   const auditActionTypes = Array.from(
-    new Set(applicantAuditLog.map((e) => e.actionType)),
+    new Set(auditLog.map((e) => e.actionType)),
   ).sort();
   const auditActors = Array.from(
-    new Set(applicantAuditLog.map((e) => e.actorName)),
+    new Set(auditLog.map((e) => e.actorName)),
   ).sort();
 
   /**
@@ -1400,15 +1498,28 @@ export function ApplicantManagement({
    * only accepted ones (Accept &amp; Schedule), no applicant that is already
    * booked, and none that moved past the interview stage (assessment etc.).
    */
-  const scheduleApplicants = rows.filter(
-    (a) =>
-      a.stage === "Accepted" &&
-      !interviews.some((i) => i.applicant === a.name) &&
-      !["Assessed", "Offer", "Hired", "Rejected"].includes(a.stage) &&
-      (scheduleDept === "all" ||
-        positions.find((p) => p.title === a.position)?.department ===
-          scheduleDept),
-  );
+  const scheduleApplicants = [
+    ...rows.filter(
+      (a) =>
+        a.stage === "Accepted" &&
+        !interviews.some((i) => i.applicant === a.name) &&
+        !["Assessed", "Offer", "Hired", "Rejected"].includes(a.stage) &&
+        (scheduleDept === "all" ||
+          positions.find((p) => p.title === a.position)?.department ===
+            scheduleDept),
+    ),
+    // While rescheduling, the applicant being moved stays selectable even
+    // though they already have a booked interview.
+    ...(rescheduling
+      ? rows.filter(
+          (a) =>
+            a.name === rescheduling.applicant &&
+            (scheduleDept === "all" ||
+              positions.find((p) => p.title === a.position)?.department ===
+                scheduleDept),
+        )
+      : []),
+  ];
   const scheduleInterviewers = interviewers.filter(
     (s) => scheduleDept === "all" || s.department === scheduleDept,
   );
@@ -2010,7 +2121,7 @@ export function ApplicantManagement({
                         size="sm"
                         variant="outline"
                         onClick={() => {
-                          const today = new Date("2026-08-03");
+                          const today = new Date();
                           setViewMonth(
                             new Date(today.getFullYear(), today.getMonth(), 1),
                           );
@@ -2135,11 +2246,14 @@ export function ApplicantManagement({
                     const count = interviews.filter(
                       (i) => i.date === iso,
                     ).length;
-                    // A day is a free day only if the setter says it is
+                    // A day is free only if the setter says it is schedulable;
+                    // full once every slot is booked.
                     const dayName = DAY_NAMES[cell.date.getDay()]!;
                     const schedulable = schedulableDays.includes(dayName);
-                    const free = count === 0 && schedulable && cell.inMonth;
+                    const free = count === 0 && schedulable;
+                    const full = count > 0 && schedulable && count >= capacityPerSlot;
                     const selected = schedule.date === iso;
+                    const isToday = iso === TODAY_ISO;
                     return (
                       <button
                         key={iso}
@@ -2152,17 +2266,36 @@ export function ApplicantManagement({
                         className={cn(
                           "relative min-h-[2.9rem] border-b border-r border-border/70 text-sm transition-colors last:border-r-0",
 
-                          !cell.inMonth &&
-                            "bg-muted/20 text-muted-foreground/50",
-                          cell.inMonth && !selected && "hover:bg-muted/50",
+                          !cell.inMonth && "opacity-60",
+                          free &&
+                            !selected &&
+                            "bg-success/25 font-semibold text-success",
+                          full &&
+                            !selected &&
+                            "bg-destructive/25 font-semibold text-destructive",
+                          isToday && !selected && "bg-gold/30 ring-1 ring-inset ring-gold",
+                          cell.inMonth &&
+                            !selected &&
+                            !free &&
+                            !full &&
+                            "hover:bg-muted/50",
                           cell.inMonth &&
                             count === 0 &&
                             !schedulable &&
                             "text-muted-foreground/40",
                           count > 0 &&
                             !selected &&
+                            !full &&
                             "bg-primary/5 font-semibold text-primary",
                           selected &&
+                            free &&
+                            "bg-green-700 font-semibold text-white",
+                          selected &&
+                            full &&
+                            "bg-red-700 font-semibold text-white",
+                          selected &&
+                            !free &&
+                            !full &&
                             "bg-primary font-semibold text-primary-foreground",
                         )}
                       >
@@ -2171,15 +2304,33 @@ export function ApplicantManagement({
                           <span
                             className={cn(
                               "absolute bottom-1.5 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full",
-                              selected ? "bg-primary-foreground" : "bg-primary",
+                              selected
+                                ? "bg-white"
+                                : full
+                                  ? "bg-destructive"
+                                  : "bg-primary",
                             )}
                           />
                         )}
                         {free && (
-                          <span className="absolute bottom-1.5 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-gold" />
+                          <span
+                            className={cn(
+                              "absolute bottom-1.5 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full",
+                              selected ? "bg-white" : "bg-success",
+                            )}
+                          />
                         )}
                         {count > 1 && (
-                          <span className="absolute -top-1 -right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-semibold text-primary-foreground">
+                          <span
+                            className={cn(
+                              "absolute -top-1 -right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.6rem] font-semibold text-white",
+                              selected && full
+                                ? "bg-red-900"
+                                : selected && free
+                                  ? "bg-green-800"
+                                  : "bg-primary",
+                            )}
+                          >
                             {count}
                           </span>
                         )}
@@ -2190,11 +2341,18 @@ export function ApplicantManagement({
 
                 <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-success" /> Free
+                    day (schedulable)
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-destructive" />{" "}
+                    Full (all slots booked)
+                  </span>
+                  <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-primary" /> Booked
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-gold" /> Free
-                    day (schedulable)
+                    <span className="h-2 w-2 rounded-full bg-gold" /> Today
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-muted-foreground/30" />{" "}
@@ -2269,13 +2427,14 @@ export function ApplicantManagement({
                             : true,
                         )
                         .map((i) => (
-                          <button
+                          <div
                             key={i.id}
-                            type="button"
+                            role="button"
+                            tabIndex={0}
                             onClick={() =>
                               toast(`Viewing interview � ${i.applicant}`)
                             }
-                            className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border/70 bg-muted/20 p-2.5 text-left transition-colors hover:bg-muted/40"
+                            className="grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border/70 bg-muted/20 p-2.5 text-left transition-colors hover:bg-muted/40"
                           >
                             <span className="shrink-0 rounded-md bg-card px-2.5 py-1.5 text-xs font-semibold text-primary shadow-sm">
                               {i.time}
@@ -2298,8 +2457,25 @@ export function ApplicantManagement({
                                 </span>
                               </span>
                             </span>
-                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                          </button>
+                            <span className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                aria-label={`Delete interview for ${i.applicant}`}
+                                title="Delete interview"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCancelInterview(
+                                    interviews.find((x) => x.id === i.id) ??
+                                      null,
+                                  );
+                                }}
+                                className="rounded-md p-1 text-destructive transition-colors hover:bg-destructive/10"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            </span>
+                          </div>
                         ))}
                       {interviews.filter((i) => i.date === schedule.date)
                         .length === 0 && (
@@ -2855,6 +3031,17 @@ export function ApplicantManagement({
                     </DialogContent>
                   </Dialog>
 
+                  {rescheduling && (
+                    <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground">
+                      <Repeat2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        Rescheduling <b>{rescheduling.applicant}</b> from{" "}
+                        {rescheduling.date} · {rescheduling.time} — confirm to
+                        update their existing interview.
+                      </span>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label className="text-sm">Filter by Department</Label>
                     <Select
@@ -2862,6 +3049,7 @@ export function ApplicantManagement({
                       onValueChange={(v) => {
                         setScheduleDept(v);
                         setSchedule((p) => ({ ...p, applicant: "" }));
+                        setRescheduling(null);
                       }}
                     >
                       <SelectTrigger>
@@ -2884,9 +3072,10 @@ export function ApplicantManagement({
                     </Label>
                     <Select
                       value={schedule.applicant}
-                      onValueChange={(v) =>
-                        setSchedule({ ...schedule, applicant: v })
-                      }
+                      onValueChange={(v) => {
+                        setSchedule({ ...schedule, applicant: v });
+                        if (v !== rescheduling?.applicant) setRescheduling(null);
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select applicant" />
@@ -3203,10 +3392,10 @@ export function ApplicantManagement({
                                     size="sm"
                                     variant="outline"
                                     onClick={() => {
-                                      const a = rows.find(
-                                        (r) => r.name === i.applicant,
+                                      const real = interviews.find(
+                                        (x) => x.id === i.id,
                                       );
-                                      if (a) acceptAndSchedule(a);
+                                      if (real) rescheduleInterview(real);
                                     }}
                                   >
                                     <CalendarPlus className="mr-1.5 h-3.5 w-3.5" />

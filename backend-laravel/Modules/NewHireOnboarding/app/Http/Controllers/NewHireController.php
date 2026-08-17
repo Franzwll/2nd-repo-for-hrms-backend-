@@ -9,6 +9,7 @@ use Modules\NewHireOnboarding\Http\Requests\StoreNewHireRequest;
 use Modules\NewHireOnboarding\Http\Requests\UpdateNewHireRequest;
 use Modules\NewHireOnboarding\Http\Resources\NewHireResource;
 use Modules\NewHireOnboarding\Models\NewHire;
+use Modules\NewHireOnboarding\Models\OnboardingChecklistTemplate;
 
 class NewHireController extends Controller
 {
@@ -18,7 +19,7 @@ class NewHireController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = NewHire::with(['department', 'position', 'onboardingItems'])
+        $query = NewHire::with(['department', 'position', 'onboardingItems.templateItem.template'])
             ->orderByDesc('start_date');
 
         if ($search = $request->query('search')) {
@@ -75,8 +76,11 @@ class NewHireController extends Controller
 
         $newHire = NewHire::create($data);
 
+        // Auto-apply matching Active checklist templates to the new hire
+        OnboardingChecklistTemplate::applyAllFor($newHire);
+
         return response()->json(
-            new NewHireResource($newHire->load(['department', 'position'])),
+            new NewHireResource($newHire->load(['department', 'position', 'onboardingItems.templateItem.template'])),
             201
         );
     }
@@ -87,7 +91,7 @@ class NewHireController extends Controller
 
     public function show(int $new_hire): JsonResponse
     {
-        $model = NewHire::with(['department', 'position', 'onboardingItems'])
+        $model = NewHire::with(['department', 'position', 'onboardingItems.templateItem.template'])
             ->findOrFail($new_hire);
 
         return response()->json(new NewHireResource($model));
@@ -103,7 +107,7 @@ class NewHireController extends Controller
         $model->update($request->validated());
 
         return response()->json(
-            new NewHireResource($model->load(['department', 'position', 'onboardingItems']))
+            new NewHireResource($model->load(['department', 'position', 'onboardingItems.templateItem.template']))
         );
     }
 
@@ -140,8 +144,11 @@ class NewHireController extends Controller
 
         $model->update(['stage' => $nextStage]);
 
+        // Auto-apply matching Active checklist templates for the new stage
+        OnboardingChecklistTemplate::applyAllFor($model);
+
         return response()->json(
-            new NewHireResource($model->load(['department', 'position', 'onboardingItems']))
+            new NewHireResource($model->load(['department', 'position', 'onboardingItems.templateItem.template']))
         );
     }
 
@@ -162,3 +169,4 @@ class NewHireController extends Controller
         ]);
     }
 }
+

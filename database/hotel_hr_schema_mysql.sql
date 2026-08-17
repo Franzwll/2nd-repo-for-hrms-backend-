@@ -417,7 +417,7 @@ CREATE TABLE `onboarding_checklist_items` (
 
 CREATE TABLE `employee_onboarding_items` (
   `employee_onboarding_item_id` BIGINT UNSIGNED AUTO_INCREMENT,
-  `employee_id` BIGINT UNSIGNED NOT NULL,
+  `employee_id` BIGINT UNSIGNED NULL,
   `new_hire_id` BIGINT UNSIGNED NULL,
   `template_item_id` BIGINT UNSIGNED NULL,
   `item_text` TEXT NOT NULL,

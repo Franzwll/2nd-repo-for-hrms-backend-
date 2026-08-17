@@ -30,6 +30,8 @@ class NewHireResource extends JsonResource
                     'item_text'                   => $item->item_text,
                     'done'                         => (bool) $item->done,
                     'completed_at'                 => $item->completed_at?->toISOString(),
+                    'phase'                        => $item->templateItem?->template?->phase
+                        ?? $this->stageForOnboardingItem($item),
                 ]);
             }),
             'created_at'          => $this->created_at?->toISOString(),

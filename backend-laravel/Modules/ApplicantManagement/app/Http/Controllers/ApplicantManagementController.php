@@ -51,6 +51,14 @@ class ApplicantManagementController extends Controller
             $query->where('source', $source);
         }
 
+        // Exclude stages from the active pipeline (e.g. Hired, Rejected)
+        if ($excludeStages = $request->query('exclude_stages')) {
+            $excluded = array_filter(array_map('trim', explode(',', $excludeStages)));
+            if ($excluded) {
+                $query->whereNotIn('stage', $excluded);
+            }
+        }
+
         $perPage = (int) $request->query('per_page', 15);
         $paginated = $query->paginate($perPage);
 

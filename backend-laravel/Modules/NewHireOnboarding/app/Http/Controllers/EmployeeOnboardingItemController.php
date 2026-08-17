@@ -35,7 +35,8 @@ class EmployeeOnboardingItemController extends Controller
 
     /* ------------------------------------------------------------------ */
     /* PATCH /api/v1/onboarding-items/{item}/toggle                        */
-    /* Toggle the done flag; auto-complete onboarding when all done        */
+    /* Toggle the done flag (or force it via body `done`); auto-complete   */
+    /* onboarding when all items are done                                  */
     /* ------------------------------------------------------------------ */
 
     public function toggle(Request $request, int $item): JsonResponse
@@ -43,7 +44,9 @@ class EmployeeOnboardingItemController extends Controller
         $model = EmployeeOnboardingItem::findOrFail($item);
 
         DB::transaction(function () use ($model, $request) {
-            $nowDone = ! $model->done;
+            $nowDone = $request->has('done')
+                ? (bool) $request->input('done')
+                : ! $model->done;
             $model->update([
                 'done'                 => $nowDone,
                 'completed_at'         => $nowDone ? now() : null,
@@ -89,8 +92,17 @@ class EmployeeOnboardingItemController extends Controller
             ->orderBy('sort_order')
             ->get();
 
+        // Skip template items already applied to this new hire
+        $existing = $model->onboardingItems()
+            ->whereNotNull('template_item_id')
+            ->pluck('template_item_id')
+            ->all();
+
         $created = [];
         foreach ($items as $templateItem) {
+            if (in_array($templateItem->template_item_id, $existing, true)) {
+                continue;
+            }
             $oi = EmployeeOnboardingItem::create([
                 'employee_id'      => $model->employee_id,
                 'new_hire_id'      => $new_hire,

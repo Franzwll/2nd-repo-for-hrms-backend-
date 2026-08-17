@@ -19,7 +19,7 @@ class InterviewController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Interview::with('applicant')
+        $query = Interview::with('applicant.jobPost.department')
             ->orderByDesc('scheduled_date');
 
         if ($applicantId = $request->query('applicant_id')) {
@@ -77,7 +77,7 @@ class InterviewController extends Controller
             $applicant->update(['stage' => 'Interview Scheduled']);
         }
 
-        return response()->json(new InterviewResource($interview->load('applicant')), 201);
+        return response()->json(new InterviewResource($interview->load('applicant.jobPost.department')), 201);
     }
 
     /* ------------------------------------------------------------------ */
@@ -86,7 +86,7 @@ class InterviewController extends Controller
 
     public function show(int $interview): JsonResponse
     {
-        $model = Interview::with('applicant')->findOrFail($interview);
+        $model = Interview::with('applicant.jobPost.department')->findOrFail($interview);
         return response()->json(new InterviewResource($model));
     }
 
@@ -99,7 +99,7 @@ class InterviewController extends Controller
         $model = Interview::findOrFail($interview);
         $model->update($request->validated());
 
-        return response()->json(new InterviewResource($model->load('applicant')));
+        return response()->json(new InterviewResource($model->load('applicant.jobPost.department')));
     }
 
     /* ------------------------------------------------------------------ */

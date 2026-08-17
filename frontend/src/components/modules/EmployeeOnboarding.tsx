@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Info, Check, Search, ArrowUpDown, Circle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { myProfile } from "@/data/ess";
+import { newHiresApi, onboardingItemsApi, type ApiNewHire } from "@/lib/api";
 
 type ChecklistItem = {
   id: string;
@@ -25,80 +26,89 @@ type ChecklistItem = {
   done: boolean;
   rank: number;
   actionLabel: string;
+  /** Database onboarding item id — used to toggle completion via the API. */
+  dbId?: number;
 };
 
 export function EmployeeOnboarding() {
-  const [items, setItems] = useState<ChecklistItem[]>([
-    {
-      id: "chk-policies",
-      title: "Acknowledge Company Policies",
-      date: "Pending your action",
-      isoDate: "2026-08-01",
-      done: false,
-      rank: 0,
-      actionLabel: "Acknowledge",
-    },
-    {
-      id: "chk-agreement",
-      title: "Accept Employment Agreement",
-      date: "Pending your action",
-      isoDate: "2026-08-01",
-      done: false,
-      rank: 0,
-      actionLabel: "Review & Accept",
-    },
-    {
-      id: "chk-info",
-      title: "Confirm Personal Information",
-      date: "Completed Feb 2, 2026",
-      isoDate: "2026-02-02",
-      done: true,
-      rank: 1,
-      actionLabel: "",
-    },
-    {
-      id: "chk-gov",
-      title: "Submit Government Requirements",
-      date: "Completed Feb 3, 2026",
-      isoDate: "2026-02-03",
-      done: true,
-      rank: 1,
-      actionLabel: "",
-    },
-    {
-      id: "chk-med",
-      title: "Submit Medical Clearance",
-      date: "Completed Feb 3, 2026",
-      isoDate: "2026-02-03",
-      done: true,
-      rank: 1,
-      actionLabel: "",
-    },
-  ]);
+  // The current user's new hire record + checklist come from the database.
+  const [newHire, setNewHire] = useState<ApiNewHire | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<ChecklistItem[]>([]);
+
+  useEffect(() => {
+    newHiresApi
+      .list({ per_page: 100 })
+      .then((res) => {
+        const mine =
+          res.data.find((h) => h.name === myProfile.name) ?? res.data[0] ?? null;
+        setNewHire(mine);
+        return mine;
+      })
+      .then((mine) => {
+        if (!mine) return;
+        return onboardingItemsApi
+          .listForNewHire(mine.new_hire_id)
+          .then((apiItems) => {
+            setItems(
+              apiItems.map((i, index) => ({
+                id: `chk-${i.employee_onboarding_item_id}`,
+                dbId: i.employee_onboarding_item_id,
+                title: i.item_text,
+                date: i.done && i.completed_at
+                  ? `Completed ${new Date(i.completed_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                  : "Pending your action",
+                isoDate: i.done && i.completed_at ? i.completed_at.slice(0, 10) : "2026-08-01",
+                done: Boolean(i.done),
+                rank: i.done ? 1 : 0,
+                actionLabel: i.done ? "" : "Mark Complete",
+              })),
+            );
+          });
+      })
+      .catch((err) => {
+        console.warn("Could not load onboarding checklist from API:", err);
+        toast.error("Could not load your onboarding checklist");
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("recent");
 
   const completedCount = items.filter((i) => i.done).length;
   const totalCount = items.length;
-  const pct = Math.round((completedCount / totalCount) * 100);
+  const pct = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
 
   const handleComplete = (id: string, title: string) => {
+    const target = items.find((i) => i.id === id);
     const todayIso = new Date().toISOString().slice(0, 10);
-    setItems((prev) =>
-      prev.map((i) => {
-        if (i.id !== id) return i;
-        return {
-          ...i,
-          done: true,
-          rank: 1,
-          date: "Completed just now",
-          isoDate: todayIso,
-          actionLabel: "",
-        };
-      })
-    );
+    const updateLocal = () =>
+      setItems((prev) =>
+        prev.map((i) => {
+          if (i.id !== id) return i;
+          return {
+            ...i,
+            done: true,
+            rank: 1,
+            date: "Completed just now",
+            isoDate: todayIso,
+            actionLabel: "",
+          };
+        }),
+      );
+    updateLocal();
     toast.success(`"${title}" step completed!`);
+
+    if (target?.dbId) {
+      onboardingItemsApi
+        .toggle(target.dbId)
+        .catch((e) => {
+          console.warn("Could not toggle onboarding item on database API:", e);
+          toast.error("Could not save completion — please retry.");
+        });
+    }
+
     if (completedCount + 1 >= totalCount) {
       setTimeout(() => {
         toast.success("Onboarding checklist complete! Awaiting HR verification.");
@@ -206,9 +216,15 @@ export function EmployeeOnboarding() {
           </CardHeader>
           <CardContent>
             <div className="divide-y divide-border">
-              {filteredItems.length === 0 ? (
+              {loading ? (
                 <div className="py-8 text-center text-sm text-muted-foreground">
-                  No checklist items match the current filter.
+                  Loading your onboarding checklist...
+                </div>
+              ) : filteredItems.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  {totalCount === 0
+                    ? "No onboarding checklist assigned yet — your HR admin will assign requirements once you start."
+                    : "No checklist items match the current filter."}
                 </div>
               ) : (
                 filteredItems.map((item) => (

@@ -63,8 +63,16 @@ class ChecklistTemplateController extends Controller
             $template->items()->create($item);
         }
 
+        // Auto-apply to matching new hires (Active templates only)
+        $applied = $template->applyToMatchingNewHires();
+
+        $payload = (new ChecklistTemplateResource($template->load('items')))->resolve();
+
         return response()->json(
-            new ChecklistTemplateResource($template->load('items')),
+            [
+                ...$payload,
+                'applied_count' => $applied,
+            ],
             201
         );
     }
@@ -118,7 +126,15 @@ class ChecklistTemplateController extends Controller
             }
         }
 
-        return response()->json(new ChecklistTemplateResource($model->load('items')));
+        // Auto-apply (or re-sync) matching new hires' checklists
+        $applied = $model->applyToMatchingNewHires();
+
+        $payload = (new ChecklistTemplateResource($model->load('items')))->resolve();
+
+        return response()->json([
+            ...$payload,
+            'applied_count' => $applied,
+        ]);
     }
 
     /* ------------------------------------------------------------------ */

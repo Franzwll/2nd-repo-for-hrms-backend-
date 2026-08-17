@@ -80,6 +80,17 @@ export interface ApiInterview {
   interviewer_employee_id: number | null;
   interviewer_name: string | null;
   status: "Scheduled" | "Completed" | "No Show";
+  applicant?: {
+    applicant_id: number;
+    applicant_code: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    position?: string | null;
+    department?: string | null;
+    stage: string;
+    fit_score: number | null;
+  } | null;
 }
 
 export interface ApiAssessment {
@@ -91,6 +102,14 @@ export interface ApiAssessment {
   total_score: number | null;
   outcome: "Recommended" | "Hold" | "Not Recommended";
   remarks: string | null;
+  applicant?: {
+    applicant_id: number;
+    applicant_code: string;
+    name: string;
+    position?: string | null;
+    department?: string | null;
+    stage: string;
+  } | null;
 }
 
 export const applicantsApi = {
@@ -121,6 +140,13 @@ export const applicantsApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+};
+
+export const assessmentsApi = {
+  list: (params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiAssessment[]; meta: any }>(`/assessments${qs ? `?${qs}` : ''}`);
+  },
 };
 
 export const interviewsApi = {
@@ -270,6 +296,7 @@ export interface ApiNewHire {
     employee_onboarding_item_id: number;
     item_text: string;
     done: boolean;
+    phase?: "Pre-onboarding" | "Probationary" | null;
     completed_at: string | null;
   }[];
 }
@@ -365,10 +392,10 @@ export const onboardingItemsApi = {
       method: 'POST',
       body: JSON.stringify({ template_id: templateId }),
     }),
-  toggle: (itemId: number | string) =>
+  toggle: (itemId: number | string, body?: { done: boolean }) =>
     request<{ employee_onboarding_item_id: number; done: boolean; completed_at: string | null }>(
       `/onboarding-items/${itemId}/toggle`,
-      { method: 'PATCH' }
+      { method: 'PATCH', ...(body ? { body: JSON.stringify(body) } : {}) }
     ),
 };
 

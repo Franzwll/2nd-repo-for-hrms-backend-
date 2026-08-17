@@ -32,6 +32,9 @@ Route::prefix('v1')->group(function () {
     /* ------------------------------------------------------------------ */
     /* Assessments                                                          */
     /* ------------------------------------------------------------------ */
+    Route::get('assessments', [ApplicantAssessmentController::class, 'index'])
+         ->name('assessments.index');
+
     Route::post('applicants/{applicant}/assessments', [ApplicantAssessmentController::class, 'store'])
          ->name('applicants.assessments.store');
 

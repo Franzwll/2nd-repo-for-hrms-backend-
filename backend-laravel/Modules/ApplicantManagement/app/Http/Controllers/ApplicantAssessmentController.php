@@ -13,6 +13,38 @@ use Modules\ApplicantManagement\Models\ApplicantAssessment;
 class ApplicantAssessmentController extends Controller
 {
     /* ------------------------------------------------------------------ */
+    /* GET /api/v1/assessments                                             */
+    /* List assessments with optional applicant filter                     */
+    /* ------------------------------------------------------------------ */
+
+    public function index(Request $request): JsonResponse
+    {
+        $query = ApplicantAssessment::with('applicant.jobPost.department')
+            ->orderByDesc('assessment_date')
+            ->orderByDesc('assessment_id');
+
+        if ($applicantId = $request->query('applicant_id')) {
+            $query->where('applicant_id', $applicantId);
+        }
+        if ($outcome = $request->query('outcome')) {
+            $query->where('outcome', $outcome);
+        }
+
+        $perPage = (int) $request->query('per_page', 15);
+        $paginated = $query->paginate($perPage);
+
+        return response()->json([
+            'data' => AssessmentResource::collection($paginated->items()),
+            'meta' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page'    => $paginated->lastPage(),
+                'per_page'     => $paginated->perPage(),
+                'total'        => $paginated->total(),
+            ],
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
     /* POST /api/v1/applicants/{applicant}/assessments                     */
     /* Records an assessment; advances applicant stage to "Assessed"       */
     /* ------------------------------------------------------------------ */

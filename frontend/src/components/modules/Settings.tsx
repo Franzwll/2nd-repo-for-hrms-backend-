@@ -57,17 +57,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { newHires } from "@/data/hr";
-import { myProfile } from "@/data/ess";
 import { Progress } from "@/components/ui/progress";
-import { Checkbox } from "@/components/ui/checkbox";
 
-const backupSeed = [
-  { id: "BKP-104", timestamp: "2026-07-26 03:00", size: "482 MB", type: "Automatic (Daily)" },
-  { id: "BKP-103", timestamp: "2026-07-25 03:00", size: "480 MB", type: "Automatic (Daily)" },
-  { id: "BKP-102", timestamp: "2026-07-24 16:22", size: "479 MB", type: "Manual" },
-  { id: "BKP-101", timestamp: "2026-07-24 03:00", size: "477 MB", type: "Automatic (Daily)" },
-];
+type BackupEntry = {
+  id: string;
+  timestamp: string;
+  size: string;
+  type: string;
+};
 
 export { AuditLogs } from "./AuditLogs";
 
@@ -145,10 +142,10 @@ function InfoRow({
 export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employee" }) {
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
   const [backupSchedule, setBackupSchedule] = useState("daily");
-  const [backups, setBackups] = useState(backupSeed);
+  const [backups, setBackups] = useState<BackupEntry[]>([]);
   const [backupInProgress, setBackupInProgress] = useState(false);
   const [backupProgress, setBackupProgress] = useState(0);
-  const [restoreTarget, setRestoreTarget] = useState<(typeof backupSeed)[number] | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<BackupEntry | null>(null);
   const [notify, setNotify] = useState<Record<string, boolean>>({
     "Email notifications": true,
     "Browser notifications": true,
@@ -174,17 +171,23 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [prefsDraft, setPrefsDraft] = useState(preferences);
 
-  // Login security
+  // Login security (password policy + session rules, saved to "password_policy")
   const [security, setSecurity] = useState({
     twoFactor: true,
-    passwordPolicy: "Strong",
+    minLength: 8,
+    requireUppercase: true,
+    requireLowercase: true,
+    requireNumber: true,
+    requireSymbol: true,
     sessionTimeout: "30 minutes",
     maxLoginAttempts: "3 attempts",
   });
   const [securityOpen, setSecurityOpen] = useState(false);
   const [securityDraft, setSecurityDraft] = useState(security);
 
-  // Change default password of all users (superadmin)
+  // Change default password of all users (superadmin) — the default password
+  // is also stored in the database (system_settings.default_password) and
+  // used for new user accounts.
   const [resetPwOpen, setResetPwOpen] = useState(false);
   const [resetPw, setResetPw] = useState("");
   const [resetPwConfirm, setResetPwConfirm] = useState("");
@@ -212,13 +215,21 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
           setPreferences(res.map["preferences"]);
           setPrefsDraft(res.map["preferences"]);
         }
-        if (res.map["security"]) {
-          setSecurity(res.map["security"]);
-          setSecurityDraft(res.map["security"]);
+        if (res.map["password_policy"]) {
+          setSecurity(res.map["password_policy"]);
+          setSecurityDraft(res.map["password_policy"]);
         }
         if (res.map["notifications"]) {
           setNotify(res.map["notifications"]);
           setNotifDraft(res.map["notifications"]);
+        }
+        if (res.map["backups"]) {
+          setBackups(Array.isArray(res.map["backups"]) ? res.map["backups"] : []);
+        }
+        if (res.map["backup"]) {
+          const b = res.map["backup"];
+          if (typeof b?.enabled === "boolean") setAutoBackupEnabled(b.enabled);
+          if (b?.schedule) setBackupSchedule(b.schedule);
         }
       }
     }).catch((err) => {
@@ -236,21 +247,33 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
         if (next >= 100) {
           clearInterval(timer);
           setBackupInProgress(false);
-          setBackups((prev) => [
-            {
-              id: `BKP-${105 + prev.length}`,
-              timestamp: new Date().toISOString().slice(0, 16).replace("T", " "),
-              size: "483 MB",
-              type: "Manual",
-            },
-            ...prev,
-          ]);
+          setBackups((prev) => {
+            const created = [
+              {
+                id: `BKP-${105 + prev.length}`,
+                timestamp: new Date().toISOString().slice(0, 16).replace("T", " "),
+                size: "483 MB",
+                type: "Manual",
+              },
+              ...prev,
+            ];
+            settingsApi
+              .upsert("backups", created)
+              .catch((e) => console.warn("Could not save backups to database:", e));
+            return created;
+          });
           toast.success("Backup created successfully");
           return 0;
         }
         return next;
       });
     }, 300);
+  };
+
+  const persistAutoBackup = (enabled: boolean, schedule: string) => {
+    settingsApi
+      .upsert("backup", { enabled, schedule })
+      .catch((e) => console.warn("Could not save backup settings to database:", e));
   };
 
   const restoreBackup = () => {
@@ -270,7 +293,10 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
     setConfirmPassword("");
   };
 
-  /** Changes the default password of ALL active system users. */
+  const isSuperAdmin = role === "superadmin";
+
+  /** Changes the default password of ALL active system users, and persists it
+   *  in the database so newly created accounts (new hires) start with it. */
   const resetDefaultPassword = async () => {
     if (!resetPw || resetPw.length < 8) {
       toast.error("Default password must be at least 8 characters");
@@ -290,8 +316,6 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
       toast.error(e instanceof Error ? e.message : "Could not update the default password");
     }
   };
-
-  const isSuperAdmin = role === "superadmin";
 
   return (
     <div>
@@ -325,7 +349,13 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   aria-label={label}
                   checked={notify[label] ?? false}
                   onCheckedChange={(v) => {
-                    setNotify((prev) => ({ ...prev, [label]: v }));
+                    setNotify((prev) => {
+                      const next = { ...prev, [label]: v };
+                      settingsApi
+                        .upsert("notifications", next)
+                        .catch((e) => console.warn("Could not save notification settings:", e));
+                      return next;
+                    });
                     toast.success(`${label} ${v ? "enabled" : "disabled"}`);
                   }}
                 />
@@ -520,7 +550,14 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                 value={security.twoFactor ? "Enabled" : "Disabled"}
                 tone={security.twoFactor ? "success" : "default"}
               />
-              <InfoRow label="Default password policy" value={security.passwordPolicy} />
+              <InfoRow
+                label="Password policy"
+                value={`Min ${security.minLength ?? 8} characters, uppercase${
+                  security.requireUppercase ? "" : " not required"
+                }, lowercase${security.requireLowercase ? "" : " not required"}, number${
+                  security.requireNumber ? "" : " not required"
+                }${security.requireSymbol ? ", symbol" : ""}`}
+              />
               <InfoRow label="Session timeout" value={security.sessionTimeout} />
               <InfoRow label="Max login attempts" value={security.maxLoginAttempts} />
             </div>
@@ -604,20 +641,42 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Default password policy</Label>
-                  <Select
-                    value={securityDraft.passwordPolicy}
-                    onValueChange={(v) => setSecurityDraft((p) => ({ ...p, passwordPolicy: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Basic">Basic</SelectItem>
-                      <SelectItem value="Strong">Strong</SelectItem>
-                      <SelectItem value="Very strong">Very strong</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="pw-min-length">Minimum password length</Label>
+                  <Input
+                    id="pw-min-length"
+                    type="number"
+                    min={6}
+                    max={32}
+                    value={securityDraft.minLength ?? 8}
+                    onChange={(e) =>
+                      setSecurityDraft((p) => ({
+                        ...p,
+                        minLength: Math.max(6, Math.min(32, Number(e.target.value) || 8)),
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Password requirements</Label>
+                  {(
+                    [
+                      ["requireUppercase", "Require at least one uppercase letter (A–Z)"],
+                      ["requireLowercase", "Require at least one lowercase letter (a–z)"],
+                      ["requireNumber", "Require at least one number (0–9)"],
+                      ["requireSymbol", "Require at least one symbol (!@#$%…)"] as const,
+                    ] as const
+                  ).map(([key, label]) => (
+                    <div
+                      key={key}
+                      className="flex items-center justify-between gap-4 rounded-md border border-border/70 bg-muted/30 px-3 py-2"
+                    >
+                      <span className="text-sm text-muted-foreground">{label}</span>
+                      <Switch
+                        checked={securityDraft[key] ?? false}
+                        onCheckedChange={(v) => setSecurityDraft((p) => ({ ...p, [key]: v }))}
+                      />
+                    </div>
+                  ))}
                 </div>
                 <div className="space-y-2">
                   <Label>Session timeout</Label>
@@ -661,7 +720,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                     setSecurity(securityDraft);
                     setSecurityOpen(false);
                     try {
-                      await settingsApi.upsert('security', securityDraft);
+                      await settingsApi.upsert('password_policy', securityDraft);
                       toast.success("System-wide login security policy saved to database");
                     } catch (e) {
                       toast.error(e instanceof Error ? e.message : "Could not save security policy");
@@ -675,7 +734,8 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
           </Dialog>
         )}
 
-        {/* Change default password of ALL active system users (superadmin) */}
+        {/* Change default password of ALL active system users (superadmin) —
+            also saved to system_settings.default_password in the database */}
         {isSuperAdmin && (
           <Dialog open={resetPwOpen} onOpenChange={setResetPwOpen}>
             <DialogContent>
@@ -684,8 +744,9 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   Change default password of all users
                 </DialogTitle>
                 <DialogDescription>
-                  Sets the same default password for every active system user account. Users will
-                  need to log in with the new password.
+                  Sets the same default password for every active system user account, and saves
+                  it to the database so new user accounts are created with it. Users will need to
+                  log in with the new password.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4">
@@ -863,7 +924,13 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                 </div>
                 <div className="flex items-center gap-3">
                   {autoBackupEnabled && (
-                    <Select value={backupSchedule} onValueChange={setBackupSchedule}>
+                    <Select
+                      value={backupSchedule}
+                      onValueChange={(v) => {
+                        setBackupSchedule(v);
+                        persistAutoBackup(true, v);
+                      }}
+                    >
                       <SelectTrigger className="h-9 w-36">
                         <SelectValue />
                       </SelectTrigger>
@@ -876,7 +943,10 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   )}
                   <Switch
                     checked={autoBackupEnabled}
-                    onCheckedChange={setAutoBackupEnabled}
+                    onCheckedChange={(v) => {
+                      setAutoBackupEnabled(v);
+                      persistAutoBackup(v, backupSchedule);
+                    }}
                     aria-label="Automatic backups"
                   />
                 </div>
@@ -953,56 +1023,6 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
           </Card>
         )}
       </div>
-    </div>
-  );
-}
-
-export function EmployeeOnboarding() {
-  const hire = newHires.find((h) => h.name === myProfile.name) ?? newHires[0]!;
-  const [checklist, setChecklist] = useState(hire.checklist);
-  const pct = Math.round((checklist.filter((c) => c.done).length / checklist.length) * 100);
-  return (
-    <div>
-      <PageHeader
-        eyebrow="Employee"
-        title="My Onboarding"
-        description="Complete your requirements to move to the next stage."
-      />
-      <Card className="border-border/70">
-        <CardContent className="p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="eyebrow">Current stage</p>
-              <p className="font-display text-3xl font-semibold text-primary">{hire.stage}</p>
-            </div>
-            <Badge variant="outline">{pct}% complete</Badge>
-          </div>
-          <Progress value={pct} className="mt-3 h-2" />
-          <div className="mt-5 space-y-2">
-            {checklist.map((c) => (
-              <label
-                key={c.item}
-                className="flex cursor-pointer items-center gap-3 rounded-md border border-border p-3"
-              >
-                <Checkbox
-                  checked={c.done}
-                  onCheckedChange={() =>
-                    setChecklist((p) =>
-                      p.map((x) => (x.item === c.item ? { ...x, done: !x.done } : x)),
-                    )
-                  }
-                />
-                <span className={c.done ? "text-sm text-muted-foreground line-through" : "text-sm"}>
-                  {c.item}
-                </span>
-              </label>
-            ))}
-          </div>
-          <Button className="mt-4" onClick={() => toast.success("Requirements submitted to HR")}>
-            <Plus className="mr-2 h-4 w-4" /> Submit requirements
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   );
 }

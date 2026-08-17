@@ -114,7 +114,9 @@ class SettingsController extends Controller
 
     /* ------------------------------------------------------------------ */
     /* POST /api/v1/reset-default-password                                 */
-    /* Change the default password of ALL system users at once.            */
+    /* Change the default password of ALL system users at once, and store  */
+    /* it in system_settings so newly created accounts (new hires, etc.)   */
+    /* start with the same default password.                               */
     /* ------------------------------------------------------------------ */
 
     public function resetDefaultPassword(Request $request): JsonResponse
@@ -126,6 +128,14 @@ class SettingsController extends Controller
         $updated = SystemUser::query()
             ->where('status', 'Active')
             ->update(['password_hash' => Hash::make($data['password'])]);
+
+        // Persist the new default password — read back via
+        // GET /api/v1/settings/default_password for new-user account setup.
+        SystemSetting::setValue(
+            'default_password',
+            ['password' => $data['password']],
+            $request->user()?->id ?? null
+        );
 
         return response()->json([
             'message' => "Default password changed for {$updated} active user(s).",

@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import {
   Check,
   CheckCircle2,
+  ChevronDown,
   Circle,
   ClipboardCheck,
   ClipboardList,
@@ -32,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -82,6 +84,7 @@ import { SortHead, useSort } from "@/components/portal/sortable";
 import {
   checklistRequestsApi,
   onboardingItemsApi,
+  settingsApi,
   type ApiChecklistRequest,
 } from "@/lib/api";
 
@@ -145,6 +148,7 @@ const freshChecklist = (stage: Stage, probationaryItems: string[]) =>
   (stage === "Pre-onboarding" ? defaultChecklist : probationaryItems).map((item) => ({
     item,
     done: false,
+    phase: stage === "Pre-onboarding" ? ("Pre-onboarding" as const) : ("Probationary" as const),
   }));
 
 const initialsOf = (name: string) =>
@@ -433,6 +437,10 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const [requestedItems, setRequestedItems] =
     useState<RequestedChecklistItem[]>(seedRequestedItems);
 
+  /** Default password for new portal accounts, read from the database
+   *  (system_settings.default_password); falls back to the shipped default. */
+  const [defaultPassword, setDefaultPassword] = useState(DEFAULT_ACCOUNT_PASSWORD);
+
   useEffect(() => {
     checklistRequestsApi
       .list({ per_page: 100 })
@@ -444,6 +452,15 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       .catch((err) =>
         console.warn("Could not fetch checklist requests from API:", err),
       );
+    settingsApi
+      .get("default_password")
+      .then((res) => {
+        const pw = res?.setting_value?.password;
+        if (typeof pw === "string" && pw.length >= 8) setDefaultPassword(pw);
+      })
+      .catch(() => {
+        console.warn("Could not fetch default password from database, using built-in default.");
+      });
   }, []);
 
   const [reqItemDraft, setReqItemDraft] = useState("");
@@ -528,7 +545,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       initials: initialsOf(intake.name),
       email: intake.email,
       phone: intake.phone,
-      checklist: defaultChecklist.map((item) => ({ item, done: false })),
+      checklist: defaultChecklist.map((item) => ({
+        item,
+        done: false,
+        phase: "Pre-onboarding",
+      })),
     }, intake.applicantId);
     setSelectedId(id);
     setStage("Pre-onboarding");
@@ -540,16 +561,13 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
 
   const toggleItem = (hireId: string, item: string) => {
     if (editingId !== hireId) return;
-    setHires((prev) =>
-      prev.map((h) => {
-        if (h.id !== hireId) return h;
-        // No auto-promotion — the stage only changes via "Advance stage".
-        return {
-          ...h,
-          checklist: h.checklist.map((c) => (c.item === item ? { ...c, done: !c.done } : c)),
-        };
-      }),
-    );
+    const target = hires.find((h) => h.id === hireId);
+    const index = target?.checklist.findIndex((c) => c.item === item) ?? -1;
+    const checklistItem = target?.checklist[index];
+    if (!target || !checklistItem) return;
+    const next = !checklistItem.done;
+    // Optimistic local update + persistence to the DB API (real-time sync).
+    hireStore.toggleItem(hireId, index, next);
   };
 
   const startEditChecklist = (hire: NewHire) => {
@@ -761,8 +779,13 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     });
   };
 
-  const progress = (h: NewHire) =>
-    Math.round((h.checklist.filter((c) => c.done).length / h.checklist.length) * 100);
+  const progress = (h: NewHire) => {
+    // Probationary progress reflects only the Probationary phase items
+    // (falls back to the whole checklist when items are not phase-tagged).
+    const phaseItems = h.checklist.filter((c) => (c.phase ?? "Probationary") === "Probationary");
+    const pool = h.stage === "Probationary" && phaseItems.length > 0 ? phaseItems : h.checklist;
+    return Math.round((pool.filter((c) => c.done).length / pool.length) * 100);
+  };
 
   /**
    * Evaluation cycles can drag on — if a hire's checklist is fully complete
@@ -866,21 +889,27 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     // saving here is what promotes them and creates their portal account.
     if (completingId) {
       const id = completingId;
+      const probationaryItems = hireStore.combinedProbationaryItems(form.position);
       setHires((prev) =>
-        prev.map((h) =>
-          h.id === id
-            ? {
-                ...h,
-                stage: "Probationary",
-                checklist: freshChecklist("Probationary", hireStore.combinedProbationaryItems()),
-                position: form.position,
-                department: form.department,
-                startDate: form.startDate,
-                email: form.email,
-                phone: form.phone,
-              }
-            : h,
-        ),
+        prev.map((h) => {
+          if (h.id !== id) return h;
+          // Pre-onboarding tasks stay on the checklist (tagged so they show
+          // in their own collapsed section) while the probationary phase
+          // items are freshly applied from the active templates.
+          const preItems = h.checklist
+            .filter((c) => (c.phase ?? "Pre-onboarding") === "Pre-onboarding")
+            .map((c) => ({ ...c, phase: "Pre-onboarding" as const }));
+          return {
+            ...h,
+            stage: "Probationary",
+            checklist: [...preItems, ...freshChecklist("Probationary", probationaryItems)],
+            position: form.position,
+            department: form.department,
+            startDate: form.startDate,
+            email: form.email,
+            phone: form.phone,
+          };
+        }),
       );
       setStage("Probationary");
       setShowAllStages(false);
@@ -888,7 +917,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       const name = form.name;
       resetHireForm();
       toast.success(
-        `${name} moved to Probationary — portal account created (default password ${DEFAULT_ACCOUNT_PASSWORD})`,
+        `${name} moved to Probationary — portal account created (default password ${defaultPassword})`,
       );
       hireStore.updateHire(id, {
         name: form.name,
@@ -911,7 +940,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       initials: initialsOf(form.name),
       email: form.email,
       phone: form.phone,
-      checklist: defaultChecklist.map((item) => ({ item, done: false })),
+      checklist: defaultChecklist.map((item) => ({
+        item,
+        done: false,
+        phase: "Pre-onboarding",
+      })),
     });
 
     setSelectedId(id);
@@ -1401,6 +1434,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             <>
                               <ul className="mt-3 space-y-1.5">
                                 {[...selected.checklist]
+                                  .filter((c) => (c.phase ?? "Probationary") !== "Pre-onboarding")
                                   .map((c, i) => ({ ...c, i }))
                                   .sort((a, b) => Number(a.done) - Number(b.done) || a.i - b.i)
                                   .map((c) => {
@@ -1437,6 +1471,65 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                     );
                                   })}
                               </ul>
+
+                              {selected.checklist.some(
+                                (c) => (c.phase ?? "Probationary") === "Pre-onboarding",
+                              ) && (
+                                <Collapsible className="mt-3">
+                                  <CollapsibleTrigger
+                                    className="flex w-full items-center justify-between rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium transition-colors hover:bg-muted/50"
+                                  >
+                                    <span className="flex items-center gap-1.5">
+                                      <ChevronDown className="h-3.5 w-3.5" />
+                                      Pre-onboarding tasks
+                                    </span>
+                                    <span className="text-muted-foreground">
+                                      {selected.checklist.filter(
+                                        (c) =>
+                                          (c.phase ?? "Probationary") === "Pre-onboarding" &&
+                                          c.done,
+                                      ).length}
+                                      /{selected.checklist.filter((c) => (c.phase ?? "Probationary") === "Pre-onboarding").length} done
+                                    </span>
+                                  </CollapsibleTrigger>
+                                  <CollapsibleContent className="overflow-hidden transition-all data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+                                    <ul className="mt-2 space-y-1.5 pl-1.5">
+                                      {selected.checklist
+                                        .filter((c) => (c.phase ?? "Probationary") === "Pre-onboarding")
+                                        .map((c) => {
+                                          const isEditingThis = editingId === selected.id && !isWaiting;
+                                          return (
+                                            <li key={c.item}>
+                                              <button
+                                                type="button"
+                                                disabled={!isEditingThis}
+                                                onClick={() => toggleItem(selected.id, c.item)}
+                                                className={cn(
+                                                  "flex w-full items-center gap-2.5 rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                                                  isEditingThis
+                                                    ? "cursor-pointer"
+                                                    : "cursor-not-allowed opacity-80",
+                                                  c.done
+                                                    ? "border-gold/30 bg-gold/10 text-gold-foreground"
+                                                    : "border-border hover:border-primary/40",
+                                                )}
+                                              >
+                                                {c.done ? (
+                                                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                                                ) : (
+                                                  <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                                )}
+                                                <span className={cn(c.done && "line-through opacity-80")}>
+                                                  {c.item}
+                                                </span>
+                                              </button>
+                                            </li>
+                                          );
+                                        })}
+                                    </ul>
+                                  </CollapsibleContent>
+                                </Collapsible>
+                              )}
                             </>
 
                             {progress(selected) === 100 && !isWaiting && (
@@ -1453,19 +1546,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                       variant="outline"
                                       className="h-10 cursor-pointer"
                                       onClick={() =>
-                                        setHires((prev) =>
-                                          prev.map((h) =>
-                                            h.id === selected.id
-                                              ? {
-                                                  ...h,
-                                                  checklist: h.checklist.map((c) => ({
-                                                    ...c,
-                                                    done: true,
-                                                  })),
-                                                }
-                                              : h,
-                                          ),
-                                        )
+                                        hireStore.setAllItemsDone(selected.id, true)
                                       }
                                     >
                                       Mark all done
@@ -2311,7 +2392,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
 
           <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
             Account note: the employee portal account is created with the default password{" "}
-            <span className="font-medium text-foreground">{DEFAULT_ACCOUNT_PASSWORD}</span> — the
+            <span className="font-medium text-foreground">{defaultPassword}</span> — the
             hire is prompted to change it on first login.
           </div>
 

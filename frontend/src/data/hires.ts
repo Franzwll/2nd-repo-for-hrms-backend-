@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { newHires as seedHires, type Employee, type NewHire } from "@/data/hr";
-import { newHiresApi, checklistTemplatesApi, type ApiNewHire, type ApiChecklistTemplate } from "@/lib/api";
+import { newHiresApi, checklistTemplatesApi, onboardingItemsApi, type ApiNewHire, type ApiChecklistTemplate } from "@/lib/api";
 
 /** Draft handed over from Applicant Management when an assessment is accepted. */
 export type PendingHire = {
@@ -45,18 +45,24 @@ function transformApiNewHire(h: ApiNewHire): NewHire {
     checklist: (h.onboarding_items || []).map((i) => ({
       item: i.item_text,
       done: i.done,
+      dbId: i.employee_onboarding_item_id,
+      ...(i.phase === "Probationary" || i.phase === "Pre-onboarding"
+        ? { phase: i.phase }
+        : {}),
     })),
   };
 }
 
 function transformApiTemplate(t: ApiChecklistTemplate): MasterChecklistTemplate {
+  const scope = t.position_scope ?? [];
   return {
     id: t.template_code || `OCT-${t.template_id}`,
     dbId: t.template_id,
     title: t.title,
     items: (t.items || []).map((i) => i.item_text),
-    phase: (t.phase === "Pre-onboarding" ? "Pre-onboarding" : "Probationary") as any,
-    positions: "all",
+    phase: (t.phase === "Pre-onboarding" ? "Pre-onboarding" : "Probationary") as "Pre-onboarding" | "Probationary",
+    positions:
+      scope.length === 0 || scope.includes("all") ? "all" : scope,
     status: t.status === "Active" ? "Active" : "Closed",
   };
 }
@@ -96,6 +102,19 @@ let hasFetched = false;
 async function fetchHiresFromApi() {
   if (hasFetched) return;
   hasFetched = true;
+  await syncFromApi();
+}
+
+/** How often to silently refetch so checklist toggles made on one screen
+ *  (admin, employee portal, checklist builder) appear everywhere. */
+const SYNC_INTERVAL_MS = 15000;
+let syncing = false;
+
+/** Refetches new hires + checklist templates from the API and replaces local
+ *  data. Safe to call repeatedly — API rows win over local cache. */
+async function syncFromApi() {
+  if (syncing) return;
+  syncing = true;
   try {
     const [hiresRes, tmplRes] = await Promise.allSettled([
       newHiresApi.list({ per_page: 100 }),
@@ -111,11 +130,17 @@ async function fetchHiresFromApi() {
     emit();
   } catch (err) {
     console.warn("Could not fetch new hires from backend API, using cached data.", err);
+  } finally {
+    syncing = false;
   }
 }
 
 if (typeof window !== "undefined") {
   fetchHiresFromApi();
+  setInterval(() => {
+    if (document.visibilityState === "visible") syncFromApi();
+  }, SYNC_INTERVAL_MS);
+  window.addEventListener("focus", syncFromApi);
 }
 
 export const DEFAULT_ACCOUNT_PASSWORD = "Oxford@2026";
@@ -153,7 +178,7 @@ export const hireStore = {
     try {
       // applicant_id lets the backend fill position_id/department_id from
       // the applicant's job post, so the hire never shows Staff/General.
-      await newHiresApi.create({
+      const created = await newHiresApi.create({
         applicant_id: applicantId ?? null,
         name: hire.name,
         email: hire.email,
@@ -161,6 +186,12 @@ export const hireStore = {
         stage: hire.stage,
         start_date: hire.startDate,
       });
+      // Replace the optimistic row with the DB row, which already carries
+      // the checklists auto-applied from matching Active templates.
+      hires = hires.map((h) =>
+        h.id === hire.id ? transformApiNewHire(created) : h,
+      );
+      emit();
     } catch (e) {
       console.warn("API new hire create error:", e);
     }
@@ -179,11 +210,16 @@ export const hireStore = {
   /** True when a hire with the same name + position already exists. */
   exists: (name: string, position: string) =>
     hires.some((h) => h.name === name && h.position === position),
-  /** All items across every master checklist template — the starting
-   *  requirements checklist for a hire entering Probationary. */
-  combinedProbationaryItems: () =>
+  /** All items across every active master checklist template that applies
+   *  to the given position (or to every position when none is given) — the
+   *  starting requirements checklist for a hire entering Probationary. */
+  combinedProbationaryItems: (position?: string) =>
     masterChecklists
       .filter((c) => (c.phase ?? "Probationary") === "Probationary" && (c.status ?? "Active") === "Active")
+      .filter((c) => {
+        if (!position) return true;
+        return c.positions === "all" || !c.positions || (c.positions as string[]).includes(position);
+      })
       .flatMap((c) => c.items),
   addMasterChecklist: async (
     title: string,
@@ -206,6 +242,8 @@ export const hireStore = {
         title,
         phase: meta?.phase ?? "Probationary",
         status: meta?.status ?? "Active",
+        position_scope_json:
+          meta?.positions === "all" || !meta?.positions ? [] : meta.positions,
         items: items.map((item_text, sort_order) => ({ item_text, sort_order })),
       });
     } catch (e) {
@@ -222,10 +260,13 @@ export const hireStore = {
 
     try {
       if (target?.dbId) {
+        const resolvedPositions = patch.positions ?? target.positions;
         await checklistTemplatesApi.update(target.dbId, {
           title: patch.title ?? target.title,
           phase: patch.phase ?? target.phase,
           status: patch.status ?? target.status,
+          position_scope_json:
+            resolvedPositions === "all" ? [] : (resolvedPositions as string[]),
           items: (patch.items ?? target.items).map((item_text, sort_order) => ({
             item_text,
             sort_order,
@@ -267,14 +308,65 @@ export const hireStore = {
     const target = hires.find((h) => h.id === id);
     if (!target?.dbId) return;
     try {
-      await newHiresApi.promoteStage(target.dbId);
+      const updated = await newHiresApi.promoteStage(target.dbId);
+      // The promoted hire comes back with checklists auto-applied from
+      // matching Active templates for the new stage.
+      hires = hires.map((h) => (h.id === id ? transformApiNewHire(updated) : h));
+      emit();
     } catch (e) {
       console.warn("API new hire promote error:", e);
     }
   },
+  /** Toggles one checklist item locally, then persists it to the database
+   *  so the employee portal and other screens pick it up in real time. */
+  toggleItem: async (hireId: string, itemIndex: number, done: boolean) => {
+    const target = hires.find((h) => h.id === hireId);
+    const item = target?.checklist[itemIndex];
+    hires = hires.map((h) =>
+      h.id === hireId
+        ? {
+            ...h,
+            checklist: h.checklist.map((c, i) =>
+              i === itemIndex ? { ...c, done } : c,
+            ),
+          }
+        : h,
+    );
+    emit();
+
+    if (!item?.dbId || !target?.dbId) return;
+    try {
+      await onboardingItemsApi.toggle(item.dbId, { done });
+    } catch (e) {
+      console.warn("API onboarding item toggle error:", e);
+    }
+  },
+  /** Persists the whole hire's checklist (used by "Mark all done"). */
+  setAllItemsDone: async (hireId: string, done: boolean) => {
+    const target = hires.find((h) => h.id === hireId);
+    if (!target) return;
+    hires = hires.map((h) =>
+      h.id === hireId
+        ? { ...h, checklist: h.checklist.map((c) => ({ ...c, done })) }
+        : h,
+    );
+    emit();
+
+    await Promise.all(
+      (target.checklist || [])
+        .filter((c) => c.dbId)
+        .map((c) =>
+          onboardingItemsApi
+            .toggle(c.dbId as number, { done })
+            .catch((e) =>
+              console.warn("API onboarding item bulk toggle error:", e),
+            ),
+        ),
+    );
+  },
   refresh: () => {
     hasFetched = false;
-    return fetchHiresFromApi();
+    return syncFromApi();
   }
 };
 

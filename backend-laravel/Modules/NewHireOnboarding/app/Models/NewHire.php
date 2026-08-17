@@ -66,4 +66,14 @@ class NewHire extends Model
         }
         return round(($items->where('done', true)->count() / $items->count()) * 100, 1);
     }
+
+    /** Phase for an onboarding item whose template link is missing, inferred
+     *  from the hire's own stage so untagged legacy items keep working. */
+    public function stageForOnboardingItem(EmployeeOnboardingItem $item): string
+    {
+        return match ($this->stage) {
+            'Pre-onboarding' => 'Pre-onboarding',
+            default          => 'Probationary',
+        };
+    }
 }
