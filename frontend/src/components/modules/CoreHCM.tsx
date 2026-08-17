@@ -19,6 +19,7 @@ import {
   UserCheck,
   Users,
   UserX,
+  X,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -595,14 +596,32 @@ function EmployeeListManager({
   const [viewingEmpInfo, setViewingEmpInfo] = useState<Employee | null>(null);
   const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
   const [editEmpForm, setEditEmpForm] = useState({
-    name: "",
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    email: "",
+    personalEmail: "",
+    phone: "",
+    address: "",
+    birthDate: "",
+    gender: "",
+    civilStatus: "",
+    nationality: "",
     position: "",
     department: "",
-    email: "",
-    phone: "",
+    supervisor: "",
     employmentType: "Regular" as Employee["employmentType"],
     dateHired: "",
-    supervisor: "",
+    status: "Active" as string,
+    salaryGrade: "",
+    salaryStep: "",
+    sssNumber: "",
+    philhealthNumber: "",
+    pagibigNumber: "",
+    tinNumber: "",
+    emergencyName: "",
+    emergencyRelation: "",
+    emergencyPhone: "",
   });
   const [showEditEmpModal, setShowEditEmpModal] = useState(false);
   const [pendingEmpUnsaved, setPendingEmpUnsaved] = useState(false);
@@ -645,6 +664,9 @@ function EmployeeListManager({
 
   const empPage = usePagination(filteredEmployees);
   const deptOptions = Array.from(new Set(empList.map((e) => e.department))).sort();
+  const positionOptions = hcm.positions.map((p) => p.title).sort();
+  const supervisorOptions = empList.map((e) => e.name).sort();
+  const salaryGradeOptions = hcm.salaryGrades.map((g) => g.code);
 
   const executeRegularization = async (emp: Employee) => {
     const dbId = employeeIdByCode.get(emp.id);
@@ -741,18 +763,52 @@ function EmployeeListManager({
       toast.error(`Could not resolve ${editingEmp.id} in Core HCM.`);
       return;
     }
+    const pos = hcm.positions.find((p) => p.title === editEmpForm.position);
+    const dept = hcm.departments.find((d) => d.name === editEmpForm.department);
+    const sg = hcm.salaryGrades.find((g) => g.code === editEmpForm.salaryGrade);
+    const sup = hcm.employees.find((x) => x.full_name === editEmpForm.supervisor);
+    if (!pos || !dept) {
+      toast.error("Please select a valid position and department.");
+      return;
+    }
     try {
       await hcmApi.employees.update(dbId, {
-        first_name: editEmpForm.name.split(" ")[0] || editEmpForm.name,
-        last_name: editEmpForm.name.split(" ").slice(1).join(" ") || editEmpForm.name,
+        first_name: editEmpForm.firstName,
+        middle_name: editEmpForm.middleName || null,
+        last_name: editEmpForm.lastName,
         email: editEmpForm.email,
-        phone: editEmpForm.phone,
-        position_title: editEmpForm.position,
-        department_name: editEmpForm.department,
+        personal_email: editEmpForm.personalEmail || null,
+        phone: editEmpForm.phone || null,
+        address: editEmpForm.address || null,
+        birth_date: editEmpForm.birthDate || null,
+        gender: editEmpForm.gender || null,
+        civil_status: editEmpForm.civilStatus || null,
+        nationality: editEmpForm.nationality || null,
+        position_id: pos.position_id,
+        department_id: dept.department_id,
+        supervisor_employee_id: sup?.employee_id ?? null,
         employment_type: editEmpForm.employmentType,
         date_hired: editEmpForm.dateHired,
+        status: editEmpForm.status,
+        salary_grade_id: sg?.salary_grade_id ?? null,
+        salary_step: editEmpForm.salaryStep || null,
+        sss_number: editEmpForm.sssNumber || null,
+        philhealth_number: editEmpForm.philhealthNumber || null,
+        pagibig_number: editEmpForm.pagibigNumber || null,
+        tin_number: editEmpForm.tinNumber || null,
+        emergency_contacts: editEmpForm.emergencyName
+          ? [
+              {
+                name: editEmpForm.emergencyName,
+                relationship: editEmpForm.emergencyRelation || null,
+                phone: editEmpForm.emergencyPhone || null,
+                address: null,
+                is_primary: 1,
+              },
+            ]
+          : [],
       });
-      toast.success(`Employee ${editEmpForm.name} updated.`);
+      toast.success(`${editEmpForm.firstName} ${editEmpForm.lastName}'s profile updated.`);
       await refreshHcm();
     } catch (err) {
       const status = (err as { status?: number }).status;
@@ -761,6 +817,59 @@ function EmployeeListManager({
     }
     setShowEditEmpModal(false);
     setEditingEmp(null);
+  };
+
+  const openEditEmployee = async (e: Employee) => {
+    setEditingEmp(e);
+    const dbId = employeeIdByCode.get(e.id);
+    let api: ApiEmployee | undefined = hcm.employees.find((x) => x.employee_code === e.id);
+    if (dbId) {
+      try {
+        api = (await hcmApi.employees.get(dbId)).data;
+      } catch {
+        /* fall back to the roster snapshot */
+      }
+    }
+    const emergency =
+      api?.emergency_contacts?.find((c) => c.is_primary) ?? api?.emergency_contacts?.[0];
+    const sup = api?.supervisor_employee_id
+      ? hcm.employees.find((x) => x.employee_id === api.supervisor_employee_id)
+      : undefined;
+    const sg = api?.salary_grade_id
+      ? hcm.salaryGrades.find((g) => g.salary_grade_id === api.salary_grade_id)
+      : undefined;
+    const nameParts = e.name.split(" ");
+    const form = {
+      firstName: api?.first_name ?? nameParts[0] ?? "",
+      middleName: api?.middle_name ?? "",
+      lastName: api?.last_name ?? nameParts.slice(1).join(" "),
+      email: api?.email ?? e.email,
+      personalEmail: api?.personal_email ?? "",
+      phone: api?.phone ?? e.phone,
+      address: api?.address ?? "",
+      birthDate: api?.birth_date ?? "",
+      gender: api?.gender ?? "",
+      civilStatus: api?.civil_status ?? "",
+      nationality: api?.nationality ?? "",
+      position: api?.position_title ?? e.position,
+      department: api?.department_name ?? e.department,
+      supervisor: sup?.full_name ?? e.supervisor,
+      employmentType: (api?.employment_type ?? e.employmentType) as Employee["employmentType"],
+      dateHired: api?.date_hired ?? e.dateHired,
+      status: api?.status ?? e.status,
+      salaryGrade: sg?.code ?? e.salaryGrade ?? "",
+      salaryStep: api?.salary_step ?? "",
+      sssNumber: api?.sss_number ?? "",
+      philhealthNumber: api?.philhealth_number ?? "",
+      pagibigNumber: api?.pagibig_number ?? "",
+      tinNumber: api?.tin_number ?? "",
+      emergencyName: emergency?.name ?? "",
+      emergencyRelation: emergency?.relationship ?? "",
+      emergencyPhone: emergency?.phone ?? "",
+    };
+    setEditEmpForm(form);
+    setOrigEmpForm(form);
+    setShowEditEmpModal(true);
   };
 
   return (
@@ -978,11 +1087,22 @@ function EmployeeListManager({
               <div className="relative min-w-[14rem]">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  className="h-9 border-border bg-card pl-8 text-xs shadow-2xs"
+                  className="h-9 border-border bg-card pl-8 pr-8 text-xs shadow-2xs"
                   placeholder="Search name, ID, position…"
                   value={empSearch}
                   onChange={(e) => onEmpSearchChange(e.target.value)}
                 />
+                {empSearch && (
+                  <button
+                    type="button"
+                    aria-label="Clear search"
+                    title="Clear search"
+                    onClick={() => onEmpSearchChange("")}
+                    className="absolute right-2 top-1/2 grid h-5 w-5 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
               <Select value={empDeptFilter} onValueChange={setEmpDeptFilter}>
                 <SelectTrigger className="h-9 w-44 text-xs bg-card shadow-2xs">
@@ -1092,30 +1212,7 @@ function EmployeeListManager({
                           size="sm"
                           variant="outline"
                           className="h-8 px-2 text-xs"
-                          onClick={() => {
-                            setEditingEmp(e);
-                            setEditEmpForm({
-                              name: e.name,
-                              position: e.position,
-                              department: e.department,
-                              email: e.email,
-                              phone: e.phone,
-                              employmentType: e.employmentType,
-                              dateHired: e.dateHired,
-                              supervisor: e.supervisor,
-                            });
-                            setOrigEmpForm({
-                              name: e.name,
-                              position: e.position,
-                              department: e.department,
-                              email: e.email,
-                              phone: e.phone,
-                              employmentType: e.employmentType,
-                              dateHired: e.dateHired,
-                              supervisor: e.supervisor,
-                            });
-                            setShowEditEmpModal(true);
-                          }}
+                          onClick={() => openEditEmployee(e)}
                         >
                           <Pencil className="mr-1 h-3 w-3" /> Edit
                         </Button>
@@ -1268,61 +1365,230 @@ function EmployeeListManager({
           }
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="h-5 w-5 text-primary" /> Edit Employee — {editingEmp?.name}
             </DialogTitle>
-            <DialogDescription>Update employee profile information in Core HCM.</DialogDescription>
+            <DialogDescription>Update all employee profile information in Core HCM.</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2 text-xs">
+          <div className="space-y-5 py-2 text-xs">
             <div className="space-y-1">
-              <Label className="text-xs">Full Name</Label>
-              <Input value={editEmpForm.name} onChange={(e) => setEditEmpForm({ ...editEmpForm, name: e.target.value })} className="text-xs" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Position</Label>
-                <Input value={editEmpForm.position} onChange={(e) => setEditEmpForm({ ...editEmpForm, position: e.target.value })} className="text-xs" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Department</Label>
-                <Input value={editEmpForm.department} onChange={(e) => setEditEmpForm({ ...editEmpForm, department: e.target.value })} className="text-xs" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Email</Label>
-                <Input value={editEmpForm.email} onChange={(e) => setEditEmpForm({ ...editEmpForm, email: e.target.value })} className="text-xs" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Phone</Label>
-                <Input value={editEmpForm.phone} onChange={(e) => setEditEmpForm({ ...editEmpForm, phone: e.target.value })} className="text-xs" />
+              <Label className="text-xs font-semibold">Personal Details</Label>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">First Name</Label>
+                  <Input value={editEmpForm.firstName} onChange={(e) => setEditEmpForm({ ...editEmpForm, firstName: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Middle Name</Label>
+                  <Input value={editEmpForm.middleName} onChange={(e) => setEditEmpForm({ ...editEmpForm, middleName: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Last Name</Label>
+                  <Input value={editEmpForm.lastName} onChange={(e) => setEditEmpForm({ ...editEmpForm, lastName: e.target.value })} className="text-xs" />
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Employment Type</Label>
-                <Select value={editEmpForm.employmentType} onValueChange={(v: any) => setEditEmpForm({ ...editEmpForm, employmentType: v })}>
-                  <SelectTrigger className="text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Regular">Regular</SelectItem>
-                    <SelectItem value="Probationary">Probationary</SelectItem>
-                    <SelectItem value="Contractual">Contractual</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Date Hired</Label>
-                <Input value={editEmpForm.dateHired} onChange={(e) => setEditEmpForm({ ...editEmpForm, dateHired: e.target.value })} className="text-xs" />
-              </div>
-            </div>
+
             <div className="space-y-1">
-              <Label className="text-xs">Supervisor</Label>
-              <Input value={editEmpForm.supervisor} onChange={(e) => setEditEmpForm({ ...editEmpForm, supervisor: e.target.value })} className="text-xs" />
+              <Label className="text-xs font-semibold">Contact Information</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Company Email</Label>
+                  <Input type="email" value={editEmpForm.email} onChange={(e) => setEditEmpForm({ ...editEmpForm, email: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Personal Email</Label>
+                  <Input type="email" value={editEmpForm.personalEmail} onChange={(e) => setEditEmpForm({ ...editEmpForm, personalEmail: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Mobile Number</Label>
+                  <Input value={editEmpForm.phone} onChange={(e) => setEditEmpForm({ ...editEmpForm, phone: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Home Address</Label>
+                  <Input value={editEmpForm.address} onChange={(e) => setEditEmpForm({ ...editEmpForm, address: e.target.value })} className="text-xs" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Other Personal Information</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Birth Date</Label>
+                  <Input type="date" value={editEmpForm.birthDate} onChange={(e) => setEditEmpForm({ ...editEmpForm, birthDate: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Gender</Label>
+                  <Select value={editEmpForm.gender} onValueChange={(v) => setEditEmpForm({ ...editEmpForm, gender: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="Select gender" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Male">Male</SelectItem>
+                      <SelectItem value="Female">Female</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Civil Status</Label>
+                  <Select value={editEmpForm.civilStatus} onValueChange={(v) => setEditEmpForm({ ...editEmpForm, civilStatus: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="Select civil status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Single">Single</SelectItem>
+                      <SelectItem value="Married">Married</SelectItem>
+                      <SelectItem value="Widowed">Widowed</SelectItem>
+                      <SelectItem value="Separated">Separated</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Nationality</Label>
+                  <Input value={editEmpForm.nationality} onChange={(e) => setEditEmpForm({ ...editEmpForm, nationality: e.target.value })} className="text-xs" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Employment Information</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Position</Label>
+                  <Select value={editEmpForm.position} onValueChange={(v) => setEditEmpForm({ ...editEmpForm, position: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="Select position" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {positionOptions.map((p) => (
+                        <SelectItem key={p} value={p}>{p}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Department</Label>
+                  <Select value={editEmpForm.department} onValueChange={(v) => setEditEmpForm({ ...editEmpForm, department: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {deptOptions.map((d) => (
+                        <SelectItem key={d} value={d}>{d}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Immediate Supervisor</Label>
+                  <Select value={editEmpForm.supervisor} onValueChange={(v) => setEditEmpForm({ ...editEmpForm, supervisor: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="Select supervisor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">— None —</SelectItem>
+                      {supervisorOptions.map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Employment Type</Label>
+                  <Select value={editEmpForm.employmentType} onValueChange={(v: any) => setEditEmpForm({ ...editEmpForm, employmentType: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Regular">Regular</SelectItem>
+                      <SelectItem value="Probationary">Probationary</SelectItem>
+                      <SelectItem value="Contractual">Contractual</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Date Hired</Label>
+                  <Input type="date" value={editEmpForm.dateHired} onChange={(e) => setEditEmpForm({ ...editEmpForm, dateHired: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Status</Label>
+                  <Select value={editEmpForm.status} onValueChange={(v) => setEditEmpForm({ ...editEmpForm, status: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Active">Active</SelectItem>
+                      <SelectItem value="On Leave">On Leave</SelectItem>
+                      <SelectItem value="Resigned">Resigned</SelectItem>
+                      <SelectItem value="Retired">Retired</SelectItem>
+                      <SelectItem value="Terminated">Terminated</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Salary Grade</Label>
+                  <Select value={editEmpForm.salaryGrade} onValueChange={(v) => setEditEmpForm({ ...editEmpForm, salaryGrade: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="Select salary grade" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">— None —</SelectItem>
+                      {salaryGradeOptions.map((g) => (
+                        <SelectItem key={g} value={g}>{g}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Salary Step</Label>
+                  <Input value={editEmpForm.salaryStep} onChange={(e) => setEditEmpForm({ ...editEmpForm, salaryStep: e.target.value })} className="text-xs" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Government IDs</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">SSS Number</Label>
+                  <Input value={editEmpForm.sssNumber} onChange={(e) => setEditEmpForm({ ...editEmpForm, sssNumber: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">PhilHealth Number</Label>
+                  <Input value={editEmpForm.philhealthNumber} onChange={(e) => setEditEmpForm({ ...editEmpForm, philhealthNumber: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Pag-IBIG MID</Label>
+                  <Input value={editEmpForm.pagibigNumber} onChange={(e) => setEditEmpForm({ ...editEmpForm, pagibigNumber: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">TIN</Label>
+                  <Input value={editEmpForm.tinNumber} onChange={(e) => setEditEmpForm({ ...editEmpForm, tinNumber: e.target.value })} className="text-xs" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Emergency Contact</Label>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Name</Label>
+                  <Input value={editEmpForm.emergencyName} onChange={(e) => setEditEmpForm({ ...editEmpForm, emergencyName: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Relationship</Label>
+                  <Input value={editEmpForm.emergencyRelation} onChange={(e) => setEditEmpForm({ ...editEmpForm, emergencyRelation: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Contact Number</Label>
+                  <Input value={editEmpForm.emergencyPhone} onChange={(e) => setEditEmpForm({ ...editEmpForm, emergencyPhone: e.target.value })} className="text-xs" />
+                </div>
+              </div>
             </div>
           </div>
 

@@ -36,10 +36,16 @@ class UpdateEmployeeRequest extends FormRequest
             'position_id' => ['required', 'integer', 'exists:positions,position_id'],
             'supervisor_employee_id' => ['nullable', 'integer', 'exists:employees,employee_id'],
             'employment_type' => ['required', Rule::in(['Regular', 'Contractual', 'Probationary'])],
-            'status' => ['required', Rule::in(['Active', 'On Leave', 'Resigned', 'Terminated'])],
+            'status' => ['required', Rule::in(['Active', 'On Leave', 'Resigned', 'Retired', 'Terminated'])],
             'date_hired' => ['required', 'date'],
             'salary_grade_id' => ['nullable', 'integer', 'exists:salary_grades,salary_grade_id'],
             'salary_step' => ['nullable', 'string', 'max:30'],
+            'emergency_contacts' => ['nullable', 'array'],
+            'emergency_contacts.*.name' => ['required_with:emergency_contacts', 'string', 'max:120'],
+            'emergency_contacts.*.relationship' => ['nullable', 'string', 'max:60'],
+            'emergency_contacts.*.phone' => ['nullable', 'string', 'max:40'],
+            'emergency_contacts.*.address' => ['nullable', 'string', 'max:255'],
+            'emergency_contacts.*.is_primary' => ['nullable', 'boolean'],
         ];
     }
 }

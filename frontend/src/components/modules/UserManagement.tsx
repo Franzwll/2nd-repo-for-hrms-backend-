@@ -587,6 +587,7 @@ export function UserManagement() {
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Users className="h-5 w-5 text-primary" /> User Roster</h2>
+                <div className="flex flex-wrap items-center gap-2">
                 <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                   <DialogTrigger asChild>
                     <Button size="sm" className="cursor-pointer">
@@ -700,14 +701,12 @@ export function UserManagement() {
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
-              </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-2">
                 <div className="relative w-full sm:w-64">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     className="pl-8"
-                    placeholder="Search usersвЂ¦"
+                    placeholder="Search users…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
@@ -738,6 +737,7 @@ export function UserManagement() {
                     ))}
                   </SelectContent>
                 </Select>
+                </div>
               </div>
 
               <div className="mt-4 overflow-x-auto">

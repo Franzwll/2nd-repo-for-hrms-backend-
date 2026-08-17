@@ -115,7 +115,25 @@ class EmployeeController extends Controller
 
     public function update(UpdateEmployeeRequest $request, Employee $employee): JsonResponse
     {
-        $employee->update($request->validated());
+        $validated = $request->validated();
+        $contacts = $validated['emergency_contacts'] ?? [];
+        unset($validated['emergency_contacts']);
+
+        DB::transaction(function () use ($validated, $contacts, $employee) {
+            $employee->update($validated);
+
+            if (array_key_exists('emergency_contacts', $request->validated())) {
+                $employee->emergencyContacts()->delete();
+
+                foreach ($contacts as $index => $contact) {
+                    EmployeeEmergencyContact::create([
+                        ...$contact,
+                        'employee_id' => $employee->employee_id,
+                        'is_primary' => $contact['is_primary'] ?? ($index === 0 ? 1 : 0),
+                    ]);
+                }
+            }
+        });
 
         AuditLogger::log(
             'Employee updated',
@@ -128,7 +146,7 @@ class EmployeeController extends Controller
 
         return response()->json([
             'message' => 'Employee updated successfully.',
-            'data' => new EmployeeResource($employee->load('department', 'position')),
+            'data' => new EmployeeResource($employee->load('department', 'position', 'emergencyContacts')),
         ]);
     }
 

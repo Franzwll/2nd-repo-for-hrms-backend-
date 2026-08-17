@@ -85,9 +85,33 @@ const seedNotifications: Notification[] = [
   },
 ];
 
+const READ_STORAGE_KEY = "hrms-notifications-read";
+
+function loadReadFlags(): Set<string> {
+  try {
+    const raw = localStorage.getItem(READ_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistReadFlags(notifications: Notification[]) {
+  try {
+    const readIds = notifications.filter((n) => n.read).map((n) => n.id);
+    localStorage.setItem(READ_STORAGE_KEY, JSON.stringify(readIds));
+  } catch {
+    /* storage unavailable — ignore */
+  }
+}
+
 let state: State = {
   announcements: [],
-  notifications: seedNotifications,
+  notifications: seedNotifications.map((n) =>
+    loadReadFlags().has(n.id) ? { ...n, read: true } : n
+  ),
   loading: true,
 };
 const listeners = new Set<() => void>();
@@ -143,12 +167,16 @@ export function usePortalState() {
     notifications: snapshot.notifications,
     loading: snapshot.loading,
     unreadCount: snapshot.notifications.filter((n) => !n.read).length,
-    markAllRead: () =>
-      set({ notifications: state.notifications.map((n) => ({ ...n, read: true })) }),
-    markRead: (id: string) =>
-      set({
-        notifications: state.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)),
-      }),
+    markAllRead: () => {
+      const next = state.notifications.map((n) => ({ ...n, read: true }));
+      set({ notifications: next });
+      persistReadFlags(next);
+    },
+    markRead: (id: string) => {
+      const next = state.notifications.map((n) => (n.id === id ? { ...n, read: true } : n));
+      set({ notifications: next });
+      persistReadFlags(next);
+    },
     addAnnouncement: async (input: {
       title: string;
       body: string;
