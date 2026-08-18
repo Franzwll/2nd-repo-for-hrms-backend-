@@ -25,6 +25,7 @@ class AuditLog extends Model
         'severity',
         'ip_address',
         'device_info',
+        'url',
     ];
 
     protected $casts = [

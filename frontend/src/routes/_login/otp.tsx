@@ -32,6 +32,14 @@ export const Route = createFileRoute("/_login/otp")({
 
 const OTP_LENGTH = 6;
 
+const maskEmail = (email?: string) => {
+  if (!email) return "";
+  const [name, domain] = email.split("@");
+  if (!name || !domain) return email;
+  if (name.length <= 2) return `${name[0] ?? "*"}${"*".repeat(Math.max(1, name.length - 1))}@${domain}`;
+  return `${name[0]}${"*".repeat(name.length - 2)}${name[name.length - 1]}@${domain}`;
+};
+
 const montageImages = [
   {
     src: interior1,
@@ -69,10 +77,9 @@ function OTPPage() {
   const navigate = useNavigate();
   const loginCtx = getLoginContext();
 
-  const [digits, setDigits] = useState<string[]>(() => {
-    const otp = loginCtx?.debug_otp ?? "";
-    return Array.from({ length: OTP_LENGTH }, (_, i) => otp[i] ?? "");
-  });
+  const [digits, setDigits] = useState<string[]>(() =>
+    Array.from({ length: OTP_LENGTH }, () => ""),
+  );
   const [error, setError] = useState("");
   const [verified, setVerified] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -177,12 +184,10 @@ function OTPPage() {
       const res = await authApi.resendOtp(ctx.login_token);
       persistLoginContext({
         login_token: ctx.login_token,
-        debug_otp: res.debug_otp,
         email: ctx.email,
         expires_in: res.expires_in,
       });
-      const otp = res.debug_otp ?? "";
-      setDigits(Array.from({ length: OTP_LENGTH }, (_, i) => otp[i] ?? ""));
+      setDigits(Array.from({ length: OTP_LENGTH }, () => ""));
       setTimeLeft(60);
       setResendDisabled(true);
       setError("");
@@ -239,14 +244,8 @@ function OTPPage() {
               </div>
               <h1 className="font-display text-2xl font-semibold">OTP Verification</h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                We've sent a 6-digit code to your registered work email. Enter it below to continue.
+                We've sent a 6-digit code to <span className="font-medium text-foreground">{maskEmail(loginCtx?.email)}</span>. Enter it below to continue.
               </p>
-              {loginCtx?.debug_otp && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  (Development OTP:{" "}
-                  <span className="font-mono font-semibold text-primary">{loginCtx.debug_otp}</span>)
-                </p>
-              )}
             </div>
 
             {/* OTP boxes */}

@@ -89,7 +89,8 @@ export function AuditLogs() {
       a.action.toLowerCase().includes(q) ||
       a.module.toLowerCase().includes(q) ||
       a.department.toLowerCase().includes(q) ||
-      a.ip_address.toLowerCase().includes(q);
+      a.ip_address.toLowerCase().includes(q) ||
+      (a.url ?? "").toLowerCase().includes(q);
     return matchesSeverity && matchesModule && matchesSearch;
   });
   const {
@@ -105,6 +106,7 @@ export function AuditLogs() {
     department: (a) => a.department,
     device: (a) => a.device,
     ipAddress: (a) => a.ip_address,
+    url: (a) => a.url ?? "",
     severity: (a) => a.severity,
   });
 
@@ -116,7 +118,7 @@ export function AuditLogs() {
   const uniqueActors = new Set(entries.map((a) => a.user)).size;
 
   const exportCsv = () => {
-    const header = ["Timestamp", "User", "Role", "Department", "Action", "Module", "Device", "IP Address", "Severity"];
+    const header = ["Timestamp", "User", "Role", "Department", "Action", "Module", "Device", "IP Address", "URL", "Severity"];
     const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
     const lines = filteredRows.map((a) =>
       [
@@ -128,6 +130,7 @@ export function AuditLogs() {
         esc(a.module),
         esc(a.device),
         esc(a.ip_address),
+        esc(a.url ?? ""),
         a.severity,
       ].join(",")
     );
@@ -296,6 +299,9 @@ export function AuditLogs() {
                   <SortHead sortKey="device" sort={sort} onSort={toggle}>
                     Device &amp; IP
                   </SortHead>
+                  <SortHead sortKey="url" sort={sort} onSort={toggle}>
+                    URL
+                  </SortHead>
                   <SortHead sortKey="severity" sort={sort} onSort={toggle}>
                     Severity
                   </SortHead>
@@ -340,6 +346,18 @@ export function AuditLogs() {
                         <div>{a.device}</div>
                         <div className="font-mono text-[11px] text-muted-foreground">{a.ip_address}</div>
                       </TableCell>
+                      <TableCell className="max-w-[18rem]">
+                        {a.url ? (
+                          <div
+                            className="block max-w-[18rem] truncate font-mono text-[11px] text-muted-foreground"
+                            title={a.url}
+                          >
+                            {a.url}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Badge
                           variant="outline"
@@ -360,7 +378,7 @@ export function AuditLogs() {
                 {loading && (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className="py-8 text-center text-sm text-muted-foreground"
                     >
                       Loading audit activity…
@@ -370,7 +388,7 @@ export function AuditLogs() {
                 {!loading && rows.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className="py-8 text-center text-sm text-muted-foreground"
                     >
                       No activity matches your filters.

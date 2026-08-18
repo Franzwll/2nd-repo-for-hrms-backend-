@@ -30,7 +30,6 @@ const LOGIN_CONTEXT_KEY = "oxford_hrms_login";
 
 export function persistLoginContext(ctx: {
   login_token: string;
-  debug_otp: string;
   email: string;
   expires_in: number;
 }) {
@@ -46,7 +45,6 @@ export function persistLoginContext(ctx: {
 
 export function getLoginContext(): {
   login_token: string;
-  debug_otp: string;
   email: string;
   expires_in: number;
 } | null {
@@ -55,7 +53,6 @@ export function getLoginContext(): {
     if (!raw) return null;
     const ctx = JSON.parse(raw) as {
       login_token: string;
-      debug_otp: string;
       email: string;
       expires_in: number;
       issued_at: number;
@@ -138,10 +135,10 @@ const montageImages = [
 function LoginPage() {
   const navigate = useNavigate();
   const [show, setShow] = useState(false);
-  const [password, setPassword] = useState("Oxford@2026");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [email, setEmail] = useState("bullseur@oxfordsuites.com.ph");
+  const [email, setEmail] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0);
   const [ready, setReady] = useState(false);
 
@@ -182,11 +179,10 @@ function LoginPage() {
       const res = await authApi.login(email.trim(), password);
       persistLoginContext({
         login_token: res.login_token,
-        debug_otp: res.debug_otp,
         email: email.trim(),
         expires_in: res.expires_in,
       });
-      toast.success("One-time password issued. Check your registered device.");
+      toast.success("One-time password sent to your work email.");
       navigate({ to: "/otp" });
     } catch (err: any) {
       const message =
@@ -384,34 +380,6 @@ function LoginPage() {
               {submitting ? "Signing in…" : "Sign in"}
             </Button>
           </form>
-
-          {/* Helper demo account quick-fill options */}
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 p-3 text-xs">
-            <span className="font-medium text-muted-foreground">Demo Logins:</span>
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={() => { setEmail("kevin.delacruz@oxfordsuites.com.ph"); setPassword("Oxford@2026"); setError(""); }}
-                className="rounded border border-border bg-card px-2 py-1 font-mono transition-colors hover:bg-primary/10 hover:text-primary"
-              >
-                Employee
-              </button>
-              <button
-                type="button"
-                onClick={() => { setEmail("juan.delacruz@oxfordsuites.com.ph"); setPassword("Oxford@2026"); setError(""); }}
-                className="rounded border border-border bg-card px-2 py-1 font-mono transition-colors hover:bg-primary/10 hover:text-primary"
-              >
-                HR Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => { setEmail("bullseur@oxfordsuites.com.ph"); setPassword("Oxford@2026"); setError(""); }}
-                className="rounded border border-border bg-card px-2 py-1 font-mono transition-colors hover:bg-primary/10 hover:text-primary"
-              >
-                Super Admin
-              </button>
-            </div>
-          </div>
 
           <p className="mt-7 text-center text-sm text-muted-foreground">
             Looking for work?{" "}

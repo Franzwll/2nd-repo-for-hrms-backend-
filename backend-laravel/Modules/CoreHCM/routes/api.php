@@ -22,6 +22,7 @@ Route::middleware(['auth:sanctum', 'permission:Core HCM'])->prefix('v1')->group(
     Route::get('org-chart', [OrgChartController::class, 'index']);
 
     Route::get('hr3-recommendations', [HR3RecommendationController::class, 'index']);
+    Route::post('hr3-recommendations/{recommendation}/acknowledge', [HR3RecommendationController::class, 'acknowledge']);
 
     Route::get('employees', [EmployeeController::class, 'index']);
     Route::post('employees', [EmployeeController::class, 'store']);

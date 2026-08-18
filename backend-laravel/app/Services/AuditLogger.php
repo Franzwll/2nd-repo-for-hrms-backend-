@@ -44,6 +44,7 @@ class AuditLogger
             'severity' => $severity,
             'ip_address' => $ip,
             'device_info' => $deviceInfo,
+            'url' => $request?->header('X-Current-Url') ?? $request?->fullUrl(),
         ]);
     }
 

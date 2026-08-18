@@ -4,6 +4,7 @@ namespace Modules\CoreHCM\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Hr3Recommendation;
+use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 
 class HR3RecommendationController extends Controller
@@ -39,5 +40,22 @@ class HR3RecommendationController extends Controller
             });
 
         return response()->json(['data' => $recommendations]);
+    }
+
+    public function acknowledge(Hr3Recommendation $recommendation): JsonResponse
+    {
+        $employee = $recommendation->employee;
+        $name = $employee ? trim(($employee->first_name ?? '') . ' ' . ($employee->last_name ?? '')) : 'Unknown';
+
+        AuditLogger::log(
+            'HR3 recommendation acknowledged',
+            'Core HCM',
+            'Info',
+            'hr3_recommendation',
+            (string) $recommendation->recommendation_id,
+            'Acknowledged performance evaluation for ' . $name,
+        );
+
+        return response()->json(['message' => 'HR3 recommendation acknowledged.']);
     }
 }

@@ -225,7 +225,7 @@ function AdminDashboard() {
         </Card>
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1.5fr_1fr]">
         <Card className="border-border/70">
           <CardContent className="p-6">
             <h2 className="font-display text-2xl font-semibold">Hiring Funnel</h2>
@@ -267,7 +267,7 @@ function AdminDashboard() {
         </Card>
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1.5fr_1fr]">
         <Card className="border-border/70">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">

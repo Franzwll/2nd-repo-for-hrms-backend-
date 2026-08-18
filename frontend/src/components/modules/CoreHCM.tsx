@@ -26,6 +26,7 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
+import { Logo } from "@/components/brand/Logo";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,12 +78,15 @@ import {
   type SalaryGrade,
 } from "@/data/hr";
 import { cn } from "@/lib/utils";
-import { useRequisitions } from "@/data/requisitions";
+import { onHcmChanged, notifyHcmChanged } from "@/lib/hcm-sync";
+import { loadRecordDetail } from "@/lib/employeerecords";
+import { requisitionStore, useRequisitions, type Requisition } from "@/data/requisitions";
 import { type Role } from "@/lib/nav";
 import { buildProfile, Field, Section } from "./EmployeeRecords";
 import {
   auditLogApi,
   hcmApi,
+  requisitionsApi,
   type ApiAuditLog,
   type ApiDepartment,
   type ApiEmployee,
@@ -102,6 +106,32 @@ const initialsOf = (name: string) =>
 
 const formatMoney = (val: number) =>
   new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(val);
+
+/** HRMS system logo (generic system mark, not the hotel brand). */
+function SystemLogo({ size = "sm", showText = false }: { size?: "sm" | "lg"; showText?: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-3">
+      <span
+        className={cn(
+          "grid shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-md ring-1 ring-primary/30",
+          size === "lg" ? "h-16 w-16" : "h-8 w-8",
+        )}
+      >
+        <Users className={size === "lg" ? "h-8 w-8" : "h-4 w-4"} />
+      </span>
+      {showText && (
+        <span className="flex flex-col leading-none">
+          <span className="font-display text-base font-bold uppercase tracking-[0.14em] text-foreground">
+            HRMS
+          </span>
+          <span className="mt-1 text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+            Human Resources
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
 
 /* =========================================================================
    SHARED CORE HCM DATA LAYER
@@ -172,6 +202,16 @@ async function refreshHcm() {
   hcmFetched = false;
   hcmData = { employees: [], departments: [], positions: [], salaryGrades: [], orgChart: [] };
   await fetchHcmData();
+  notifyHcmChanged();
+}
+
+/* Keep Core HCM's local store in sync when other modules (Employee Records)
+   mutate shared employee data. */
+if (typeof window !== "undefined") {
+  onHcmChanged(() => {
+    hcmFetched = false;
+    fetchHcmData();
+  });
 }
 
 function toUiEmployee(e: ApiEmployee, employees: ApiEmployee[], sGrades: ApiSalaryGrade[]): Employee {
@@ -197,6 +237,7 @@ function toUiEmployee(e: ApiEmployee, employees: ApiEmployee[], sGrades: ApiSala
 
 type HR3Recommendation = {
   id: string;
+  recommendationId: number;
   employeeId: string;
   employeeName: string;
   department: string;
@@ -214,6 +255,7 @@ type HR3Recommendation = {
 function toUiRecommendation(r: ApiHR3Recommendation): HR3Recommendation {
   return {
     id: r.id,
+    recommendationId: r.recommendation_id,
     employeeId: r.employee_code ?? String(r.employee_id ?? ""),
     employeeName: r.employee_name,
     department: r.department,
@@ -250,6 +292,7 @@ function toUiPosition(p: ApiPosition, sGrades: ApiSalaryGrade[]): Position {
     level: (p.level as Position["level"]) || "Rank & File",
     headcount: p.headcount,
     filled: p.filled_count,
+    vacancies: Math.max(0, (p.headcount ?? 0) - (p.filled_count ?? 0)),
     salaryBand: sg ? `${sg.code} (${formatMoney(Number(sg.min_salary))} – ${formatMoney(Number(sg.max_salary))})` : p.salary_grade || "",
   };
 }
@@ -295,7 +338,8 @@ function buildOrgTree(orgNodes: ApiOrgNode[], employees: ApiEmployee[]): OrgNode
 export function OrgChartModule({ role = "admin" }: { role?: Role }) {
   const [activeTab, setActiveTab] = useState<"org" | "employees" | "logs">(() => {
     const saved = typeof window !== "undefined" ? window.sessionStorage.getItem("hcm-org-tab") : null;
-    return (saved === "org" || saved === "employees" || saved === "logs" ? saved : "org") as "org" | "employees" | "logs";
+    const valid = saved === "org" || saved === "employees" || saved === "logs" ? saved : "org";
+    return role !== "superadmin" && valid === "logs" ? "employees" : valid;
   });
   const [empSearch, setEmpSearch] = useState("");
 
@@ -324,9 +368,11 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
           <TabsTrigger value="employees" className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer">
             <Users className="mr-1.5 h-4 w-4" /> Employee List
           </TabsTrigger>
-          <TabsTrigger value="logs" className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer">
-            <History className="mr-1.5 h-4 w-4" /> Lifecycle Logs
-          </TabsTrigger>
+          {role === "superadmin" && (
+            <TabsTrigger value="logs" className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer">
+              <History className="mr-1.5 h-4 w-4" /> Lifecycle Logs
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="org" className="space-y-6">
@@ -337,9 +383,11 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
           <EmployeeListManager role={role} empSearch={empSearch} onEmpSearchChange={setEmpSearch} />
         </TabsContent>
 
-        <TabsContent value="logs" className="space-y-6">
-          <LifecycleLogsViewer />
-        </TabsContent>
+        {role === "superadmin" && (
+          <TabsContent value="logs" className="space-y-6">
+            <LifecycleLogsViewer />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
@@ -405,7 +453,10 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
     <Card className="border-border/70 shadow-sm">
       <CardContent className="p-6">
         <div className="mb-6 border-b border-border/60 pb-4">
-          <h2 className="font-display text-xl font-semibold">Hierarchy Chart</h2>
+          <h2 className="flex items-center gap-3 font-display text-xl font-semibold">
+            <SystemLogo />
+            Hierarchy Chart
+          </h2>
           <p className="text-xs text-muted-foreground">
             Property reporting lines from General Management to department staff.
           </p>
@@ -431,7 +482,17 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
             </div>
 
             <div className="absolute left-1/2 top-8 origin-top" style={{ transform: `translate(calc(-50% + ${offset.x}px), ${offset.y}px) scale(${scale})`, transition: dragStart.current ? "none" : "transform 150ms ease-out" }}>
-              <div className="min-w-[980px] py-4"><OrgTree node={orgTree} root onSelect={setSelectedNode} /></div>
+              <div className="min-w-[980px] py-6">
+                <div className="mb-16 flex justify-center">
+                  <SystemLogo size="lg" showText />
+                </div>
+                <OrgTree
+                  node={orgTree}
+                  root
+                  selectedName={selectedNode?.name ?? null}
+                  onSelect={setSelectedNode}
+                />
+              </div>
             </div>
           </div>
 
@@ -442,15 +503,23 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
                 <h3 className="mt-1 font-display text-2xl font-semibold">{selectedDepartment.name}</h3>
                 <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{selectedDepartment.description}</p>
 
-                <button
-                  type="button"
-                  onClick={() => onViewEmployee(selectedDepartment.head)}
-                  className="mt-4 w-full text-left rounded-xl border border-primary/30 bg-card p-3 shadow-xs transition-all hover:border-primary hover:bg-primary/5 hover:shadow-md cursor-pointer group"
-                >
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Head supervisor</p>
-                  <p className="mt-1 text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{selectedDepartment.head}</p>
-                  <p className="text-xs text-muted-foreground">{headEmployee?.position ?? "Department Head"}</p>
-                </button>
+                <div className="mt-4 w-full rounded-xl border border-primary/30 bg-card p-3 shadow-xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Head supervisor</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">{selectedDepartment.head}</p>
+                      <p className="text-xs text-muted-foreground">{headEmployee?.position ?? "Department Head"}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 shrink-0 px-2 text-xs text-primary hover:bg-primary/10"
+                      onClick={() => onViewEmployee(selectedDepartment.head)}
+                    >
+                      <Eye className="mr-1 h-3.5 w-3.5" /> View
+                    </Button>
+                  </div>
+                </div>
 
                 <div className="mt-4 flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Team members</p><Badge variant="secondary">{departmentStaff.length}</Badge></div>
                 <div className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1">
@@ -490,48 +559,76 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
   );
 }
 
-function OrgNodeCard({ node, root = false, onSelect }: { node: OrgNode; root?: boolean; onSelect: (n: OrgNode) => void }) {
+function OrgNodeCard({
+  node,
+  selected = false,
+  onSelect,
+}: {
+  node: OrgNode;
+  selected?: boolean;
+  onSelect: (n: OrgNode) => void;
+}) {
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(node)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect(node);
+        }
+      }}
       className={cn(
-        "group relative inline-flex min-w-[200px] flex-col items-center rounded-xl border px-4 py-3.5 text-center shadow-md transition-all cursor-pointer hover:scale-[1.03] hover:border-primary hover:ring-2 hover:ring-gold/60 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        root ? "border-primary bg-primary/10 ring-2 ring-primary/40" : "border-border/80 bg-card"
+        "group relative inline-flex min-w-[200px] cursor-pointer flex-col items-center rounded-xl border px-4 py-3.5 text-center shadow-md transition-all hover:scale-[1.03] hover:border-primary hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        selected
+          ? "border-2 border-primary shadow-lg"
+          : "border-border/80 bg-card"
       )}
     >
-      <Avatar className="h-11 w-11 shadow-xs border border-border/60">
-        <AvatarFallback className={cn("text-xs font-bold", root ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground")}>
+      <Avatar className="h-11 w-11 border border-border/60 shadow-xs">
+        <AvatarFallback className="bg-secondary text-xs font-bold text-foreground">
           {initialsOf(node.name)}
         </AvatarFallback>
       </Avatar>
       <p className="mt-2 text-sm font-semibold leading-tight text-foreground group-hover:text-primary transition-colors">{node.name}</p>
       <p className="text-xs text-muted-foreground">{node.title}</p>
-    </button>
+    </div>
   );
 }
 
-function OrgTree({ node, root = false, onSelect }: { node: OrgNode; root?: boolean; onSelect: (n: OrgNode) => void }) {
+function OrgTree({
+  node,
+  root = false,
+  selectedName,
+  onSelect,
+}: {
+  node: OrgNode;
+  root?: boolean;
+  selectedName?: string | null | undefined;
+  onSelect: (n: OrgNode) => void;
+}) {
+  const children = node.children ?? [];
   return (
     <div className="flex flex-col items-center">
-      <OrgNodeCard node={node} root={root} onSelect={onSelect} />
-      {node.children && node.children.length > 0 && (
-        <div className="flex flex-col items-center">
-          <div className="h-6 w-px bg-border" />
-          <div className="relative flex justify-center">
-            {node.children.length > 1 && (
-              <div className="absolute top-0 h-px bg-border" style={{ left: "15%", right: "15%" }} />
-            )}
-            <div className="flex gap-8 pt-6">
-              {node.children.map((child) => (
+      <OrgNodeCard node={node} selected={selectedName === node.name} onSelect={onSelect} />
+      {children.length > 0 && (
+        <>
+          <div className="h-6 w-[2px] bg-muted-foreground/70" />
+          <div className="relative">
+            {children.length > 1 && <div className="absolute inset-x-0 top-0 h-[2px] bg-muted-foreground/70" />}
+            <div className="flex gap-10">
+              {children.map((child) => (
                 <div key={child.name} className="relative flex flex-col items-center">
-                  <div className="absolute -top-6 h-6 w-px bg-border" />
-                  <OrgTree node={child} onSelect={onSelect} />
+                  <div className="absolute left-1/2 top-0 h-6 w-[2px] -translate-x-1/2 bg-muted-foreground/70" />
+                  <div className="pt-6">
+                    <OrgTree node={child} selectedName={selectedName} onSelect={onSelect} />
+                  </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
@@ -583,12 +680,24 @@ function EmployeeListManager({
 
   const [recStatusFilter, setRecStatusFilter] = useState("all");
   const [recTypeFilter, setRecTypeFilter] = useState("all");
+  const [recSearch, setRecSearch] = useState("");
   const filteredRecs = recommendations.filter(
     (r) =>
       (recStatusFilter === "all" ||
         (recStatusFilter === "Acknowledged" && acknowledgedIds.has(r.employeeId) && r.status === "Pending HR Action") ||
         recStatusFilter === r.status) &&
-      (recTypeFilter === "all" || r.recommendationType === recTypeFilter)
+      (recTypeFilter === "all" || r.recommendationType === recTypeFilter) &&
+      (() => {
+        const q = recSearch.trim().toLowerCase();
+        return (
+          !q ||
+          r.id.toLowerCase().includes(q) ||
+          r.employeeName.toLowerCase().includes(q) ||
+          r.department.toLowerCase().includes(q) ||
+          String(r.evaluationScore).includes(q) ||
+          r.comments.toLowerCase().includes(q)
+        );
+      })()
   );
   const recPage = usePagination(filteredRecs);
 
@@ -630,16 +739,21 @@ function EmployeeListManager({
 
   const [showPromoteModal, setShowPromoteModal] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
+  const [showRegularizeModal, setShowRegularizeModal] = useState(false);
 
   const [newPosition, setNewPosition] = useState("");
   const [newSalaryGrade, setNewSalaryGrade] = useState("SG-10");
   const [promotionNotes, setPromotionNotes] = useState("");
+  const [promotionRecId, setPromotionRecId] = useState("");
+
+  const [regularizeRecId, setRegularizeRecId] = useState("");
+  const [regularizeNotes, setRegularizeNotes] = useState("");
 
   const [exitType, setExitType] = useState<"Resigned" | "Retired" | "Terminated">("Resigned");
   const [exitNotes, setExitNotes] = useState("");
 
-  const [pendingConfirm, setPendingConfirm] = useState<{ type: "save_promote" | "save_exit" | "regularize"; data?: any } | null>(null);
-  const [pendingUnsavedExit, setPendingUnsavedExit] = useState<{ target: "promote" | "exit" } | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<{ type: "save_promote" | "save_exit" | "save_regularize"; data?: any } | null>(null);
+  const [pendingUnsavedExit, setPendingUnsavedExit] = useState<{ target: "promote" | "exit" | "regularize" } | null>(null);
 
   const hasPendingRec = (empId: string) =>
     recommendations.some((r) => r.employeeId === empId && r.status === "Pending HR Action");
@@ -647,6 +761,18 @@ function EmployeeListManager({
   const isAcknowledged = (empId: string) => acknowledgedIds.has(empId);
 
   const canActOnEmployee = (empId: string) => isAcknowledged(empId) || !hasPendingRec(empId);
+
+  /** Pending performance evaluations (HR3 recommendations) usable for an action. */
+  const recommendationsFor = (empId: string, type: "Regularization" | "Promotion") =>
+    recommendations.filter(
+      (r) =>
+        r.employeeId === empId &&
+        r.status === "Pending HR Action" &&
+        (r.recommendationType === type || r.recommendationType === "Performance Review")
+    );
+
+  const regularizeOptions = selectedEmp ? recommendationsFor(selectedEmp.id, "Regularization") : [];
+  const promotionOptions = selectedEmp ? recommendationsFor(selectedEmp.id, "Promotion") : [];
 
   const filteredEmployees = empList.filter((e) => {
     const q = empSearch.trim().toLowerCase();
@@ -668,18 +794,25 @@ function EmployeeListManager({
   const supervisorOptions = empList.map((e) => e.name).sort();
   const salaryGradeOptions = hcm.salaryGrades.map((g) => g.code);
 
-  const executeRegularization = async (emp: Employee) => {
-    const dbId = employeeIdByCode.get(emp.id);
+  const executeRegularization = async () => {
+    if (!selectedEmp) return;
+    const dbId = employeeIdByCode.get(selectedEmp.id);
     if (!dbId) {
-      toast.error(`Could not resolve ${emp.id} in Core HCM.`);
+      toast.error(`Could not resolve ${selectedEmp.id} in Core HCM.`);
+      return;
+    }
+    const rec = recommendations.find((r) => r.id === regularizeRecId);
+    if (!rec) {
+      toast.error("Select a performance evaluation to justify regularization.");
       return;
     }
     try {
       await hcmApi.employees.regularize(dbId, {
         effective_date: new Date().toISOString().slice(0, 10),
-        notes: "Regularized via HR3 evaluation handoff.",
+        recommendation_id: rec.recommendationId,
+        notes: regularizeNotes || `Regularized via performance evaluation (${rec.evaluationScore}%).`,
       });
-      toast.success(`${emp.name} has passed evaluation and is now a Regular Employee! User account active.`);
+      toast.success(`${selectedEmp.name} has passed evaluation and is now a Regular Employee! User account active.`);
       await refreshHcm();
     } catch (err) {
       const status = (err as { status?: number }).status;
@@ -688,8 +821,13 @@ function EmployeeListManager({
     }
 
     setRecommendations((prev) =>
-      prev.map((r) => (r.employeeId === emp.id ? { ...r, status: "Approved & Processed" as const } : r))
+      prev.map((r) => (r.id === rec.id ? { ...r, status: "Approved & Processed" as const } : r))
     );
+
+    setShowRegularizeModal(false);
+    setSelectedEmp(null);
+    setRegularizeRecId("");
+    setRegularizeNotes("");
   };
 
   const executePromotion = async () => {
@@ -705,12 +843,18 @@ function EmployeeListManager({
       toast.error(`Position "${newPosition}" does not exist in Core HCM.`);
       return;
     }
+    const rec = recommendations.find((r) => r.id === promotionRecId);
+    if (!rec) {
+      toast.error("Select a performance evaluation to justify this promotion.");
+      return;
+    }
     try {
       await hcmApi.employees.promote(dbId, {
         effective_date: new Date().toISOString().slice(0, 10),
         new_position_id: pos.position_id,
         new_salary_grade_id: sg?.salary_grade_id,
-        notes: promotionNotes || "HR3 Succession planning promotion",
+        recommendation_id: rec.recommendationId,
+        notes: promotionNotes || `Promotion via performance evaluation (${rec.evaluationScore}%)`,
       });
       toast.success(`Promoted ${selectedEmp.name} to ${newPosition}! Salary Grade updated.`);
       await refreshHcm();
@@ -721,13 +865,14 @@ function EmployeeListManager({
     }
 
     setRecommendations((prev) =>
-      prev.map((r) => (r.employeeId === selectedEmp.id ? { ...r, status: "Approved & Processed" as const } : r))
+      prev.map((r) => (r.id === rec.id ? { ...r, status: "Approved & Processed" as const } : r))
     );
 
     setShowPromoteModal(false);
     setSelectedEmp(null);
     setNewPosition("");
     setPromotionNotes("");
+    setPromotionRecId("");
   };
 
   const executeExit = async () => {
@@ -950,8 +1095,13 @@ function EmployeeListManager({
                       size="sm"
                       variant="outline"
                       className="h-7 text-xs border-gold/50 text-gold-foreground hover:bg-gold/10"
-                      onClick={() => {
-                        setAcknowledgedIds((prev) => new Set([...prev, rec.employeeId]));
+                      onClick={async () => {
+                        try {
+                          await hcmApi.hr3Recommendations.acknowledge(rec.recommendationId);
+                          setAcknowledgedIds((prev) => new Set([...prev, rec.employeeId]));
+                        } catch {
+                          toast.error("Could not acknowledge the evaluation. Please try again.");
+                        }
                       }}
                     >
                       <UserCheck className="mr-1 h-3.5 w-3.5" /> Acknowledge
@@ -971,7 +1121,7 @@ function EmployeeListManager({
 
       {/* VIEW ALL HR3 RECOMMENDATIONS DIALOG */}
       <Dialog open={showViewAllRecs} onOpenChange={setShowViewAllRecs}>
-        <DialogContent className="sm:max-w-3xl">
+        <DialogContent className="sm:max-w-6xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-gold" />
@@ -981,7 +1131,16 @@ function EmployeeListManager({
               Full list of HR3 evaluation recommendations sent to Core HCM for action.
             </DialogDescription>
           </DialogHeader>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+            <div className="relative min-w-[14rem] flex-1 sm:max-w-xs">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-8 pl-8 text-xs"
+                placeholder="Search employee, ID, department…"
+                value={recSearch}
+                onChange={(e) => setRecSearch(e.target.value)}
+              />
+            </div>
             <Select value={recStatusFilter} onValueChange={setRecStatusFilter}>
               <SelectTrigger className="h-8 w-44 text-xs bg-card">
                 <SelectValue placeholder="All statuses" />
@@ -1004,10 +1163,11 @@ function EmployeeListManager({
               </SelectContent>
             </Select>
           </div>
-          <div className="overflow-x-auto">
+          <div className="min-w-0">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Evaluation ID</TableHead>
                   <TableHead>Employee</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Type</TableHead>
@@ -1019,6 +1179,7 @@ function EmployeeListManager({
               <TableBody>
                 {recPage.pageItems.map((rec) => (
                   <TableRow key={rec.id}>
+                    <TableCell className="font-mono text-xs font-semibold text-muted-foreground">{rec.id}</TableCell>
                     <TableCell className="font-semibold text-sm">{rec.employeeName}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{rec.department}</TableCell>
                     <TableCell>
@@ -1067,9 +1228,6 @@ function EmployeeListManager({
               onPageChange={recPage.setPage}
             />
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowViewAllRecs(false)}>Close</Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1200,7 +1358,10 @@ function EmployeeListManager({
                         size="sm"
                         variant="outline"
                         className="h-8 px-2.5 text-xs bg-muted/30 hover:bg-primary/10 hover:text-primary hover:border-primary/40"
-                        onClick={() => setViewingEmpInfo(e)}
+                        onClick={() => {
+                          loadRecordDetail(e.id);
+                          setViewingEmpInfo(e);
+                        }}
                       >
                         <Info className="mr-1.5 h-3.5 w-3.5 text-primary" /> View Info
                       </Button>
@@ -1222,7 +1383,12 @@ function EmployeeListManager({
                             size="sm"
                             variant="outline"
                             className="h-8 px-2 text-xs border-success/50 text-success hover:bg-success/10"
-                            onClick={() => setPendingConfirm({ type: "regularize", data: e })}
+                            onClick={() => {
+                              setSelectedEmp(e);
+                              setRegularizeRecId(recommendationsFor(e.id, "Regularization")[0]?.id ?? "");
+                              setRegularizeNotes("");
+                              setShowRegularizeModal(true);
+                            }}
                           >
                             <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Regularize
                           </Button>
@@ -1233,10 +1399,17 @@ function EmployeeListManager({
                             size="sm"
                             variant="outline"
                             className="h-8 px-2 text-xs"
+                            disabled={recommendationsFor(e.id, "Promotion").length === 0}
+                            title={
+                              recommendationsFor(e.id, "Promotion").length === 0
+                                ? "No performance evaluation on file — required before promoting."
+                                : undefined
+                            }
                             onClick={() => {
                               setSelectedEmp(e);
                               setNewPosition(e.position);
                               setNewSalaryGrade(e.salaryGrade || "SG-10");
+                              setPromotionRecId(recommendationsFor(e.id, "Promotion")[0]?.id ?? "");
                               setShowPromoteModal(true);
                             }}
                           >
@@ -1662,6 +1835,27 @@ function EmployeeListManager({
               </Select>
             </div>
             <div className="space-y-1">
+              <Label className="text-xs">Performance Evaluation (HR3) — required</Label>
+              {promotionOptions.length > 0 ? (
+                <Select value={promotionRecId} onValueChange={setPromotionRecId}>
+                  <SelectTrigger className="text-xs">
+                    <SelectValue placeholder="Select an evaluation" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {promotionOptions.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.recommendationType} · {r.evaluationScore}% · {r.dateSubmitted}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+                  No pending performance evaluation on file. A completed HR3 evaluation is required before promoting.
+                </div>
+              )}
+            </div>
+            <div className="space-y-1">
               <Label className="text-xs">Succession Justification & Evaluation Notes</Label>
               <Textarea
                 value={promotionNotes}
@@ -1686,8 +1880,88 @@ function EmployeeListManager({
             >
               Cancel
             </Button>
-            <Button onClick={() => setPendingConfirm({ type: "save_promote" })}>
+            <Button onClick={() => setPendingConfirm({ type: "save_promote" })} disabled={!promotionRecId}>
               Save Promotion
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* REGULARIZATION MODAL */}
+      <Dialog
+        open={showRegularizeModal}
+        onOpenChange={(open) => {
+          if (!open && (regularizeRecId || regularizeNotes)) {
+            setPendingUnsavedExit({ target: "regularize" });
+          } else {
+            setShowRegularizeModal(open);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-success" /> Regularize Employee — {selectedEmp?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Convert to Regular status based on a completed performance evaluation in Core HCM.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+              Current employment type: <strong>{selectedEmp?.employmentType}</strong> · Current position:{" "}
+              <strong>{selectedEmp?.position}</strong>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Performance Evaluation (HR3) — required</Label>
+              {regularizeOptions.length > 0 ? (
+                <Select value={regularizeRecId} onValueChange={setRegularizeRecId}>
+                  <SelectTrigger className="text-xs">
+                    <SelectValue placeholder="Select an evaluation" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {regularizeOptions.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.recommendationType} · {r.evaluationScore}% · {r.dateSubmitted}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+                  No pending performance evaluation on file. A completed HR3 evaluation is required before regularization.
+                </div>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Evaluation Notes</Label>
+              <Textarea
+                value={regularizeNotes}
+                onChange={(e) => setRegularizeNotes(e.target.value)}
+                placeholder="Performance evaluation summary..."
+                rows={3}
+                className="text-xs"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (regularizeRecId || regularizeNotes) {
+                  setPendingUnsavedExit({ target: "regularize" });
+                } else {
+                  setShowRegularizeModal(false);
+                  setSelectedEmp(null);
+                }
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => setPendingConfirm({ type: "save_regularize" })} disabled={!regularizeRecId}>
+              Confirm Regularization
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1771,7 +2045,7 @@ function EmployeeListManager({
             <AlertDialogDescription>
               {pendingConfirm?.type === "save_promote" && `Are you sure you want to promote ${selectedEmp?.name} to ${newPosition}?`}
               {pendingConfirm?.type === "save_exit" && `Are you sure you want to process exit status (${exitType}) for ${selectedEmp?.name}? User account will be disabled.`}
-              {pendingConfirm?.type === "regularize" && `Are you sure you want to convert ${pendingConfirm?.data?.name} to Regular employee status?`}
+              {pendingConfirm?.type === "save_regularize" && `Are you sure you want to convert ${selectedEmp?.name} to Regular employee status based on the selected performance evaluation?`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1780,7 +2054,7 @@ function EmployeeListManager({
               onClick={() => {
                 if (pendingConfirm?.type === "save_promote") executePromotion();
                 if (pendingConfirm?.type === "save_exit") executeExit();
-                if (pendingConfirm?.type === "regularize") executeRegularization(pendingConfirm.data);
+                if (pendingConfirm?.type === "save_regularize") executeRegularization();
                 setPendingConfirm(null);
               }}
             >
@@ -1806,6 +2080,12 @@ function EmployeeListManager({
               onClick={() => {
                 if (pendingUnsavedExit?.target === "promote") setShowPromoteModal(false);
                 if (pendingUnsavedExit?.target === "exit") setShowExitModal(false);
+                if (pendingUnsavedExit?.target === "regularize") {
+                  setShowRegularizeModal(false);
+                  setSelectedEmp(null);
+                  setRegularizeRecId("");
+                  setRegularizeNotes("");
+                }
                 setPendingUnsavedExit(null);
               }}
             >
@@ -2119,6 +2399,7 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
 /* --- Department and Position Manager --- */
 function DepartmentAndPositionManager({ role }: { role: Role }) {
   const hcm = useHcmData();
+  const reqs = useRequisitions();
 
   const deptList = useMemo<Department[]>(() => hcm.departments.map(toUiDepartment), [hcm]);
   const posList = useMemo<Position[]>(() => hcm.positions.map((p) => toUiPosition(p, hcm.salaryGrades)), [hcm]);
@@ -2172,6 +2453,86 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
   const [pendingConfirmSave, setPendingConfirmSave] = useState<{ type: "dept" | "pos" } | null>(null);
   const [pendingUnsavedExit, setPendingUnsavedExit] = useState<{ target: "dept" | "pos" } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ type: "dept" | "pos"; id: number; name: string } | null>(null);
+
+  /* Vacancy requisition dialog (per department) */
+  const [reqDialogDept, setReqDialogDept] = useState<string | null>(null);
+  const [reqPosition, setReqPosition] = useState("");
+  const [reqCount, setReqCount] = useState("1");
+  const [reqUrgency, setReqUrgency] = useState("Normal");
+  const [reqJustification, setReqJustification] = useState("");
+  const [reqCountEdits, setReqCountEdits] = useState<Record<string, string>>({});
+
+  const deptPositions = useMemo(
+    () => posList.filter((p) => p.department === reqDialogDept),
+    [posList, reqDialogDept]
+  );
+  const deptReqs = useMemo(
+    () => reqs.filter((r) => r.department === reqDialogDept),
+    [reqs, reqDialogDept]
+  );
+
+  const openReqDialog = (dept: Department) => {
+    const firstPos = posList.find((p) => p.department === dept.name);
+    setReqDialogDept(dept.name);
+    setReqPosition(firstPos?.title ?? "");
+    setReqCount(String(firstPos ? Math.max(1, firstPos.headcount - firstPos.filled) : 1));
+    setReqUrgency("Normal");
+    setReqJustification("");
+    const edits: Record<string, string> = {};
+    reqs.filter((r) => r.department === dept.name).forEach((r) => {
+      edits[r.id] = String(r.count);
+    });
+    setReqCountEdits(edits);
+  };
+
+  const onReqPositionChange = (title: string) => {
+    setReqPosition(title);
+    const p = deptPositions.find((x) => x.title === title);
+    setReqCount(String(p ? Math.max(1, p.headcount - p.filled) : 1));
+  };
+
+  const submitRequisition = async () => {
+    if (!reqDialogDept) return;
+    const deptId = deptIdByName.get(reqDialogDept);
+    const pos = deptPositions.find((x) => x.title === reqPosition);
+    if (!deptId || !pos) {
+      toast.error("Select a valid position within the department.");
+      return;
+    }
+    const count = Math.max(1, Number(reqCount) || 1);
+    try {
+      await requisitionsApi.create({
+        position_id: posIdByCode.get(pos.id),
+        position_title: pos.title,
+        department_id: deptId,
+        requested_count: count,
+        urgency: reqUrgency,
+        justification: reqJustification.trim() || `Vacancy requisition for ${pos.title}`,
+        status: "Pending",
+        requested_at: new Date().toISOString().slice(0, 10),
+      });
+      toast.success(`Requisition for ${count} × ${pos.title} submitted.`);
+      await requisitionStore.refresh();
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      toast.error(status === 403 ? "You do not have permission to create requisitions." : "Could not submit requisition.");
+    }
+  };
+
+  const saveReqCount = async (r: Requisition) => {
+    const next = Math.max(1, Number(reqCountEdits[r.id]) || 1);
+    try {
+      if (r.dbId) {
+        await requisitionsApi.update(r.dbId, { requested_count: next });
+      }
+      setReqCountEdits((prev) => ({ ...prev, [r.id]: String(next) }));
+      toast.success(`${r.id} updated to ${next} slot${next !== 1 ? "s" : ""}.`);
+      await requisitionStore.refresh();
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      toast.error(status === 403 ? "You do not have permission to edit requisitions." : "Could not update requisition.");
+    }
+  };
 
   const [origDeptCode, setOrigDeptCode] = useState("");
   const [origDeptName, setOrigDeptName] = useState("");
@@ -2336,18 +2697,20 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                   onChange={(e) => setDeptTableSearch(e.target.value)}
                 />
               </div>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setDeptCode(`DEP-0${deptList.length + 1}`);
-                  setDeptName("");
-                  setDeptHead("");
-                  setIsNewDept(true);
-                  setEditingDept({ code: "", name: "", description: "", head: "Unassigned", staff: 0, openRequisitions: 0, budget: 0 });
-                }}
-              >
-                <Plus className="mr-1.5 h-4 w-4" /> Add Department
-              </Button>
+              {role === "superadmin" && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setDeptCode(`DEP-0${deptList.length + 1}`);
+                    setDeptName("");
+                    setDeptHead("");
+                    setIsNewDept(true);
+                    setEditingDept({ code: "", name: "", description: "", head: "Unassigned", staff: 0, openRequisitions: 0, budget: 0 });
+                  }}
+                >
+                  <Plus className="mr-1.5 h-4 w-4" /> Add Department
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -2382,34 +2745,46 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                     </TableCell>
                     <TableCell className="text-center pr-6">
                       <div className="flex justify-center gap-1.5">
+                        {role === "superadmin" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 text-xs"
+                            onClick={() => {
+                              setEditingDept(d);
+                              setDeptCode(d.code);
+                              setDeptName(d.name);
+                              setDeptHead(d.head);
+                              setOrigDeptCode(d.code);
+                              setOrigDeptName(d.name);
+                              setOrigDeptHead(d.head);
+                              setIsNewDept(false);
+                            }}
+                          >
+                            <Pencil className="mr-1 h-3 w-3" /> Edit
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-8 px-3 text-xs"
-                          onClick={() => {
-                            setEditingDept(d);
-                            setDeptCode(d.code);
-                            setDeptName(d.name);
-                            setDeptHead(d.head);
-                            setOrigDeptCode(d.code);
-                            setOrigDeptName(d.name);
-                            setOrigDeptHead(d.head);
-                            setIsNewDept(false);
-                          }}
+                          className="h-8 px-2 text-xs border-primary/40 text-primary hover:bg-primary/10"
+                          onClick={() => openReqDialog(d)}
                         >
-                          <Pencil className="mr-1 h-3 w-3" /> Edit
+                          <Send className="mr-1 h-3 w-3" /> Requisition
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
-                          onClick={() => {
-                            const dbId = deptIdByCode.get(d.code);
-                            if (dbId) setPendingDelete({ type: "dept", id: dbId, name: d.name });
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                        {role === "superadmin" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              const dbId = deptIdByCode.get(d.code);
+                              if (dbId) setPendingDelete({ type: "dept", id: dbId, name: d.name });
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -2462,21 +2837,23 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                   ))}
                 </SelectContent>
               </Select>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setPosTitle("");
-                  setPosDept(deptList[0]?.name || "Front Office");
-                  setPosLevel("Rank & File");
-                  setPosTarget("5");
-                  setPosFilled("3");
-                  setPosSGrade("SG-05");
-                  setIsNewPos(true);
-                  setEditingPos({ id: "", title: "", department: "", level: "Rank & File", headcount: 5, filled: 3, salaryBand: "" });
-                }}
-              >
-                <Plus className="mr-1.5 h-4 w-4" /> Add Position
-              </Button>
+              {role === "superadmin" && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setPosTitle("");
+                    setPosDept(deptList[0]?.name || "Front Office");
+                    setPosLevel("Rank & File");
+                    setPosTarget("5");
+                    setPosFilled("3");
+                    setPosSGrade("SG-05");
+                    setIsNewPos(true);
+                    setEditingPos({ id: "", title: "", department: "", level: "Rank & File", headcount: 5, filled: 3, salaryBand: "" });
+                  }}
+                >
+                  <Plus className="mr-1.5 h-4 w-4" /> Add Position
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -2492,8 +2869,9 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                   <TableHead>Level</TableHead>
                   <TableHead className="text-center">Target Headcount</TableHead>
                   <TableHead className="text-center">Filled Staff</TableHead>
+                  <TableHead className="text-center">Vacancies</TableHead>
                   <TableHead>Assigned Salary Grade / Band</TableHead>
-                  <TableHead className="w-28 text-center pr-4">Actions</TableHead>
+                  {role === "superadmin" && <TableHead className="w-28 text-center pr-4">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -2509,44 +2887,58 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                     </TableCell>
                     <TableCell className="text-center font-mono text-xs">{p.headcount}</TableCell>
                     <TableCell className="text-center font-mono text-xs font-semibold">{p.filled}</TableCell>
-                    <TableCell className="text-xs text-primary font-medium">{p.salaryBand}</TableCell>
-                    <TableCell className="text-center pr-4">
-                      <div className="flex justify-center gap-1.5">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 px-3 text-xs"
-                          onClick={() => {
-                            setEditingPos(p);
-                            setPosTitle(p.title);
-                            setPosDept(p.department);
-                            setPosLevel(p.level);
-                            setPosTarget(String(p.headcount));
-                            setPosFilled(String(p.filled));
-                            setPosSGrade(p.salaryBand.split(" ")[0] || "SG-05");
-                            setOrigPosTitle(p.title);
-                            setOrigPosDept(p.department);
-                            setOrigPosLevel(p.level);
-                            setOrigPosTarget(String(p.headcount));
-                            setOrigPosSGrade(p.salaryBand.split(" ")[0] || "SG-05");
-                            setIsNewPos(false);
-                          }}
-                        >
-                          <Pencil className="mr-1 h-3 w-3" /> Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
-                          onClick={() => {
-                            const dbId = posIdByCode.get(p.id);
-                            if (dbId) setPendingDelete({ type: "pos", id: dbId, name: p.title });
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
+                    <TableCell className="text-center">
+                      <Badge
+                        variant={p.vacancies && p.vacancies > 0 ? "outline" : "secondary"}
+                        className={
+                          p.vacancies && p.vacancies > 0
+                            ? "border-gold/40 bg-gold/10 text-gold font-mono text-xs"
+                            : "font-mono text-xs"
+                        }
+                      >
+                        {p.vacancies ?? 0}
+                      </Badge>
                     </TableCell>
+                    <TableCell className="text-xs text-primary font-medium">{p.salaryBand}</TableCell>
+                    {role === "superadmin" && (
+                      <TableCell className="text-center pr-4">
+                        <div className="flex justify-center gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 text-xs"
+                            onClick={() => {
+                              setEditingPos(p);
+                              setPosTitle(p.title);
+                              setPosDept(p.department);
+                              setPosLevel(p.level);
+                              setPosTarget(String(p.headcount));
+                              setPosFilled(String(p.filled));
+                              setPosSGrade(p.salaryBand.split(" ")[0] || "SG-05");
+                              setOrigPosTitle(p.title);
+                              setOrigPosDept(p.department);
+                              setOrigPosLevel(p.level);
+                              setOrigPosTarget(String(p.headcount));
+                              setOrigPosSGrade(p.salaryBand.split(" ")[0] || "SG-05");
+                              setIsNewPos(false);
+                            }}
+                          >
+                            <Pencil className="mr-1 h-3 w-3" /> Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              const dbId = posIdByCode.get(p.id);
+                              if (dbId) setPendingDelete({ type: "pos", id: dbId, name: p.title });
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -2858,6 +3250,111 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* VACANCY REQUISITION DIALOG (per department) */}
+      <Dialog open={!!reqDialogDept} onOpenChange={(open) => !open && setReqDialogDept(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5 text-primary" /> Vacancy Requisition — {reqDialogDept}
+            </DialogTitle>
+            <DialogDescription>
+              Send a new requisition for this department or adjust the requested slots of existing requisitions.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-xs">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">New Requisition</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Position</Label>
+                  <Select value={reqPosition} onValueChange={onReqPositionChange}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="Select position" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {deptPositions.map((p) => (
+                        <SelectItem key={p.id} value={p.title}>{p.title}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Number of Vacancies</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={reqCount}
+                    onChange={(e) => setReqCount(e.target.value)}
+                    className="text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Urgency</Label>
+                  <Select value={reqUrgency} onValueChange={setReqUrgency}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["Normal", "High", "Urgent", "Low"].map((u) => (
+                        <SelectItem key={u} value={u}>{u}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Justification</Label>
+                  <Input
+                    value={reqJustification}
+                    onChange={(e) => setReqJustification(e.target.value)}
+                    placeholder="Reason for hiring…"
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+              <Button size="sm" onClick={submitRequisition} className="mt-2">
+                <Send className="mr-2 h-3.5 w-3.5" /> Send Requisition
+              </Button>
+            </div>
+
+            {deptReqs.length > 0 && (
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Existing Requisitions — edit slots</Label>
+                <div className="space-y-2">
+                  {deptReqs.map((r) => (
+                    <div
+                      key={r.id}
+                      className="flex items-center justify-between gap-2 rounded-md border border-border p-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium">{r.id} · {r.position}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {r.status} · {r.urgency}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Input
+                          type="number"
+                          min={1}
+                          className="h-8 w-16 text-center text-xs"
+                          value={reqCountEdits[r.id] ?? String(r.count)}
+                          onChange={(e) =>
+                            setReqCountEdits((prev) => ({ ...prev, [r.id]: e.target.value }))
+                          }
+                        />
+                        <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => saveReqCount(r)}>
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -48,7 +48,9 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
   const location = useRouterState({ select: (s) => s.location });
   const pathname = location.pathname;
   const searchStr = location.searchStr || "";
-  const [expanded, setExpanded] = useState<string[]>([]);
+  const [expanded, setExpanded] = useState<string[]>(() =>
+    nav.filter((i) => i.children?.length).map((i) => i.label),
+  );
   const [announceOpen, setAnnounceOpen] = useState(false);
 
   const handleLogout = async () => {
@@ -69,7 +71,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
     removeAnnouncement,
   } = usePortalState();
   const visibleAnnouncements = announcements.filter((a) => isVisibleTo(a.audience, role));
-  const canAnnounce = role !== "employee";
+  const canAnnounce = role === "superadmin";
 
 
   const isActive = (to: string) =>

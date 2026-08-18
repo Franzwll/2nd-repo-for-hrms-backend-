@@ -56,7 +56,6 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Employee } from "@/data/hr";
-import { useHireEmployees } from "@/data/hires";
 import { TablePagination } from "@/components/ui/table-pagination";
 
 import { auditLogApi, hcmApi, type ApiAuditLog, type ApiEmployee } from "@/lib/api";
@@ -271,7 +270,6 @@ const emptyEmployee = {
 export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const isSuper = role === "superadmin";
 
-  const hireEmployees = useHireEmployees();
   const roster = useRoster();
   const [list, setList] = useState<Employee[]>([]);
 
@@ -279,20 +277,10 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     setList(roster.employees.map(toUiEmployee));
   }, [roster.employees]);
 
-  /** Hires created in New Hire Onboarding show up here immediately. */
-  useEffect(() => {
-    setList((prev) => {
-      const missing = hireEmployees.filter((e) => !prev.some((p) => p.id === e.id));
-      return missing.length ? [...missing, ...prev] : prev;
-    });
-  }, [hireEmployees]);
-
   const [search, setSearch] = useState("");
   const [dept, setDept] = useState("all");
   const [typeFilter, setTypeFilter] = useState<"all" | Employee["employmentType"]>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | Employee["status"]>("all");
-  /** Supervisor picker options — existing employees plus an unassigned marker. */
-  const supervisorOptions = ["—", ...Array.from(new Set(list.map((e) => e.name)))];
   const [selected, setSelected] = useState<string[]>([]);
   const [profileId, setProfileId] = useState<string | null>(null);
   const recordDetail = useRecordDetail(profileId);
@@ -353,18 +341,12 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const [archiveDraft, setArchiveDraft] = useState("10");
   const [manualArchived, setManualArchived] = useState<string[]>([]);
   const [docsById, setDocsById] = useState<Record<string, ProfileDoc[]>>({});
-  const [personalOverrides, setPersonalOverrides] = useState<
-    Record<string, Record<string, string>>
-  >({});
   const [docDialog, setDocDialog] = useState<{
     mode: "add" | "edit";
     index: number;
     name: string;
     file: string;
   } | null>(null);
-  const [editMode, setEditMode] = useState(false);
-  const [personalForm, setPersonalForm] = useState<Record<string, string>>({});
-  const [employmentForm, setEmploymentForm] = useState<Record<string, string>>({});
 
   const profile = list.find((e) => e.id === profileId) ?? null;
 
@@ -611,122 +593,6 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     );
     toast.success("Document removed");
   };
-
-  const openPersonalEdit = () => {
-    if (!profile) return;
-    const p = { ...buildProfile(profile), ...(personalOverrides[profile.id] ?? {}) };
-    setPersonalForm({
-      name: profile.name,
-      birthDate: String(p.birthDate),
-      gender: String(p.gender),
-      civilStatus: String(p.civilStatus),
-      nationality: String(p.nationality),
-      personalEmail: String(p.personalEmail),
-      phone: profile.phone,
-      address: String(p.address),
-      emergencyName: String(p.emergencyName),
-      emergencyRelation: String(p.emergencyRelation),
-      emergencyPhone: String(p.emergencyPhone),
-    });
-  };
-
-  const savePersonal = () => {
-    if (!profile) return;
-    const { name, phone, ...rest } = personalForm;
-    setList((prev) =>
-      prev.map((e) =>
-        e.id === profile.id ? { ...e, name: name || e.name, phone: phone ?? e.phone } : e,
-      ),
-    );
-    setPersonalOverrides((prev) => ({
-      ...prev,
-      [profile.id]: { ...(prev[profile.id] ?? {}), ...rest },
-    }));
-  };
-
-  const openEmploymentEdit = () => {
-    if (!profile) return;
-    setEmploymentForm({
-      position: profile.position,
-      department: profile.department,
-      status: profile.status,
-      employmentType: profile.employmentType,
-      dateHired: profile.dateHired,
-      supervisor: profile.supervisor,
-      email: profile.email,
-    });
-  };
-
-  const saveEmployment = () => {
-    if (!profile) return;
-    setList((prev) =>
-      prev.map((e) =>
-        e.id === profile.id
-          ? {
-              ...e,
-              position: employmentForm["position"] || e.position,
-              department: employmentForm["department"] || e.department,
-              status: (employmentForm["status"] as Employee["status"]) || e.status,
-              employmentType:
-                (employmentForm["employmentType"] as Employee["employmentType"]) ||
-                e.employmentType,
-              dateHired: employmentForm["dateHired"] || e.dateHired,
-              supervisor: employmentForm["supervisor"] || e.supervisor,
-              email: employmentForm["email"] || e.email,
-            }
-          : e,
-      ),
-    );
-  };
-
-  const openEdit = () => {
-    openPersonalEdit();
-    openEmploymentEdit();
-    setEditMode(true);
-  };
-
-  const saveEdit = async () => {
-    if (!profile) return;
-    const api = getEmployeeByCode(profile.id);
-    const name = (personalForm["name"] ?? profile.name).trim();
-    const nameParts = name.split(" ");
-    const dept = roster.departments.find(
-      (d) => d.name === (employmentForm["department"] ?? profile.department),
-    );
-    const posTitle = (employmentForm["position"] ?? profile.position).trim();
-    const pos = roster.positions.find((p) => p.title.toLowerCase() === posTitle.toLowerCase());
-    const supervisorName = employmentForm["supervisor"] ?? profile.supervisor;
-    const supervisor =
-      supervisorName && supervisorName !== "—"
-        ? roster.employees.find((e) => e.full_name === supervisorName)?.employee_id ?? null
-        : null;
-    try {
-      if (api) {
-        await hcmApi.employees.update(api.employee_id, {
-          first_name: nameParts[0] ?? api.first_name,
-          last_name: nameParts.slice(1).join(" ") || nameParts[0] || api.last_name,
-          email: employmentForm["email"] ?? api.email,
-          phone: personalForm["phone"] ?? api.phone ?? "",
-          department_id: dept?.department_id ?? api.department_id,
-          position_id: pos?.position_id ?? api.position_id,
-          supervisor_employee_id: supervisor,
-          employment_type:
-            (employmentForm["employmentType"] as ApiEmployee["employment_type"]) ?? api.employment_type,
-          status: (employmentForm["status"] as ApiEmployee["status"]) ?? api.status,
-          date_hired: employmentForm["dateHired"] ?? api.date_hired,
-        });
-      }
-      savePersonal();
-      saveEmployment();
-      setEditMode(false);
-      refreshRoster();
-      toast.success("Record updated");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Could not update record");
-    }
-  };
-
-  const cancelEdit = () => setEditMode(false);
 
   const printRecord = () => {
     if (!profile) return;
@@ -996,7 +862,6 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                                 setProfileId(e.id);
                                 setProfileTab("personal");
                                 setHistoryFormOpen(false);
-                                setEditMode(false);
                               }}
                             >
                               <FolderOpen className="mr-2 h-3.5 w-3.5" /> View Records
@@ -1235,7 +1100,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
         <DialogContent className="flex h-[96vh] flex-col gap-3 overflow-hidden sm:max-w-6xl">
           {profile &&
             (() => {
-              const p = { ...buildProfile(profile), ...(personalOverrides[profile.id] ?? {}) };
+              const p = { ...buildProfile(profile) };
               const hist = historyFor(profile);
               return (
                 <>
@@ -1263,32 +1128,6 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
 
                     {isSuper && (
                       <div className="mt-3 flex h-12 flex-nowrap items-center gap-2 overflow-x-auto border-b border-border pb-3">
-                        {profileTab === "personal" && (
-                          <>
-                            {!editMode ? (
-                              <Button size="sm" variant="outline" onClick={openEdit}>
-                                <Pencil className="mr-2 h-3.5 w-3.5" /> Edit
-                              </Button>
-                            ) : (
-                              <>
-                                <Button size="sm" onClick={saveEdit}>
-                                  Save changes
-                                </Button>
-                                <Button size="sm" variant="outline" onClick={cancelEdit}>
-                                  Cancel
-                                </Button>
-                              </>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
-                              onClick={() => removeEmployee(profile.id)}
-                            >
-                              <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete record
-                            </Button>
-                          </>
-                        )}
                         {profileTab === "documents" && (
                           <Button
                             size="sm"
@@ -1314,139 +1153,35 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
 
                     <TabsContent value="personal" className="mt-2 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
                       <Section title="Personal details">
-                        <EF
-                          label="Full name"
-                          value={editMode ? (personalForm["name"] ?? "") : profile.name}
-                          editing={editMode}
-                          onChange={(v) => setPersonalForm((prev) => ({ ...prev, name: v }))}
-                        />
-                        <EF
-                          label="Birth date"
-                          value={editMode ? (personalForm["birthDate"] ?? "") : p.birthDate}
-                          editing={editMode}
-                          onChange={(v) => setPersonalForm((prev) => ({ ...prev, birthDate: v }))}
-                        />
-                        <EF
-                          label="Gender"
-                          value={editMode ? (personalForm["gender"] ?? "") : p.gender}
-                          editing={editMode}
-                          onChange={(v) => setPersonalForm((prev) => ({ ...prev, gender: v }))}
-                        />
-                        <EF
-                          label="Civil status"
-                          value={editMode ? (personalForm["civilStatus"] ?? "") : p.civilStatus}
-                          editing={editMode}
-                          onChange={(v) => setPersonalForm((prev) => ({ ...prev, civilStatus: v }))}
-                        />
-                        <EF
-                          label="Nationality"
-                          value={editMode ? (personalForm["nationality"] ?? "") : p.nationality}
-                          editing={editMode}
-                          onChange={(v) => setPersonalForm((prev) => ({ ...prev, nationality: v }))}
-                        />
+                        <Field k="Full name" v={profile.name} />
+                        <Field k="Birth date" v={p.birthDate} />
+                        <Field k="Gender" v={p.gender} />
+                        <Field k="Civil status" v={p.civilStatus} />
+                        <Field k="Nationality" v={p.nationality} />
                       </Section>
                       <Section title="Contact information">
                         <Field k="Company email" v={profile.email} />
-                        <EF
-                          label="Personal email"
-                          value={editMode ? (personalForm["personalEmail"] ?? "") : p.personalEmail}
-                          editing={editMode}
-                          onChange={(v) =>
-                            setPersonalForm((prev) => ({ ...prev, personalEmail: v }))
-                          }
-                        />
-                        <EF
-                          label="Mobile number"
-                          value={editMode ? (personalForm["phone"] ?? "") : profile.phone}
-                          editing={editMode}
-                          onChange={(v) => setPersonalForm((prev) => ({ ...prev, phone: v }))}
-                        />
-                        <EF
-                          label="Home address"
-                          value={editMode ? (personalForm["address"] ?? "") : p.address}
-                          editing={editMode}
-                          onChange={(v) => setPersonalForm((prev) => ({ ...prev, address: v }))}
-                          wide
-                        />
+                        <Field k="Personal email" v={p.personalEmail} />
+                        <Field k="Mobile number" v={profile.phone} />
+                        <Field k="Home address" v={p.address} wide />
                       </Section>
                       <Section title="Family information">
                         <Field k="Family" v={p.family} wide />
                       </Section>
                       <Section title="Emergency contact">
-                        <EF
-                          label="Name"
-                          value={editMode ? (personalForm["emergencyName"] ?? "") : p.emergencyName}
-                          editing={editMode}
-                          onChange={(v) =>
-                            setPersonalForm((prev) => ({ ...prev, emergencyName: v }))
-                          }
-                        />
-                        <EF
-                          label="Relationship"
-                          value={
-                            editMode ? (personalForm["emergencyRelation"] ?? "") : p.emergencyRelation
-                          }
-                          editing={editMode}
-                          onChange={(v) =>
-                            setPersonalForm((prev) => ({ ...prev, emergencyRelation: v }))
-                          }
-                        />
-                        <EF
-                          label="Contact number"
-                          value={
-                            editMode ? (personalForm["emergencyPhone"] ?? "") : p.emergencyPhone
-                          }
-                          editing={editMode}
-                          onChange={(v) =>
-                            setPersonalForm((prev) => ({ ...prev, emergencyPhone: v }))
-                          }
-                        />
+                        <Field k="Name" v={p.emergencyName} />
+                        <Field k="Relationship" v={p.emergencyRelation} />
+                        <Field k="Contact number" v={p.emergencyPhone} />
                       </Section>
 
                       <Section title="Employment information">
                         <Field k="Employee number" v={profile.id} />
-                        <EF
-                          label="Position"
-                          value={editMode ? (employmentForm["position"] ?? "") : profile.position}
-                          editing={editMode}
-                          onChange={(v) => setEmploymentForm((prev) => ({ ...prev, position: v }))}
-                        />
-                        <ESelect
-                          label="Department"
-                          value={
-                            editMode ? (employmentForm["department"] ?? "") : profile.department
-                          }
-                          editing={editMode}
-                          options={roster.departments.map((d) => d.name)}
-                          onChange={(v) =>
-                            setEmploymentForm((prev) => ({ ...prev, department: v }))
-                          }
-                        />
+                        <Field k="Position" v={profile.position} />
+                        <Field k="Department" v={profile.department} />
                         <Field k="Outlet / Branch" v="Oxford Suites Makati" />
-                        <ESelect
-                          label="Status"
-                          value={editMode ? (employmentForm["status"] ?? "") : profile.status}
-                          editing={editMode}
-                          options={["Active", "Inactive"]}
-                          onChange={(v) => setEmploymentForm((prev) => ({ ...prev, status: v }))}
-                        />
-                        <EF
-                          label="Date hired"
-                          value={editMode ? (employmentForm["dateHired"] ?? "") : profile.dateHired}
-                          editing={editMode}
-                          onChange={(v) => setEmploymentForm((prev) => ({ ...prev, dateHired: v }))}
-                        />
-                        <ESelect
-                          label="Immediate supervisor"
-                          value={
-                            editMode ? (employmentForm["supervisor"] ?? "") : profile.supervisor
-                          }
-                          editing={editMode}
-                          options={supervisorOptions}
-                          onChange={(v) =>
-                            setEmploymentForm((prev) => ({ ...prev, supervisor: v }))
-                          }
-                        />
+                        <Field k="Status" v={profile.status} />
+                        <Field k="Date hired" v={profile.dateHired} />
+                        <Field k="Immediate supervisor" v={profile.supervisor} />
                         <Field k="Shift" v="AM Shift · 07:00 – 16:00" />
                         <Field
                           k="Rate"

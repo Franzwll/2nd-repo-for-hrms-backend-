@@ -28,6 +28,7 @@ class AuditLogResource extends JsonResource
             'severity' => $this->severity,
             'ip_address' => $this->ip_address,
             'device' => $this->device_info,
+            'url' => $this->url,
         ];
     }
 }

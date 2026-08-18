@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Mail\SendOtpMail;
 use App\Models\SystemUser;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 class OtpService
@@ -27,6 +29,8 @@ class OtpService
             now()->addSeconds(self::TTL_SECONDS)
         );
 
+        $this->deliver($user, $code);
+
         return [
             'login_token' => $token,
             'expires_in' => self::TTL_SECONDS,
@@ -47,6 +51,11 @@ class OtpService
         $payload['attempts'] = 0;
 
         Cache::put('auth.otp.' . $token, $payload, now()->addSeconds(self::TTL_SECONDS));
+
+        $user = SystemUser::find($payload['user_id']);
+        if ($user) {
+            $this->deliver($user, $code);
+        }
 
         return ['ok' => true, 'debug_otp' => $code];
     }
@@ -94,5 +103,16 @@ class OtpService
     public static function ttlSeconds(): int
     {
         return self::TTL_SECONDS;
+    }
+
+    private function deliver(SystemUser $user, string $code): void
+    {
+        try {
+            Mail::to($user->email)->send(
+                new SendOtpMail($code, $user->full_name ?: $user->username, self::TTL_SECONDS)
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 }

@@ -7,6 +7,7 @@ use App\Models\Employee;
 use App\Models\EmployeeEmergencyContact;
 use App\Models\EmployeeExitRecord;
 use App\Models\EmployeePositionHistory;
+use App\Models\Hr3Recommendation;
 use App\Models\Position;
 use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
@@ -118,11 +119,12 @@ class EmployeeController extends Controller
         $validated = $request->validated();
         $contacts = $validated['emergency_contacts'] ?? [];
         unset($validated['emergency_contacts']);
+        $hasEmergencyContacts = array_key_exists('emergency_contacts', $request->validated());
 
-        DB::transaction(function () use ($validated, $contacts, $employee) {
+        DB::transaction(function () use ($validated, $contacts, $employee, $hasEmergencyContacts) {
             $employee->update($validated);
 
-            if (array_key_exists('emergency_contacts', $request->validated())) {
+            if ($hasEmergencyContacts) {
                 $employee->emergencyContacts()->delete();
 
                 foreach ($contacts as $index => $contact) {
@@ -182,7 +184,14 @@ class EmployeeController extends Controller
             return response()->json(['message' => 'Employee is already regularized.'], 422);
         }
 
+        $recommendation = $this->requiredPerformanceEvaluation($request, $employee, ['Regularization', 'Performance Review']);
+        if ($recommendation instanceof JsonResponse) {
+            return $recommendation;
+        }
+
         $employee->update(['employment_type' => 'Regular']);
+
+        $this->markRecommendationProcessed($recommendation);
 
         EmployeePositionHistory::create([
             'employee_id' => $employee->employee_id,
@@ -190,7 +199,7 @@ class EmployeeController extends Controller
             'change_type' => 'Regularization',
             'old_position_id' => $employee->position_id,
             'new_position_id' => $employee->position_id,
-            'notes' => $request->string('notes'),
+            'notes' => $request->string('notes') ?: ('Regularized via performance evaluation (' . $recommendation->evaluation_score . '%).'),
         ]);
 
         AuditLogger::log(
@@ -210,6 +219,11 @@ class EmployeeController extends Controller
 
     public function promote(EmployeeLifecycleRequest $request, Employee $employee): JsonResponse
     {
+        $recommendation = $this->requiredPerformanceEvaluation($request, $employee, ['Promotion', 'Performance Review']);
+        if ($recommendation instanceof JsonResponse) {
+            return $recommendation;
+        }
+
         $newPositionId = $request->integer('new_position_id');
         $newDepartmentId = $request->filled('new_department_id') ? $request->integer('new_department_id') : $employee->department_id;
         $newSalaryGradeId = $request->filled('new_salary_grade_id') ? $request->integer('new_salary_grade_id') : null;
@@ -240,6 +254,8 @@ class EmployeeController extends Controller
                 'salary_grade_id' => $newSalaryGradeId ?: $employee->salary_grade_id,
             ])->save();
         });
+
+        $this->markRecommendationProcessed($recommendation);
 
         AuditLogger::log(
             'Employee promoted',
@@ -312,5 +328,54 @@ class EmployeeController extends Controller
         $next = $last ? ((int) substr($last, 4)) + 1 : 1;
 
         return 'EMP-' . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Resolve the performance evaluation (HR3 recommendation) required before
+     * regularization or promotion, or return a 422 JSON response if missing.
+     */
+    private function requiredPerformanceEvaluation(
+        EmployeeLifecycleRequest $request,
+        Employee $employee,
+        array $allowedTypes
+    ): Hr3Recommendation|JsonResponse {
+        $recommendationId = $request->integer('recommendation_id');
+
+        if (!$recommendationId) {
+            return response()->json(
+                ['message' => 'A performance evaluation (HR3 recommendation) is required before performing this action.'],
+                422
+            );
+        }
+
+        $recommendation = Hr3Recommendation::find($recommendationId);
+
+        if (!$recommendation || (int) $recommendation->employee_id !== (int) $employee->employee_id) {
+            return response()->json(
+                ['message' => 'The selected performance evaluation does not belong to this employee.'],
+                422
+            );
+        }
+
+        if (!in_array($recommendation->recommendation_type, $allowedTypes, true)) {
+            return response()->json(
+                ['message' => 'The selected performance evaluation type does not support this action.'],
+                422
+            );
+        }
+
+        if ($recommendation->status !== 'Pending HR Action') {
+            return response()->json(
+                ['message' => 'The selected performance evaluation has already been processed or deferred.'],
+                422
+            );
+        }
+
+        return $recommendation;
+    }
+
+    private function markRecommendationProcessed(Hr3Recommendation $recommendation): void
+    {
+        $recommendation->update(['status' => 'Approved & Processed']);
     }
 }

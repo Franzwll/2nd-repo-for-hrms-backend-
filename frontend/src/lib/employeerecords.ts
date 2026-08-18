@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { Employee } from "@/data/hr";
 import { hcmApi, type ApiDepartment, type ApiEmployee, type ApiPosition } from "./api";
+import { onHcmChanged, notifyHcmChanged } from "./hcm-sync";
 
 type RosterState = {
   employees: ApiEmployee[];
@@ -54,6 +55,21 @@ async function loadDetail(employeeCode: string) {
   }
 }
 
+/** Loads and caches an employee's full 201 record (used by Core HCM too). */
+export function loadRecordDetail(employeeCode: string) {
+  return loadDetail(employeeCode);
+}
+
+/* Keep the Employee Records store in sync when Core HCM (or anything else)
+   mutates shared employee data. */
+if (typeof window !== "undefined") {
+  onHcmChanged(() => {
+    fetched = false;
+    detailCache.clear();
+    loadRoster();
+  });
+}
+
 const subscribe = (listener: () => void) => {
   listeners.add(listener);
   if (!fetched) loadRoster();
@@ -89,6 +105,8 @@ export function getEmployeeByCode(code: string): ApiEmployee | undefined {
 /** Re-fetches the roster + department + position options from the API. */
 export function refreshRoster() {
   fetched = false;
+  detailCache.clear();
+  notifyHcmChanged();
   return loadRoster();
 }
 

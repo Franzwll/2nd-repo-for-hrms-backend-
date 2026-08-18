@@ -20,6 +20,7 @@ class EmployeeLifecycleRequest extends FormRequest
             'new_department_id' => ['nullable', 'integer', 'exists:departments,department_id'],
             'new_salary_grade_id' => ['nullable', 'integer', 'exists:salary_grades,salary_grade_id'],
             'notes' => ['nullable', 'string', 'max:255'],
+            'recommendation_id' => ['nullable', 'integer', 'exists:hr3_recommendations,recommendation_id'],
             'exit_type' => ['required_if:action,exit', Rule::in(['Resigned', 'Terminated', 'Retired'])],
             'exit_date' => ['required_if:action,exit', 'date'],
             'clearance_status' => ['nullable', Rule::in(['Pending', 'Cleared', 'Partial'])],

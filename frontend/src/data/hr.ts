@@ -63,6 +63,7 @@ export type Position = {
   level: "Rank & File" | "Supervisory" | "Managerial" | "Executive";
   headcount: number;
   filled: number;
+  vacancies?: number;
   salaryBand: string;
 };
 

@@ -19,6 +19,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ...(options.headers as Record<string, string> || {}),
   };
 
+  if (typeof window !== "undefined") {
+    headers['X-Current-Url'] = window.location.href;
+  }
+
   const token = getToken();
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -62,7 +66,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   };
 
   const isGet = !options.method || options.method.toUpperCase() === 'GET';
-  if (!isGet) return doFetch();
+  if (!isGet) {
+    // Any successful write invalidates the cached GET responses so read-after-write
+    // in the same session reflects the new data immediately.
+    const result = await doFetch();
+    getCache.clear();
+    return result;
+  }
 
   const cached = getCache.get(url);
   if (cached) {
@@ -730,6 +740,10 @@ export const hcmApi = {
   },
   hr3Recommendations: {
     list: () => request<{ data: ApiHR3Recommendation[] }>('/hr3-recommendations'),
+    acknowledge: (id: number) =>
+      request<{ message: string }>(`/hr3-recommendations/${id}/acknowledge`, {
+        method: 'POST',
+      }),
   },
 };
 
@@ -843,6 +857,7 @@ export interface ApiAuditLog {
   severity: "Info" | "Warning" | "Critical";
   ip_address: string;
   device: string;
+  url?: string | null;
 }
 
 export const auditLogApi = {

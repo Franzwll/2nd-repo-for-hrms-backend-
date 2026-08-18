@@ -54,12 +54,20 @@ class AuthController extends Controller
 
         $issued = $this->otpService->issue($user);
 
-        return response()->json([
-            'message' => 'One-time password issued. Check your registered device.',
-            'login_token' => $issued['login_token'],
-            'expires_in' => $issued['expires_in'],
-            'debug_otp' => $issued['debug_otp'],
-        ]);
+        AuditLogger::log(
+            'OTP sent',
+            'Authentication',
+            'Info',
+            'user',
+            $user->username,
+            'One-time password emailed to ' . $this->maskEmail($user->email),
+            $user
+        );
+
+        return response()->json($this->otpResponse(
+            'One-time password sent to your work email.',
+            $issued
+        ));
     }
 
     public function verifyOtp(OtpVerifyRequest $request): JsonResponse
@@ -130,9 +138,9 @@ class AuthController extends Controller
         }
 
         return response()->json([
-            'message' => 'A new OTP has been issued.',
+            'message' => 'A new OTP has been sent to your work email.',
             'expires_in' => OtpService::ttlSeconds(),
-            'debug_otp' => $result['debug_otp'],
+            ...$this->debugOtp($result['debug_otp']),
         ]);
     }
 
@@ -160,6 +168,38 @@ class AuthController extends Controller
         $request->user()->currentAccessToken()->delete();
 
         return response()->json(['message' => 'Logged out successfully.'], 200);
+    }
+
+    private function otpResponse(string $message, array $issued): array
+    {
+        return [
+            'message' => $message,
+            'login_token' => $issued['login_token'],
+            'expires_in' => $issued['expires_in'],
+            ...$this->debugOtp($issued['debug_otp']),
+        ];
+    }
+
+    private function debugOtp(string $code): array
+    {
+        if (! app()->environment(['local', 'testing'])) {
+            return [];
+        }
+
+        return ['debug_otp' => $code];
+    }
+
+    private function maskEmail(string $email): string
+    {
+        $parts = explode('@', $email);
+        $name = $parts[0] ?? '';
+        $domain = $parts[1] ?? '';
+
+        if (strlen($name) <= 2) {
+            return str_repeat('*', strlen($name)) . '@' . $domain;
+        }
+
+        return $name[0] . str_repeat('*', max(2, strlen($name) - 2)) . '@' . $domain;
     }
 
     private function deviceInfo(Request $request): string
