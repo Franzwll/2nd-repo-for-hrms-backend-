@@ -1,0 +1,15 @@
+{
+    "name": "Landing",
+    "alias": "landing",
+    "description": "Public landing page API for careers, announcements, and job applications.",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Landing\\Providers\\LandingServiceProvider"
+    ],
+    "aliases": {},
+    "files": [],
+    "requires": [],
+    "active": true,
+    "order": 0
+}

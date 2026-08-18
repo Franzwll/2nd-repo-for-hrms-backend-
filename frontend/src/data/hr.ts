@@ -63,6 +63,7 @@ export type Position = {
   level: "Rank & File" | "Supervisory" | "Managerial" | "Executive";
   headcount: number;
   filled: number;
+  vacancies?: number;
   salaryBand: string;
 };
 
@@ -185,6 +186,7 @@ export const orgChart: OrgNode = {
 
 export type NewHire = {
   id: string;
+  dbId?: number;
   name: string;
   position: string;
   department: string;

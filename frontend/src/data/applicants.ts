@@ -2,6 +2,7 @@ export type ApplicantStatus = "fit" | "other-role" | "credential" | "not-fit";
 
 export type Applicant = {
   id: string;
+  dbId?: number;
   name: string;
   email: string;
   phone: string;
@@ -332,6 +333,7 @@ export const interviewers = [
 
 export type Interview = {
   id: string;
+  dbId?: number;
   applicant: string;
   position: string;
   date: string;

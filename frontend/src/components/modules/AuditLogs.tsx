@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Download, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Activity, AlertTriangle, Download, ScrollText, Search, ShieldAlert, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
@@ -36,16 +36,50 @@ import {
 import { TablePagination } from "@/components/ui/table-pagination";
 import { ListBody } from "@/components/portal/ListBody";
 import { usePagination } from "@/hooks/usePagination";
-import { auditLogs } from "@/data/users";
+import { auditLogApi, type ApiAuditLog } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+const formatTimestamp = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
 
 export function AuditLogs() {
   const [severity, setSeverity] = useState("all");
   const [moduleFilter, setModuleFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [reportOpen, setReportOpen] = useState(false);
-  const moduleOptions = Array.from(new Set(auditLogs.map((a) => a.module)));
-  const filteredRows = auditLogs.filter((a) => {
+  const [entries, setEntries] = useState<ApiAuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    auditLogApi
+      .list({ per_page: 500 })
+      .then((res) => {
+        if (!cancelled) setEntries(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("Unable to load audit logs.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const moduleOptions = Array.from(new Set(entries.map((a) => a.module)));
+  const filteredRows = entries.filter((a) => {
     const matchesSeverity = severity === "all" || a.severity === severity;
     const matchesModule = moduleFilter === "all" || a.module === moduleFilter;
     const q = search.trim().toLowerCase();
@@ -55,7 +89,8 @@ export function AuditLogs() {
       a.action.toLowerCase().includes(q) ||
       a.module.toLowerCase().includes(q) ||
       a.department.toLowerCase().includes(q) ||
-      a.ipAddress.toLowerCase().includes(q);
+      a.ip_address.toLowerCase().includes(q) ||
+      (a.url ?? "").toLowerCase().includes(q);
     return matchesSeverity && matchesModule && matchesSearch;
   });
   const {
@@ -70,16 +105,46 @@ export function AuditLogs() {
     module: (a) => a.module,
     department: (a) => a.department,
     device: (a) => a.device,
-    ipAddress: (a) => a.ipAddress,
+    ipAddress: (a) => a.ip_address,
+    url: (a) => a.url ?? "",
     severity: (a) => a.severity,
   });
 
   const auditPage = usePagination(rows, 5);
 
-  const totalEvents = auditLogs.length;
-  const criticalCount = auditLogs.filter((a) => a.severity === "Critical").length;
-  const warningCount = auditLogs.filter((a) => a.severity === "Warning").length;
-  const uniqueActors = new Set(auditLogs.map((a) => a.user)).size;
+  const totalEvents = entries.length;
+  const criticalCount = entries.filter((a) => a.severity === "Critical").length;
+  const warningCount = entries.filter((a) => a.severity === "Warning").length;
+  const uniqueActors = new Set(entries.map((a) => a.user)).size;
+
+  const exportCsv = () => {
+    const header = ["Timestamp", "User", "Role", "Department", "Action", "Module", "Device", "IP Address", "URL", "Severity"];
+    const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const lines = filteredRows.map((a) =>
+      [
+        formatTimestamp(a.timestamp),
+        esc(a.user),
+        esc(a.role),
+        esc(a.department),
+        esc(a.action),
+        esc(a.module),
+        esc(a.device),
+        esc(a.ip_address),
+        esc(a.url ?? ""),
+        a.severity,
+      ].join(",")
+    );
+    const blob = new Blob([[header.join(","), ...lines].join("\n")], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `audit-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success("Audit log report downloaded");
+  };
 
   return (
     <div>
@@ -124,7 +189,7 @@ export function AuditLogs() {
               <DialogFooter>
                 <Button
                   onClick={() => {
-                    toast.success("Audit log report generated");
+                    exportCsv();
                     setReportOpen(false);
                   }}
                 >
@@ -137,16 +202,44 @@ export function AuditLogs() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total Events" value={totalEvents} tone="primary" />
-        <StatCard label="Critical" value={criticalCount} tone="caution" />
-        <StatCard label="Warnings" value={warningCount} tone="gold" />
-        <StatCard label="Unique Actors" value={uniqueActors} tone="success" />
+        <StatCard
+          label="Total Events"
+          value={totalEvents}
+          tone="primary"
+          icon={Activity}
+          onClick={() => setSeverity("all")}
+          hint="Click to view all"
+        />
+        <StatCard
+          label="Critical"
+          value={criticalCount}
+          tone="caution"
+          icon={ShieldAlert}
+          onClick={() => setSeverity("Critical")}
+          hint="Click to filter critical"
+        />
+        <StatCard
+          label="Warnings"
+          value={warningCount}
+          tone="gold"
+          icon={AlertTriangle}
+          onClick={() => setSeverity("Warning")}
+          hint="Click to filter warnings"
+        />
+        <StatCard
+          label="Unique Actors"
+          value={uniqueActors}
+          tone="success"
+          icon={Users}
+          onClick={() => setSeverity("Info")}
+          hint="Click to filter info"
+        />
       </div>
 
       <Card className="mt-4 border-border/70">
         <CardContent className="p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-display text-2xl font-semibold">System Activity</h2>
+            <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><ScrollText className="h-5 w-5 text-primary" /> System Activity</h2>
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative min-w-[14rem] flex-1">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -193,8 +286,9 @@ export function AuditLogs() {
                     Timestamp
                   </SortHead>
                   <SortHead sortKey="user" sort={sort} onSort={toggle}>
-                    User &amp; Role
+                    User
                   </SortHead>
+                  <SortHead sortKey="role" sort={sort} onSort={toggle}>Role</SortHead>
                   <TableHead>Action Type</TableHead>
                   <SortHead sortKey="action" sort={sort} onSort={toggle}>
                     Action Details
@@ -204,6 +298,9 @@ export function AuditLogs() {
                   </SortHead>
                   <SortHead sortKey="device" sort={sort} onSort={toggle}>
                     Device &amp; IP
+                  </SortHead>
+                  <SortHead sortKey="url" sort={sort} onSort={toggle}>
+                    URL
                   </SortHead>
                   <SortHead sortKey="severity" sort={sort} onSort={toggle}>
                     Severity
@@ -232,14 +329,12 @@ export function AuditLogs() {
                       : "border-primary/40 bg-primary/10 text-primary";
 
                   return (
-                    <TableRow key={a.id}>
-                      <TableCell className="text-xs text-muted-foreground">{a.timestamp}</TableCell>
+                    <TableRow key={a.audit_log_id}>
+                      <TableCell className="text-xs text-muted-foreground">{formatTimestamp(a.timestamp)}</TableCell>
                       <TableCell className="text-xs">
                         <div className="font-semibold text-foreground">{a.user}</div>
-                        <Badge variant="outline" className="mt-0.5 text-[10px] py-0 h-4 border-border/60 text-muted-foreground font-normal">
-                          {a.role}
-                        </Badge>
                       </TableCell>
+                      <TableCell><Badge variant="outline" className="text-[10px] font-medium">{a.role}</Badge></TableCell>
                       <TableCell>
                         <Badge variant="outline" className={cn("text-[10px] font-semibold", actionTypeTone)}>
                           {actionType}
@@ -249,7 +344,19 @@ export function AuditLogs() {
                       <TableCell className="text-xs text-muted-foreground">{a.module}</TableCell>
                       <TableCell className="text-xs">
                         <div>{a.device}</div>
-                        <div className="font-mono text-[11px] text-muted-foreground">{a.ipAddress}</div>
+                        <div className="font-mono text-[11px] text-muted-foreground">{a.ip_address}</div>
+                      </TableCell>
+                      <TableCell className="max-w-[18rem]">
+                        {a.url ? (
+                          <div
+                            className="block max-w-[18rem] truncate font-mono text-[11px] text-muted-foreground"
+                            title={a.url}
+                          >
+                            {a.url}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -268,10 +375,20 @@ export function AuditLogs() {
                     </TableRow>
                   );
                 })}
-                {rows.length === 0 && (
+                {loading && (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={9}
+                      className="py-8 text-center text-sm text-muted-foreground"
+                    >
+                      Loading audit activity…
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!loading && rows.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={9}
                       className="py-8 text-center text-sm text-muted-foreground"
                     >
                       No activity matches your filters.

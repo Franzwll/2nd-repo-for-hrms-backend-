@@ -15,6 +15,12 @@
 --   MODIFY : payroll_records (nullable payroll_period_id FK)
 -- ============================================================================
 
+-- Self-contained: create the database if missing, then switch to it.
+-- Safe to re-run (IF NOT EXISTS).
+CREATE DATABASE IF NOT EXISTS `hotel_hr`
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+USE `hotel_hr`;
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS=0;
 

@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   Bell,
@@ -34,17 +34,34 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { navForRole, roleMeta, type Role } from "@/lib/nav";
+import { authApi } from "@/lib/api";
+import { clearSession, getUser } from "@/lib/auth";
 
 
 export function PortalShell({ role, children }: { role: Role; children: ReactNode }) {
   const [open, setOpen] = useState(true);
+  const navigate = useNavigate();
   const meta = roleMeta[role];
+  const user = getUser();
+  const displayName = user?.full_name || meta.user;
   const nav = navForRole(role);
   const location = useRouterState({ select: (s) => s.location });
   const pathname = location.pathname;
   const searchStr = location.searchStr || "";
-  const [expanded, setExpanded] = useState<string[]>([]);
+  const [expanded, setExpanded] = useState<string[]>(() =>
+    nav.filter((i) => i.children?.length).map((i) => i.label),
+  );
   const [announceOpen, setAnnounceOpen] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // token already invalid — still clear the local session
+    }
+    clearSession();
+    navigate({ to: "/login" });
+  };
   const {
     notifications,
     unreadCount,
@@ -54,7 +71,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
     removeAnnouncement,
   } = usePortalState();
   const visibleAnnouncements = announcements.filter((a) => isVisibleTo(a.audience, role));
-  const canAnnounce = role !== "employee";
+  const canAnnounce = role === "superadmin";
 
 
   const isActive = (to: string) =>
@@ -73,8 +90,8 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
   useEffect(() => {
     const owner = nav.find((i) =>
       i.children?.some((c) => {
-        const [cPath] = c.to.split("?");
-        return pathname === cPath || pathname.startsWith(cPath);
+        const [cPath] = (c.to ?? "").split("?");
+        return cPath ? pathname === cPath || pathname.startsWith(cPath) : false;
       }),
     );
     if (owner) setExpanded((prev) => (prev.includes(owner.label) ? prev : [...prev, owner.label]));
@@ -98,8 +115,8 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
               const hasChildren = !!item.children?.length;
               const groupActive = hasChildren
                 ? item.children!.some((c) => {
-                    const [cPath] = c.to.split("?");
-                    return pathname === cPath || pathname.startsWith(cPath);
+                    const [cPath] = (c.to ?? "").split("?");
+                    return cPath ? pathname === cPath || pathname.startsWith(cPath) : false;
                   })
                 : isActive(item.to);
               const isOpen = expanded.includes(item.label);
@@ -187,13 +204,14 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
             <UserCircle className="h-4 w-4 shrink-0" />
             {open && <span>My Profile</span>}
           </Link>
-          <Link
-            to="/login"
-            className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           >
             <LogOut className="h-4 w-4 shrink-0" />
             {open && <span>Logout</span>}
-          </Link>
+          </button>
         </div>
 
       </aside>
@@ -394,7 +412,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
-                  <p className="text-sm font-medium">{meta.user}</p>
+                  <p className="text-sm font-medium">{displayName}</p>
                   <p className="text-xs font-normal text-muted-foreground">{meta.label}</p>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -409,10 +427,8 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link to="/login" className="text-primary">
-                    <LogOut className="mr-2 h-4 w-4" /> Logout
-                  </Link>
+                <DropdownMenuItem onSelect={handleLogout} className="text-primary">
+                  <LogOut className="mr-2 h-4 w-4" /> Logout
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

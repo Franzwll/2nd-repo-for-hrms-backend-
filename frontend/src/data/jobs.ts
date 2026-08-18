@@ -2,6 +2,7 @@ export type JobStatus = "Open" | "Closed" | "Draft";
 
 export type Job = {
   id: string;
+  dbId?: number;
   title: string;
   department: string;
   employmentType: "Full-time" | "Part-time" | "Contract" | "Seasonal";

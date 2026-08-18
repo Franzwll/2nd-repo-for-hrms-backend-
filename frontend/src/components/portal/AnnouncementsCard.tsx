@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { isVisibleTo, usePortalState } from "@/components/portal/portal-state";
+import { getUser } from "@/lib/auth";
 import type { Role } from "@/lib/nav";
 
 export function AnnouncementsCard({ role }: { role: Role }) {
@@ -19,7 +20,7 @@ export function AnnouncementsCard({ role }: { role: Role }) {
     <Card className="border-border/70">
       <CardContent className="p-6">
         <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <span className="flex h-9 w-9 items-center justify-center text-primary">
             <Megaphone className="h-4 w-4" />
           </span>
           <div>
@@ -82,7 +83,7 @@ export function AnnouncementsCard({ role }: { role: Role }) {
         <AnnouncementDialog
           open={publishOpen}
           onOpenChange={setPublishOpen}
-          author="Bullseur Santiago"
+          author={getUser()?.full_name ?? "System"}
         />
       )}
     </Card>

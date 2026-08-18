@@ -3,28 +3,39 @@ import oxfordMarkWhite from "@/assets/oxford-mark-white.png";
 
 export function Preloader({ onComplete }: { onComplete?: () => void }) {
   const [progress, setProgress] = useState(0);
-  const [hidden, setHidden] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 100) {
           clearInterval(timer);
-          setHidden(true);
-          onComplete?.();
           return 100;
         }
-        return prev + Math.floor(Math.random() * 20) + 15;
+        // Deliberately ease in: a calm start, then a quicker finish once the app is ready.
+        const remaining = 100 - prev;
+        const increment = prev < 20 ? 4 : prev < 60 ? 10 : Math.max(15, Math.ceil(remaining * 0.3));
+        return Math.min(100, prev + increment);
       });
-    }, 80);
+    }, 120);
 
     return () => clearInterval(timer);
   }, [onComplete]);
 
-  if (hidden) return null;
+  useEffect(() => {
+    if (progress !== 100) return;
+    const fade = window.setTimeout(() => setLeaving(true), 150);
+    const complete = window.setTimeout(() => onComplete?.(), 420);
+    return () => {
+      window.clearTimeout(fade);
+      window.clearTimeout(complete);
+    };
+  }, [progress, onComplete]);
+
+  if (leaving) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#520c19] text-white">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#520c19] text-white transition-all duration-500 ease-out animate-in fade-in">
       <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-8 px-6">
         {/* Logo Mark on Left */}
         <img
@@ -49,7 +60,7 @@ export function Preloader({ onComplete }: { onComplete?: () => void }) {
           {/* Clean Gold Progress Bar */}
           <div className="mt-1 h-1.5 w-52 sm:w-60 overflow-hidden rounded-full bg-white/20">
             <div
-              className="h-full bg-gold transition-all duration-150 ease-out"
+              className="h-full bg-gold transition-all duration-300 ease-out"
               style={{ width: `${progress}%` }}
             />
           </div>

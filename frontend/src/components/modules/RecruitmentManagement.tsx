@@ -71,6 +71,35 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useSort } from "@/components/portal/sortable";
 import { cn } from "@/lib/utils";
 import hiringTemplate from "@/assets/hiring-template.png.asset.json";
+import { jobPostsApi, requisitionsApi, type ApiJobPost } from "@/lib/api";
+
+function transformApiJob(j: ApiJobPost): Job {
+  return {
+    id: j.slug || String(j.job_post_id),
+    dbId: j.job_post_id,
+    title: j.title,
+    department: j.department || "Front Office",
+    employmentType: j.employment_type,
+    schedule: j.schedule || "Shifting Schedule",
+    salaryMin: Number(j.salary_min) || 0,
+    salaryMax: Number(j.salary_max) || 0,
+    vacancies: Number(j.vacancies) || 1,
+    filled: Number(j.filled_count) || 0,
+    posted: j.posted_date || new Date().toISOString().slice(0, 10),
+    status: j.status,
+    active: Boolean(j.active),
+    experience: (j.experience_level || "1-2 Years") as any,
+    education: (j.education_level || "High School Graduate") as any,
+    summary: j.summary || "",
+    description: j.description || "",
+    responsibilities: j.responsibilities || [],
+    qualifications: j.qualifications || [],
+    skills: j.skills || [],
+    benefits: j.benefits || [],
+    applicants: Number(j.applicants_count) || 0,
+    platforms: j.platforms && j.platforms.length > 0 ? j.platforms : ["Website"],
+  };
+}
 
 /** Colour-coded urgency badge classes. */
 const urgencyBadge = (urgency: string) =>
@@ -276,6 +305,17 @@ function snapshotOf(d: Draft, b: BlockId[]) {
 
 export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }) {
   const [jobList, setJobList] = useState<Job[]>(seedJobs);
+
+  useEffect(() => {
+    jobPostsApi.list({ per_page: 100 }).then((res) => {
+      if (res?.data && res.data.length > 0) {
+        setJobList(res.data.map(transformApiJob));
+      }
+    }).catch((err) => {
+      console.warn("Could not fetch jobs from API:", err);
+    });
+  }, []);
+
   const [tab, setTab] = useState("postings");
   const [mode, setMode] = useState<"template" | "custom">("custom");
   const [newOpen, setNewOpen] = useState(false);
@@ -386,7 +426,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     toast.success(`Draft saved — “${title}” is in your postings as a draft`);
   };
 
-  const toggleActive = (id: string) =>
+  const toggleActive = async (id: string) => {
+    const target = jobList.find((j) => j.id === id);
     setJobList((prev) =>
       prev.map((j) =>
         j.id === id
@@ -394,6 +435,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           : j,
       ),
     );
+    try {
+      await jobPostsApi.toggle(target?.dbId ?? id);
+      toast.success("Job post status updated in database");
+    } catch (e) {
+      console.warn("Could not toggle job on API:", e);
+    }
+  };
 
   const totalVacancies = jobList.reduce((t, j) => t + j.vacancies, 0);
   const totalFilled = jobList.reduce((t, j) => t + j.filled, 0);
@@ -416,7 +464,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     toast.success(`${t.name} applied to the draft`);
   };
 
-  const publish = () => {
+  const publish = async () => {
     const chosen = Object.keys(platforms).filter((k) => platforms[k]);
     if (!draft.title.trim()) {
       toast.error("Job title is required");
@@ -474,6 +522,63 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setSourceReqId(null);
     setBuilderStarted(false);
     setSavedSnapshot(snapshotOf(blankDraft, []));
+
+    // Persist to backend database API
+    try {
+      if (editingJobId) {
+        const existing = jobList.find((j) => j.id === editingJobId);
+        await jobPostsApi.update(existing?.dbId ?? editingJobId, {
+          title: jobPayload.title,
+          employment_type: jobPayload.employmentType,
+          schedule: jobPayload.schedule,
+          salary_min: jobPayload.salaryMin,
+          salary_max: jobPayload.salaryMax,
+          vacancies: jobPayload.vacancies,
+          status: jobPayload.status,
+          active: jobPayload.active,
+          summary: jobPayload.summary,
+          description: jobPayload.description,
+          responsibilities: jobPayload.responsibilities,
+          qualifications: jobPayload.qualifications,
+          skills: jobPayload.skills,
+          benefits: jobPayload.benefits,
+          platforms: chosen,
+        });
+      } else {
+        const created = await jobPostsApi.create({
+          title: jobPayload.title,
+          department_id: 1,
+          employment_type: jobPayload.employmentType,
+          schedule: jobPayload.schedule,
+          salary_min: jobPayload.salaryMin,
+          salary_max: jobPayload.salaryMax,
+          vacancies: jobPayload.vacancies,
+          status: jobPayload.status,
+          active: jobPayload.active,
+          summary: jobPayload.summary,
+          description: jobPayload.description,
+          responsibilities: jobPayload.responsibilities,
+          qualifications: jobPayload.qualifications,
+          skills: jobPayload.skills,
+          benefits: jobPayload.benefits,
+          platforms: chosen,
+        });
+        setJobList((prev) =>
+          prev.map((j) =>
+            j.id === jobPayload.id
+              ? { ...j, dbId: created.job_post_id }
+              : j,
+          ),
+        );
+      }
+      if (sourceReqId) {
+        const srcReq = requisitions.find((r) => r.id === sourceReqId);
+        const createdJob = jobList.find((j) => j.id === jobPayload.id);
+        await requisitionsApi.convert(srcReq?.dbId ?? sourceReqId, createdJob?.dbId);
+      }
+    } catch (e) {
+      console.warn("Could not persist job post to database API:", e);
+    }
   };
 
   const startNewPost = (department: string, position?: string) => {
@@ -1150,18 +1255,18 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       </div>
 
       <Tabs value={tab} onValueChange={handleTabChange} className="mt-6">
-        <TabsList className="flex h-auto flex-wrap justify-start">
-          <TabsTrigger value="postings">Vacancies & Postings</TabsTrigger>
-          <TabsTrigger value="builder">Job Post Builder</TabsTrigger>
-          <TabsTrigger value="requisitions">
-            Requisitions from Core HCM
+        <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
+          <TabsTrigger className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer" value="postings"><Briefcase className="mr-1.5 h-4 w-4" /> Vacancies &amp; Postings</TabsTrigger>
+          <TabsTrigger className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer" value="builder"><FilePlus2 className="mr-1.5 h-4 w-4" /> Job Post Builder</TabsTrigger>
+          <TabsTrigger className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer" value="requisitions">
+            <Send className="mr-1.5 h-4 w-4" /> Requisitions from Core HCM
             {pendingRequisitions.length ? ` (${pendingRequisitions.length})` : ""}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent id="recruitment-postings" value="postings" className="mt-4 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-display text-lg font-semibold">Vacancies &amp; Postings</h2>
+            <h2 className="flex items-center gap-2 font-display text-lg font-semibold"><Briefcase className="h-4 w-4 text-primary" /> Vacancies &amp; Postings</h2>
             <div className="flex flex-wrap items-center justify-end gap-3">
               <div className="relative w-56">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1432,7 +1537,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             <CardContent className="p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="font-display text-2xl font-semibold">Vacancy Requisitions</h2>
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Send className="h-5 w-5 text-primary" /> Vacancy Requisitions</h2>
                   <p className="text-xs text-muted-foreground">
                     Requests raised from Core HCM's job position list, pending conversion into a job
                     post.
@@ -1641,7 +1746,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               }}
               className="group flex min-h-[520px] w-full flex-col items-center justify-center gap-5 rounded-2xl border-2 border-dashed border-border bg-muted/20 p-12 text-center transition-all hover:border-primary/60 hover:bg-primary/5 active:scale-[0.995]"
             >
-              <span className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+              <span className="flex h-20 w-20 items-center justify-center text-primary transition-transform group-hover:scale-105">
                 <FilePlus2 className="h-9 w-9" />
               </span>
               <span className="font-display text-3xl font-semibold">Create a job posting</span>
@@ -1741,7 +1846,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 <Card className="border-border/70">
                   <CardContent className="space-y-3 p-4">
                     <div className="flex items-center justify-between">
-                      <h2 className="font-display text-xl font-semibold">
+                      <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
+                        <FilePlus2 className="h-4 w-4 text-primary" />
                         {editingJobId ? "Edit Your Job Post" : "Edit Your Job Post"}
                       </h2>
                     </div>

@@ -8,6 +8,7 @@
     "require": {
         "php": "^8.2",
         "laravel/framework": "^12.0",
+        "laravel/sanctum": "*",
         "laravel/tinker": "^2.10.1",
         "nwidart/laravel-modules": "^12.0"
     },
@@ -69,10 +70,18 @@
         ]
     },
     "extra": {
-        "laravel": {
-            "dont-discover": []
-        }
+    "laravel": {
+        "dont-discover": []
     },
+    "merge-plugin": {
+        "include": [
+            "Modules/*/composer.json"
+        ],
+        "recurse": true,
+        "replace": false,
+        "merge-dev": true
+    }
+},
     "config": {
         "optimize-autoloader": true,
         "preferred-install": "dist",

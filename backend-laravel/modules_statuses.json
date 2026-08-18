@@ -6,5 +6,9 @@
     "EmployeeSelfService": true,
     "EmployeeRecords": true,
     "UserManagement": true,
-    "AuditLog": true
+    "AuditLog": true,
+    "Settings": true,
+    "Profile": true,
+    "Auth": true,
+    "Landing": true
 }

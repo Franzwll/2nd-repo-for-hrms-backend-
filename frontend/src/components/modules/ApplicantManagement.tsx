@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarClock,
   CalendarDays,
@@ -113,6 +113,44 @@ import { jobs } from "@/data/jobs";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { SortHead, useSort } from "@/components/portal/sortable";
+import { applicantsApi, interviewsApi, type ApiApplicant, type ApiInterview } from "@/lib/api";
+
+function transformApiApplicant(a: ApiApplicant): Applicant {
+  return {
+    id: a.applicant_code || `APP-${a.applicant_id}`,
+    dbId: a.applicant_id,
+    name: a.name,
+    email: a.email,
+    phone: a.phone || "0912 345 6789",
+    position: a.job_post?.title || "Front Desk Receptionist",
+    jobId: String(a.job_post_id),
+    appliedAt: a.applied_at ? a.applied_at.slice(0, 16).replace("T", " ") : "2026-07-25 12:00",
+    score: a.fit_score || 0,
+    status: a.status,
+    stage: a.stage,
+    source: (a.source || "Online Portal") as any,
+    entities: a.screening_entities?.map((e) => ({ label: e.label, value: e.value })) || [],
+    breakdown: a.screening_scores?.map((s) => ({ criterion: s.criterion, score: s.score })) || [],
+    flags: a.flags_json || [],
+    summary: a.summary || "",
+  };
+}
+
+function transformApiInterview(i: ApiInterview): (typeof seedInterviews)[number] {
+  return {
+    id: i.interview_code || `INT-${i.interview_id}`,
+    dbId: i.interview_id,
+    applicant: `Applicant #${i.applicant_id}`,
+    applicantId: `APP-${i.applicant_id}`,
+    applicantName: "Candidate",
+    position: "Front Desk Receptionist",
+    date: i.scheduled_date,
+    time: i.scheduled_time,
+    interviewer: i.interviewer_name || "HR Officer",
+    mode: i.mode,
+    status: i.status,
+  } as any;
+}
 
 /** Badge tone per audit action type in the History & Audit log. */
 const auditBadgeClass = (action: string) => {
@@ -421,6 +459,23 @@ export function ApplicantManagement({
 }) {
   const navigate = useNavigate();
   const [rows, setRows] = useState<Applicant[]>(seedApplicants);
+
+  useEffect(() => {
+    Promise.allSettled([
+      applicantsApi.list({ per_page: 100 }),
+      interviewsApi.list({ per_page: 100 }),
+    ]).then(([appRes, intRes]) => {
+      if (appRes.status === "fulfilled" && appRes.value?.data?.length > 0) {
+        setRows(appRes.value.data.map(transformApiApplicant));
+      }
+      if (intRes.status === "fulfilled" && intRes.value?.data?.length > 0) {
+        setInterviews(intRes.value.data.map(transformApiInterview));
+      }
+    }).catch((err) => {
+      console.warn("Could not fetch applicants/interviews from API:", err);
+    });
+  }, []);
+
   const [tab, setTab] = useState("ranking");
   const [positionFilter, setPositionFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -630,7 +685,7 @@ export function ApplicantManagement({
     setRows((prev) => prev.map((a) => (a.id === id ? { ...a, stage } : a)));
 
   /** Accepting an assessment hands the applicant to New Hire Onboarding as pre-onboarding. */
-  const acceptAssessment = (r: AssessmentResult) => {
+  const acceptAssessment = async (r: AssessmentResult) => {
     const applicant = rows.find((a) => a.id === r.applicantId);
     setStage(r.applicantId, "Hired");
     addAudit({
@@ -650,12 +705,22 @@ export function ApplicantManagement({
     setAssessments((prev) =>
       prev.filter((a) => a.applicantId !== r.applicantId),
     );
-    toast.success(`${r.name} accepted � creating their pre-onboarding record`);
+    toast.success(`${r.name} accepted — creating their pre-onboarding record`);
+
+    try {
+      const appId = applicant?.dbId ?? r.applicantId;
+      await applicantsApi.hire(appId);
+      await applicantsApi.hire(appId);
+    } catch (e) {
+      console.warn("Could not advance applicant stage on database API:", e);
+    }
+
     navigate({ to: `/${role}/onboarding` });
   };
 
   /** Rejecting an assessment drops the row from the list. */
   const rejectAssessment = (r: AssessmentResult) => {
+    const applicant = rows.find((a) => a.id === r.applicantId);
     setStage(r.applicantId, "Rejected");
     addAudit({
       actionType: "Assessment Rejected",
@@ -667,6 +732,13 @@ export function ApplicantManagement({
       prev.filter((a) => a.applicantId !== r.applicantId),
     );
     toast.success(`${r.name} rejected after assessment`);
+
+    try {
+      if (applicant?.dbId)
+        applicantsApi.update(applicant.dbId, { stage: "Rejected" });
+    } catch (e) {
+      console.warn("Could not update applicant stage on database API:", e);
+    }
   };
 
   /** Accept ? prefill the scheduler and jump to the Interview Scheduling tab. */
@@ -685,7 +757,7 @@ export function ApplicantManagement({
     });
   };
 
-  const confirmSchedule = () => {
+  const confirmSchedule = async () => {
     if (!schedule.applicant) {
       toast.error("Select an applicant first");
       return;
@@ -695,34 +767,45 @@ export function ApplicantManagement({
     ).length;
     if (taken >= capacityPerSlot) {
       toast.error(
-        `That slot is full � ${capacityPerSlot} applicants already booked for ${schedule.time}.`,
+        `That slot is full — ${capacityPerSlot} applicants already booked for ${schedule.time}.`,
       );
       return;
     }
     const src = rows.find((a) => a.name === schedule.applicant);
-    setInterviews((prev) => [
-      {
-        id: `INT-${300 + prev.length}`,
-        applicant: schedule.applicant,
-        position: src?.position ?? "�",
-        date: schedule.date,
-        time: schedule.time,
-        mode: schedule.mode as "On-site" | "Virtual",
-        interviewer: schedule.interviewer,
-        status: "Scheduled",
-      },
-      ...prev,
-    ]);
+    const newInt = {
+      id: `INT-${300 + interviews.length}`,
+      applicant: schedule.applicant,
+      position: src?.position ?? "—",
+      date: schedule.date,
+      time: schedule.time,
+      mode: schedule.mode as "On-site" | "Virtual",
+      interviewer: schedule.interviewer,
+      status: "Scheduled" as const,
+    };
+    setInterviews((prev) => [newInt, ...prev]);
     if (src) setStage(src.id, "Interview Scheduled");
     addAudit({
       actionType: "Interview Scheduled",
       target: schedule.applicant,
       module: "Interview Scheduling",
-      details: `${schedule.mode} interview booked for ${schedule.date} � ${schedule.time} with ${schedule.interviewer}.`,
+      details: `${schedule.mode} interview booked for ${schedule.date} · ${schedule.time} with ${schedule.interviewer}.`,
     });
     toast.success(`Interview confirmed for ${schedule.applicant}`, {
-      description: `${schedule.date} � ${schedule.time} � ${schedule.mode}`,
+      description: `${schedule.date} · ${schedule.time} · ${schedule.mode}`,
     });
+
+    try {
+      await interviewsApi.create({
+        applicant_id: src?.dbId ?? 1,
+        scheduled_date: schedule.date,
+        scheduled_time: schedule.time.includes(":") ? schedule.time.slice(0, 5) : "09:00",
+        mode: schedule.mode,
+        interviewer_name: schedule.interviewer,
+        status: "Scheduled",
+      });
+    } catch (e) {
+      console.warn("Could not persist interview to database API:", e);
+    }
   };
 
   /** Downloads a printable interview evaluation form for an applicant. */
@@ -792,7 +875,7 @@ export function ApplicantManagement({
 
   /** Cancels an interview after the user confirms in the modal. */
 
-  const performCancelInterview = () => {
+  const performCancelInterview = async () => {
     const i = cancelInterview;
     if (!i) return;
     setInterviews((prev) => prev.filter((x) => x.id !== i.id));
@@ -806,6 +889,12 @@ export function ApplicantManagement({
     });
     setCancelInterview(null);
     toast(`Interview cancelled � ${i.applicant}`);
+
+    try {
+      if (i.dbId) await interviewsApi.delete(i.dbId);
+    } catch (e) {
+      console.warn("Could not remove interview from database API:", e);
+    }
   };
 
   const reject = (a: Applicant) => {
@@ -819,6 +908,62 @@ export function ApplicantManagement({
     toast(`${a.name} marked as rejected`, {
       description: "Regret letter queued for sending.",
     });
+
+    try {
+      if (a.dbId) applicantsApi.update(a.dbId, { stage: "Rejected" });
+    } catch (e) {
+      console.warn("Could not update applicant stage on database API:", e);
+    }
+  };
+
+  /** Persists an interview assessment to the database API and advances the applicant. */
+  const saveAssessment = async () => {
+    if (!evaluating) return;
+    const total = Math.round(
+      (assessmentCriteria.reduce((t, c) => t + (evalScores[c] ?? 4), 0) /
+        (assessmentCriteria.length * 5)) *
+        100,
+    );
+    const outcome =
+      total >= 80 ? "Recommended" : total >= 65 ? "Hold" : "Not Recommended";
+    setAssessments((prev) => [
+      {
+        applicantId: evaluating.id,
+        name: evaluating.name,
+        position: evaluating.position,
+        scores: evalScores,
+        total,
+        remarks: evalRemarks || "No remarks recorded.",
+        date: isoOf(new Date()),
+        outcome,
+      },
+      ...prev,
+    ]);
+    setStage(evaluating.id, "Assessed");
+    addAudit({
+      actionType: "Assessment Completed",
+      target: evaluating.name,
+      module: "Applicant Management",
+      details: `Assessment saved with a total score of ${total}%`,
+    });
+    setEvaluating(null);
+    toast.success(`Assessment saved � ${total}%`);
+
+    try {
+      if (evaluating.dbId) {
+        await applicantsApi.createAssessment(evaluating.dbId, {
+          applicant_id: evaluating.dbId,
+          assessment_date: isoOf(new Date()),
+          scores_json: evalScores,
+          total_score: total,
+          outcome,
+          remarks: evalRemarks || "No remarks recorded.",
+        });
+        await applicantsApi.update(evaluating.dbId, { stage: "Assessed" });
+      }
+    } catch (e) {
+      console.warn("Could not persist assessment to database API:", e);
+    }
   };
 
   const openRefer = (a: Applicant) => {
@@ -874,44 +1019,42 @@ export function ApplicantManagement({
     setAddStep(3);
   };
 
-  const saveNewApplicant = () => {
+  const saveNewApplicant = async () => {
     if (!addForm.name || !addForm.email || !addForm.phone || !addForm.address) {
       toast.error("Complete name, email, phone number and address.");
       return;
     }
     const res = screenResult!;
     const now = new Date();
-    setRows((prev) => [
-      {
-        id: `APP-${1042 + prev.length - seedApplicants.length}`,
-        name: addForm.name,
-        email: addForm.email,
-        phone: addForm.phone,
-        position: addForm.position,
-        jobId: addForm.position.toLowerCase().replace(/[^a-z]+/g, "-"),
-        appliedAt: `${isoOf(now)} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
-        score: res.score,
-        status: res.status,
-        stage: "Screened",
-        source: addMethod === "image" ? "Walk-in" : "Online Portal",
-        entities: res.entities,
-        breakdown: [
-          { criterion: "Skills", score: Math.round(res.score * 0.4) },
-          { criterion: "Work Experience", score: Math.round(res.score * 0.3) },
-          {
-            criterion: "Educational Background",
-            score: Math.round(res.score * 0.2),
-          },
-          { criterion: "Certifications", score: Math.round(res.score * 0.1) },
-        ],
-        flags:
-          res.status === "credential"
-            ? ["Manual credential verification required"]
-            : [],
-        summary: `Added via ${addMethod === "image" ? "image (OCR)" : "document"} screening � ${addFileName || "uploaded resume"}.`,
-      },
-      ...prev,
-    ]);
+    const newApp: Applicant = {
+      id: `APP-${1042 + rows.length}`,
+      name: addForm.name,
+      email: addForm.email,
+      phone: addForm.phone,
+      position: addForm.position,
+      jobId: addForm.position.toLowerCase().replace(/[^a-z]+/g, "-"),
+      appliedAt: `${isoOf(now)} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+      score: res.score,
+      status: res.status,
+      stage: "Screened",
+      source: addMethod === "image" ? "Walk-in" : "Online Portal",
+      entities: res.entities,
+      breakdown: [
+        { criterion: "Skills", score: Math.round(res.score * 0.4) },
+        { criterion: "Work Experience", score: Math.round(res.score * 0.3) },
+        {
+          criterion: "Educational Background",
+          score: Math.round(res.score * 0.2),
+        },
+        { criterion: "Certifications", score: Math.round(res.score * 0.1) },
+      ],
+      flags:
+        res.status === "credential"
+          ? ["Manual credential verification required"]
+          : [],
+      summary: `Added via ${addMethod === "image" ? "image (OCR)" : "document"} screening — ${addFileName || "uploaded resume"}.`,
+    };
+    setRows((prev) => [newApp, ...prev]);
     toast.success(`${addForm.name} added to the applicant list`);
     setAddOpen(false);
     setAddStep(1);
@@ -924,6 +1067,27 @@ export function ApplicantManagement({
       address: "",
       position: positions[0]!.title,
     });
+
+    try {
+      const created = await applicantsApi.create({
+        job_post_id: 1,
+        name: newApp.name,
+        email: newApp.email,
+        phone: newApp.phone,
+        source: newApp.source,
+        summary: newApp.summary,
+        status: newApp.status,
+        stage: newApp.stage,
+        flags_json: newApp.flags,
+      });
+      setRows((prev) =>
+        prev.map((x) =>
+          x.id === newApp.id ? { ...x, dbId: created.applicant_id } : x,
+        ),
+      );
+    } catch (e) {
+      console.warn("Could not persist applicant to database API:", e);
+    }
   };
 
   const monthCells = useMemo(() => {
@@ -1222,11 +1386,11 @@ export function ApplicantManagement({
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
-        <TabsList className="flex h-auto flex-wrap justify-start">
-          <TabsTrigger value="ranking">Ranking &amp; Applicants</TabsTrigger>
-          <TabsTrigger value="scheduling">Interview Scheduling</TabsTrigger>
-          <TabsTrigger value="assessment">Assessment</TabsTrigger>
-          <TabsTrigger value="history">History &amp; Audit</TabsTrigger>
+        <TabsList className="flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm">
+<TabsTrigger className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="ranking"><Trophy className="h-3.5 w-3.5" /> Ranking &amp; Applicants</TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="scheduling"><CalendarClock className="h-3.5 w-3.5" /> Interview Scheduling</TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="assessment"><ClipboardCheck className="h-3.5 w-3.5" /> Assessment</TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="history"><History className="h-3.5 w-3.5" /> History &amp; Audit</TabsTrigger>
         </TabsList>
 
         {/* RANKING + TABLE */}
@@ -1236,7 +1400,8 @@ export function ApplicantManagement({
               <CardContent className="p-6">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h2 className="font-display text-2xl font-semibold">
+                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                      <Trophy className="h-5 w-5 text-primary" />
                       Candidate Ranking
                     </h2>
                     <p className="text-xs text-muted-foreground">
@@ -1448,7 +1613,8 @@ export function ApplicantManagement({
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="font-display text-2xl font-semibold">
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                    <Users className="h-5 w-5 text-primary" />
                     Applicant List
                   </h2>
                   <p className="text-xs text-muted-foreground">
@@ -1723,7 +1889,7 @@ export function ApplicantManagement({
               <CardContent className="flex flex-1 flex-col p-5">
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
                   <div className="flex min-w-0 items-start gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center text-primary">
                       <CalendarDays className="h-5 w-5" />
                     </span>
                     <div className="min-w-0">
@@ -2047,7 +2213,7 @@ export function ApplicantManagement({
             <Card className="flex h-full flex-col rounded-xl border-border/70 shadow-sm">
               <CardContent className="flex flex-1 flex-col p-5">
                 <div className="flex items-start gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center text-primary">
                     <CalendarClock className="h-5 w-5" />
                   </span>
                   <div className="min-w-0">
@@ -2719,7 +2885,8 @@ export function ApplicantManagement({
           <Card className="border-border/70">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="font-display text-2xl font-semibold">
+                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                  <CalendarClock className="h-5 w-5 text-primary" />
                   Scheduled Interviews
                 </h2>
                 <div className="flex flex-wrap items-center gap-2">
@@ -2916,7 +3083,8 @@ export function ApplicantManagement({
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="font-display text-2xl font-semibold">
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                    <ClipboardCheck className="h-5 w-5 text-primary" />
                     Assessments
                   </h2>
                   <p className="text-xs text-muted-foreground">
@@ -3404,7 +3572,6 @@ export function ApplicantManagement({
                   to={auditPage.to}
                   total={auditPage.total}
                   label="log entries"
-                  hideRange
                   onPageChange={auditPage.setPage}
                 />
               </div>
@@ -4194,45 +4361,7 @@ export function ApplicantManagement({
                   <Download className="mr-2 h-4 w-4" /> Screening result
                 </Button>
 
-                <Button
-                  onClick={() => {
-                    const total = Math.round(
-                      (assessmentCriteria.reduce(
-                        (t, c) => t + (evalScores[c] ?? 4),
-                        0,
-                      ) /
-                        (assessmentCriteria.length * 5)) *
-                        100,
-                    );
-                    setAssessments((prev) => [
-                      {
-                        applicantId: evaluating.id,
-                        name: evaluating.name,
-                        position: evaluating.position,
-                        scores: evalScores,
-                        total,
-                        remarks: evalRemarks || "No remarks recorded.",
-                        date: isoOf(new Date()),
-                        outcome:
-                          total >= 80
-                            ? "Recommended"
-                            : total >= 65
-                              ? "Hold"
-                              : "Not Recommended",
-                      },
-                      ...prev,
-                    ]);
-                    setStage(evaluating.id, "Assessed");
-                    addAudit({
-                      actionType: "Assessment Completed",
-                      target: evaluating.name,
-                      module: "Applicant Management",
-                      details: `Assessment saved with a total score of ${total}%`,
-                    });
-                    setEvaluating(null);
-                    toast.success(`Assessment saved � ${total}%`);
-                  }}
-                >
+                <Button onClick={saveAssessment}>
                   Save assessment
                 </Button>
               </DialogFooter>
