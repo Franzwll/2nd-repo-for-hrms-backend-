@@ -90,6 +90,10 @@ class LandingController extends Controller
 
     public function job(JobPost $job_post): JsonResponse
     {
+        if (! $job_post->active || ! in_array($job_post->status, ['published', 'Open'])) {
+            abort(404);
+        }
+
         $job_post->load('department', 'position');
 
         return response()->json([
