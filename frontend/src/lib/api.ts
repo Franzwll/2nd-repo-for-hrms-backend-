@@ -504,6 +504,16 @@ export const authApi = {
     }),
   me: () => request<{ user: ApiVerifyResponse['user'] }>('/auth/me'),
   logout: () => request<{ message: string }>('/auth/logout', { method: 'POST' }),
+  forgotPassword: (email: string) =>
+    request<{ message: string }>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  resetPassword: (token: string, password: string) =>
+    request<{ message: string }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password, password_confirmation: password }),
+    }),
 };
 
 /* ========================================================================= */

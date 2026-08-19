@@ -370,7 +370,7 @@ function LoginPage() {
               <button
                 type="button"
                 className="text-sm text-muted-foreground transition-colors hover:text-primary hover:underline"
-                onClick={() => toast("Password reset link sent to the HR office.")}
+                onClick={() => navigate({ to: "/forgot-password" })}
               >
                 Forgot password?
               </button>
