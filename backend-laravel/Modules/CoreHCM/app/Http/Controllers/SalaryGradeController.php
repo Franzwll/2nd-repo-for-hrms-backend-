@@ -7,6 +7,8 @@ use App\Models\SalaryGrade;
 use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\CoreHCM\Http\Requests\StoreSalaryGradeRequest;
+use Modules\CoreHCM\Http\Requests\UpdateSalaryGradeRequest;
 use Modules\CoreHCM\Http\Resources\SalaryGradeResource;
 
 class SalaryGradeController extends Controller
@@ -29,6 +31,44 @@ class SalaryGradeController extends Controller
     public function show(SalaryGrade $salary_grade): JsonResponse
     {
         return response()->json([
+            'data' => new SalaryGradeResource($salary_grade),
+        ]);
+    }
+
+    public function store(StoreSalaryGradeRequest $request): JsonResponse
+    {
+        $salary_grade = SalaryGrade::create($request->validated());
+
+        AuditLogger::log(
+            'Salary grade created',
+            'Core HCM',
+            'Info',
+            'salary-grade',
+            (string) $salary_grade->code,
+            'Created salary grade ' . $salary_grade->code,
+        );
+
+        return response()->json([
+            'message' => 'Salary grade created successfully.',
+            'data' => new SalaryGradeResource($salary_grade),
+        ], 201);
+    }
+
+    public function update(UpdateSalaryGradeRequest $request, SalaryGrade $salary_grade): JsonResponse
+    {
+        $salary_grade->update($request->validated());
+
+        AuditLogger::log(
+            'Salary grade updated',
+            'Core HCM',
+            'Info',
+            'salary-grade',
+            (string) $salary_grade->code,
+            'Updated salary grade ' . $salary_grade->code,
+        );
+
+        return response()->json([
+            'message' => 'Salary grade updated successfully.',
             'data' => new SalaryGradeResource($salary_grade),
         ]);
     }

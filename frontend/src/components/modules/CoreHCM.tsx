@@ -246,7 +246,7 @@ type HR3Recommendation = {
   evaluationScore: number;
   evaluator: string;
   dateSubmitted: string;
-  status: "Pending HR Action" | "Approved & Processed" | "Deferred";
+  status: "Pending HR Action" | "Approved & Processed" | "Deferred" | "Acknowledged";
   suggestedPosition?: string;
   suggestedSalaryGrade?: string;
   comments: string;
@@ -684,7 +684,8 @@ function EmployeeListManager({
   const filteredRecs = recommendations.filter(
     (r) =>
       (recStatusFilter === "all" ||
-        (recStatusFilter === "Acknowledged" && acknowledgedIds.has(r.employeeId) && r.status === "Pending HR Action") ||
+        (recStatusFilter === "Acknowledged" &&
+          (r.status === "Acknowledged" || (acknowledgedIds.has(r.employeeId) && r.status === "Pending HR Action"))) ||
         recStatusFilter === r.status) &&
       (recTypeFilter === "all" || r.recommendationType === recTypeFilter) &&
       (() => {
@@ -3367,6 +3368,87 @@ function SalaryGradeManager() {
   const [sgLevelFilter, setSgLevelFilter] = useState("all");
   const [pendingDelete, setPendingDelete] = useState<{ type: "sg"; id: number; name: string } | null>(null);
 
+  const [sgDialogOpen, setSgDialogOpen] = useState(false);
+  const [editingSg, setEditingSg] = useState<SalaryGrade | null>(null);
+  const [sgCode, setSgCode] = useState("");
+  const [sgTitle, setSgTitle] = useState("");
+  const [sgMin, setSgMin] = useState("");
+  const [sgMax, setSgMax] = useState("");
+  const [sgLevel, setSgLevel] = useState("Rank & File");
+  const [sgCurrency, setSgCurrency] = useState("PHP");
+  const [sgNotes, setSgNotes] = useState("");
+  const [sgSaving, setSgSaving] = useState(false);
+
+  const openAddSg = () => {
+    setEditingSg(null);
+    setSgCode("");
+    setSgTitle("");
+    setSgMin("");
+    setSgMax("");
+    setSgLevel("Rank & File");
+    setSgCurrency("PHP");
+    setSgNotes("");
+    setSgDialogOpen(true);
+  };
+
+  const openEditSg = (g: SalaryGrade) => {
+    setEditingSg(g);
+    setSgCode(g.code);
+    setSgTitle(g.title);
+    setSgMin(String(g.minSalary));
+    setSgMax(String(g.maxSalary));
+    setSgLevel(g.level);
+    setSgCurrency(g.currency || "PHP");
+    setSgNotes(g.notes || "");
+    setSgDialogOpen(true);
+  };
+
+  const saveSg = async () => {
+    if (!sgCode.trim() || !sgTitle.trim()) {
+      toast.error("Grade code and title are required.");
+      return;
+    }
+    const min = Number(sgMin);
+    const max = Number(sgMax);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max <= min) {
+      toast.error("Enter valid min and max salary (max must be greater than min).");
+      return;
+    }
+    const payload = {
+      code: sgCode.trim(),
+      title: sgTitle.trim(),
+      min_salary: min,
+      max_salary: max,
+      currency_code: sgCurrency.trim() || "PHP",
+      level: sgLevel,
+      notes: sgNotes.trim() || null,
+    };
+    setSgSaving(true);
+    try {
+      if (editingSg) {
+        const dbId = hcm.salaryGrades.find((g) => g.code === editingSg.code)?.salary_grade_id;
+        if (!dbId) {
+          toast.error("Could not resolve the salary grade in Core HCM.");
+          return;
+        }
+        await hcmApi.salaryGrades.update(dbId, payload);
+        toast.success(`Salary grade ${payload.code} updated.`);
+      } else {
+        await hcmApi.salaryGrades.create(payload);
+        toast.success(`Salary grade ${payload.code} created.`);
+      }
+      await refreshHcm();
+      setSgDialogOpen(false);
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      const msg = (err as { errors?: Record<string, string[]> }).errors;
+      toast.error(msg ? Object.values(msg).flat()[0] : status === 422 ? "Validation failed." : "Could not save salary grade.");
+      return;
+    } finally {
+      setSgSaving(false);
+    }
+  };
+
   const executeDelete = async () => {
     if (!pendingDelete) return;
     try {
@@ -3405,6 +3487,9 @@ function SalaryGradeManager() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" className="h-9 gap-1.5 text-xs" onClick={openAddSg}>
+              <Plus className="h-4 w-4" /> Add Grade
+            </Button>
             <div className="relative min-w-[14rem]">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -3461,17 +3546,27 @@ function SalaryGradeManager() {
                 </TableCell>
                 <TableCell className="text-right pr-6 font-mono text-xs">{sg.currency}</TableCell>
                 <TableCell className="text-center pr-4">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
-                    onClick={() => {
-                      const dbId = hcm.salaryGrades.find((g) => g.code === sg.code)?.salary_grade_id;
-                      if (dbId) setPendingDelete({ type: "sg", id: dbId, name: sg.code });
-                    }}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
+                  <div className="flex items-center justify-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2 text-xs"
+                      onClick={() => openEditSg(sg)}
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        const dbId = hcm.salaryGrades.find((g) => g.code === sg.code)?.salary_grade_id;
+                        if (dbId) setPendingDelete({ type: "sg", id: dbId, name: sg.code });
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -3489,6 +3584,68 @@ function SalaryGradeManager() {
           />
         </div>
       </CardContent>
+
+      {/* ADD / EDIT SALARY GRADE DIALOG */}
+      <Dialog open={sgDialogOpen} onOpenChange={setSgDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingSg ? `Edit Salary Grade — ${editingSg.code}` : "Add Salary Grade"}</DialogTitle>
+            <DialogDescription>
+              Define the compensation band (minimum and maximum salary) for this grade.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2 text-xs">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Grade Code</Label>
+                <Input value={sgCode} onChange={(e) => setSgCode(e.target.value)} className="text-xs font-mono" placeholder="e.g. SG-09" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Job Level</Label>
+                <Select value={sgLevel} onValueChange={setSgLevel}>
+                  <SelectTrigger className="text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Rank & File">Rank & File</SelectItem>
+                    <SelectItem value="Supervisory">Supervisory</SelectItem>
+                    <SelectItem value="Managerial">Managerial</SelectItem>
+                    <SelectItem value="Executive">Executive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Band Title</Label>
+              <Input value={sgTitle} onChange={(e) => setSgTitle(e.target.value)} className="text-xs" placeholder="e.g. Senior Staff" />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Min Salary</Label>
+                <Input type="number" value={sgMin} onChange={(e) => setSgMin(e.target.value)} className="text-xs font-mono" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Max Salary</Label>
+                <Input type="number" value={sgMax} onChange={(e) => setSgMax(e.target.value)} className="text-xs font-mono" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Currency</Label>
+                <Input value={sgCurrency} onChange={(e) => setSgCurrency(e.target.value)} className="text-xs font-mono" maxLength={3} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Notes</Label>
+              <Input value={sgNotes} onChange={(e) => setSgNotes(e.target.value)} className="text-xs" placeholder="Optional notes" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSgDialogOpen(false)} disabled={sgSaving}>Cancel</Button>
+            <Button onClick={saveSg} disabled={sgSaving}>
+              {sgSaving ? "Saving…" : editingSg ? "Save Changes" : "Add Salary Grade"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* DELETE CONFIRMATION DIALOG */}
       <AlertDialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
