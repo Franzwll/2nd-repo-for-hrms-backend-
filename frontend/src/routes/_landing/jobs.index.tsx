@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { jobs, peso } from "@/data/jobs";
+import { peso, useLandingJobs } from "@/lib/landing";
 
 export const Route = createFileRoute("/_landing/jobs/")({
   head: () => ({
@@ -31,14 +31,10 @@ export const Route = createFileRoute("/_landing/jobs/")({
   component: FindJobs,
 });
 
-const departments = [...new Set(jobs.map((j) => j.department))];
-const types = [...new Set(jobs.map((j) => j.employmentType))];
-const experiences = [...new Set(jobs.map((j) => j.experience))];
-const educations = [...new Set(jobs.map((j) => j.education))];
-
 const JOBS_PER_PAGE = 5;
 
 function FindJobs() {
+  const { jobs } = useLandingJobs();
   const [q, setQ] = useState("");
   const [dept, setDept] = useState<string[]>([]);
   const [type, setType] = useState<string[]>([]);
@@ -47,13 +43,17 @@ function FindJobs() {
   const [maxSalary, setMaxSalary] = useState(30000);
   const [page, setPage] = useState(1);
 
+  const departments = useMemo(() => [...new Set(jobs.map((j) => j.department))], [jobs]);
+  const types = useMemo(() => [...new Set(jobs.map((j) => j.employmentType))], [jobs]);
+  const experiences = useMemo(() => [...new Set(jobs.map((j) => j.experience))], [jobs]);
+  const educations = useMemo(() => [...new Set(jobs.map((j) => j.education))], [jobs]);
+
   const toggle = (list: string[], set: (v: string[]) => void, value: string) =>
     set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
 
   const results = useMemo(
     () =>
       jobs.filter((j) => {
-        if (!j.active) return false;
         if (q && !`${j.title} ${j.department} ${j.summary}`.toLowerCase().includes(q.toLowerCase()))
           return false;
         if (dept.length && !dept.includes(j.department)) return false;
@@ -63,7 +63,7 @@ function FindJobs() {
         if (j.salaryMin > maxSalary) return false;
         return true;
       }),
-    [q, dept, type, exp, edu, maxSalary],
+    [jobs, q, dept, type, exp, edu, maxSalary],
   );
 
   // Reset page when filters change

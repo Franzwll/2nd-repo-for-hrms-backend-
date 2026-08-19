@@ -7,7 +7,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { faqs } from "@/data/company";
+import { useCompany } from "@/lib/landing";
 
 export const Route = createFileRoute("/_landing/faq")({
   head: () => ({
@@ -29,6 +29,8 @@ export const Route = createFileRoute("/_landing/faq")({
 });
 
 function Faq() {
+  const { company } = useCompany();
+
   return (
     <PublicShell>
       <div className="mx-auto max-w-3xl px-4 py-14 md:px-8">
@@ -38,7 +40,7 @@ function Faq() {
         </h1>
         <div className="gold-rule my-6" />
         <Accordion type="single" collapsible className="w-full">
-          {faqs.map((f, i) => (
+          {company.faqs.map((f, i) => (
             <AccordionItem key={f.q} value={`item-${i}`}>
               <AccordionTrigger className="text-left font-medium">{f.q}</AccordionTrigger>
               <AccordionContent className="text-sm text-muted-foreground">{f.a}</AccordionContent>

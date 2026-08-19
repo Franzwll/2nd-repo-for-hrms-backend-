@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Activity,
   Briefcase,
@@ -34,10 +34,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { applicants } from "@/data/applicants";
-import { departments, employees, newHires } from "@/data/hr";
-import { jobs } from "@/data/jobs";
-import { auditLogs, systemUsers, type SystemUser } from "@/data/users";
+import { dashboardApi } from "@/lib/api";
+import type { ApiDashboardStats } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/superadmin/")({
@@ -69,7 +67,7 @@ const initials = (name: string) =>
     .join("")
     .toUpperCase();
 
-const accountStatusClass = (status: SystemUser["status"]) => {
+const accountStatusClass = (status: string) => {
   switch (status) {
     case "Active":
       return "border-success/40 bg-success/10 text-success";
@@ -82,41 +80,56 @@ const accountStatusClass = (status: SystemUser["status"]) => {
   }
 };
 
-const headcountTrend6M = [
-  { month: "Feb", headcount: 78, hires: 4, exits: 2 },
-  { month: "Mar", headcount: 81, hires: 6, exits: 3 },
-  { month: "Apr", headcount: 84, hires: 5, exits: 2 },
-  { month: "May", headcount: 86, hires: 4, exits: 2 },
-  { month: "Jun", headcount: 89, hires: 7, exits: 4 },
-  { month: "Jul", headcount: 93, hires: 8, exits: 4 },
-];
-
-const headcountTrendYTD = [
-  { month: "Jan", headcount: 75, hires: 5, exits: 1 },
-  { month: "Feb", headcount: 78, hires: 4, exits: 2 },
-  { month: "Mar", headcount: 81, hires: 6, exits: 3 },
-  { month: "Apr", headcount: 84, hires: 5, exits: 2 },
-  { month: "May", headcount: 86, hires: 4, exits: 2 },
-  { month: "Jun", headcount: 89, hires: 7, exits: 4 },
-  { month: "Jul", headcount: 93, hires: 8, exits: 4 },
-];
+const formatDateTime = (iso: string | null) => {
+  if (!iso) return "Never";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "Never";
+  return d.toLocaleString("en-PH", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
 
 export function SuperAdminDashboard() {
+  const [stats, setStats] = useState<ApiDashboardStats | null>(null);
   const [period, setPeriod] = useState<"6M" | "YTD">("6M");
-  const activeTrend = period === "6M" ? headcountTrend6M : headcountTrendYTD;
 
-  const openJobs = jobs.filter((j) => j.active).length;
-  const totalApplicants = jobs.reduce((t, j) => t + j.applicants, 0);
+  useEffect(() => {
+    let cancelled = false;
+    dashboardApi
+      .stats()
+      .then((res) => {
+        if (!cancelled) setStats(res.data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const deptData = departments.map((d) => ({ name: d.name, staff: d.staff, open: d.openRequisitions }));
-  const roleData = (["Super Admin", "Admin", "Employee"] as const).map((r) => ({
-    name: r,
-    value: systemUsers.filter((u) => u.role === r).length,
+  const activeTrend = period === "6M" ? stats?.employees.trend_6m : stats?.employees.trend_ytd;
+  const openJobs = stats?.job_posts.open ?? 0;
+  const totalApplicants = stats?.job_posts.total_applicants ?? 0;
+  const currentHeadcount = activeTrend?.[activeTrend.length - 1]?.headcount ?? 0;
+  const totalHires = activeTrend?.reduce((t, m) => t + m.hires, 0) ?? 0;
+  const totalExits = activeTrend?.reduce((t, m) => t + m.exits, 0) ?? 0;
+  const retentionRate =
+    stats?.employees.total && stats?.employees.total > 0
+      ? Math.round((stats.employees.active / stats.employees.total) * 1000) / 10
+      : 0;
+
+  const deptData = stats?.departments ?? [];
+  const roleData = Object.entries(stats?.system_users.by_role ?? {})
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+  const statusData = Object.entries(stats?.system_users.by_status ?? {}).map(([name, value]) => ({
+    name,
+    value,
   }));
-  const statusData = (["Active", "Suspended", "Disabled"] as const).map((s) => ({
-    name: s,
-    value: systemUsers.filter((u) => u.status === s).length,
-  }));
+  const recentUsers = stats?.system_users.recent ?? [];
+  const recentAudit = stats?.audit.recent ?? [];
 
   return (
     <div>
@@ -129,15 +142,15 @@ export function SuperAdminDashboard() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Total Employees"
-          value={employees.length}
-          hint="Across 5 departments"
+          value={stats?.employees.total ?? 0}
+          hint={`${stats?.departments.length ?? 0} departments`}
           icon={Building2}
           tone="primary"
           to="/superadmin/employees"
         />
         <StatCard
           label="System Users"
-          value={systemUsers.length}
+          value={stats?.system_users.total ?? 0}
           hint="All portal accounts"
           icon={ShieldCheck}
           tone="gold"
@@ -163,35 +176,50 @@ export function SuperAdminDashboard() {
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.5fr_1fr]">
         <Card className="border-border/70 shadow-sm">
           <CardContent className="p-6">
-            <div className="border-b border-border/60 pb-4">
-              <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><TrendingUp className="h-5 w-5 text-primary" /> Headcount &amp; Movement</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Rolling property headcount with hires and exits breakdown.</p>
+            <div className="flex items-center justify-between border-b border-border/60 pb-4">
+              <div>
+                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><TrendingUp className="h-5 w-5 text-primary" /> Headcount &amp; Movement</h2>
+                <p className="mt-1 text-xs text-muted-foreground">Rolling property headcount with hires and exits breakdown.</p>
+              </div>
+              <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
+                {(["6M", "YTD"] as const).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPeriod(p)}
+                    className={`rounded-md px-3 py-1 text-xs font-medium ${
+                      period === p ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* KPI Overview Row */}
             <div className="mt-4 grid grid-cols-4 divide-x divide-border rounded-xl border border-border bg-card p-2 text-center shadow-xs">
               <div className="p-2">
                 <p className="eyebrow">Current</p>
-                <p className="font-display text-xl font-bold text-primary">93</p>
+                <p className="font-display text-xl font-bold text-primary">{currentHeadcount}</p>
               </div>
               <div className="p-2">
                 <p className="eyebrow">New Hires</p>
-                <p className="font-display text-xl font-bold text-emerald-600 dark:text-emerald-400">34</p>
+                <p className="font-display text-xl font-bold text-emerald-600 dark:text-emerald-400">{totalHires}</p>
               </div>
               <div className="p-2">
                 <p className="eyebrow">Turnover / Exits</p>
-                <p className="font-display text-xl font-bold text-amber-600 dark:text-amber-400">17</p>
+                <p className="font-display text-xl font-bold text-amber-600 dark:text-amber-400">{totalExits}</p>
               </div>
               <div className="p-2">
                 <p className="eyebrow">Retention Rate</p>
-                <p className="font-display text-xl font-bold text-gold">95.2%</p>
+                <p className="font-display text-xl font-bold text-gold">{retentionRate}%</p>
               </div>
             </div>
 
             {/* Revamped Composed Chart with Area Fill & Rounded Bars */}
             <div className="mt-5 h-68">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={activeTrend} margin={{ top: 12, right: 12, left: -12, bottom: 0 }}>
+                <ComposedChart data={activeTrend ?? []} margin={{ top: 12, right: 12, left: -12, bottom: 0 }}>
                   <defs>
                     <linearGradient id="headcountAreaGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.3} />
@@ -206,7 +234,7 @@ export function SuperAdminDashboard() {
                     stroke="var(--color-muted-foreground)"
                     tickLine={false}
                     axisLine={false}
-                    domain={[60, "dataMax + 6"]}
+                    domain={[0, "dataMax + 6"]}
                   />
                   <YAxis
                     yAxisId="right"
@@ -288,7 +316,7 @@ export function SuperAdminDashboard() {
                 <p className="text-xs text-muted-foreground">System access by role and account status.</p>
               </div>
               <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
-                {systemUsers.length} accounts
+                {stats?.system_users.total ?? 0} accounts
               </Badge>
             </div>
 
@@ -318,7 +346,10 @@ export function SuperAdminDashboard() {
                 Recent sign-ins
               </p>
               <div className="mt-2 space-y-2">
-                {systemUsers.slice(0, 4).map((u) => (
+                {recentUsers.length === 0 && (
+                  <p className="text-xs text-muted-foreground">No sign-ins recorded yet.</p>
+                )}
+                {recentUsers.map((u) => (
                   <div key={u.id} className="flex items-center justify-between gap-2">
                     <div className="flex min-w-0 items-center gap-2">
                       <Avatar className="h-7 w-7">
@@ -329,7 +360,7 @@ export function SuperAdminDashboard() {
                       <div className="min-w-0">
                         <p className="truncate text-xs font-medium">{u.name}</p>
                         <p className="truncate text-[11px] text-muted-foreground">
-                          {u.department} · {u.lastLogin}
+                          {u.department ?? "—"} · {formatDateTime(u.last_login_at)}
                         </p>
                       </div>
                     </div>
@@ -418,7 +449,10 @@ export function SuperAdminDashboard() {
               </Button>
             </div>
             <ul className="mt-4 space-y-3">
-              {auditLogs.slice(0, 6).map((a) => (
+              {recentAudit.length === 0 && (
+                <p className="text-xs text-muted-foreground">No audit activity recorded.</p>
+              )}
+              {recentAudit.map((a) => (
                 <li key={a.id} className="border-b border-border pb-3 last:border-0">
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm text-foreground">{a.action}</p>
@@ -436,7 +470,7 @@ export function SuperAdminDashboard() {
                     </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {a.user} · {a.timestamp}
+                    {a.user} · {formatDateTime(a.timestamp)}
                   </p>
                 </li>
               ))}
@@ -448,23 +482,23 @@ export function SuperAdminDashboard() {
       <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Onboarding in progress"
-          value={newHires.length}
-          hint={`${newHires.filter((h) => h.stage === "Probationary").length} probationary · ${newHires.filter((h) => h.stage === "Pre-onboarding").length} pre-onboarding`}
+          value={stats?.new_hires.total ?? 0}
+          hint={`${stats?.new_hires.by_stage["Probationary"] ?? 0} probationary · ${stats?.new_hires.by_stage["Pre-onboarding"] ?? 0} pre-onboarding`}
           tone="primary"
           icon={UserPlus}
           to="/superadmin/onboarding"
         />
         <StatCard
-          label="Screened this week"
-          value={applicants.length}
-          hint={`${applicants.filter((a) => a.status === "fit").length} rated fit for role`}
+          label="Applicants screened"
+          value={stats?.applicants.total ?? 0}
+          hint={`${stats?.applicants.fit ?? 0} rated fit for role`}
           tone="success"
           icon={FileCheck2}
           to="/superadmin/applicants"
         />
         <StatCard
           label="Average screening score"
-          value={`${Math.round(applicants.reduce((t, a) => t + a.score, 0) / applicants.length)}%`}
+          value={`${Math.round(stats?.applicants.avg_fit_score ?? 0)}%`}
           hint="NER model v2.3"
           tone="gold"
           icon={Gauge}
@@ -472,7 +506,7 @@ export function SuperAdminDashboard() {
         />
         <StatCard
           label="Suspended accounts"
-          value={systemUsers.filter((u) => u.status === "Suspended").length}
+          value={stats?.system_users.by_status["Suspended"] ?? 0}
           hint="Requires password recovery"
           tone="caution"
           icon={ShieldAlert}

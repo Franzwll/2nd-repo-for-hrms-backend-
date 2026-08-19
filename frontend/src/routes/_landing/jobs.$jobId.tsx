@@ -10,13 +10,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { getJob, peso } from "@/data/jobs";
+import { landingApi } from "@/lib/api";
+import { mapJob, peso } from "@/lib/landing";
 
 export const Route = createFileRoute("/_landing/jobs/$jobId")({
-  loader: ({ params }) => {
-    const job = getJob(params.jobId);
-    if (!job) throw notFound();
-    return { job };
+  loader: async ({ params }) => {
+    try {
+      const res = await landingApi.job(params.jobId);
+      return { job: mapJob(res.data) };
+    } catch {
+      throw notFound();
+    }
   },
   head: ({ loaderData }) => {
     if (!loaderData) {
@@ -42,6 +46,7 @@ function JobDetail() {
   const { job } = Route.useLoaderData();
   const [submitted, setSubmitted] = useState(false);
   const [fileName, setFileName] = useState("");
+  const [applying, setApplying] = useState(false);
 
   return (
     <PublicShell>
@@ -132,12 +137,36 @@ function JobDetail() {
                   </div>
                 ) : (
                   <form
-                    onSubmit={(e) => {
+                    onSubmit={async (e) => {
                       e.preventDefault();
-                      setSubmitted(true);
-                      toast.success("Application submitted", {
-                        description: `Your application for ${job.title} was received.`,
-                      });
+                      const fd = new FormData(e.currentTarget);
+                      const name = String(fd.get("name") ?? "").trim();
+                      const email = String(fd.get("email") ?? "").trim();
+                      const phone = String(fd.get("phone") ?? "").trim();
+                      const cover = String(fd.get("cover") ?? "").trim();
+                      if (!name || !email || !phone) {
+                        toast.error("Please fill in the required fields.");
+                        return;
+                      }
+                      setApplying(true);
+                      try {
+                        const res = await landingApi.apply({
+                          job_post_id: Number(job.id),
+                          name,
+                          email,
+                          phone,
+                          source: "Landing Page",
+                          summary: cover,
+                        });
+                        setSubmitted(true);
+                        toast.success("Application submitted", {
+                          description: `Application ${res.data.applicant_code} for ${job.title} was received.`,
+                        });
+                      } catch (err: any) {
+                        toast.error(err?.message || "Unable to submit your application. Please try again.");
+                      } finally {
+                        setApplying(false);
+                      }
                     }}
                   >
                     <h2 className="font-display text-2xl font-semibold">Apply for this job</h2>
@@ -163,7 +192,7 @@ function JobDetail() {
                         <Input id="location" required placeholder="Makati City" />
                       </div>
                       <div className="space-y-1.5">
-                        <Label htmlFor="resume">Resume / CV *</Label>
+                        <Label htmlFor="resume">Resume / CV (optional)</Label>
                         <label
                           htmlFor="resume"
                           className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/40 px-4 py-6 text-center"
@@ -185,7 +214,6 @@ function JobDetail() {
                         <Input
                           id="resume"
                           type="file"
-                          required
                           accept=".pdf,.doc,.docx"
                           className="sr-only"
                           onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "")}
@@ -197,8 +225,8 @@ function JobDetail() {
                       </div>
                     </div>
 
-                    <Button type="submit" className="mt-5 w-full">
-                      Submit Application
+                    <Button type="submit" className="mt-5 w-full" disabled={applying}>
+                      {applying ? "Submitting…" : "Submit Application"}
                     </Button>
                     <p className="mt-3 text-xs text-muted-foreground">
                       By submitting, you consent to the processing of your data for recruitment

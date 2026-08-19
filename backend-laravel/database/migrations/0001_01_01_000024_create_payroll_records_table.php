@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -11,24 +12,28 @@ return new class extends Migration
         Schema::create('payroll_records', function (Blueprint $table) {
             $table->id('payroll_record_id');
             $table->unsignedBigInteger('employee_id');
-            $table->unsignedBigInteger('payroll_period_id');
-            $table->decimal('gross_pay', 12, 2)->default(0);
-            $table->decimal('total_deductions', 12, 2)->default(0);
-            $table->decimal('net_pay', 12, 2)->default(0);
-            $table->string('payment_status', 20);
-            $table->date('payment_date')->nullable();
+            $table->unsignedBigInteger('payroll_period_id')->nullable();
+            $table->date('pay_period_start');
+            $table->date('pay_period_end');
+            $table->date('payout_date')->nullable();
+            $table->decimal('gross_pay', 12, 2);
+            $table->decimal('net_pay', 12, 2);
+            $table->string('status', 30);
             $table->timestamp('created_at')->useCurrent();
             $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
 
-            $table->unique(['employee_id', 'payroll_period_id'], 'uq_payroll_records_natural');
+            $table->index('employee_id', 'idx_payroll_records_employee_id');
             $table->index('payroll_period_id', 'idx_payroll_records_payroll_period_id');
-            $table->index('payment_status', 'idx_payroll_records_payment_status');
+            $table->index('pay_period_start', 'idx_payroll_records_pay_period_start');
+            $table->index('status', 'idx_payroll_records_status');
 
             $table->foreign('employee_id', 'fk_payroll_records_employee_id')
-                  ->references('employee_id')->on('employees')->onDelete('cascade');
+                  ->references('employee_id')->on('employees');
             $table->foreign('payroll_period_id', 'fk_payroll_records_payroll_period_id')
-                  ->references('payroll_period_id')->on('payroll_periods')->onDelete('cascade');
+                  ->references('payroll_period_id')->on('payroll_periods');
         });
+
+        DB::statement("ALTER TABLE `payroll_records` ADD CONSTRAINT `chk_payroll_records_status` CHECK (`status` IN ('Draft', 'Finalized', 'Released'))");
     }
 
     public function down(): void

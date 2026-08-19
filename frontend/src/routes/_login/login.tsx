@@ -24,8 +24,56 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
-import { systemUsers } from "@/data/users";
-import { newHires } from "@/data/hr";
+import { authApi } from "@/lib/api";
+
+const LOGIN_CONTEXT_KEY = "oxford_hrms_login";
+
+export function persistLoginContext(ctx: {
+  login_token: string;
+  email: string;
+  expires_in: number;
+}) {
+  try {
+    sessionStorage.setItem(
+      LOGIN_CONTEXT_KEY,
+      JSON.stringify({ ...ctx, issued_at: Date.now() })
+    );
+  } catch {
+    // storage unavailable
+  }
+}
+
+export function getLoginContext(): {
+  login_token: string;
+  email: string;
+  expires_in: number;
+} | null {
+  try {
+    const raw = sessionStorage.getItem(LOGIN_CONTEXT_KEY);
+    if (!raw) return null;
+    const ctx = JSON.parse(raw) as {
+      login_token: string;
+      email: string;
+      expires_in: number;
+      issued_at: number;
+    };
+    if (Date.now() - ctx.issued_at > ctx.expires_in * 1000) {
+      sessionStorage.removeItem(LOGIN_CONTEXT_KEY);
+      return null;
+    }
+    return ctx;
+  } catch {
+    return null;
+  }
+}
+
+export function clearLoginContext() {
+  try {
+    sessionStorage.removeItem(LOGIN_CONTEXT_KEY);
+  } catch {
+    // storage unavailable
+  }
+}
 
 export const Route = createFileRoute("/_login/login")({
   head: () => ({
@@ -87,9 +135,10 @@ const montageImages = [
 function LoginPage() {
   const navigate = useNavigate();
   const [show, setShow] = useState(false);
-  const [password, setPassword] = useState("demo1234");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [email, setEmail] = useState("maria.santos@email.com");
+  const [submitting, setSubmitting] = useState(false);
+  const [email, setEmail] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0);
   const [ready, setReady] = useState(false);
 
@@ -119,18 +168,32 @@ function LoginPage() {
     return () => clearInterval(slideTimer);
   }, []);
 
-  const getRoleRoute = (userEmail: string) => {
-    const clean = userEmail.trim().toLowerCase();
-    if (clean.includes("superadmin") || clean.includes("super")) {
-      return { to: "/superadmin", label: "Super Admin" };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.includes("@")) return setError("Enter a valid work email address.");
+    if (password.length < 6) return setError("Password must be at least 6 characters.");
+
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await authApi.login(email.trim(), password);
+      persistLoginContext({
+        login_token: res.login_token,
+        email: email.trim(),
+        expires_in: res.expires_in,
+      });
+      toast.success("One-time password sent to your work email.");
+      navigate({ to: "/otp" });
+    } catch (err: any) {
+      const message =
+        err?.message ||
+        (err?.status === 401 ? "Invalid credentials." : "Unable to sign in. Please try again.");
+      setError(message);
+      if (err?.status === 401) toast.error("Invalid credentials.");
+      if (err?.status === 403) toast.error(message);
+    } finally {
+      setSubmitting(false);
     }
-    if (clean.includes("admin") || clean.includes("hr")) {
-      return { to: "/admin", label: "HR Admin" };
-    }
-    const matched = systemUsers.find((u) => u.email.toLowerCase() === clean);
-    if (matched?.role === "Super Admin") return { to: "/superadmin", label: "Super Admin" };
-    if (matched?.role === "Admin") return { to: "/admin", label: "HR Admin" };
-    return { to: "/employee", label: "Employee" };
   };
 
   return (
@@ -250,30 +313,7 @@ function LoginPage() {
 
           <form
             className="space-y-5"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!email.includes("@")) return setError("Enter a valid work email address.");
-              if (password.length < 6) return setError("Password must be at least 6 characters.");
-
-              // Check pre-onboarding attempt
-              const preOnboardingHire = newHires.find(
-                (nh) => nh.email.toLowerCase() === email.toLowerCase() && nh.stage === "Pre-onboarding"
-              );
-              if (preOnboardingHire) {
-                return setError("Account not created yet. Pre-onboarded candidates receive ESS access upon entering Probationary status.");
-              }
-
-              // Check deactivated account
-              const matchingUser = systemUsers.find((u) => u.email.toLowerCase() === email.toLowerCase());
-              if (matchingUser && matchingUser.status === "Disabled") {
-                return setError("Account deactivated due to employee exit/separation status. Please contact HR for assistance.");
-              }
-
-              const targetRole = getRoleRoute(email);
-              setError("");
-              toast.success(`Welcome back — signed in as ${targetRole.label}`);
-              navigate({ to: "/otp", search: { role: targetRole.to } });
-            }}
+            onSubmit={handleSubmit}
           >
             <div className="space-y-1.5">
               <Label htmlFor="email">Work email</Label>
@@ -330,44 +370,16 @@ function LoginPage() {
               <button
                 type="button"
                 className="text-sm text-muted-foreground transition-colors hover:text-primary hover:underline"
-                onClick={() => toast("Password reset link sent to the HR office.")}
+                onClick={() => navigate({ to: "/forgot-password" })}
               >
                 Forgot password?
               </button>
             </div>
 
-            <Button type="submit" size="lg" className="w-full">
-              Sign in
+            <Button type="submit" size="lg" className="w-full" disabled={submitting}>
+              {submitting ? "Signing in…" : "Sign in"}
             </Button>
           </form>
-
-          {/* Helper demo account quick-fill options */}
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 p-3 text-xs">
-            <span className="font-medium text-muted-foreground">Demo Logins:</span>
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={() => { setEmail("maria.santos@email.com"); setPassword("demo1234"); setError(""); }}
-                className="rounded border border-border bg-card px-2 py-1 font-mono transition-colors hover:bg-primary/10 hover:text-primary"
-              >
-                Employee
-              </button>
-              <button
-                type="button"
-                onClick={() => { setEmail("hr.admin@email.com"); setPassword("demo1234"); setError(""); }}
-                className="rounded border border-border bg-card px-2 py-1 font-mono transition-colors hover:bg-primary/10 hover:text-primary"
-              >
-                HR Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => { setEmail("superadmin@email.com"); setPassword("demo1234"); setError(""); }}
-                className="rounded border border-border bg-card px-2 py-1 font-mono transition-colors hover:bg-primary/10 hover:text-primary"
-              >
-                Super Admin
-              </button>
-            </div>
-          </div>
 
           <p className="mt-7 text-center text-sm text-muted-foreground">
             Looking for work?{" "}

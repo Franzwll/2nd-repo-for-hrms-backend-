@@ -13,6 +13,25 @@ interface TablePaginationProps {
   className?: string;
 }
 
+/** Builds a compact page-number window like: 1 … 4 5 6 … 12 */
+function getPageWindow(page: number, pageCount: number, windowSize = 2): (number | "…")[] {
+  if (pageCount <= 7) {
+    return Array.from({ length: pageCount }, (_, i) => i + 1);
+  }
+
+  const pages: (number | "…")[] = [1];
+
+  const start = Math.max(2, page - windowSize);
+  const end = Math.min(pageCount - 1, page + windowSize);
+
+  if (start > 2) pages.push("…");
+  for (let p = start; p <= end; p++) pages.push(p);
+  if (end < pageCount - 1) pages.push("…");
+
+  pages.push(pageCount);
+  return pages;
+}
+
 /** Shared pagination footer used by every data table in the app. */
 export function TablePagination({
   page,
@@ -25,6 +44,8 @@ export function TablePagination({
   className,
 }: TablePaginationProps) {
   if (total === 0) return null;
+
+  const window = getPageWindow(page, pageCount);
 
   return (
     <div className={cn("mt-4 flex flex-wrap items-center justify-between gap-3", className)}>
@@ -40,17 +61,23 @@ export function TablePagination({
         >
           Previous
         </Button>
-        {Array.from({ length: pageCount }, (_, i) => i + 1).map((p) => (
-          <Button
-            key={p}
-            size="sm"
-            variant={p === page ? "default" : "outline"}
-            className="w-9"
-            onClick={() => onPageChange(p)}
-          >
-            {p}
-          </Button>
-        ))}
+        {window.map((p, i) =>
+          p === "…" ? (
+            <span key={`ellipsis-${i}`} className="px-1 text-xs text-muted-foreground">
+              …
+            </span>
+          ) : (
+            <Button
+              key={p}
+              size="sm"
+              variant={p === page ? "default" : "outline"}
+              className="w-9"
+              onClick={() => onPageChange(p)}
+            >
+              {p}
+            </Button>
+          ),
+        )}
         <Button
           size="sm"
           variant="outline"

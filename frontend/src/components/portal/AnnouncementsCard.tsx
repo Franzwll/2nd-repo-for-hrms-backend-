@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { isVisibleTo, usePortalState } from "@/components/portal/portal-state";
+import { getUser } from "@/lib/auth";
 import type { Role } from "@/lib/nav";
 
 export function AnnouncementsCard({ role }: { role: Role }) {
@@ -82,7 +83,7 @@ export function AnnouncementsCard({ role }: { role: Role }) {
         <AnnouncementDialog
           open={publishOpen}
           onOpenChange={setPublishOpen}
-          author="Bullseur Santiago"
+          author={getUser()?.full_name ?? "System"}
         />
       )}
     </Card>

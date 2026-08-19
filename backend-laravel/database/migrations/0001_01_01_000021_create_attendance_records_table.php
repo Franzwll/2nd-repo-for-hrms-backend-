@@ -9,19 +9,25 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('attendance_records', function (Blueprint $table) {
-            $table->id('attendance_record_id');
+            $table->id('attendance_id');
             $table->unsignedBigInteger('employee_id');
-            $table->date('attendance_date');
-            $table->time('time_in')->nullable();
-            $table->time('time_out')->nullable();
-            $table->string('status', 20);
-            $table->string('remarks', 255)->nullable();
+            $table->date('work_date');
+            $table->timestamp('time_in')->nullable();
+            $table->timestamp('time_out')->nullable();
+            $table->timestamp('break_in')->nullable();
+            $table->timestamp('break_out')->nullable();
+            $table->decimal('hours_worked', 7, 2)->default(0);
+            $table->integer('late_minutes')->default(0);
+            $table->integer('undertime_minutes')->default(0);
+            $table->decimal('overtime_hours', 7, 2)->default(0);
+            $table->string('remark', 255)->nullable();
+            $table->string('status', 30)->nullable();
             $table->timestamp('created_at')->useCurrent();
             $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
 
-            $table->unique(['employee_id', 'attendance_date'], 'uq_attendance_records_natural');
-            $table->index('attendance_date', 'idx_attendance_records_attendance_date');
-            $table->index('status', 'idx_attendance_records_status');
+            $table->unique(['employee_id', 'work_date'], 'uq_attendance_records_natural');
+            $table->index('employee_id', 'idx_attendance_records_employee_id');
+            $table->index('work_date', 'idx_attendance_records_work_date');
 
             $table->foreign('employee_id', 'fk_attendance_records_employee_id')
                   ->references('employee_id')->on('employees')->onDelete('cascade');

@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { company } from "@/data/company";
+import { useCompany } from "@/lib/landing";
 
 export const Route = createFileRoute("/_landing/contact")({
   head: () => ({
@@ -30,6 +30,7 @@ export const Route = createFileRoute("/_landing/contact")({
 });
 
 function Contact() {
+  const { company } = useCompany();
   const details = [
     { icon: Phone, label: "Phone", value: company.phone },
     { icon: Mail, label: "Email", value: company.email },
