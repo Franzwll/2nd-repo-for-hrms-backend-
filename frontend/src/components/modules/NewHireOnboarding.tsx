@@ -1,7 +1,8 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import {
   Check,
   CheckCircle2,
+  ChevronDown,
   Circle,
   ClipboardCheck,
   ClipboardList,
@@ -32,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -62,13 +64,8 @@ import { TablePagination } from "@/components/ui/table-pagination";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePagination } from "@/hooks/usePagination";
 import {
-  checklistRequests as seedChecklistRequests,
-  departments,
-  newHires as seedHires,
-  positions,
   type NewHire,
 } from "@/data/hr";
-import { applicants } from "@/data/applicants";
 import {
   DEFAULT_ACCOUNT_PASSWORD,
   hireStore,
@@ -76,14 +73,16 @@ import {
   useMasterChecklists,
   usePendingHire,
 } from "@/data/hires";
-import { myProfile } from "@/data/ess";
 import { cn } from "@/lib/utils";
 import { SortHead, useSort } from "@/components/portal/sortable";
 import {
+  applicantsApi,
   checklistRequestsApi,
-  onboardingItemsApi,
+  coreHcmApi,
+  settingsApi,
   type ApiChecklistRequest,
 } from "@/lib/api";
+import { EmployeeOnboarding } from "@/components/modules/EmployeeOnboarding";
 
 /** Today's date in yyyy-mm-dd, used as the default start date for new hires. */
 const todayIso = new Date().toISOString().slice(0, 10);
@@ -117,20 +116,6 @@ type RequestedChecklistItem = {
   requestedAt: string;
 };
 
-const seedRequestedItems: RequestedChecklistItem[] = seedChecklistRequests.flatMap((r, ri) => {
-  const derived =
-    r.items.length > 0
-      ? r.items
-      : [r.notes.split(/[.·]/)[0]?.trim() || `${r.position} requirement`];
-  return derived.map((item, i) => ({
-    id: `RQ-${ri + 1}${i + 1}`,
-    item,
-    position: r.position,
-    requestedBy: "Performance",
-    requestedAt: r.requestedAt,
-  }));
-});
-
 function transformApiRequest(r: ApiChecklistRequest): RequestedChecklistItem {
   return {
     id: r.request_code || `CR-${r.checklist_request_id}`,
@@ -145,6 +130,7 @@ const freshChecklist = (stage: Stage, probationaryItems: string[]) =>
   (stage === "Pre-onboarding" ? defaultChecklist : probationaryItems).map((item) => ({
     item,
     done: false,
+    phase: stage === "Pre-onboarding" ? ("Pre-onboarding" as const) : ("Probationary" as const),
   }));
 
 const initialsOf = (name: string) =>
@@ -160,251 +146,6 @@ export function NewHireOnboarding({ role }: { role: "superadmin" | "admin" | "em
     return <EmployeeOnboarding />;
   }
   return <AdminNewHireOnboarding role={role} />;
-}
-
-type ChecklistItem = {
-  id: string;
-  title: string;
-  date: string;
-  isoDate: string;
-  done: boolean;
-  rank: number;
-  actionLabel: string;
-};
-
-export function EmployeeOnboarding() {
-  const [items, setItems] = useState<ChecklistItem[]>([
-    {
-      id: "chk-policies",
-      title: "Acknowledge Company Policies",
-      date: "Pending your action",
-      isoDate: "2026-08-01",
-      done: false,
-      rank: 0,
-      actionLabel: "Acknowledge",
-    },
-    {
-      id: "chk-agreement",
-      title: "Accept Employment Agreement",
-      date: "Pending your action",
-      isoDate: "2026-08-01",
-      done: false,
-      rank: 0,
-      actionLabel: "Review & Accept",
-    },
-    {
-      id: "chk-info",
-      title: "Confirm Personal Information",
-      date: "Completed Feb 2, 2026",
-      isoDate: "2026-02-02",
-      done: true,
-      rank: 1,
-      actionLabel: "",
-    },
-    {
-      id: "chk-gov",
-      title: "Submit Government Requirements",
-      date: "Completed Feb 3, 2026",
-      isoDate: "2026-02-03",
-      done: true,
-      rank: 1,
-      actionLabel: "",
-    },
-    {
-      id: "chk-med",
-      title: "Submit Medical Clearance",
-      date: "Completed Feb 3, 2026",
-      isoDate: "2026-02-03",
-      done: true,
-      rank: 1,
-      actionLabel: "",
-    },
-  ]);
-
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("recent");
-
-  const completedCount = items.filter((i) => i.done).length;
-  const totalCount = items.length;
-  const pct = Math.round((completedCount / totalCount) * 100);
-
-  const handleComplete = async (id: string, title: string) => {
-    const todayIso = new Date().toISOString().slice(0, 10);
-    setItems((prev) =>
-      prev.map((i) => {
-        if (i.id !== id) return i;
-        return {
-          ...i,
-          done: true,
-          rank: 1,
-          date: "Completed just now",
-          isoDate: todayIso,
-          actionLabel: "",
-        };
-      })
-    );
-    toast.success(`"${title}" step completed!`);
-    if (completedCount + 1 >= totalCount) {
-      setTimeout(() => {
-        toast.success("Onboarding checklist complete! Awaiting HR verification.");
-      }, 500);
-    }
-
-    try {
-      const idNum = parseInt(id.replace(/\D/g, ""), 10) || 1;
-      await onboardingItemsApi.toggle(idNum);
-    } catch (e) {
-      console.warn("Could not toggle onboarding item on API:", e);
-    }
-  };
-
-  const filteredItems = useMemo(() => {
-    return items
-      .filter((i) => {
-        if (search && !i.title.toLowerCase().includes(search.toLowerCase())) return false;
-        if (filter === "completed") return i.done;
-        if (filter === "pending") return !i.done;
-        return true;
-      })
-      .sort((a, b) => {
-        if (filter === "recent") return b.isoDate.localeCompare(a.isoDate);
-        if (filter === "pending") return a.rank - b.rank;
-        return 0;
-      });
-  }, [items, search, filter]);
-
-  return (
-    <div>
-      <PageHeader
-        eyebrow="Employee Portal"
-        title="New Hire Onboarding"
-        description="Complete these requirements to finish your onboarding. This menu disappears once HR marks onboarding as complete."
-      />
-
-      <div className="mb-6 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-amber-800 dark:text-amber-300">
-        <Info className="h-5 w-5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
-        <p className="text-sm">
-          Employee activation is performed by the HR Admin after all requirements below have been verified.
-        </p>
-      </div>
-
-      <div className="grid gap-6">
-        <Card className="border-border/70 overflow-hidden">
-          <CardContent className="p-6 space-y-6">
-            {/* Prominent employment status banner at the top */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4 rounded-xl border border-purple-500/40 bg-gradient-to-r from-purple-500/15 via-purple-500/5 to-transparent p-4">
-              <Badge
-                variant="outline"
-                className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40 text-xl px-6 py-2 font-bold uppercase tracking-widest self-start sm:self-auto shadow-xs shrink-0"
-              >
-                {myProfile.employmentType.toUpperCase()}
-              </Badge>
-              <div className="flex items-center gap-3 min-w-0">
-                <Avatar className="h-11 w-11 border border-purple-500/40 shadow-xs shrink-0">
-                  <AvatarFallback className="bg-purple-500/20 text-purple-700 dark:text-purple-300 font-semibold">
-                    {myProfile.initials}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <p className="text-lg font-bold font-display text-foreground truncate">{myProfile.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Employee ID: <span className="font-mono font-semibold text-foreground">{myProfile.employeeId}</span> · {myProfile.position}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-border pt-4">
-              <div className="flex items-center justify-between text-sm font-medium mb-2">
-                <span className="text-muted-foreground">Overall Progress</span>
-                <span className="text-primary font-bold">{pct}% Complete</span>
-              </div>
-              <Progress value={pct} className="h-3" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/70">
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
-            <CardTitle className="font-display text-xl font-semibold">ONBOARDING CHECKLIST</CardTitle>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search checklist..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-8 h-9 w-[150px] sm:w-[180px]"
-                />
-              </div>
-              <Select value={filter} onValueChange={setFilter}>
-                <SelectTrigger className="h-9 w-[130px]">
-                  <ArrowUpDown className="mr-2 h-3.5 w-3.5" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="recent">Recent</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="divide-y divide-border">
-              {filteredItems.length === 0 ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">
-                  No checklist items match the current filter.
-                </div>
-              ) : (
-                filteredItems.map((item) => (
-                  <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-4">
-                    <div className="flex items-start gap-3">
-                      {item.done ? (
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white mt-0.5">
-                          <Check className="h-4 w-4 stroke-[3]" />
-                        </div>
-                      ) : (
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-amber-500 text-amber-500 mt-0.5">
-                          <Circle className="h-3 w-3 fill-amber-500" />
-                        </div>
-                      )}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-semibold text-foreground">{item.title}</p>
-                          <Badge
-                            variant="outline"
-                            className={
-                              item.done
-                                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[11px]"
-                                : "bg-amber-500/10 text-amber-600 border-amber-500/30 text-[11px]"
-                            }
-                          >
-                            {item.done ? "Completed" : "Pending"}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">{item.date}</p>
-                      </div>
-                    </div>
-
-                    {!item.done && item.actionLabel && (
-                      <Button
-                        size="sm"
-                        className="sm:ml-auto"
-                        onClick={() => handleComplete(item.id, item.title)}
-                      >
-                        {item.actionLabel}
-                      </Button>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
 }
 
 function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
@@ -431,19 +172,77 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const autoRegularizeDays = autoRegMonths * 30 + autoRegDays;
   /** Reference-only checklist items requested by Performance, scoped to a position. */
   const [requestedItems, setRequestedItems] =
-    useState<RequestedChecklistItem[]>(seedRequestedItems);
+    useState<RequestedChecklistItem[]>([]);
+
+  /** Default password for new portal accounts, read from the database
+   *  (system_settings.default_password); falls back to the shipped default. */
+  const [defaultPassword, setDefaultPassword] = useState(DEFAULT_ACCOUNT_PASSWORD);
+
+  /** Departments & positions from the Core HCM database. */
+  const [knownDepartments, setKnownDepartments] = useState<{ dbId: number; code: string; name: string }[]>([]);
+  const [knownPositions, setKnownPositions] = useState<{ dbId: number; id: string; title: string; department: string }[]>([]);
+  /** Hired/accepted applicants from the live database, for the add-hire form. */
+  const [candidateApplicants, setCandidateApplicants] = useState<{ id: string; name: string; position: string; email: string; phone: string }[]>([]);
 
   useEffect(() => {
     checklistRequestsApi
       .list({ per_page: 100 })
       .then((res) => {
-        if (res?.data && res.data.length > 0) {
-          setRequestedItems(res.data.map(transformApiRequest));
-        }
+        setRequestedItems((res?.data ?? []).map(transformApiRequest));
       })
       .catch((err) =>
         console.warn("Could not fetch checklist requests from API:", err),
       );
+    settingsApi
+      .get("default_password")
+      .then((res) => {
+        const pw = res?.setting_value?.password;
+        if (typeof pw === "string" && pw.length >= 8) setDefaultPassword(pw);
+      })
+      .catch(() => {
+        console.warn("Could not fetch default password from database, using built-in default.");
+      });
+  }, []);
+
+  useEffect(() => {
+    Promise.allSettled([
+      coreHcmApi.departments({ per_page: 100 }),
+      coreHcmApi.positions({ per_page: 100 }),
+      applicantsApi.list({ per_page: 100 }),
+    ]).then(([deptRes, posRes, appRes]) => {
+      if (deptRes.status === "fulfilled") {
+        setKnownDepartments(
+          (deptRes.value?.data ?? []).map((d) => ({
+            dbId: d.department_id,
+            code: d.code,
+            name: d.name,
+          })),
+        );
+      }
+      if (posRes.status === "fulfilled") {
+        setKnownPositions(
+          (posRes.value?.data ?? []).map((p) => ({
+            dbId: p.position_id,
+            id: p.position_code || `POS-${p.position_id}`,
+            title: p.title,
+            department: p.department || "",
+          })),
+        );
+      }
+      if (appRes.status === "fulfilled") {
+        setCandidateApplicants(
+          (appRes.value?.data ?? []).map((a) => ({
+            id: a.applicant_code || `APP-${a.applicant_id}`,
+            name: a.name,
+            position: a.job_post?.title ?? "",
+            email: a.email,
+            phone: a.phone || "",
+          })),
+        );
+      }
+    }).catch((err) => {
+      console.warn("Could not fetch departments/positions/applicants from API:", err);
+    });
   }, []);
 
   const [reqItemDraft, setReqItemDraft] = useState("");
@@ -473,7 +272,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   );
   const [editChecklistAllPositions, setEditChecklistAllPositions] = useState(true);
   const [editChecklistPositions, setEditChecklistPositions] = useState<string[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(seedHires[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -528,8 +327,12 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       initials: initialsOf(intake.name),
       email: intake.email,
       phone: intake.phone,
-      checklist: defaultChecklist.map((item) => ({ item, done: false })),
-    });
+      checklist: defaultChecklist.map((item) => ({
+        item,
+        done: false,
+        phase: "Pre-onboarding",
+      })),
+    }, intake.applicantId);
     setSelectedId(id);
     setStage("Pre-onboarding");
     setShowAllStages(false);
@@ -540,16 +343,13 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
 
   const toggleItem = (hireId: string, item: string) => {
     if (editingId !== hireId) return;
-    setHires((prev) =>
-      prev.map((h) => {
-        if (h.id !== hireId) return h;
-        // No auto-promotion — the stage only changes via "Advance stage".
-        return {
-          ...h,
-          checklist: h.checklist.map((c) => (c.item === item ? { ...c, done: !c.done } : c)),
-        };
-      }),
-    );
+    const target = hires.find((h) => h.id === hireId);
+    const index = target?.checklist.findIndex((c) => c.item === item) ?? -1;
+    const checklistItem = target?.checklist[index];
+    if (!target || !checklistItem) return;
+    const next = !checklistItem.done;
+    // Optimistic local update + persistence to the DB API (real-time sync).
+    hireStore.toggleItem(hireId, index, next);
   };
 
   const startEditChecklist = (hire: NewHire) => {
@@ -761,8 +561,13 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     });
   };
 
-  const progress = (h: NewHire) =>
-    Math.round((h.checklist.filter((c) => c.done).length / h.checklist.length) * 100);
+  const progress = (h: NewHire) => {
+    // Probationary progress reflects only the Probationary phase items
+    // (falls back to the whole checklist when items are not phase-tagged).
+    const phaseItems = h.checklist.filter((c) => (c.phase ?? "Probationary") === "Probationary");
+    const pool = h.stage === "Probationary" && phaseItems.length > 0 ? phaseItems : h.checklist;
+    return Math.round((pool.filter((c) => c.done).length / pool.length) * 100);
+  };
 
   /**
    * Evaluation cycles can drag on — if a hire's checklist is fully complete
@@ -856,31 +661,45 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     });
   };
 
-  const addHire = () => {
+  const addHire = async () => {
     if (!form.name || !form.position || !form.department || !form.startDate || !form.email) {
       toast.error("Name, position, department, email and start date are required.");
       return;
     }
 
+    // Resolve the selected position title / department name to their Core HCM ids
+    const positionId =
+      knownPositions.find((p) => p.title === form.position)?.dbId ?? null;
+    const departmentId =
+      knownDepartments.find((d) => d.name === form.department)?.dbId ?? null;
+
     // Completing an existing hire's record as they enter probation:
     // saving here is what promotes them and creates their portal account.
     if (completingId) {
       const id = completingId;
+      const probationaryItems = hireStore.combinedProbationaryItems(form.position);
       setHires((prev) =>
-        prev.map((h) =>
-          h.id === id
-            ? {
-                ...h,
-                stage: "Probationary",
-                checklist: freshChecklist("Probationary", hireStore.combinedProbationaryItems()),
-                position: form.position,
-                department: form.department,
-                startDate: form.startDate,
-                email: form.email,
-                phone: form.phone,
-              }
-            : h,
-        ),
+        prev.map((h) => {
+          if (h.id !== id) return h;
+          // Pre-onboarding tasks stay on the checklist (tagged so they show
+          // in their own collapsed section) while the probationary phase
+          // items are freshly applied from the active templates.
+          const preItems = h.checklist
+            .filter((c) => (c.phase ?? "Pre-onboarding") === "Pre-onboarding")
+            .map((c) => ({ ...c, phase: "Pre-onboarding" as const }));
+          return {
+            ...h,
+            stage: "Probationary",
+            checklist: [...preItems, ...freshChecklist("Probationary", probationaryItems)],
+            position: form.position,
+            department: form.department,
+            positionId,
+            departmentId,
+            startDate: form.startDate,
+            email: form.email,
+            phone: form.phone,
+          };
+        }),
       );
       setStage("Probationary");
       setShowAllStages(false);
@@ -888,12 +707,14 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       const name = form.name;
       resetHireForm();
       toast.success(
-        `${name} moved to Probationary — portal account created (default password ${DEFAULT_ACCOUNT_PASSWORD})`,
+        `${name} moved to Probationary — portal account created (default password ${defaultPassword})`,
       );
       hireStore.updateHire(id, {
         name: form.name,
         email: form.email,
         phone: form.phone,
+        position: form.position,
+        department: form.department,
         startDate: form.startDate,
       });
       hireStore.promoteHire(id);
@@ -901,17 +722,23 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     }
 
     const id = `NH-${String(hires.length + 1).padStart(2, "0")}`;
-    hireStore.add({
+    const saved = await hireStore.add({
       id,
       name: form.name,
       position: form.position,
       department: form.department,
+      positionId,
+      departmentId,
       stage: "Pre-onboarding",
       startDate: form.startDate,
       initials: initialsOf(form.name),
       email: form.email,
       phone: form.phone,
-      checklist: defaultChecklist.map((item) => ({ item, done: false })),
+      checklist: defaultChecklist.map((item) => ({
+        item,
+        done: false,
+        phase: "Pre-onboarding",
+      })),
     });
 
     setSelectedId(id);
@@ -919,7 +746,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     setShowAllStages(false);
     const name = form.name;
     resetHireForm();
-    toast.success(`${name} added to pre-onboarding and Employee Records`);
+    if (saved) {
+      toast.success(
+        `${name} added to pre-onboarding — database record and portal account created`,
+      );
+    }
   };
 
   return (
@@ -1075,7 +906,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All departments</SelectItem>
-                        {departments.map((d) => (
+                        {knownDepartments.map((d) => (
                           <SelectItem key={d.code} value={d.name}>
                             {d.name}
                           </SelectItem>
@@ -1401,6 +1232,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             <>
                               <ul className="mt-3 space-y-1.5">
                                 {[...selected.checklist]
+                                  .filter(
+                                    (c) =>
+                                      ((c.phase ?? "Probationary") === "Pre-onboarding") ===
+                                      (selected.stage === "Pre-onboarding"),
+                                  )
                                   .map((c, i) => ({ ...c, i }))
                                   .sort((a, b) => Number(a.done) - Number(b.done) || a.i - b.i)
                                   .map((c) => {
@@ -1420,7 +1256,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                               ? "cursor-pointer"
                                               : "cursor-not-allowed opacity-80",
                                             c.done
-                                              ? "border-success/30 bg-success/10 text-success"
+                                              ? selected.stage === "Pre-onboarding"
+                                                ? "border-gold/30 bg-gold/10 text-gold-foreground"
+                                                : "border-success/30 bg-success/10 text-success"
                                               : "border-border hover:border-primary/40",
                                           )}
                                         >
@@ -1437,6 +1275,80 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                     );
                                   })}
                               </ul>
+
+                              {selected.checklist.some(
+                                (c) =>
+                                  ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                  (selected.stage === "Pre-onboarding"),
+                              ) && (
+                                <Collapsible className="mt-3">
+                                  <CollapsibleTrigger
+                                    className="flex w-full items-center justify-between rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium transition-colors hover:bg-muted/50"
+                                  >
+                                    <span className="flex items-center gap-1.5">
+                                      <ChevronDown className="h-3.5 w-3.5" />
+                                      {selected.stage === "Pre-onboarding"
+                                        ? "Probationary tasks"
+                                        : "Finished pre-onboarding checklist"}
+                                    </span>
+                                    <span className="text-muted-foreground">
+                                      {selected.checklist.filter(
+                                        (c) =>
+                                          ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                            (selected.stage === "Pre-onboarding") &&
+                                          c.done,
+                                      ).length}
+                                      /{selected.checklist.filter(
+                                        (c) =>
+                                          ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                          (selected.stage === "Pre-onboarding"),
+                                      ).length} done
+                                    </span>
+                                  </CollapsibleTrigger>
+                                  <CollapsibleContent className="overflow-hidden transition-all data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+                                    <ul className="mt-2 space-y-1.5 pl-1.5">
+                                      {[...selected.checklist]
+                                        .filter(
+                                          (c) =>
+                                            ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                            (selected.stage === "Pre-onboarding"),
+                                        )
+                                        .map((c, i) => ({ ...c, i }))
+                                        .sort((a, b) => Number(a.done) - Number(b.done) || a.i - b.i)
+                                        .map((c) => {
+                                          const isEditingThis = editingId === selected.id && !isWaiting;
+                                          return (
+                                            <li key={c.item}>
+                                              <button
+                                                type="button"
+                                                disabled={!isEditingThis}
+                                                onClick={() => toggleItem(selected.id, c.item)}
+                                                className={cn(
+                                                  "flex w-full items-center gap-2.5 rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                                                  isEditingThis
+                                                    ? "cursor-pointer"
+                                                    : "cursor-not-allowed opacity-80",
+                                                  c.done
+                                                    ? "border-success/30 bg-success/10 text-success"
+                                                    : "border-border hover:border-primary/40",
+                                                )}
+                                              >
+                                                {c.done ? (
+                                                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                                                ) : (
+                                                  <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                                )}
+                                                <span className={cn(c.done && "line-through opacity-80")}>
+                                                  {c.item}
+                                                </span>
+                                              </button>
+                                            </li>
+                                          );
+                                        })}
+                                    </ul>
+                                  </CollapsibleContent>
+                                </Collapsible>
+                              )}
                             </>
 
                             {progress(selected) === 100 && !isWaiting && (
@@ -1453,19 +1365,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                       variant="outline"
                                       className="h-10 cursor-pointer"
                                       onClick={() =>
-                                        setHires((prev) =>
-                                          prev.map((h) =>
-                                            h.id === selected.id
-                                              ? {
-                                                  ...h,
-                                                  checklist: h.checklist.map((c) => ({
-                                                    ...c,
-                                                    done: true,
-                                                  })),
-                                                }
-                                              : h,
-                                          ),
-                                        )
+                                        hireStore.setAllItemsDone(selected.id, true)
                                       }
                                     >
                                       Mark all done
@@ -1706,7 +1606,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                               </label>
                               {!editChecklistAllPositions && (
                                 <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-md border border-border p-2">
-                                  {positions.map((p) => (
+                                  {knownPositions.map((p) => (
                                     <label
                                       key={p.id}
                                       className="flex cursor-pointer items-center gap-2 text-xs"
@@ -1930,7 +1830,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                           </label>
                           {!newChecklistAllPositions && (
                             <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-md border border-border p-2">
-                              {positions.map((p) => (
+                              {knownPositions.map((p) => (
                                 <label
                                   key={p.id}
                                   className="flex cursor-pointer items-center gap-2 text-xs"
@@ -2058,7 +1958,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Select All (all positions)</SelectItem>
-                        {positions.map((p) => (
+                        {knownPositions.map((p) => (
                           <SelectItem key={p.id} value={p.title}>
                             {p.title}
                           </SelectItem>
@@ -2102,7 +2002,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   </SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="all">Select All (all positions)</SelectItem>
-                                    {positions.map((p) => (
+                                    {knownPositions.map((p) => (
                                       <SelectItem key={p.id} value={p.title}>
                                         {p.title}
                                       </SelectItem>
@@ -2311,7 +2211,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
 
           <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
             Account note: the employee portal account is created with the default password{" "}
-            <span className="font-medium text-foreground">{DEFAULT_ACCOUNT_PASSWORD}</span> — the
+            <span className="font-medium text-foreground">{defaultPassword}</span> — the
             hire is prompted to change it on first login.
           </div>
 
@@ -2329,8 +2229,8 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                 <Select
                   value={form.name}
                   onValueChange={(v) => {
-                    const a = applicants.find((x) => x.name === v);
-                    const p = a ? positions.find((x) => x.title === a.position) : undefined;
+                    const a = candidateApplicants.find((x) => x.name === v);
+                    const p = a ? knownPositions.find((x) => x.title === a.position) : undefined;
                     setForm((prev) => ({
                       ...prev,
                       name: v,
@@ -2345,7 +2245,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                     <SelectValue placeholder="Select applicant" />
                   </SelectTrigger>
                   <SelectContent>
-                    {applicants
+                    {candidateApplicants
                       .filter((a) => !hires.some((h) => h.name === a.name))
                       .map((a) => (
                         <SelectItem key={a.id} value={a.name}>
@@ -2362,7 +2262,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               <Select
                 value={form.position}
                 onValueChange={(v) => {
-                  const p = positions.find((x) => x.title === v);
+                  const p = knownPositions.find((x) => x.title === v);
                   setForm({ ...form, position: v, department: p?.department ?? form.department });
                 }}
               >
@@ -2370,7 +2270,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                   <SelectValue placeholder="Select position" />
                 </SelectTrigger>
                 <SelectContent>
-                  {positions.map((p) => (
+                  {knownPositions.map((p) => (
                     <SelectItem key={p.id} value={p.title}>
                       {p.title}
                     </SelectItem>
@@ -2388,7 +2288,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                   <SelectValue placeholder="Select department" />
                 </SelectTrigger>
                 <SelectContent>
-                  {departments.map((d) => (
+                  {knownDepartments.map((d) => (
                     <SelectItem key={d.code} value={d.name}>
                       {d.name}
                     </SelectItem>

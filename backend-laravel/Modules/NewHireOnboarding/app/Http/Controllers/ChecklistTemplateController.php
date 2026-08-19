@@ -63,10 +63,12 @@ class ChecklistTemplateController extends Controller
             $template->items()->create($item);
         }
 
-        return response()->json(
-            new ChecklistTemplateResource($template->load('items')),
-            201
-        );
+        // Templates are read-time only: activating a template does NOT insert
+        // rows into each new hire's checklist — matching hires simply start
+        // seeing its items (see EmployeeOnboardingItemController@index).
+        $payload = (new ChecklistTemplateResource($template->load('items')))->resolve();
+
+        return response()->json($payload, 201);
     }
 
     /* ------------------------------------------------------------------ */
@@ -91,12 +93,56 @@ class ChecklistTemplateController extends Controller
             'title'               => ['sometimes', 'string', 'max:200'],
             'phase'               => ['sometimes', 'string', 'in:Pre-onboarding,Onboarding,Probationary,Regular'],
             'position_scope_json' => ['nullable', 'array'],
-            'status'              => ['sometimes', 'string', 'in:Active,Inactive'],
+            'status'              => ['sometimes', 'string', 'in:Active,Inactive,Closed'],
+            'items'               => ['nullable', 'array'],
+            'items.*.item_text'   => ['required', 'string'],
+            'items.*.sort_order'  => ['nullable', 'integer', 'min:0'],
         ]);
+
+        // "Closed" is the builder's label; the DB only stores Active/Inactive.
+        if (isset($data['status']) && $data['status'] === 'Closed') {
+            $data['status'] = 'Inactive';
+        }
+
+        // Reconcile the item set IN PLACE: existing template items keep their
+        // template_item_id (so already-applied new-hire rows stay linked and
+        // never duplicate), new items are created, removed items are deleted.
+        $items = $data['items'] ?? null;
+        unset($data['items']);
 
         $model->update($data);
 
-        return response()->json(new ChecklistTemplateResource($model->load('items')));
+        if ($items !== null) {
+            $existingItems = $model->items()->get();
+            $existingById  = $existingItems->keyBy('template_item_id');
+
+            $updatedIds = [];
+            foreach ($items as $index => $item) {
+                $existing = $existingItems->values()->get($index);
+                if ($existing) {
+                    $existing->update([
+                        'item_text'  => $item['item_text'],
+                        'sort_order' => $item['sort_order'] ?? $index,
+                    ]);
+                    $updatedIds[] = $existing->template_item_id;
+                } else {
+                    $created = $model->items()->create([
+                        'item_text'  => $item['item_text'],
+                        'sort_order' => $item['sort_order'] ?? $index,
+                    ]);
+                    $updatedIds[] = $created->template_item_id;
+                }
+            }
+
+            // Drop template items that were removed from the checklist — their
+            // copied new-hire rows become orphans and are hidden at read time.
+            $existingItems->whereNotIn('template_item_id', $updatedIds)
+                ->each->delete();
+        }
+
+        $payload = (new ChecklistTemplateResource($model->load('items')))->resolve();
+
+        return response()->json($payload);
     }
 
     /* ------------------------------------------------------------------ */

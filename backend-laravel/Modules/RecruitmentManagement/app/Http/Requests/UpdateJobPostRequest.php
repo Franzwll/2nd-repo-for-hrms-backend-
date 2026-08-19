@@ -34,6 +34,7 @@ class UpdateJobPostRequest extends FormRequest
             'benefits' => ['nullable', 'array'],
             'platforms' => ['nullable', 'array'],
             'platforms.*' => ['string', 'in:Website,Facebook,Instagram,Indeed'],
+            'picture' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ];
     }
 }

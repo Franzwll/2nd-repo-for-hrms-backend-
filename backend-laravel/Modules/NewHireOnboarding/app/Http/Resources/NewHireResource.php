@@ -23,14 +23,9 @@ class NewHireResource extends JsonResource
             'position'            => $this->whenLoaded('position',   fn () => $this->position->title),
             'stage'               => $this->stage,
             'start_date'          => $this->start_date?->toDateString(),
-            'completion_percent'  => $this->whenLoaded('onboardingItems', fn () => $this->completionPercentage()),
+            'completion_percent'  => $this->whenLoaded('onboardingItems', fn () => $this->visibleCompletionPercentage()),
             'onboarding_items'    => $this->whenLoaded('onboardingItems', function () {
-                return $this->onboardingItems->map(fn ($item) => [
-                    'employee_onboarding_item_id' => $item->employee_onboarding_item_id,
-                    'item_text'                   => $item->item_text,
-                    'done'                         => (bool) $item->done,
-                    'completed_at'                 => $item->completed_at?->toISOString(),
-                ]);
+                return $this->visibleOnboardingItems();
             }),
             'created_at'          => $this->created_at?->toISOString(),
             'updated_at'          => $this->updated_at?->toISOString(),

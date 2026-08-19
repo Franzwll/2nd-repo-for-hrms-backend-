@@ -748,7 +748,8 @@ INSERT INTO `announcements` (`published_date`, `title`, `body`, `audience`, `cre
 INSERT INTO `system_settings` (`setting_key`, `setting_value`, `updated_by_user_id`) VALUES
 ('company.name', '{"value": "Oxford Suites Makati"}', 1),
 ('company.timezone', '{"value": "Asia/Manila"}', 1),
-('password_policy', '{"minLength": 8, "requireUppercase": true, "requireLowercase": true, "requireNumber": true, "requireSymbol": true}', 1),
+('password_policy', '{"minLength": 8, "requireUppercase": true, "requireLowercase": true, "requireNumber": true, "requireSymbol": true, "twoFactor": true, "sessionTimeout": "30 minutes", "maxLoginAttempts": "3 attempts"}', 1),
+('default_password', '{"password": "Oxford@2026"}', 1),
 ('recruitment.screening.enabled', '{"value": true}', 1),
 ('ess.default_processing_role', '{"value": "Admin"}', 1);
 

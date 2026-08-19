@@ -248,7 +248,7 @@ INSERT INTO `applicants` (`applicant_id`, `applicant_code`, `job_post_id`, `name
 (6,  'APP-1037', 2, 'Elena Torres',       'elena.torres@email.com',       '0918 220 3341', '2026-07-25 19:02:00', 22.00, 'not-fit',    'Rejected',           'Online Portal', '/uploads/resumes/elena_torres_resume.pdf',     'Clerical background with no hospitality or culinary entities detected.', '["No culinary certification","No kitchen experience detected"]'),
 (7,  'APP-1038', 3, 'Princess Mabangis',  'princess.mabangis@email',      '0912 345',      '2026-07-25 20:10:00', 58.00, 'credential', 'Screened',           'Walk-in',      '/uploads/resumes/princess_mabangis_resume.pdf', 'Relevant housekeeping experience but contact details failed NER validation.', '["Malformed email address","Incomplete phone number","Job position typo on application form"]'),
 (8,  'APP-1039', 1, 'Kanor Ornak',        'kanor.ornak@email.com',        '0905 118 7742', '2026-07-25 21:12:00', 74.00, 'other-role', 'Screened',           'Indeed',       '/uploads/resumes/kanor_ornak_resume.pdf',      'Retail and cafe service background; better aligned to F&B service roles.', '["Stronger match: Restaurant Server (86%)"]'),
-(9,  'APP-1040', 4, 'Marjun Devera',      'marjun.devera@email.com',      '0917 664 2219', '2026-07-25 22:40:00', 88.00, 'fit',        'Screened',           'Referral',     '/uploads/resumes/marjun_devera_resume.pdf',    'Strong dining-room service background with banquet exposure.', '[]'),
+(9,  'APP-1040', 4, 'Marjun Devera',      'marjun.devera@email.com',      '0917 664 2219', '2026-07-25 22:40:00', 88.00, 'fit',        'Accepted',           'Referral',     '/uploads/resumes/marjun_devera_resume.pdf',    'Strong dining-room service background with banquet exposure.', '[]'),
 (10, 'APP-1041', 1, 'Bianca Soriano',     'bianca.soriano@email.com',     '0912 345 6789', '2026-07-25 23:15:00', 96.00, 'fit',        'Interview Scheduled', 'Online Portal', '/uploads/resumes/bianca_soriano_resume.pdf',   'Three years front office experience at a 4-star property, PMS proficient, complete credentials.', '[]');
 
 -- applicant_screening_entities
@@ -745,11 +745,15 @@ INSERT INTO `announcements` (`published_date`, `title`, `body`, `audience`, `cre
 ('2026-05-02', 'Service Excellence Awards 2026', 'Congratulations to Front Office for the highest guest satisfaction score this quarter.', 'All', 1, 'published');
 
 -- system_settings
+-- Keys are standardised to the sections the Settings UI reads:
+--   company, preferences, security, notifications, interview.schedulable_days
 INSERT INTO `system_settings` (`setting_key`, `setting_value`, `updated_by_user_id`) VALUES
-('company.name', '{"value": "Oxford Suites Makati"}', 1),
-('company.timezone', '{"value": "Asia/Manila"}', 1),
-('password_policy', '{"minLength": 8, "requireUppercase": true, "requireLowercase": true, "requireNumber": true, "requireSymbol": true}', 1),
+('company', '{"name": "Oxford Suites Makati", "email": "info@oxfordsuites.com.ph", "contact": "(02) 8888-0000", "businessHours": "24/7 Front Desk Operations", "address": "Ayala Center, Makati City", "tin": "000-000-000-000", "timezone": "Asia/Manila"}', 1),
+('preferences', '{"theme": "Light", "language": "English", "dateFormat": "MM/DD/YYYY", "timeFormat": "12-hour", "timeZone": "Asia/Manila (GMT+8)"}', 1),
+('security', '{"twoFactor": true, "sessionTimeout": "30 minutes", "maxLoginAttempts": "3 attempts", "minLength": 8, "requireUppercase": true, "requireLowercase": true, "requireNumber": true, "requireSymbol": true}', 1),
+('notifications', '{"Email notifications": true, "Browser notifications": true, "System announcements": true}', 1),
+('default_password', '{"password": "Oxford@2026"}', 1),
 ('recruitment.screening.enabled', '{"value": true}', 1),
-('ess.default_processing_role', '{"value": "Admin"}', 1);
+('interview.schedulable_days', '["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]', 1);
 
 SET FOREIGN_KEY_CHECKS=1;

@@ -24,6 +24,8 @@ export type Job = {
   benefits: string[];
   applicants: number;
   platforms: string[];
+  /** Uploaded hiring-poster picture (API url) */
+  picture?: string;
 };
 
 export const jobs: Job[] = [

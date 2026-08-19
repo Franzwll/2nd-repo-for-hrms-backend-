@@ -42,6 +42,10 @@ type State = {
   loading: boolean;
 };
 
+const seed: State = {
+  announcements: [],
+  notifications: [],
+};
 const seedNotifications: Notification[] = [
   {
     id: "NTF-005",

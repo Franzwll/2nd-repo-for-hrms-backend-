@@ -211,6 +211,8 @@ CREATE TABLE "job_posts" (
   "qualifications_json" JSONB NULL,
   "skills_json" JSONB NULL,
   "benefits_json" JSONB NULL,
+  -- NOTE: poster image uploaded via Recruitment Management (public disk).
+  "picture" VARCHAR(255) NULL,
   "created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updated_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY ("job_post_id"),
@@ -251,7 +253,7 @@ CREATE TABLE "applicants" (
   "updated_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY ("applicant_id"),
   CONSTRAINT chk_applicants_status CHECK ("status" IN ('fit', 'other-role', 'credential', 'not-fit')),
-  CONSTRAINT chk_applicants_stage CHECK ("stage" IN ('Screened', 'Interview Scheduled', 'Assessed', 'Offer', 'Hired', 'Rejected'))
+  CONSTRAINT chk_applicants_stage CHECK ("stage" IN ('Screened', 'Interview Scheduled', 'Assessed', 'Offer', 'Hired', 'Rejected', 'Accepted'))
 );
 
 CREATE TABLE "applicant_screening_entities" (
@@ -371,7 +373,7 @@ CREATE TABLE "onboarding_checklist_items" (
 
 CREATE TABLE "employee_onboarding_items" (
   "employee_onboarding_item_id" BIGSERIAL,
-  "employee_id" BIGINT NOT NULL,
+  "employee_id" BIGINT NULL,
   "new_hire_id" BIGINT NULL,
   "template_item_id" BIGINT NULL,
   "item_text" TEXT NOT NULL,

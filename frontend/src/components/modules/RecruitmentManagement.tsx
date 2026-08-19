@@ -64,17 +64,17 @@ import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { ListBody } from "@/components/portal/ListBody";
 import { DEFAULT_PAGE_SIZE } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
-import { jobs as seedJobs, peso, type Job } from "@/data/jobs";
-import { departments, positions } from "@/data/hr";
+import { peso, type Job } from "@/data/jobs";
+import { type Department, type Position } from "@/data/hr";
 import { requisitionStore, useRequisitions, type Requisition } from "@/data/requisitions";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useSort } from "@/components/portal/sortable";
 import { cn } from "@/lib/utils";
 import hiringTemplate from "@/assets/hiring-template.png.asset.json";
-import { jobPostsApi, requisitionsApi, type ApiJobPost } from "@/lib/api";
+import { coreHcmApi, jobPostsApi, resolveStorageUrl, type ApiJobPost } from "@/lib/api";
 
 function transformApiJob(j: ApiJobPost): Job {
-  return {
+  const job: Job = {
     id: j.slug || String(j.job_post_id),
     dbId: j.job_post_id,
     title: j.title,
@@ -99,6 +99,8 @@ function transformApiJob(j: ApiJobPost): Job {
     applicants: Number(j.applicants_count) || 0,
     platforms: j.platforms && j.platforms.length > 0 ? j.platforms : ["Website"],
   };
+  if (j.picture_url) job.picture = resolveStorageUrl(j.picture_url) ?? "";
+  return job;
 }
 
 /** Colour-coded urgency badge classes. */
@@ -226,7 +228,7 @@ type Draft = {
 
 const blankDraft: Draft = {
   title: "",
-  department: departments[0]?.name ?? "Front Office",
+  department: "",
   employmentType: "Full-time",
   schedule: "Shifting Schedule",
   salaryMin: "",
@@ -304,17 +306,60 @@ function snapshotOf(d: Draft, b: BlockId[]) {
 }
 
 export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }) {
-  const [jobList, setJobList] = useState<Job[]>(seedJobs);
+  const [jobList, setJobList] = useState<Job[]>([]);
 
   useEffect(() => {
     jobPostsApi.list({ per_page: 100 }).then((res) => {
-      if (res?.data && res.data.length > 0) {
-        setJobList(res.data.map(transformApiJob));
-      }
+      setJobList((res?.data ?? []).map(transformApiJob));
     }).catch((err) => {
       console.warn("Could not fetch jobs from API:", err);
     });
   }, []);
+
+  /** Departments & positions straight from the Core HCM database. */
+  const [apiDepartments, setApiDepartments] = useState<Department[]>([]);
+  const [apiPositions, setApiPositions] = useState<Position[]>([]);
+
+  useEffect(() => {
+    Promise.allSettled([
+      coreHcmApi.departments({ per_page: 100 }),
+      coreHcmApi.positions({ per_page: 100 }),
+    ]).then(([deptRes, posRes]) => {
+      if (deptRes.status === "fulfilled") {
+        setApiDepartments(
+          (deptRes.value?.data ?? []).map((d) => ({
+            code: d.code,
+            name: d.name,
+            description: d.description ?? "",
+            head: "—",
+            staff: 0,
+            openRequisitions: 0,
+            budget: 0,
+            dbId: d.department_id,
+          })),
+        );
+      }
+      if (posRes.status === "fulfilled") {
+        setApiPositions(
+          (posRes.value?.data ?? []).map((p) => ({
+            id: p.position_code || `POS-${p.position_id}`,
+            title: p.title,
+            department: p.department || "General",
+            level: (p.level as Position["level"]) || "Rank & File",
+            headcount: p.headcount,
+            filled: p.filled_count,
+            salaryBand: "",
+            dbId: p.position_id,
+          })),
+        );
+      }
+    }).catch((err) => {
+      console.warn("Could not fetch departments/positions from API:", err);
+    });
+  }, []);
+
+  const knownDepartments = apiDepartments;
+  const knownPositions = apiPositions;
 
   const [tab, setTab] = useState("postings");
   const [mode, setMode] = useState<"template" | "custom">("custom");
@@ -352,9 +397,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [dialogPreview, setDialogPreview] = useState("Website");
   const [customPosterUrl, setCustomPosterUrl] = useState<string | null>(null);
+  /** The actual File object, uploaded with the job post on publish. */
+  const [posterFile, setPosterFile] = useState<File | null>(null);
 
   const [deptDialogOpen, setDeptDialogOpen] = useState(false);
-  const [pendingDept, setPendingDept] = useState(departments[0]?.name ?? "Front Office");
+  const [pendingDept, setPendingDept] = useState("");
   const [pendingPosition, setPendingPosition] = useState("");
   /** False shows the "create a job posting" entry card instead of the builder canvas. */
   const [builderStarted, setBuilderStarted] = useState(false);
@@ -386,7 +433,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     withResolver: true,
   });
 
-  const saveDraftAction = () => {
+  const saveDraftAction = async () => {
     const title = draft.title.trim() || "Untitled position";
     const draftId =
       editingJobId ??
@@ -423,7 +470,60 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     );
     setEditingJobId(draftId);
     setSavedSnapshot(snapshotOf(draft, blocks));
-    toast.success(`Draft saved — “${title}” is in your postings as a draft`);
+
+    // Persist the draft to the database so it survives reloads
+    try {
+      let positionId = knownPositions.find((p) => p.title === title)?.dbId;
+      let departmentId = knownDepartments.find((d) => d.name === draft.department)?.dbId;
+      if (!departmentId) {
+        const created = await coreHcmApi.createDepartment({ name: draft.department });
+        departmentId = created.department_id;
+      }
+      if (!positionId) {
+        const created = await coreHcmApi.createPosition({
+          title,
+          department_id: departmentId,
+          level: "Rank & File",
+          headcount: 1,
+        });
+        positionId = created.position_id;
+      }
+
+      const basePayload = {
+        position_id: positionId,
+        department_id: departmentId,
+        title: payload.title,
+        employment_type: payload.employmentType,
+        schedule: payload.schedule,
+        salary_min: payload.salaryMin,
+        salary_max: payload.salaryMax,
+        vacancies: payload.vacancies,
+        status: "Draft",
+        active: false,
+        summary: payload.summary,
+        description: payload.description,
+        responsibilities: payload.responsibilities,
+        qualifications: payload.qualifications,
+        skills: payload.skills,
+        benefits: payload.benefits,
+        platforms: [],
+      };
+
+      if (existing?.dbId) {
+        await jobPostsApi.update(existing.dbId, basePayload);
+      } else {
+        const created = await jobPostsApi.create(basePayload);
+        setJobList((prev) =>
+          prev.map((j) =>
+            j.id === draftId ? { ...j, dbId: created.job_post_id } : j,
+          ),
+        );
+      }
+      toast.success(`Draft saved — “${title}” is in your postings as a draft`);
+    } catch (e) {
+      console.warn("Could not persist draft to database API:", e);
+      toast.error(`“${title}” was kept locally, but could not be saved to the database.`);
+    }
   };
 
   const toggleActive = async (id: string) => {
@@ -501,6 +601,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       applicants: editingJobId ? (jobList.find((j) => j.id === editingJobId)?.applicants ?? 0) : 0,
       platforms: chosen,
     };
+    const posterUrl = customPosterUrl ?? jobList.find((j) => j.id === editingJobId)?.picture;
+    if (posterUrl) jobPayload.picture = posterUrl;
 
     setJobList((prev) =>
       editingJobId
@@ -511,63 +613,83 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       requisitionStore.update(sourceReqId, { status: "Converted" });
     }
     setTab("postings");
-    toast.success(
-      editingJobId
-        ? `“${jobPayload.title}” template updated`
-        : chosen.length
-          ? `“${jobPayload.title}” published to ${chosen.join(", ")}`
-          : `“${jobPayload.title}” saved as a draft posting`,
-    );
     setEditingJobId(null);
     setSourceReqId(null);
     setBuilderStarted(false);
     setSavedSnapshot(snapshotOf(blankDraft, []));
 
-    // Persist to backend database API
-    const selectedPosition = positions.find((p) => p.title === draft.title);
-    const selectedDept = departments.find((d) => d.name === draft.department);
+    // Persist to backend database API — resolve the position & department
+    // from the database (Core HCM) and auto-create them when the role is new,
+    // so every posting carries a valid position_id / department_id.
+    let positionId = knownPositions.find((p) => p.title === draft.title)?.dbId;
+    let departmentId = knownDepartments.find((d) => d.name === draft.department)?.dbId;
+
     try {
-      if (editingJobId) {
-        const existing = jobList.find((j) => j.id === editingJobId);
-        await jobPostsApi.update(existing?.dbId ?? editingJobId, {
-          position_id: selectedPosition?.dbId,
-          department_id: selectedDept?.dbId,
-          title: jobPayload.title,
-          employment_type: jobPayload.employmentType,
-          schedule: jobPayload.schedule,
-          salary_min: jobPayload.salaryMin,
-          salary_max: jobPayload.salaryMax,
-          vacancies: jobPayload.vacancies,
-          status: jobPayload.status,
-          active: jobPayload.active,
-          summary: jobPayload.summary,
-          description: jobPayload.description,
-          responsibilities: jobPayload.responsibilities,
-          qualifications: jobPayload.qualifications,
-          skills: jobPayload.skills,
-          benefits: jobPayload.benefits,
-          platforms: chosen,
+      if (!departmentId) {
+        const created = await coreHcmApi.createDepartment({
+          name: draft.department,
         });
+        departmentId = created.department_id;
+      }
+      if (!positionId) {
+        const created = await coreHcmApi.createPosition({
+          title: draft.title,
+          department_id: departmentId,
+          level: "Rank & File",
+          headcount: 1,
+        });
+        positionId = created.position_id;
+      }
+
+      const basePayload = {
+        position_id: positionId,
+        department_id: departmentId,
+        title: jobPayload.title,
+        employment_type: jobPayload.employmentType,
+        schedule: jobPayload.schedule,
+        salary_min: jobPayload.salaryMin,
+        salary_max: jobPayload.salaryMax,
+        vacancies: jobPayload.vacancies,
+        status: jobPayload.status,
+        active: jobPayload.active,
+        summary: jobPayload.summary,
+        description: jobPayload.description,
+        responsibilities: jobPayload.responsibilities,
+        qualifications: jobPayload.qualifications,
+        skills: jobPayload.skills,
+        benefits: jobPayload.benefits,
+        platforms: chosen,
+      };
+      // Uploaded poster picture rides along as multipart/form-data
+      let payload: Record<string, any> | FormData = basePayload;
+      if (posterFile) {
+        const fd = new FormData();
+        Object.entries(basePayload).forEach(([k, v]) => {
+          if (k === "active") {
+            // Laravel's boolean rule rejects the string "true"/"false"
+            fd.append(k, String(v ? 1 : 0));
+          } else if (Array.isArray(v)) {
+            // PHP only builds an array from repeated multipart keys when the
+            // name ends with "[]" (e.g. responsibilities[]=a&responsibilities[]=b)
+            v.forEach((item) => fd.append(`${k}[]`, String(item)));
+          } else {
+            fd.append(k, String(v));
+          }
+        });
+        fd.append("picture", posterFile);
+        payload = fd;
+      }
+
+      let createdJobId: number | undefined;
+      const existing = editingJobId
+        ? jobList.find((j) => j.id === editingJobId)
+        : undefined;
+      if (editingJobId && existing?.dbId) {
+        await jobPostsApi.update(existing.dbId, payload);
       } else {
-        const created = await jobPostsApi.create({
-          position_id: selectedPosition?.dbId,
-          department_id: selectedDept?.dbId ?? 1,
-          title: jobPayload.title,
-          employment_type: jobPayload.employmentType,
-          schedule: jobPayload.schedule,
-          salary_min: jobPayload.salaryMin,
-          salary_max: jobPayload.salaryMax,
-          vacancies: jobPayload.vacancies,
-          status: jobPayload.status,
-          active: jobPayload.active,
-          summary: jobPayload.summary,
-          description: jobPayload.description,
-          responsibilities: jobPayload.responsibilities,
-          qualifications: jobPayload.qualifications,
-          skills: jobPayload.skills,
-          benefits: jobPayload.benefits,
-          platforms: chosen,
-        });
+        // No saved record yet (e.g. a locally-kept draft) — create a real row
+        const created = await jobPostsApi.create(payload);
+        createdJobId = created.job_post_id;
         setJobList((prev) =>
           prev.map((j) =>
             j.id === jobPayload.id
@@ -578,11 +700,22 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       }
       if (sourceReqId) {
         const srcReq = requisitions.find((r) => r.id === sourceReqId);
-        const createdJob = jobList.find((j) => j.id === jobPayload.id);
-        await requisitionsApi.convert(srcReq?.dbId ?? sourceReqId, createdJob?.dbId);
+        const jobDbId =
+          createdJobId ?? jobList.find((j) => j.id === jobPayload.id)?.dbId;
+        if (jobDbId) {
+          await requisitionStore.markConverted(srcReq?.id ?? sourceReqId, jobDbId);
+        }
       }
+      toast.success(
+        editingJobId
+          ? `“${jobPayload.title}” template updated`
+          : chosen.length
+            ? `“${jobPayload.title}” published to ${chosen.join(", ")}`
+            : `“${jobPayload.title}” saved as a draft posting`,
+      );
     } catch (e) {
       console.warn("Could not persist job post to database API:", e);
+      toast.error("The job posting could not be saved to the database.");
     }
   };
 
@@ -871,6 +1004,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
   const handlePosterUpload = (file: File | null) => {
     if (!file) return;
+    setPosterFile(file);
     const url = URL.createObjectURL(file);
     setCustomPosterUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -879,6 +1013,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   };
 
   const handlePosterRemove = () => {
+    setPosterFile(null);
     setCustomPosterUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return null;
@@ -1299,7 +1434,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All departments</SelectItem>
-                  {departments.map((d) => (
+                  {knownDepartments.map((d) => (
                     <SelectItem key={d.code} value={d.name}>
                       {d.name}
                     </SelectItem>
@@ -1453,6 +1588,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     className={j.active ? "border-success/40" : "border-border/70 opacity-80"}
                   >
                     <CardContent className="p-5">
+                      {j.picture && (
+                        <img
+                          src={j.picture}
+                          alt={`${j.title} hiring poster`}
+                          className="mb-3 aspect-video w-full rounded-md border border-border object-cover"
+                        />
+                      )}
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="eyebrow">{j.department}</p>
@@ -1589,7 +1731,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All departments</SelectItem>
-                      {departments.map((d) => (
+                      {knownDepartments.map((d) => (
                         <SelectItem key={d.code} value={d.name}>
                           {d.name}
                         </SelectItem>
@@ -1745,7 +1887,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             <button
               type="button"
               onClick={() => {
-                setPendingDept(draft.department || departments[0]!.name);
+                setPendingDept(draft.department || (knownDepartments[0]?.name ?? ""));
                 setPendingPosition("");
                 setDeptDialogOpen(true);
               }}
@@ -1781,7 +1923,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 <button
                   type="button"
                   onClick={() => {
-                    setPendingDept(draft.department || departments[0]!.name);
+                    setPendingDept(draft.department || (knownDepartments[0]?.name ?? ""));
                     setPendingPosition(draft.title);
                     setDeptDialogOpen(true);
                   }}
@@ -1793,7 +1935,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 <button
                   type="button"
                   onClick={() => {
-                    setPendingDept(draft.department || departments[0]!.name);
+                    setPendingDept(draft.department || (knownDepartments[0]?.name ?? ""));
                     setPendingPosition(draft.title);
                     setDeptDialogOpen(true);
                   }}
@@ -1907,7 +2049,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                             ...draft,
                                             title: v,
                                             department:
-                                              positions.find((p) => p.title === v)
+                                              knownPositions.find((p) => p.title === v)
                                                 ?.department ?? draft.department,
                                           })
                                         }
@@ -1916,7 +2058,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                           <SelectValue placeholder="Select a position from Core HR" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                          {positions.map((p) => (
+                                          {knownPositions.map((p) => (
                                             <SelectItem key={p.id} value={p.title}>
                                               {p.title}
                                             </SelectItem>
@@ -1934,7 +2076,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                           <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                          {departments.map((d) => (
+                                          {knownDepartments.map((d) => (
                                             <SelectItem key={d.code} value={d.name}>
                                               {d.name}
                                             </SelectItem>
@@ -2289,7 +2431,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {departments.map((d) => (
+                  {knownDepartments.map((d) => (
                     <SelectItem key={d.code} value={d.name}>
                       {d.name}
                     </SelectItem>
@@ -2304,14 +2446,14 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   <SelectValue placeholder="Select a position" />
                 </SelectTrigger>
                 <SelectContent>
-                  {positions
+                  {knownPositions
                     .filter((p) => p.department === pendingDept)
                     .map((p) => (
                       <SelectItem key={p.id} value={p.title}>
                         {p.title}
                       </SelectItem>
                     ))}
-                  {positions.filter((p) => p.department === pendingDept).length === 0 && (
+                  {knownPositions.filter((p) => p.department === pendingDept).length === 0 && (
                     <div className="px-2 py-3 text-xs text-muted-foreground">
                       No positions defined for this department.
                     </div>

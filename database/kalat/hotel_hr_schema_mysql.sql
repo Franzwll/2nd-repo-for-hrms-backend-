@@ -229,6 +229,8 @@ CREATE TABLE `job_posts` (
   `qualifications_json` JSON NULL,
   `skills_json` JSON NULL,
   `benefits_json` JSON NULL,
+  -- NOTE: poster image uploaded via Recruitment Management (public disk).
+  `picture` VARCHAR(255) NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`job_post_id`),
@@ -276,7 +278,7 @@ CREATE TABLE `applicants` (
   KEY `idx_applicants_stage` (`stage`),
   KEY `idx_applicants_applied_at` (`applied_at`),
   CONSTRAINT chk_applicants_status CHECK (`status` IN ('fit', 'other-role', 'credential', 'not-fit')),
-  CONSTRAINT chk_applicants_stage CHECK (`stage` IN ('Screened', 'Interview Scheduled', 'Assessed', 'Offer', 'Hired', 'Rejected'))
+  CONSTRAINT chk_applicants_stage CHECK (`stage` IN ('Screened', 'Interview Scheduled', 'Assessed', 'Offer', 'Hired', 'Rejected', 'Accepted'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `applicant_screening_entities` (
@@ -415,7 +417,7 @@ CREATE TABLE `onboarding_checklist_items` (
 
 CREATE TABLE `employee_onboarding_items` (
   `employee_onboarding_item_id` BIGINT UNSIGNED AUTO_INCREMENT,
-  `employee_id` BIGINT UNSIGNED NOT NULL,
+  `employee_id` BIGINT UNSIGNED NULL,
   `new_hire_id` BIGINT UNSIGNED NULL,
   `template_item_id` BIGINT UNSIGNED NULL,
   `item_text` TEXT NOT NULL,

@@ -36,6 +36,8 @@ class JobPostResource extends JsonResource
             'platforms'             => $this->whenLoaded('platforms',
                 fn () => $this->platforms->where('status', 'published')->pluck('platform')->values()
             ),
+            'picture'               => $this->picture,
+            'picture_url'           => $this->picture ? 'storage/' . $this->picture : null,
             'applicants_count'      => $this->whenLoaded('applicants', fn () => $this->applicants->count()),
             'created_at'            => $this->created_at?->toISOString(),
             'updated_at'            => $this->updated_at?->toISOString(),
