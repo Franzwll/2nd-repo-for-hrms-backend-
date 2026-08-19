@@ -16,6 +16,7 @@ import { ArrowLeftRight, Send, CheckCircle2, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { employees } from "@/data/hr";
 import { myProfile } from "@/data/ess";
+import { essApi } from "@/lib/api";
 
 interface ShiftSwapModalProps {
   open: boolean;
@@ -28,10 +29,11 @@ export function ShiftSwapModal({ open, onOpenChange, onSubmitSwap }: ShiftSwapMo
   const [targetPeer, setTargetPeer] = useState("EMP-0005");
   const [peerShiftDate, setPeerShiftDate] = useState("");
   const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const peers = employees.filter((e) => e.department === myProfile.department && e.name !== myProfile.name);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!shiftDate || !peerShiftDate) {
       toast.error("Please provide both shift dates.");
@@ -39,22 +41,29 @@ export function ShiftSwapModal({ open, onOpenChange, onSubmitSwap }: ShiftSwapMo
     }
 
     const peerObj = employees.find((e) => e.id === targetPeer);
-    const swapData = {
-      type: "Shift Swap Request",
-      peerName: peerObj?.name || "Department Colleague",
-      myShiftDate: shiftDate,
-      targetShiftDate: peerShiftDate,
-      reason,
-      status: "Pending",
-      date: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
-    };
 
-    onSubmitSwap?.(swapData);
-    toast.success(`Shift swap request sent to ${peerObj?.name || "colleague"} and Supervisor for approval.`);
-    onOpenChange(false);
-    setShiftDate("");
-    setPeerShiftDate("");
-    setReason("");
+    try {
+      setSubmitting(true);
+      const res = await essApi.createRequest({
+        category_code: "schedule",
+        category_name: "Shift Schedule",
+        request_type: "Shift Swap Request",
+        date_from: shiftDate,
+        date_to: peerShiftDate,
+        details: `Swap shift with ${peerObj?.name || "Colleague"} (${targetPeer}) on ${peerShiftDate}. Reason: ${reason}`,
+      });
+
+      toast.success(`Shift swap request sent to ${peerObj?.name || "colleague"} and Supervisor for approval.`);
+      onSubmitSwap?.(res.request);
+      onOpenChange(false);
+      setShiftDate("");
+      setPeerShiftDate("");
+      setReason("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to submit shift swap request.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

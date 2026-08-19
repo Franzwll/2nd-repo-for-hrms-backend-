@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Clock, MapPin, CheckCircle2, Coffee, LogOut, LogIn, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { myAttendance, mySchedule } from "@/data/ess";
+import { essApi } from "@/lib/api";
 
 interface QuickClockModalProps {
   open: boolean;
@@ -48,7 +49,7 @@ export function QuickClockModal({ open, onOpenChange, onClockAction }: QuickCloc
     day: "numeric",
   });
 
-  const handlePunch = (type: "in" | "break_start" | "break_end" | "out") => {
+  const handlePunch = async (type: "in" | "break_start" | "break_end" | "out") => {
     const timeStr = currentTime.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
@@ -56,10 +57,15 @@ export function QuickClockModal({ open, onOpenChange, onClockAction }: QuickCloc
     });
 
     if (type === "in") {
-      setPunchLog((prev) => ({ ...prev, timeIn: timeStr }));
-      setCurrentStatus("clocked_in");
-      toast.success(`Clocked IN recorded at ${timeStr}`);
-      onClockAction?.("Clock In", timeStr);
+      try {
+        await essApi.clock("clock_in");
+        setPunchLog((prev) => ({ ...prev, timeIn: timeStr }));
+        setCurrentStatus("clocked_in");
+        toast.success(`Clocked IN recorded at ${timeStr}`);
+        onClockAction?.("Clock In", timeStr);
+      } catch (err: any) {
+        toast.error(err.message || "Failed to record clock-in.");
+      }
     } else if (type === "break_start") {
       setPunchLog((prev) => ({ ...prev, breakIn: timeStr }));
       setCurrentStatus("on_break");
@@ -71,10 +77,15 @@ export function QuickClockModal({ open, onOpenChange, onClockAction }: QuickCloc
       toast.success(`Break ENDED at ${timeStr}`);
       onClockAction?.("Break In", timeStr);
     } else if (type === "out") {
-      setPunchLog((prev) => ({ ...prev, timeOut: timeStr }));
-      setCurrentStatus("clocked_out");
-      toast.success(`Clocked OUT recorded at ${timeStr}`);
-      onClockAction?.("Clock Out", timeStr);
+      try {
+        await essApi.clock("clock_out");
+        setPunchLog((prev) => ({ ...prev, timeOut: timeStr }));
+        setCurrentStatus("clocked_out");
+        toast.success(`Clocked OUT recorded at ${timeStr}`);
+        onClockAction?.("Clock Out", timeStr);
+      } catch (err: any) {
+        toast.error(err.message || "Failed to record clock-out.");
+      }
     }
   };
 

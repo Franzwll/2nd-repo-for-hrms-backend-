@@ -96,6 +96,7 @@ import { useSort, SortHead } from "@/components/portal/sortable";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { EmployeeEss } from "@/components/modules/EmployeeEss";
+import { essApi, type ApiEssRequestItem } from "@/lib/api";
 
 type Status = ESSRequest["status"] | "Returned for Clarification";
 type Row = Omit<ESSRequest, "status" | "note"> & {
@@ -130,6 +131,25 @@ export function EssManagement({ role }: { role: "employee" | "admin" | "superadm
 
 export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   const [rows, setRows] = useState<Row[]>(seed);
+  const [countsData, setCountsData] = useState<{
+    total: number;
+    pending: number;
+    under_review: number;
+    approved: number;
+    completed: number;
+    rejected: number;
+    returned: number;
+  }>({
+    total: seed.length,
+    pending: seed.filter((r) => r.status === "Pending").length,
+    under_review: seed.filter((r) => r.status === "Under Review").length,
+    approved: seed.filter((r) => r.status === "Approved").length,
+    completed: seed.filter((r) => r.status === "Completed").length,
+    rejected: seed.filter((r) => r.status === "Rejected").length,
+    returned: seed.filter((r) => (r.returnedCount ?? 0) > 0).length,
+  });
+
+  const [loading, setLoading] = useState(false);
   const categories = useEssCategories();
   const [newCategory, setNewCategory] = useState<{
     name: string;
@@ -165,9 +185,67 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [behalfDept, setBehalfDept] = useState("all");
+  const [behalfEmployeeId, setBehalfEmployeeId] = useState("");
   const [behalfCategory, setBehalfCategory] = useState("");
+  const [behalfDetails, setBehalfDetails] = useState("");
+  const [behalfOpen, setBehalfOpen] = useState(false);
   /** Collapsible new-category panel at the top of Category Management. */
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
+
+  const [auditLogsList, setAuditLogsList] = useState<any[]>(essActivityLog);
+
+  const loadRequests = async () => {
+    try {
+      setLoading(true);
+      const res = await essApi.adminRequests({
+        department: dept !== "all" ? dept : undefined,
+        status: status !== "all" ? status : undefined,
+        category: category !== "all" ? category : undefined,
+        search: search || undefined,
+      });
+      if (res?.requests) {
+        setRows(
+          res.requests.map((r: ApiEssRequestItem) => ({
+            id: r.id,
+            employee: r.employee || "Unknown Employee",
+            employeeId: r.employeeId || "EMP-0000",
+            department: r.department || "General",
+            category: r.category,
+            type: r.type,
+            filed: r.filed,
+            status: r.status as Status,
+            assignedTo: r.assignedTo || r.assigned_to || "HR Admin",
+            details: r.details,
+            note: r.note,
+            returnedCount: r.returnedCount,
+          })),
+        );
+      }
+      if (res?.counts) {
+        setCountsData(res.counts);
+      }
+    } catch {
+      // Keep local state on error
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAuditLogs = async () => {
+    try {
+      const res = await essApi.auditLogs();
+      if (res?.logs?.length) {
+        setAuditLogsList(res.logs);
+      }
+    } catch {
+      // fallback to seed
+    }
+  };
+
+  useEffect(() => {
+    loadRequests();
+    loadAuditLogs();
+  }, [dept, status, category]);
 
   const filtered = rows.filter((r) => {
     if (dept !== "all" && r.department !== dept) return false;
@@ -205,10 +283,10 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   const [logCategory, setLogCategory] = useState("all");
   const [logSearch, setLogSearch] = useState("");
 
-  const logModules = Array.from(new Set(essActivityLog.map((l) => l.module)));
-  const logCategories = Array.from(new Set(essActivityLog.map((l) => l.category)));
+  const logModules = Array.from(new Set(auditLogsList.map((l) => l.module)));
+  const logCategories = Array.from(new Set(auditLogsList.map((l) => l.category)));
 
-  const filteredLogs = essActivityLog.filter((l) => {
+  const filteredLogs = auditLogsList.filter((l) => {
     if (logModule !== "all" && l.module !== logModule) return false;
     if (logDept !== "all" && l.department !== logDept) return false;
     if (logCategory !== "all" && l.category !== logCategory) return false;
@@ -227,7 +305,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     sort: logSort,
     toggle: toggleLogSort,
     sorted: sortedLogs,
-  } = useSort<(typeof essActivityLog)[number], LogKey>(filteredLogs, {
+  } = useSort<(typeof auditLogsList)[number], LogKey>(filteredLogs, {
     timestamp: (l) => l.timestamp,
     user: (l) => l.user,
     action: (l) => l.action,
@@ -240,25 +318,67 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   const requestPage = usePagination(sortedFiltered);
   const logPage = usePagination(sortedLogs);
 
-  const setReqStatus = (id: string, s: Status, note?: string | undefined) =>
-    setRows((prev) =>
-      prev.map((r) =>
-        r.id === id
-          ? {
-              ...r,
-              status: s,
-              note,
-              returnedCount:
-                s === "Returned for Clarification" ? (r.returnedCount ?? 0) + 1 : r.returnedCount,
-            }
-          : r,
-      ),
-    );
+  const setReqStatus = async (id: string, s: Status, note?: string | undefined) => {
+    try {
+      await essApi.updateRequestStatus(id, { status: s, note });
+      loadRequests();
+      loadAuditLogs();
+    } catch {
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === id
+            ? {
+                ...r,
+                status: s,
+                note,
+                returnedCount:
+                  s === "Returned for Clarification" ? (r.returnedCount ?? 0) + 1 : r.returnedCount,
+              }
+            : r,
+        ),
+      );
+    }
+  };
 
-  const bulk = (s: Status) => {
-    setRows((prev) => prev.map((r) => (selected.includes(r.id) ? { ...r, status: s } : r)));
-    toast.success(`${selected.length} request(s) ${s.toLowerCase()}`);
-    setSelected([]);
+  const bulk = async (s: Status) => {
+    try {
+      await Promise.all(selected.map((id) => essApi.updateRequestStatus(id, { status: s })));
+      toast.success(`${selected.length} request(s) ${s.toLowerCase()}`);
+      setSelected([]);
+      loadRequests();
+      loadAuditLogs();
+    } catch {
+      setRows((prev) => prev.map((r) => (selected.includes(r.id) ? { ...r, status: s } : r)));
+      toast.success(`${selected.length} request(s) ${s.toLowerCase()}`);
+      setSelected([]);
+    }
+  };
+
+  const handleFileOnBehalf = async () => {
+    if (!behalfEmployeeId) {
+      toast.error("Please select an employee.");
+      return;
+    }
+    if (!behalfCategory) {
+      toast.error("Please select a request category.");
+      return;
+    }
+    try {
+      const empNum = parseInt(behalfEmployeeId.replace(/\D/g, ""), 10) || 1;
+      await essApi.fileOnBehalf({
+        employee_id: empNum,
+        category_name: behalfCategory,
+        request_type: `${behalfCategory} Request`,
+        details: behalfDetails || "Filed by HR Administration on behalf of employee.",
+      });
+      toast.success("Request filed on behalf of employee successfully.");
+      setBehalfOpen(false);
+      setBehalfDetails("");
+      loadRequests();
+      loadAuditLogs();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to file request on behalf.");
+    }
   };
 
   const addCategory = () => {
@@ -338,7 +458,14 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     toast.success("Category removed");
   };
 
-  const count = (s: Status) => rows.filter((r) => r.status === s).length;
+  const count = (s: Status) => {
+    if (s === "Pending") return countsData.pending;
+    if (s === "Under Review") return countsData.under_review;
+    if (s === "Approved") return countsData.approved;
+    if (s === "Completed") return countsData.completed;
+    if (s === "Returned for Clarification") return countsData.returned;
+    return rows.filter((r) => r.status === s).length;
+  };
 
   const reviewRow = rows.find((r) => r.id === reviewId) ?? null;
 
@@ -367,7 +494,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     toast.success(`${id} returned to review queue`);
   };
 
-  const submitReview = () => {
+  const submitReview = async () => {
     if (!reviewRow) return;
     if (reviewDecision !== "Approved" && !reviewNote.trim()) {
       toast.error(
@@ -381,14 +508,24 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
       setConfirmReject(true);
       return;
     }
-    setReqStatus(reviewRow.id, reviewDecision, reviewNote.trim() || undefined);
-    toast.success(
-      reviewDecision === "Returned for Clarification"
-        ? `${reviewRow.id} returned to the employee`
-        : `${reviewRow.id} marked as ${reviewDecision.toLowerCase()}`,
-    );
-    setReviewId(null);
-    setConfirmReject(false);
+
+    try {
+      await essApi.updateRequestStatus(reviewRow.id, {
+        status: reviewDecision,
+        note: reviewNote.trim() || undefined,
+      });
+      toast.success(
+        reviewDecision === "Returned for Clarification"
+          ? `${reviewRow.id} returned to the employee`
+          : `${reviewRow.id} marked as ${reviewDecision.toLowerCase()}`,
+      );
+      setReviewId(null);
+      setConfirmReject(false);
+      loadRequests();
+      loadAuditLogs();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update request status.");
+    }
   };
 
   return (
@@ -544,7 +681,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                     </>
                   )}
 
-                  <Dialog>
+                  <Dialog open={behalfOpen} onOpenChange={setBehalfOpen}>
                     <DialogTrigger asChild>
                       <Button size="sm">
                         <Plus className="mr-2 h-4 w-4" /> Create on behalf
@@ -575,7 +712,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                         </div>
                         <div className="space-y-2">
                           <Label>Employee</Label>
-                          <Select>
+                          <Select value={behalfEmployeeId} onValueChange={setBehalfEmployeeId}>
                             <SelectTrigger>
                               <SelectValue placeholder="Select employee" />
                             </SelectTrigger>
@@ -607,6 +744,8 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                           <Label>Details</Label>
                           <Textarea
                             rows={3}
+                            value={behalfDetails}
+                            onChange={(e) => setBehalfDetails(e.target.value)}
                             placeholder={
                               categories.find((c) => c.name === behalfCategory)?.description ||
                               "Walk-in / phone request details…"
@@ -615,9 +754,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                         </div>
                       </div>
                       <DialogFooter>
-                        <Button
-                          onClick={() => toast.success("Request filed on behalf of employee")}
-                        >
+                        <Button onClick={handleFileOnBehalf}>
                           File request
                         </Button>
                       </DialogFooter>

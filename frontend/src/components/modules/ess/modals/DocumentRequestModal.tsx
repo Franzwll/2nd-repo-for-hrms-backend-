@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { FileCheck, Send, Clock, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { essApi } from "@/lib/api";
 
 interface DocumentRequestModalProps {
   open: boolean;
@@ -27,25 +28,29 @@ export function DocumentRequestModal({ open, onOpenChange, onRequestSuccess }: D
   const [purpose, setPurpose] = useState("Bank Loan Application");
   const [deliveryFormat, setDeliveryFormat] = useState<"digital" | "hardcopy">("digital");
   const [remarks, setRemarks] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const newDocReq = {
-      id: `REQ-${Date.now().toString().slice(-4)}`,
-      type: docType,
-      purpose,
-      deliveryFormat,
-      remarks,
-      date: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
-      isoDate: new Date().toISOString().slice(0, 10),
-      status: "Pending",
-    };
+    try {
+      setSubmitting(true);
+      const res = await essApi.createRequest({
+        category_code: "hr_document",
+        category_name: "HR Document",
+        request_type: docType,
+        details: `Purpose: ${purpose} | Format: ${deliveryFormat === "digital" ? "Digital PDF" : "Physical Hardcopy"}${remarks ? ` | Remarks: ${remarks}` : ""}`,
+      });
 
-    onRequestSuccess?.(newDocReq);
-    toast.success(`Request for ${docType} submitted to HR Services.`);
-    onOpenChange(false);
-    setRemarks("");
+      onRequestSuccess?.(res.request);
+      toast.success(`Request for ${docType} submitted to HR Services.`);
+      onOpenChange(false);
+      setRemarks("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to submit document request.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

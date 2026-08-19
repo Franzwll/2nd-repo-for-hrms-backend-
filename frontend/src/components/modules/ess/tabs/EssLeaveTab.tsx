@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Calendar, Plus, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Calendar, Plus, Clock, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -12,71 +12,46 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
-import { myLeaveBalances, myProfile } from "@/data/ess";
 import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
+import { essApi, type ApiLeaveBalance } from "@/lib/api";
+import { toast } from "sonner";
 
 export function EssLeaveTab() {
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const [leaveHistory, setLeaveHistory] = useState([
-    {
-      id: "REQ-4410",
-      type: "Sick Leave (1 day)",
-      dateFrom: "2026-07-22",
-      dateTo: "2026-07-22",
-      days: 1,
-      reason: "Acute gastroenteritis, medical cert attached.",
-      status: "Approved",
-      filedDate: "2026-07-20",
-    },
-    {
-      id: "REQ-4301",
-      type: "Vacation Leave (3 days)",
-      dateFrom: "2026-06-15",
-      dateTo: "2026-06-17",
-      days: 3,
-      reason: "Family travel to province.",
-      status: "Approved",
-      filedDate: "2026-06-01",
-    },
-    {
-      id: "REQ-4220",
-      type: "Emergency Leave (1 day)",
-      dateFrom: "2026-05-10",
-      dateTo: "2026-05-10",
-      days: 1,
-      reason: "Urgent residential repair.",
-      status: "Approved",
-      filedDate: "2026-05-09",
-    },
-  ]);
+  const [balances, setBalances] = useState<ApiLeaveBalance[]>([]);
+  const [leaveHistory, setLeaveHistory] = useState<any[]>([]);
 
-  const handleLeaveSubmit = (newLeave: any) => {
-    const newEntry = {
-      id: `REQ-${Date.now().toString().slice(-4)}`,
-      type: newLeave.type,
-      dateFrom: newLeave.dateFrom,
-      dateTo: newLeave.dateTo,
-      days: newLeave.days,
-      reason: newLeave.reason,
-      status: "Pending",
-      filedDate: newLeave.filedDate,
-    };
-    setLeaveHistory([newEntry, ...leaveHistory]);
+  const loadLeaves = async () => {
+    try {
+      setLoading(true);
+      const res = await essApi.leaves();
+      setBalances(res.balances);
+      setLeaveHistory(res.history || []);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load leave records.");
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+    loadLeaves();
+  }, []);
 
   const handleRowClick = (item: any) => {
     setSelectedRequest({
-      id: item.id,
-      type: item.type,
+      id: item.request_code || item.id,
+      type: item.request_type || item.type,
       category: "Leave",
-      date: item.filedDate,
+      date: item.filed_at ? item.filed_at.slice(0, 10) : item.filedDate,
       status: item.status,
-      assignedTo: `${myProfile.supervisor} / Juan Dela Cruz`,
-      details: item.reason,
+      assignedTo: item.assignedTo || "HR Administration",
+      details: item.details || item.reason,
     });
     setTimelineOpen(true);
   };
@@ -96,88 +71,108 @@ export function EssLeaveTab() {
         </Button>
       </div>
 
-      {/* Visual Leave Cards Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {myLeaveBalances.map((l) => {
-          const remaining = l.total - l.used;
-          const percent = Math.round((remaining / l.total) * 100);
-          return (
-            <Card key={l.type} className="border-border/70 shadow-xs hover:border-primary/50 transition-all">
-              <CardContent className="p-4 space-y-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{l.type}</p>
-                    <p className="text-2xl font-bold font-display text-foreground mt-1">
-                      {remaining} <span className="text-xs font-normal text-muted-foreground">/ {l.total} days</span>
-                    </p>
-                  </div>
-                  <span className="text-xs font-bold text-primary font-mono">{percent}%</span>
-                </div>
-                <Progress value={percent} className="h-2" />
-                <div className="flex justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/60">
-                  <span>Used: {l.used} days</span>
-                  <span>Available: {remaining} days</span>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+      {loading ? (
+        <div className="flex items-center justify-center p-12 text-muted-foreground text-sm gap-2">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading leave balances...
+        </div>
+      ) : (
+        <>
+          {/* Visual Leave Cards Grid */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {balances.map((l) => {
+              const remaining = Math.max(0, l.total - l.used);
+              const percent = l.total > 0 ? Math.round((remaining / l.total) * 100) : 0;
+              return (
+                <Card key={l.type} className="border-border/70 shadow-xs hover:border-primary/50 transition-all">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{l.type}</p>
+                        <p className="text-2xl font-bold font-display text-foreground mt-1">
+                          {remaining} <span className="text-xs font-normal text-muted-foreground">/ {l.total} days</span>
+                        </p>
+                      </div>
+                      <span className="text-xs font-bold text-primary font-mono">{percent}%</span>
+                    </div>
+                    <Progress value={percent} className="h-2" />
+                    <div className="flex justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/60">
+                      <span>Used: {l.used} days</span>
+                      <span>Available: {remaining} days</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
 
-      {/* Leave History / Ledger */}
-      <Card className="border-border/70 shadow-xs">
-        <CardHeader className="pb-3">
-          <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-primary" />
-            Leave Filing History &amp; Approvals
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">Click any record to inspect the approval chain and reviewer notes.</p>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Request ID</TableHead>
-                <TableHead>Leave Type &amp; Days</TableHead>
-                <TableHead>Effective Dates</TableHead>
-                <TableHead>Reason</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {leaveHistory.map((item, idx) => (
-                <TableRow
-                  key={idx}
-                  className="cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => handleRowClick(item)}
-                >
-                  <TableCell className="text-xs font-mono font-medium text-foreground">{item.id}</TableCell>
-                  <TableCell className="text-sm font-semibold">{item.type}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {item.dateFrom} {item.dateTo !== item.dateFrom ? `to ${item.dateTo}` : ""}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{item.reason}</TableCell>
-                  <TableCell>
-                    <EssStatusBadge status={item.status} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" className="h-7 text-xs text-primary">
-                      Timeline →
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+          {/* Leave History / Ledger */}
+          <Card className="border-border/70 shadow-xs">
+            <CardHeader className="pb-3">
+              <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-primary" />
+                Leave Filing History &amp; Approvals
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Click any record to inspect the approval chain and reviewer notes.</p>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Request ID</TableHead>
+                    <TableHead>Leave Type</TableHead>
+                    <TableHead>Effective Dates</TableHead>
+                    <TableHead>Reason / Details</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {leaveHistory.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                        No filed leave requests yet.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    leaveHistory.map((item, idx) => (
+                      <TableRow
+                        key={idx}
+                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => handleRowClick(item)}
+                      >
+                        <TableCell className="text-xs font-mono font-medium text-foreground">
+                          {item.request_code || item.id}
+                        </TableCell>
+                        <TableCell className="text-sm font-semibold">{item.request_type || item.type}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {item.date_from || item.dateFrom} {item.date_to && item.date_to !== item.date_from ? `to ${item.date_to}` : ""}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{item.details || item.reason}</TableCell>
+                        <TableCell>
+                          <EssStatusBadge status={item.status} />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="sm" className="h-7 text-xs text-primary">
+                            Timeline →
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </>
+      )}
 
       {/* Modals */}
       <LeaveApplicationModal
         open={leaveModalOpen}
         onOpenChange={setLeaveModalOpen}
-        onSubmitLeave={handleLeaveSubmit}
+        onSubmitLeave={() => {
+          loadLeaves();
+        }}
       />
       <RequestTimelineModal
         open={timelineOpen}

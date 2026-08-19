@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { Send, Search, ArrowUpDown, Plus, Filter, Clock, FileText, CheckCircle2 } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Send, Search, ArrowUpDown, Plus, Filter, Clock, FileText, CheckCircle2, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,8 +17,9 @@ import {
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
-import { essRequests, requestCategories, myProfile, type ESSRequest } from "@/data/ess";
+import { requestCategories } from "@/data/ess";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
+import { essApi, type ApiEssRequestItem } from "@/lib/api";
 import { toast } from "sonner";
 
 export function EssRequestCenterTab() {
@@ -28,14 +29,33 @@ export function EssRequestCenterTab() {
   const [dateTo, setDateTo] = useState("");
   const [reason, setReason] = useState("");
 
-  const [requestsList, setRequestsList] = useState<ESSRequest[]>(
-    essRequests.filter((r) => r.employeeId === myProfile.employeeId || r.employee.includes("Kevin"))
-  );
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [requestsList, setRequestsList] = useState<ApiEssRequestItem[]>([]);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
+
+  const loadRequests = async () => {
+    try {
+      setLoading(true);
+      const res = await essApi.myRequests({
+        status: statusFilter !== "all" ? statusFilter : undefined,
+        search: search || undefined,
+      });
+      setRequestsList(res.requests || []);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load requests.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRequests();
+  }, [statusFilter]);
 
   const filteredRequests = useMemo(() => {
     return requestsList.filter((r) => {
@@ -49,43 +69,43 @@ export function EssRequestCenterTab() {
 
   const reqPage = usePagination(filteredRequests);
 
-  const handleSubmitRequest = (e: React.FormEvent) => {
+  const handleSubmitRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newReq: ESSRequest = {
-      id: `REQ-${Date.now().toString().slice(-4)}`,
-      employee: myProfile.name,
-      employeeId: myProfile.employeeId,
-      department: myProfile.department,
-      category,
-      type: requestType || `${category} Request`,
-      filed: new Date().toISOString().slice(0, 10),
-      status: "Pending",
-      assignedTo: "Juan Dela Cruz (HR Admin)",
-      details: reason || "General request submitted via ESS.",
-    };
+    try {
+      setSubmitting(true);
+      const catCode = category.toLowerCase().replace(/[^a-z0-9]/g, "_");
+      await essApi.createRequest({
+        category_code: catCode,
+        category_name: category,
+        request_type: requestType || `${category} Request`,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+        details: reason || "General request submitted via ESS.",
+      });
 
-    setRequestsList([newReq, ...requestsList]);
-    toast.success(`Request ${newReq.id} submitted to HR Administration.`);
-    setReason("");
-    setDateFrom("");
-    setDateTo("");
+      toast.success(`Request submitted to HR Administration.`);
+      setReason("");
+      setDateFrom("");
+      setDateTo("");
+      loadRequests();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to submit request.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleRowClick = (r: ESSRequest) => {
+  const handleRowClick = (r: ApiEssRequestItem) => {
     setSelectedRequest({
       id: r.id,
       type: r.type,
       category: r.category,
       date: r.filed,
       status: r.status,
-      assignedTo: r.assignedTo,
+      assignedTo: r.assignedTo || r.assigned_to || "HR Administration",
       details: r.details,
     });
     setTimelineOpen(true);
-  };
-
-  const handleCancel = (id: string) => {
-    setRequestsList((prev) => prev.filter((r) => r.id !== id));
   };
 
   return (
@@ -126,59 +146,67 @@ export function EssRequestCenterTab() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Request ID</TableHead>
-                <TableHead>Request Type</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Date Filed</TableHead>
-                <TableHead>Assigned Officer</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {reqPage.pageItems.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                    No requests found matching criteria.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                reqPage.pageItems.map((r) => (
-                  <TableRow
-                    key={r.id}
-                    className="cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => handleRowClick(r)}
-                  >
-                    <TableCell className="text-xs font-mono font-medium text-foreground">{r.id}</TableCell>
-                    <TableCell className="text-sm font-semibold">{r.type}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{r.category}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{r.filed}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{r.assignedTo}</TableCell>
-                    <TableCell>
-                      <EssStatusBadge status={r.status} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" className="h-7 text-xs text-primary">
-                        Timeline →
-                      </Button>
-                    </TableCell>
+          {loading ? (
+            <div className="flex items-center justify-center p-12 text-muted-foreground text-sm gap-2">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading requests...
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Request ID</TableHead>
+                    <TableHead>Request Type</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Date Filed</TableHead>
+                    <TableHead>Assigned Officer</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-          <TablePagination
-            page={reqPage.page}
-            pageCount={reqPage.pageCount}
-            from={reqPage.from}
-            to={reqPage.to}
-            total={reqPage.total}
-            label="requests"
-            onPageChange={reqPage.setPage}
-          />
+                </TableHeader>
+                <TableBody>
+                  {reqPage.pageItems.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                        No requests found matching criteria.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    reqPage.pageItems.map((r) => (
+                      <TableRow
+                        key={r.id}
+                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => handleRowClick(r)}
+                      >
+                        <TableCell className="text-xs font-mono font-medium text-foreground">{r.id}</TableCell>
+                        <TableCell className="text-sm font-semibold">{r.type}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{r.category}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{r.filed}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{r.assignedTo || r.assigned_to || "HR Admin"}</TableCell>
+                        <TableCell>
+                          <EssStatusBadge status={r.status} />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="sm" className="h-7 text-xs text-primary">
+                            Timeline →
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+              <TablePagination
+                page={reqPage.page}
+                pageCount={reqPage.pageCount}
+                from={reqPage.from}
+                to={reqPage.to}
+                total={reqPage.total}
+                label="requests"
+                onPageChange={reqPage.setPage}
+              />
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -255,8 +283,8 @@ export function EssRequestCenterTab() {
               />
             </div>
 
-            <Button type="submit" className="gap-1.5">
-              <Send className="h-4 w-4" /> Submit Request to HR
+            <Button type="submit" disabled={submitting} className="gap-1.5">
+              <Send className="h-4 w-4" /> {submitting ? "Submitting..." : "Submit Request to HR"}
             </Button>
           </form>
         </CardContent>
@@ -267,7 +295,6 @@ export function EssRequestCenterTab() {
         open={timelineOpen}
         onOpenChange={setTimelineOpen}
         request={selectedRequest}
-        onCancelRequest={handleCancel}
       />
     </div>
   );

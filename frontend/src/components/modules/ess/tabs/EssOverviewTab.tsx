@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Clock,
@@ -11,6 +11,7 @@ import {
   Filter,
   Calendar,
   Layers,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,8 @@ import {
   wireframeActivity,
 } from "@/data/ess";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
+import { essApi, type ApiEssOverview, type ApiEssRequestItem } from "@/lib/api";
+import { toast } from "sonner";
 
 interface EssOverviewTabProps {
   onNavigateTab?: (tab: string) => void;
@@ -50,12 +53,49 @@ export function EssOverviewTab({
   onOpenPayslip,
   onOpenDocRequest,
 }: EssOverviewTabProps) {
-  const [activities, setActivities] = useState(wireframeActivity);
+  const [overview, setOverview] = useState<ApiEssOverview | null>(null);
+  const [activities, setActivities] = useState<any[]>(wireframeActivity);
+  const [loading, setLoading] = useState(true);
   const [raSearch, setRaSearch] = useState("");
   const [raCategory, setRaCategory] = useState("all");
   const [raSort, setRaSort] = useState("date-desc");
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
+
+  useEffect(() => {
+    const loadOverviewData = async () => {
+      try {
+        setLoading(true);
+        const [overviewRes, requestsRes] = await Promise.all([
+          essApi.overview().catch(() => null),
+          essApi.myRequests().catch(() => ({ requests: [] })),
+        ]);
+
+        if (overviewRes) setOverview(overviewRes);
+
+        if (requestsRes?.requests?.length) {
+          const liveActs = requestsRes.requests.map((r: ApiEssRequestItem) => ({
+            id: r.id,
+            category: r.category || "General",
+            type: r.type,
+            date: r.filed,
+            isoDate: r.filed,
+            status: r.status,
+            statusRank: r.status === "Pending" ? 1 : r.status === "Under Review" ? 2 : 3,
+            assignedTo: r.assignedTo || r.assigned_to || "HR Administration",
+            details: r.details,
+          }));
+          setActivities(liveActs);
+        }
+      } catch (err: any) {
+        // Fallback gracefully
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadOverviewData();
+  }, []);
 
   const filteredActivities = useMemo(() => {
     return activities
@@ -71,10 +111,10 @@ export function EssOverviewTab({
         return true;
       })
       .sort((a, b) => {
-        if (raSort === "date-desc") return b.isoDate.localeCompare(a.isoDate);
-        if (raSort === "date-asc") return a.isoDate.localeCompare(b.isoDate);
-        if (raSort === "status") return a.statusRank - b.statusRank;
-        if (raSort === "category") return a.category.localeCompare(b.category);
+        if (raSort === "date-desc") return (b.isoDate || "").localeCompare(a.isoDate || "");
+        if (raSort === "date-asc") return (a.isoDate || "").localeCompare(b.isoDate || "");
+        if (raSort === "status") return (a.statusRank || 0) - (b.statusRank || 0);
+        if (raSort === "category") return (a.category || "").localeCompare(b.category || "");
         return 0;
       });
   }, [activities, raSearch, raCategory, raSort]);
@@ -83,17 +123,20 @@ export function EssOverviewTab({
 
   const handleRowClick = (item: any) => {
     setSelectedRequest({
-      id: `REQ-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: item.id || `REQ-${Math.floor(1000 + Math.random() * 9000)}`,
       type: item.type,
       category: item.category,
       date: item.date,
       isoDate: item.isoDate,
       status: item.status,
-      assignedTo: "Juan Dela Cruz (HR Admin)",
-      details: "Self-service employee request logged into system.",
+      assignedTo: item.assignedTo || "Juan Dela Cruz (HR Admin)",
+      details: item.details || "Self-service employee request logged into system.",
     });
     setTimelineOpen(true);
   };
+
+  const todayTimeIn = overview?.today_attendance?.time_in || myAttendance.today.timeIn;
+  const attendanceStatus = overview?.today_attendance?.status || "Present";
 
   return (
     <div className="space-y-6">
@@ -112,7 +155,9 @@ export function EssOverviewTab({
               <p className="text-2xl font-bold font-display text-foreground">
                 {myAttendance.monthly.present} Present <span className="text-sm font-normal text-muted-foreground">· {myAttendance.monthly.late} Late</span>
               </p>
-              <p className="text-xs text-muted-foreground mt-1">Today Time In: <strong className="text-foreground">{myAttendance.today.timeIn}</strong></p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Today Time In: <strong className="text-foreground">{todayTimeIn}</strong> ({attendanceStatus})
+              </p>
             </div>
             <Button
               asChild
@@ -247,9 +292,11 @@ export function EssOverviewTab({
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
                 <SelectItem value="Attendance">Attendance</SelectItem>
+                <SelectItem value="Leave">Leave</SelectItem>
                 <SelectItem value="Payroll">Payroll</SelectItem>
-                <SelectItem value="Performance">Performance</SelectItem>
-                <SelectItem value="Documents">Documents</SelectItem>
+                <SelectItem value="HR Document">HR Documents</SelectItem>
+                <SelectItem value="Shift Schedule">Shift Schedule</SelectItem>
+                <SelectItem value="Benefits & Loans">Benefits &amp; Loans</SelectItem>
               </SelectContent>
             </Select>
             <Select value={raSort} onValueChange={setRaSort}>

@@ -1,14 +1,34 @@
-import { useState } from "react";
-import { Calendar, ArrowLeftRight, Clock, MapPin, AlertCircle, CheckCircle2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Calendar, ArrowLeftRight, Clock, MapPin, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { mySchedule, myProfile } from "@/data/ess";
 import { ShiftSwapModal } from "@/components/modules/ess/modals/ShiftSwapModal";
 import { toast } from "sonner";
+import { essApi, type ApiScheduleDay, type ApiEssEmployee } from "@/lib/api";
 
 export function EssScheduleTab() {
   const [swapModalOpen, setSwapModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [employeeInfo, setEmployeeInfo] = useState<ApiEssEmployee | null>(null);
+  const [roster, setRoster] = useState<ApiScheduleDay[]>([]);
+
+  const loadSchedule = async () => {
+    try {
+      setLoading(true);
+      const res = await essApi.schedule();
+      setEmployeeInfo(res.employee);
+      setRoster(res.weekly_roster);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load weekly schedule.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSchedule();
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -17,7 +37,7 @@ export function EssScheduleTab() {
         <div>
           <h3 className="text-xl font-bold font-display text-foreground">Weekly Shift Roster</h3>
           <p className="text-xs text-muted-foreground">
-            Current work schedule assigned by {myProfile.supervisor} for {myProfile.department}.
+            Current work schedule assigned by {employeeInfo?.supervisor ?? "Supervisor"} for {employeeInfo?.department ?? "Department"}.
           </p>
         </div>
         <Button onClick={() => setSwapModalOpen(true)} variant="outline" className="gap-1.5 shadow-xs text-xs">
@@ -25,49 +45,55 @@ export function EssScheduleTab() {
         </Button>
       </div>
 
-      {/* Weekly Schedule Days Grid */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {mySchedule.map((s) => {
-          const isRestDay = s.shift === "Rest Day";
-          return (
-            <div
-              key={s.day}
-              className={`rounded-xl border p-4 transition-all shadow-xs ${
-                isRestDay
-                  ? "border-border/60 bg-muted/20 opacity-80"
-                  : "border-border/80 bg-card hover:border-primary/50"
-              }`}
-            >
-              <div className="flex justify-between items-center">
-                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider">{s.day}</span>
-                <Badge
-                  variant="outline"
-                  className={
-                    isRestDay
-                      ? "bg-slate-500/10 text-slate-600 border-slate-500/30 text-[10px]"
-                      : "bg-primary/10 text-primary border-primary/20 text-[10px]"
-                  }
-                >
-                  {s.shift}
-                </Badge>
-              </div>
-
-              <div className="mt-3 space-y-1">
-                <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-                  <Clock className="h-3.5 w-3.5 text-primary shrink-0" />
-                  <span>{s.time}</span>
+      {loading ? (
+        <div className="flex items-center justify-center p-12 text-muted-foreground text-sm gap-2">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading roster...
+        </div>
+      ) : (
+        /* Weekly Schedule Days Grid */
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {roster.map((s) => {
+            const isRestDay = s.shift === "Rest Day" || s.shift.includes("Rest");
+            return (
+              <div
+                key={s.day}
+                className={`rounded-xl border p-4 transition-all shadow-xs ${
+                  isRestDay
+                    ? "border-border/60 bg-muted/20 opacity-80"
+                    : "border-border/80 bg-card hover:border-primary/50"
+                }`}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider">{s.day}</span>
+                  <Badge
+                    variant="outline"
+                    className={
+                      isRestDay
+                        ? "bg-slate-500/10 text-slate-600 border-slate-500/30 text-[10px]"
+                        : "bg-primary/10 text-primary border-primary/20 text-[10px]"
+                    }
+                  >
+                    {s.shift}
+                  </Badge>
                 </div>
-                {!isRestDay && (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>{s.location}</span>
+
+                <div className="mt-3 space-y-1">
+                  <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                    <Clock className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <span>{s.time}</span>
                   </div>
-                )}
+                  {!isRestDay && (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      <span>{s.location}</span>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Shift Policies & Reminders */}
       <Card className="border-border/70 shadow-xs">
@@ -102,8 +128,8 @@ export function EssScheduleTab() {
       <ShiftSwapModal
         open={swapModalOpen}
         onOpenChange={setSwapModalOpen}
-        onSubmitSwap={(swap) => {
-          toast.success("Shift swap request filed successfully.");
+        onSubmitSwap={() => {
+          loadSchedule();
         }}
       />
     </div>

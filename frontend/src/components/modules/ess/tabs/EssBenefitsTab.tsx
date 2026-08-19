@@ -1,13 +1,32 @@
-import { useState } from "react";
-import { ShieldCheck, HeartPulse, Landmark, CreditCard, CheckCircle2, Plus } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ShieldCheck, HeartPulse, Landmark, CreditCard, CheckCircle2, Plus, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { myBenefits, myProfile } from "@/data/ess";
 import { toast } from "sonner";
+import { essApi, type ApiEssBenefit } from "@/lib/api";
 
 export function EssBenefitsTab() {
+  const [loading, setLoading] = useState(true);
+  const [benefits, setBenefits] = useState<ApiEssBenefit[]>([]);
+
+  const loadBenefits = async () => {
+    try {
+      setLoading(true);
+      const res = await essApi.benefits();
+      setBenefits(res.benefits || []);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load employee benefits.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBenefits();
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -18,23 +37,29 @@ export function EssBenefitsTab() {
         </p>
       </div>
 
-      {/* Statutory Benefits Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {myBenefits.map((b) => (
-          <Card key={b.name} className="border-border/70 shadow-xs hover:border-primary/50 transition-all">
-            <CardContent className="p-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider">{b.name}</span>
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px]">
-                  Active
-                </Badge>
-              </div>
-              <p className="text-base font-bold font-mono text-foreground">{b.value}</p>
-              <p className="text-xs text-muted-foreground">{b.note}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {loading ? (
+        <div className="flex items-center justify-center p-12 text-muted-foreground text-sm gap-2">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading benefits data...
+        </div>
+      ) : (
+        /* Statutory Benefits Cards */
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {benefits.map((b) => (
+            <Card key={b.employee_benefit_id} className="border-border/70 shadow-xs hover:border-primary/50 transition-all">
+              <CardContent className="p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider">{b.benefit_name}</span>
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px]">
+                    {b.status || "Active"}
+                  </Badge>
+                </div>
+                <p className="text-base font-bold font-mono text-foreground">{b.reference_value || "—"}</p>
+                <p className="text-xs text-muted-foreground">{b.note || "Standard Statutory Coverage"}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Company Loan Amortization Tracker */}
       <Card className="border-border/70 shadow-xs">

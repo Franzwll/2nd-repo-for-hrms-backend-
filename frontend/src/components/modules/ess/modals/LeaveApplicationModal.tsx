@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar, Upload, Send, ShieldAlert, CheckCircle2, FileText, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { myLeaveBalances, myProfile } from "@/data/ess";
+import { essApi } from "@/lib/api";
 
 interface LeaveApplicationModalProps {
   open: boolean;
@@ -58,7 +59,9 @@ export function LeaveApplicationModal({ open, onOpenChange, onSubmitLeave }: Lea
   const remainingAfterApproval = activeBalance.available - requestedDays;
   const isBalanceExceeded = remainingAfterApproval < 0;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!dateFrom) {
       toast.error("Please specify a starting date.");
@@ -69,25 +72,31 @@ export function LeaveApplicationModal({ open, onOpenChange, onSubmitLeave }: Lea
       return;
     }
 
-    const newRequest = {
-      type: `${leaveType} (${requestedDays} day${requestedDays > 1 ? "s" : ""})`,
-      dateFrom,
-      dateTo: duration === "full" ? dateTo || dateFrom : dateFrom,
-      duration,
-      days: requestedDays,
-      reason,
-      status: "Pending",
-      filedDate: new Date().toISOString().slice(0, 10),
-    };
+    try {
+      setSubmitting(true);
+      const reqType = `${leaveType} (${requestedDays} day${requestedDays > 1 ? "s" : ""})`;
+      const res = await essApi.createRequest({
+        category_code: "leave",
+        category_name: "Leave",
+        request_type: reqType,
+        date_from: dateFrom,
+        date_to: duration === "full" ? dateTo || dateFrom : dateFrom,
+        details: reason ? `${reason} (Duration: ${duration})` : `Applied for ${reqType}`,
+      });
 
-    onSubmitLeave?.(newRequest);
-    toast.success(`${leaveType} request filed successfully. Forwarded to ${myProfile.supervisor} for approval.`);
-    onOpenChange(false);
-    // Reset form
-    setDateFrom("");
-    setDateTo("");
-    setReason("");
-    setFileName(null);
+      toast.success(`${leaveType} request filed successfully. Forwarded to supervisor for approval.`);
+      onSubmitLeave?.(res.request);
+      onOpenChange(false);
+      // Reset form
+      setDateFrom("");
+      setDateTo("");
+      setReason("");
+      setFileName(null);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to submit leave request.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
