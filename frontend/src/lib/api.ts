@@ -128,6 +128,17 @@ export interface ApiInterview {
   interviewer_employee_id: number | null;
   interviewer_name: string | null;
   status: "Scheduled" | "Completed" | "No Show";
+  applicant?: {
+    applicant_id: number;
+    applicant_code: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    position?: string | null;
+    department?: string | null;
+    stage: string;
+    fit_score: number | null;
+  } | null;
 }
 
 export interface ApiAssessment {
@@ -139,6 +150,14 @@ export interface ApiAssessment {
   total_score: number | null;
   outcome: "Recommended" | "Hold" | "Not Recommended";
   remarks: string | null;
+  applicant?: {
+    applicant_id: number;
+    applicant_code: string;
+    name: string;
+    position?: string | null;
+    department?: string | null;
+    stage: string;
+  } | null;
 }
 
 export function resolveStorageUrl(value: string | null): string | null {
@@ -230,6 +249,8 @@ export interface ApiJobPost {
   skills: string[];
   benefits: string[];
   platforms?: string[];
+  picture: string | null;
+  picture_url: string | null;
   applicants_count?: number;
 }
 
@@ -320,10 +341,12 @@ export interface ApiNewHire {
   start_date: string;
   completion_percent?: number;
   onboarding_items?: {
-    employee_onboarding_item_id: number;
+    employee_onboarding_item_id: number | null;
     item_text: string;
     done: boolean;
     completed_at: string | null;
+    template_item_id: number | null;
+    phase: string;
   }[];
 }
 
@@ -418,10 +441,15 @@ export const onboardingItemsApi = {
       method: 'POST',
       body: JSON.stringify({ template_id: templateId }),
     }),
-  toggle: (itemId: number | string) =>
+  materialize: (newHireId: number | string, templateItemId: number | string) =>
+    request<{ employee_onboarding_item_id: number; template_item_id: number; item_text: string; done: boolean; phase: string }>(
+      `/new-hires/${newHireId}/onboarding-items`,
+      { method: 'POST', body: JSON.stringify({ template_item_id: templateItemId }) }
+    ),
+  toggle: (itemId: number | string, body?: { done: boolean }) =>
     request<{ employee_onboarding_item_id: number; done: boolean; completed_at: string | null }>(
       `/onboarding-items/${itemId}/toggle`,
-      { method: 'PATCH' }
+      body ? { method: 'PATCH', body: JSON.stringify(body) } : { method: 'PATCH' }
     ),
 };
 
@@ -473,6 +501,12 @@ export const settingsApi = {
       body: JSON.stringify({ settings }),
     }),
   delete: (key: string) => request<{ message: string }>(`/settings/${key}`, { method: 'DELETE' }),
+  listSystemUsers: () => request<{ data: ApiSystemUser[] }>('/system-users'),
+  resetDefaultPassword: (password: string) =>
+    request<{ message: string; updated: number }>('/reset-default-password', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
 };
 
 /* ========================================================================= */
@@ -672,6 +706,7 @@ export interface ApiPosition {
   title: string;
   department_id: number;
   department_name?: string;
+  department?: string | null;
   salary_grade_id: number;
   salary_grade?: string;
   level: string;
