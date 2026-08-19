@@ -97,7 +97,6 @@ import { usePagination } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
 import {
   applicantAuditLog,
-  applicants as seedApplicants,
   assessmentCriteria,
   interviewers,
   screeningCriteria,
@@ -114,7 +113,7 @@ import { jobs } from "@/data/jobs";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { SortHead, useSort } from "@/components/portal/sortable";
-import { applicantsApi, assessmentsApi, interviewsApi, settingsApi, type ApiApplicant, type ApiInterview, type ApiSystemUser } from "@/lib/api";
+import { applicantsApi, assessmentsApi, interviewsApi, jobPostsApi, settingsApi, type ApiApplicant, type ApiInterview, type ApiSystemUser } from "@/lib/api";
 
 function transformApiApplicant(a: ApiApplicant): Applicant {
   return {
@@ -134,6 +133,19 @@ function transformApiApplicant(a: ApiApplicant): Applicant {
     breakdown: a.screening_scores?.map((s) => ({ criterion: s.criterion, score: s.score })) || [],
     flags: a.flags_json || [],
     summary: a.summary || "",
+  };
+}
+
+/** Mock resume screening result — used until real screening data exists for an applicant. */
+function screeningResultFor(a: Applicant) {
+  if (a.entities.length > 0) return { entities: a.entities, score: a.score };
+  const keywords = keywordLibrary[a.position] ?? [];
+  return {
+    entities: keywords.map((k, i) => ({
+      label: i === 0 ? "SKILL" : i === 1 ? "EDU" : i % 2 === 0 ? "SKILL" : "ORG",
+      value: k,
+    })),
+    score: 78 + ((a.id.charCodeAt(0) + a.id.length * 7) % 18),
   };
 }
 
@@ -454,7 +466,7 @@ export function ApplicantManagement({
   role: "superadmin" | "admin";
 }) {
   const navigate = useNavigate();
-  const [rows, setRows] = useState<Applicant[]>(seedApplicants);
+  const [rows, setRows] = useState<Applicant[]>([]);
 
   useEffect(() => {
     const excludeStages =
@@ -463,16 +475,16 @@ export function ApplicantManagement({
       applicantsApi.list({ per_page: 100, exclude_stages: excludeStages }),
       interviewsApi.list({ per_page: 100 }),
       assessmentsApi.list({ per_page: 100 }),
-    ]).then(([appRes, intRes, asmRes]) => {
-      if (appRes.status === "fulfilled" && appRes.value?.data?.length > 0) {
-        setRows(appRes.value.data.map(transformApiApplicant));
+]).then(([appRes, intRes, asmRes]) => {
+      if (appRes.status === "fulfilled") {
+        setRows((appRes.value?.data ?? []).map(transformApiApplicant));
       }
-      if (intRes.status === "fulfilled" && intRes.value?.data?.length > 0) {
-        setInterviews(intRes.value.data.map(transformApiInterview));
+      if (intRes.status === "fulfilled") {
+        setInterviews((intRes.value?.data ?? []).map(transformApiInterview));
       }
-      if (asmRes.status === "fulfilled" && asmRes.value?.data?.length > 0) {
+      if (asmRes.status === "fulfilled") {
         setAssessments(
-          asmRes.value.data.map((a) => ({
+          (asmRes.value?.data ?? []).map((a) => ({
             applicantId:
               a.applicant?.applicant_code ?? `APP-${a.applicant_id}`,
             name: a.applicant?.name ?? `Applicant #${a.applicant_id}`,
@@ -645,6 +657,39 @@ export function ApplicantManagement({
   const hiddenStages = role === "admin" ? ["Hired", "Rejected"] : ["Hired"];
   const isHiddenStage = (a: Applicant) => hiddenStages.includes(a.stage);
 
+  /** Stages where the hiring decision is already made — these applicants can
+   *  no longer be accepted & scheduled, rejected, or referred to another role
+   *  from the applicant list review. */
+  const LOCKED_ACTION_STAGES: Applicant["stage"][] = [
+    "Interview Scheduled",
+    "Assessed",
+    "Accepted",
+    "Offer",
+    "Rejected",
+  ];
+  const isActionLocked = (a: Applicant) =>
+    LOCKED_ACTION_STAGES.includes(a.stage);
+
+  /** Interviews can only be rescheduled / cancelled while the applicant is
+   *  still within the interview phase (not yet assessed / accepted / offered /
+   *  hired / rejected) and the interview itself has not been completed. */
+  const isInterviewLocked = (i: {
+    status: string;
+    applicant: string;
+  }): boolean => {
+    if (i.status === "Completed") return true;
+    const src = rows.find((r) => r.name === i.applicant);
+    if (!src) return false;
+    return ["Assessed", "Accepted", "Offer", "Hired", "Rejected"].includes(
+      src.stage,
+    );
+  };
+
+  /** Applicants who have moved past assessment (Offer / Accepted / Hired /
+   *  Rejected) no longer belong in the assessment list. */
+  const noLongerAssessable = (a: Applicant) =>
+    ["Offer", "Accepted", "Hired", "Rejected"].includes(a.stage);
+
   const distribution = useMemo(() => {
     const scoped =
       positionFilter === "all"
@@ -799,6 +844,7 @@ export function ApplicantManagement({
 
   /** Accept ? prefill the scheduler and jump to the Interview Scheduling tab. */
   const acceptAndSchedule = (a: Applicant) => {
+    if (isActionLocked(a)) return;
     const dept =
       positions.find((p) => p.title === a.position)?.department ??
       jobs.find((j) => j.id === a.jobId)?.department;
@@ -825,6 +871,7 @@ export function ApplicantManagement({
    *  (department, applicant, date, time slot, mode, interviewer) and updates the
    *  existing record when confirmed. */
   const rescheduleInterview = (i: Interview) => {
+    if (isInterviewLocked(i)) return;
     const src = rows.find((r) => r.name === i.applicant);
     const dept = src
       ? positions.find((p) => p.title === src.position)?.department ??
@@ -855,8 +902,17 @@ export function ApplicantManagement({
       toast.error("Select an applicant first");
       return;
     }
+    // When the applicant already has an interview booked, this booking acts
+    // as a reschedule of that interview instead of blocking the action.
+    const existingInterview = interviews.find(
+      (i) => i.applicant === schedule.applicant,
+    );
+    const updateTarget = rescheduling ?? existingInterview ?? null;
     const taken = interviews.filter(
-      (i) => i.date === schedule.date && i.time === schedule.time,
+      (i) =>
+        i.date === schedule.date &&
+        i.time === schedule.time &&
+        i.id !== updateTarget?.id,
     ).length;
     if (taken >= capacityPerSlot) {
       toast.error(
@@ -865,10 +921,10 @@ export function ApplicantManagement({
       return;
     }
 
-    // Reschedule — update the existing interview record instead of creating a new one
-    if (rescheduling) {
+    // Reschedule (or re-book) — update the existing interview record instead of creating a new one
+    if (updateTarget) {
       const updated: Interview = {
-        ...rescheduling,
+        ...updateTarget,
         date: schedule.date,
         time: schedule.time,
         mode: schedule.mode as "On-site" | "Virtual",
@@ -876,7 +932,7 @@ export function ApplicantManagement({
         status: "Scheduled",
       };
       setInterviews((prev) =>
-        prev.map((x) => (x.id === rescheduling.id ? updated : x)),
+        prev.map((x) => (x.id === updateTarget.id ? updated : x)),
       );
       addAudit({
         actionType: "Interview Rescheduled",
@@ -888,8 +944,8 @@ export function ApplicantManagement({
         description: `${schedule.date} · ${schedule.time} · ${schedule.mode}`,
       });
       try {
-        if (rescheduling.dbId) {
-          await interviewsApi.update(rescheduling.dbId, {
+        if (updateTarget.dbId) {
+          await interviewsApi.update(updateTarget.dbId, {
             scheduled_date: schedule.date,
             scheduled_time: schedule.time.includes(":") ? schedule.time.slice(0, 5) : "09:00",
             mode: schedule.mode,
@@ -904,14 +960,53 @@ export function ApplicantManagement({
       return;
     }
 
-    // An applicant can only be booked/scheduled once
-    if (interviews.some((i) => i.applicant === schedule.applicant)) {
-      toast.error(
-        `${schedule.applicant} already has a booked interview and can only be scheduled once.`,
-      );
-      return;
-    }
     const src = rows.find((a) => a.name === schedule.applicant);
+    let applicantId = src?.dbId;
+    if (!applicantId) {
+      if (!src) {
+        toast.error(`Could not find ${schedule.applicant} in the applicant list.`);
+        return;
+      }
+      // The applicant was only ever added locally (e.g. the earlier save to
+      // the database failed). Persist it now so the interview can be booked.
+      try {
+        let jobPostId = 1;
+        try {
+          const jobsRes = await jobPostsApi.list({ per_page: 100 });
+          jobPostId =
+            jobsRes?.data?.find((j) => j.title === src.position)
+              ?.job_post_id ?? 1;
+        } catch {
+          // fall back to the first job post when the lookup fails
+        }
+        const created = await applicantsApi.create({
+          job_post_id: jobPostId,
+          name: src.name,
+          email: src.email,
+          phone: src.phone,
+          source: src.source,
+          summary: src.summary,
+          status: src.status,
+          stage: src.stage,
+          flags_json: src.flags ?? [],
+          fit_score: src.score,
+        });
+        applicantId = created.applicant_id;
+        setRows((prev) =>
+          prev.map((x) =>
+            x.id === src.id ? { ...x, dbId: created.applicant_id } : x,
+          ),
+        );
+      } catch (e) {
+        console.warn("Could not persist applicant to database API:", e);
+        toast.error(
+          `${schedule.applicant} could not be saved to the database, so the interview cannot be scheduled. ${
+            e instanceof Error ? e.message : ""
+          }`,
+        );
+        return;
+      }
+    }
     const newInt = {
       id: `INT-${300 + interviews.length}`,
       applicant: schedule.applicant,
@@ -936,7 +1031,7 @@ export function ApplicantManagement({
 
     try {
       await interviewsApi.create({
-        applicant_id: src?.dbId ?? 1,
+        applicant_id: applicantId,
         scheduled_date: schedule.date,
         scheduled_time: schedule.time.includes(":") ? schedule.time.slice(0, 5) : "09:00",
         mode: schedule.mode,
@@ -948,6 +1043,11 @@ export function ApplicantManagement({
         toast.error(e.message);
       } else {
         console.warn("Could not persist interview to database API:", e);
+        toast.error(
+          `The interview could not be saved to the database. ${
+            e instanceof Error ? e.message : ""
+          }`,
+        );
       }
     }
   };
@@ -1021,7 +1121,7 @@ export function ApplicantManagement({
 
   const performCancelInterview = async () => {
     const i = cancelInterview;
-    if (!i) return;
+    if (!i || isInterviewLocked(i)) return;
     setInterviews((prev) => prev.filter((x) => x.id !== i.id));
     const src = rows.find((a) => a.name === i.applicant);
     if (src) setStage(src.id, "Screened");
@@ -1042,6 +1142,7 @@ export function ApplicantManagement({
   };
 
   const reject = (a: Applicant) => {
+    if (isActionLocked(a)) return;
     setStage(a.id, "Rejected");
     addAudit({
       actionType: "Applicant Rejected",
@@ -1113,6 +1214,7 @@ export function ApplicantManagement({
   };
 
   const openRefer = (a: Applicant) => {
+    if (isActionLocked(a)) return;
     setReferring(a);
     const suggested = a.flags.find((f) => f.startsWith("Stronger match:"));
     setReferTarget(
@@ -1120,6 +1222,58 @@ export function ApplicantManagement({
         ? suggested.replace("Stronger match:", "").split("(")[0]!.trim()
         : "",
     );
+  };
+
+  /** Moves the applicant to another vacancy — locally AND on the database
+   *  (job post reassignment + stage reset), so it survives a refresh. */
+  const confirmRefer = async (targetTitle: string) => {
+    const applicant = referring;
+    if (!applicant) return;
+    setRows((prev) =>
+      prev.map((x) =>
+        x.id === applicant.id
+          ? {
+              ...x,
+              position: targetTitle,
+              status: "fit",
+              stage: "Screened",
+            }
+          : x,
+      ),
+    );
+    addAudit({
+      actionType: "Applicant Transferred",
+      target: applicant.name,
+      module: "Screening",
+      details: `Transferred from ${applicant.position} to ${targetTitle}.`,
+    });
+    toast.success(`${applicant.name} referred to ${targetTitle}`);
+    setReferring(null);
+    setReview(null);
+
+    try {
+      if (applicant.dbId) {
+        let jobPostId: number | undefined;
+        try {
+          const res = await jobPostsApi.list({ per_page: 100 });
+          jobPostId = res?.data?.find((j) => j.title === targetTitle)?.job_post_id;
+        } catch {
+          // target vacancy lookup failed — still persist stage/status below
+        }
+        await applicantsApi.update(applicant.dbId, {
+          job_post_id: jobPostId,
+          stage: "Screened",
+          status: "fit",
+          flags_json: [
+            ...(applicant.flags ?? []),
+            `Referred to ${targetTitle}`,
+          ],
+        });
+      }
+    } catch (e) {
+      console.warn("Could not persist referral to database API:", e);
+      toast.error("The referral could not be saved to the database.");
+    }
   };
 
   const totalWeight = criteria.reduce(
@@ -1222,8 +1376,17 @@ export function ApplicantManagement({
     });
 
     try {
+      let jobPostId = 1;
+      try {
+        const jobsRes = await jobPostsApi.list({ per_page: 100 });
+        jobPostId =
+          jobsRes?.data?.find((j) => j.title === newApp.position)?.job_post_id ??
+          1;
+      } catch {
+        // fall back to the first job post when the lookup fails
+      }
       const base = {
-        job_post_id: 1,
+        job_post_id: jobPostId,
         name: newApp.name,
         email: newApp.email,
         phone: newApp.phone,
@@ -1238,7 +1401,13 @@ export function ApplicantManagement({
       let payload: FormData | Record<string, any> = base;
       if (addResumeFile) {
         const fd = new FormData();
-        Object.entries(base).forEach(([k, v]) => fd.append(k, String(v)));
+        Object.entries(base).forEach(([k, v]) => {
+          if (k === "flags_json") {
+            fd.append(k, JSON.stringify(v ?? []));
+          } else {
+            fd.append(k, String(v));
+          }
+        });
         fd.append("resume", addResumeFile);
         payload = fd;
       }
@@ -1250,6 +1419,9 @@ export function ApplicantManagement({
       );
     } catch (e) {
       console.warn("Could not persist applicant to database API:", e);
+      toast.error(
+        `${addForm.name} was added locally, but could not be saved to the database — interview scheduling may not work for this applicant until the record is re-saved.`,
+      );
     }
   };
 
@@ -1344,16 +1516,14 @@ export function ApplicantManagement({
 
   /**
    * Interviews visible in the Scheduled Interviews list.
-   * Hired / rejected (admin only) applicants are gone from the pipeline, and
-   * once an applicant is assessed their interview is no longer shown here.
+   * Hired / rejected (admin only) applicants are gone from the pipeline.
    */
   const interviewRows: InterviewRow[] = [
     ...needSchedule,
     ...interviews.filter((i) => {
       const src = rows.find((r) => r.name === i.applicant);
       if (!src) return true;
-      if (isHiddenStage(src)) return false;
-      return src.stage !== "Assessed";
+      return !isHiddenStage(src);
     }),
   ];
 
@@ -1411,7 +1581,9 @@ export function ApplicantManagement({
           .filter((r) => {
             const src = rows.find((a) => a.id === r.applicantId);
             if (!src) return true;
-            return !isHiddenStage(src);
+            // Applicants who already reached Offer / Accepted / Hired /
+            // Rejected no longer belong in the assessment list.
+            return !isHiddenStage(src) && !noLongerAssessable(src);
           })
           .map((r) => ({
             kind: "completed" as const,
@@ -1644,18 +1816,18 @@ export function ApplicantManagement({
                   </Select>
                 </div>
 
-                <div className="mt-2 flex flex-wrap items-center justify-center gap-4 py-2">
-                  <div className="relative h-[260px] w-[260px] shrink-0">
-                    <PieChart width={260} height={260}>
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-8 py-2">
+                  <div className="relative h-[380px] w-[380px] shrink-0">
+                    <PieChart width={380} height={380}>
                       <Pie
                         isAnimationActive={false}
                         data={distribution}
                         dataKey="value"
                         nameKey="name"
-                        cx={130}
-                        cy={130}
-                        innerRadius={52}
-                        outerRadius={84}
+                        cx={190}
+                        cy={190}
+                        innerRadius={80}
+                        outerRadius={130}
                         paddingAngle={2}
                         labelLine={false}
                         label={(props: {
@@ -1716,29 +1888,29 @@ export function ApplicantManagement({
                     </PieChart>
 
                     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="font-display text-2xl font-semibold">
+                      <span className="font-display text-3xl font-semibold">
                         {screenedTotal}
                       </span>
-                      <span className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">
+                      <span className="text-[0.7rem] uppercase tracking-wide text-muted-foreground">
                         Resumes
                       </span>
                     </div>
                   </div>
 
-                  <div className="grid w-[15.5rem] max-w-full grid-cols-1 gap-2">
+                  <div className="grid w-full min-w-[16rem] max-w-[24rem] flex-1 grid-cols-1 gap-2">
                     {distribution.map((d) => (
                       <div
                         key={d.key}
-                        className="flex items-center justify-between rounded-md border border-border px-3 py-2"
+                        className="flex items-center justify-between rounded-md border border-border px-4 py-3"
                       >
-                        <span className="flex items-center gap-2 text-xs">
+                        <span className="flex items-center gap-2 text-sm">
                           <span
-                            className="h-2 w-2 rounded-full"
+                            className="h-3 w-3 rounded-full"
                             style={{ background: statusChartColor[d.key] }}
                           />
                           {d.name}
                         </span>
-                        <span className="font-display text-base font-semibold">
+                        <span className="font-display text-lg font-semibold">
                           {d.value}
                         </span>
                       </div>
@@ -3386,6 +3558,10 @@ export function ApplicantManagement({
                                   <CalendarPlus className="mr-1.5 h-3.5 w-3.5" />
                                   Schedule
                                 </Button>
+                              ) : isInterviewLocked(i) ? (
+                                <span className="text-[0.7rem] italic text-muted-foreground">
+                                  Interview finalized
+                                </span>
                               ) : (
                                 <>
                                   <Button
@@ -4328,7 +4504,7 @@ export function ApplicantManagement({
                           Skills
                         </p>
                         <div className="flex flex-wrap gap-1">
-                          {review.entities.slice(0, 4).map((e) => (
+                          {screeningResultFor(review).entities.slice(0, 4).map((e) => (
                             <span
                               key={e.label}
                               className="rounded-full bg-secondary px-1.5 py-0.5 text-[0.55rem]"
@@ -4357,11 +4533,12 @@ export function ApplicantManagement({
                       "not-fit":
                         "Falls short of the core requirements for this role.",
                     };
-                    const passed = review.score >= passing;
+                    const { entities, score } = screeningResultFor(review);
+                    const passed = score >= passing;
                     const matched = (
                       keywordLibrary[review.position] ?? []
                     ).filter((k) =>
-                      review.entities.some((e) =>
+                      entities.some((e) =>
                         e.value
                           .toLowerCase()
                           .includes(k.toLowerCase().split(" ")[0]!),
@@ -4370,13 +4547,13 @@ export function ApplicantManagement({
                     const missing = (
                       keywordLibrary[review.position] ?? []
                     ).filter((k) => !matched.includes(k));
-                    const experience = review.entities.filter(
+                    const experience = entities.filter(
                       (e) => e.label === "ORG",
                     );
-                    const education = review.entities.filter(
+                    const education = entities.filter(
                       (e) => e.label === "EDU",
                     );
-                    const skills = review.entities.filter(
+                    const skills = entities.filter(
                       (e) => e.label === "SKILL",
                     );
 
@@ -4386,7 +4563,7 @@ export function ApplicantManagement({
                         <div className="flex items-center gap-4 rounded-md border border-border p-4">
                           <div className="text-center">
                             <p className="font-display text-4xl font-semibold text-primary">
-                              {review.score}%
+                              {score}%
                             </p>
                             <p className="eyebrow">Match score</p>
                           </div>
@@ -4536,22 +4713,36 @@ export function ApplicantManagement({
               </div>
 
               <DialogFooter className="flex-wrap gap-2">
-                <Button variant="outline" onClick={() => openRefer(review)}>
-                  <Repeat2 className="mr-2 h-4 w-4" /> Refer to other position
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    reject(review);
-                    setReview(null);
-                  }}
-                >
-                  <XCircle className="mr-2 h-4 w-4" /> Reject
-                </Button>
-                <Button onClick={() => acceptAndSchedule(review)}>
-                  <CheckCircle2 className="mr-2 h-4 w-4" /> Accept &amp;
-                  schedule
-                </Button>
+                {isActionLocked(review) ? (
+                  <p className="flex w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+                    <Info className="h-4 w-4 shrink-0" />
+                    This applicant is already at the{" "}
+                    <span className="font-semibold text-foreground">
+                      {review.stage}
+                    </span>{" "}
+                    stage — no further accept, reject or referral actions can be
+                    taken here.
+                  </p>
+                ) : (
+                  <>
+                    <Button variant="outline" onClick={() => openRefer(review)}>
+                      <Repeat2 className="mr-2 h-4 w-4" /> Refer to other position
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        reject(review);
+                        setReview(null);
+                      }}
+                    >
+                      <XCircle className="mr-2 h-4 w-4" /> Reject
+                    </Button>
+                    <Button onClick={() => acceptAndSchedule(review)}>
+                      <CheckCircle2 className="mr-2 h-4 w-4" /> Accept &amp;
+                      schedule
+                    </Button>
+                  </>
+                )}
               </DialogFooter>
             </>
           )}
@@ -4623,31 +4814,7 @@ export function ApplicantManagement({
                 </Button>
                 <Button
                   disabled={!referTarget}
-                  onClick={() => {
-                    setRows((prev) =>
-                      prev.map((x) =>
-                        x.id === referring.id
-                          ? {
-                              ...x,
-                              position: referTarget,
-                              status: "fit",
-                              stage: "Screened",
-                            }
-                          : x,
-                      ),
-                    );
-                    addAudit({
-                      actionType: "Applicant Transferred",
-                      target: referring.name,
-                      module: "Screening",
-                      details: `Transferred from ${referring.position} to ${referTarget}.`,
-                    });
-                    toast.success(
-                      `${referring.name} referred to ${referTarget}`,
-                    );
-                    setReferring(null);
-                    setReview(null);
-                  }}
+                  onClick={() => confirmRefer(referTarget)}
                 >
                   Confirm referral
                 </Button>

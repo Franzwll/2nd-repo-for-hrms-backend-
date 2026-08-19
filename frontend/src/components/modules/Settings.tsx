@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { settingsApi } from "@/lib/api";
+import { mySettingsApi, settingsApi } from "@/lib/api";
+import { myProfile } from "@/data/ess";
 import {
   ArrowRight,
   Bell,
@@ -140,17 +141,22 @@ function InfoRow({
 }
 
 export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employee" }) {
+  /** The portal's current user key — each user keeps per-user designated
+   *  Notifications / Preferences / Change Password values in the database. */
+  const currentUser =
+    role === "employee"
+      ? myProfile.email
+      : role === "admin"
+        ? "juan.delacruz@oxfordsuites.com.ph"
+        : "bullseur@oxfordsuites.com.ph";
+
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
   const [backupSchedule, setBackupSchedule] = useState("daily");
   const [backups, setBackups] = useState<BackupEntry[]>([]);
   const [backupInProgress, setBackupInProgress] = useState(false);
   const [backupProgress, setBackupProgress] = useState(0);
   const [restoreTarget, setRestoreTarget] = useState<BackupEntry | null>(null);
-  const [notify, setNotify] = useState<Record<string, boolean>>({
-    "Email notifications": true,
-    "Browser notifications": true,
-    "System announcements": true,
-  });
+  const [notify, setNotify] = useState<Record<string, boolean>>({});
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -162,25 +168,25 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
 
   // Preferences
   const [preferences, setPreferences] = useState({
-    theme: "Light",
-    language: "English",
-    dateFormat: "MM/DD/YYYY",
-    timeFormat: "12-hour",
-    timeZone: "Asia/Manila (GMT+8)",
+    theme: "",
+    language: "",
+    dateFormat: "",
+    timeFormat: "",
+    timeZone: "",
   });
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [prefsDraft, setPrefsDraft] = useState(preferences);
 
-  // Login security (password policy + session rules, saved to "password_policy")
+  // Login security (password policy + session rules, saved to "security")
   const [security, setSecurity] = useState({
-    twoFactor: true,
-    minLength: 8,
-    requireUppercase: true,
-    requireLowercase: true,
-    requireNumber: true,
-    requireSymbol: true,
-    sessionTimeout: "30 minutes",
-    maxLoginAttempts: "3 attempts",
+    twoFactor: false,
+    minLength: 0,
+    requireUppercase: false,
+    requireLowercase: false,
+    requireNumber: false,
+    requireSymbol: false,
+    sessionTimeout: "",
+    maxLoginAttempts: "",
   });
   const [securityOpen, setSecurityOpen] = useState(false);
   const [securityDraft, setSecurityDraft] = useState(security);
@@ -194,12 +200,12 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
 
   // Company info
   const [company, setCompany] = useState({
-    name: "Oxford Suites Makati",
-    email: "info@oxfordsuites.com.ph",
-    contact: "(02) 8888-0000",
-    businessHours: "24/7 Front Desk Operations",
-    address: "Ayala Center, Makati City",
-    tin: "000-000-000-000",
+    name: "",
+    email: "",
+    contact: "",
+    businessHours: "",
+    address: "",
+    tin: "",
   });
   const [companyOpen, setCompanyOpen] = useState(false);
   const [companyDraft, setCompanyDraft] = useState(company);
@@ -215,9 +221,9 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
           setPreferences(res.map["preferences"]);
           setPrefsDraft(res.map["preferences"]);
         }
-        if (res.map["password_policy"]) {
-          setSecurity(res.map["password_policy"]);
-          setSecurityDraft(res.map["password_policy"]);
+        if (res.map["security"]) {
+          setSecurity(res.map["security"]);
+          setSecurityDraft(res.map["security"]);
         }
         if (res.map["notifications"]) {
           setNotify(res.map["notifications"]);
@@ -235,7 +241,24 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
     }).catch((err) => {
       console.warn("Could not fetch settings from database:", err);
     });
-  }, []);
+
+    // Per-user designated values — this user's own notifications/preferences
+    // (merged over the system defaults above).
+    mySettingsApi.get(currentUser)
+      .then((mine) => {
+        if (mine?.notifications && Object.keys(mine.notifications).length > 0) {
+          setNotify((prev) => ({ ...prev, ...mine.notifications }));
+          setNotifDraft((prev) => ({ ...prev, ...mine.notifications }));
+        }
+        if (mine?.preferences && Object.keys(mine.preferences).length > 0) {
+          setPreferences((prev) => ({ ...prev, ...mine.preferences }));
+          setPrefsDraft((prev) => ({ ...prev, ...mine.preferences }));
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not fetch per-user settings from database:", err);
+      });
+  }, [currentUser]);
 
   const createBackup = () => {
     if (backupInProgress) return;
@@ -282,15 +305,34 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
     setRestoreTarget(null);
   };
 
-  const changeOwnPassword = () => {
-    if (!newPassword || newPassword !== confirmPassword) {
+  const changeOwnPassword = async () => {
+    if (!currentPassword) {
+      toast.error("Enter your current password");
+      return;
+    }
+    if (!newPassword || newPassword.length < 8) {
+      toast.error("New password must be at least 8 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
       toast.error("New password and confirmation must match");
       return;
     }
-    toast.success("Password updated");
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
+    try {
+      const res = await mySettingsApi.changePassword(currentUser, currentPassword, newPassword);
+      toast.success(res.message);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (e) {
+      const msg =
+        e instanceof Error && e.message.includes("incorrect")
+          ? "Current password is incorrect"
+          : e instanceof Error
+            ? e.message
+            : "Could not update the password";
+      toast.error(msg);
+    }
   };
 
   const isSuperAdmin = role === "superadmin";
@@ -351,8 +393,8 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   onCheckedChange={(v) => {
                     setNotify((prev) => {
                       const next = { ...prev, [label]: v };
-                      settingsApi
-                        .upsert("notifications", next)
+                      mySettingsApi
+                        .save("notifications", currentUser, next)
                         .catch((e) => console.warn("Could not save notification settings:", e));
                       return next;
                     });
@@ -392,7 +434,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   setNotify(notifDraft);
                   setNotifOpen(false);
                   try {
-                    await settingsApi.upsert('notifications', notifDraft);
+                    await mySettingsApi.save("notifications", currentUser, notifDraft);
                     toast.success("Notification settings saved to database");
                   } catch (e) {
                     toast.error(e instanceof Error ? e.message : "Could not save notification settings");
@@ -518,7 +560,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   setPreferences(prefsDraft);
                   setPrefsOpen(false);
                   try {
-                    await settingsApi.upsert('preferences', prefsDraft);
+                    await mySettingsApi.save("preferences", currentUser, prefsDraft);
                     toast.success("Preferences saved to database");
                   } catch (e) {
                     toast.error(e instanceof Error ? e.message : "Could not save preferences");
@@ -720,7 +762,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                     setSecurity(securityDraft);
                     setSecurityOpen(false);
                     try {
-                      await settingsApi.upsert('password_policy', securityDraft);
+                      await settingsApi.upsert('security', securityDraft);
                       toast.success("System-wide login security policy saved to database");
                     } catch (e) {
                       toast.error(e instanceof Error ? e.message : "Could not save security policy");

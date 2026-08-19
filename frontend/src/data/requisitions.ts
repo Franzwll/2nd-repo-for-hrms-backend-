@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
-import { requisitionsApi, type ApiRequisition } from "@/lib/api";
+import { toast } from "sonner";
+import { coreHcmApi, requisitionsApi, type ApiDepartment, type ApiPosition, type ApiRequisition } from "@/lib/api";
 
 export type Requisition = {
   id: string;
@@ -12,64 +13,6 @@ export type Requisition = {
   status: "Pending" | "Done" | "Converted";
   requestedAt: string;
 };
-
-const seedRequisitions: Requisition[] = [
-  {
-    id: "REQ-1001",
-    position: "Front Desk Receptionist",
-    department: "Front Office",
-    count: 2,
-    urgency: "High",
-    justification:
-      "Two front desk associates are due to transition to the Guest Relations team next month, and occupancy is trending up for the coming peak season. Backfilling now avoids a coverage gap on the AM/PM shift rotation.",
-    status: "Pending",
-    requestedAt: "2024-05-02",
-  },
-  {
-    id: "REQ-1002",
-    position: "Housekeeping Attendant",
-    department: "Housekeeping",
-    count: 3,
-    urgency: "Urgent",
-    justification:
-      "Room turnover times have slipped past the 30-minute SLA due to persistent understaffing. Three additional attendants are needed to restore standard turnaround ahead of the group bookings arriving this quarter.",
-    status: "Pending",
-    requestedAt: "2024-05-05",
-  },
-  {
-    id: "REQ-1003",
-    position: "Line Cook",
-    department: "Food & Beverage",
-    count: 1,
-    urgency: "Normal",
-    justification:
-      "The kitchen brigade is short one station cook following a resignation. A replacement hire keeps the current menu rotation and banquet commitments fully staffed.",
-    status: "Pending",
-    requestedAt: "2024-05-08",
-  },
-  {
-    id: "REQ-1004",
-    position: "Bartender",
-    department: "Food & Beverage",
-    count: 1,
-    urgency: "Normal",
-    justification:
-      "The lobby bar needs weekend coverage now that the extended happy-hour promotion has launched.",
-    status: "Pending",
-    requestedAt: "2024-05-11",
-  },
-  {
-    id: "REQ-1005",
-    position: "Security Officer",
-    department: "Security",
-    count: 2,
-    urgency: "High",
-    justification:
-      "Perimeter patrol shifts are currently single-manned; two additional officers restore the standard two-person rotation.",
-    status: "Done",
-    requestedAt: "2024-04-20",
-  },
-];
 
 function transformApiRequisition(r: ApiRequisition): Requisition {
   return {
@@ -85,27 +28,68 @@ function transformApiRequisition(r: ApiRequisition): Requisition {
   };
 }
 
-let requisitions: Requisition[] = [...seedRequisitions];
+let requisitions: Requisition[] = [];
 const listeners = new Set<() => void>();
 
 function emit() {
   listeners.forEach((l) => l());
 }
 
+let departmentsCache: ApiDepartment[] = [];
+let positionsCache: ApiPosition[] = [];
+
+/** Resolves a department's database id by name — creates it when unknown. */
+async function resolveDepartmentId(name: string): Promise<number> {
+  const known = departmentsCache.find((d) => d.name === name);
+  if (known) return known.department_id;
+  const created = await coreHcmApi.createDepartment({ name });
+  departmentsCache = [...departmentsCache, created];
+  return created.department_id;
+}
+
+/** Best-effort position id lookup (null when the position isn't defined yet). */
+async function resolvePositionId(title: string): Promise<number | null> {
+  const known = positionsCache.find((p) => p.title === title);
+  return known ? known.position_id : null;
+}
+
+async function refreshLookupCache() {
+  try {
+    const [deptRes, posRes] = await Promise.allSettled([
+      coreHcmApi.departments({ per_page: 100 }),
+      coreHcmApi.positions({ per_page: 100 }),
+    ]);
+    if (deptRes.status === "fulfilled" && deptRes.value?.data?.length > 0) {
+      departmentsCache = deptRes.value.data;
+    }
+    if (posRes.status === "fulfilled" && posRes.value?.data?.length > 0) {
+      positionsCache = posRes.value.data;
+    }
+  } catch {
+    // cache stays empty — unknown departments are created via the API
+  }
+}
+
 // Fetch live from Laravel MySQL API on load
 let hasFetched = false;
+let fetchInFlight: Promise<void> | null = null;
 async function fetchRequisitionsFromApi() {
-  if (hasFetched) return;
-  hasFetched = true;
-  try {
-    const res = await requisitionsApi.list({ per_page: 100 });
-    if (res?.data && res.data.length > 0) {
-      requisitions = res.data.map(transformApiRequisition);
+  if (fetchInFlight) return fetchInFlight;
+  fetchInFlight = (async () => {
+    try {
+      const res = await requisitionsApi.list({ per_page: 100 });
+      requisitions = (res?.data ?? []).map(transformApiRequisition);
       emit();
+      await refreshLookupCache();
+    } catch (err) {
+      console.warn("Could not fetch requisitions from backend API, using cached data.", err);
+      toast.error("Could not load vacancy requisitions from the database.");
+    } finally {
+      hasFetched = true;
+      fetchInFlight = null;
     }
-  } catch (err) {
-    console.warn("Could not fetch requisitions from backend API, using cached data.", err);
-  }
+  })();
+  return fetchInFlight;
 }
 if (typeof window !== "undefined") {
   fetchRequisitionsFromApi();
@@ -122,17 +106,26 @@ export const requisitionStore = {
     requisitions = [r, ...requisitions];
     emit();
     try {
-      await requisitionsApi.create({
+      const department_id = await resolveDepartmentId(r.department);
+      const position_id = await resolvePositionId(r.position);
+      const created = await requisitionsApi.create({
+        position_id,
         position_title: r.position,
-        department_id: 1,
+        department_id,
         requested_count: r.count,
         urgency: r.urgency,
         justification: r.justification,
         status: r.status,
         requested_at: r.requestedAt,
       });
+      // Swap the optimistic row for the DB row so later edits carry a dbId
+      requisitions = requisitions.map((x) =>
+        x.id === r.id ? { ...x, dbId: created.requisition_id, id: created.requisition_code || x.id } : x,
+      );
+      emit();
     } catch (e) {
       console.warn("API requisition create error:", e);
+      toast.error("The requisition could not be saved to the database.");
     }
   },
   update: async (id: string, patch: Partial<Requisition>) => {
@@ -140,19 +133,40 @@ export const requisitionStore = {
     requisitions = requisitions.map((r) => (r.id === id ? { ...r, ...patch } : r));
     emit();
     try {
+      const department_id = await resolveDepartmentId(patch.department ?? target?.department ?? "");
+      const payload = {
+        position_title: patch.position ?? target?.position,
+        department_id,
+        requested_count: patch.count ?? target?.count,
+        urgency: patch.urgency ?? target?.urgency,
+        justification: patch.justification ?? target?.justification,
+        status: patch.status ?? target?.status,
+        requested_at: patch.requestedAt ?? target?.requestedAt,
+      };
       if (target?.dbId) {
-        await requisitionsApi.update(target.dbId, {
-          position_title: patch.position ?? target.position,
-          department_id: 1,
-          requested_count: patch.count ?? target.count,
-          urgency: patch.urgency ?? target.urgency,
-          justification: patch.justification ?? target.justification,
-          status: patch.status ?? target.status,
-          requested_at: patch.requestedAt ?? target.requestedAt,
-        });
+        await requisitionsApi.update(target.dbId, payload);
+      } else {
+        // Row never made it to the DB (e.g. seed data) — create it now
+        const position_id = await resolvePositionId(payload.position_title ?? "");
+        const created = await requisitionsApi.create({ ...payload, position_id });
+        requisitions = requisitions.map((x) =>
+          x.id === id ? { ...x, dbId: created.requisition_id } : x,
+        );
+        emit();
       }
     } catch (e) {
       console.warn("API requisition update error:", e);
+      toast.error("The requisition could not be updated in the database.");
+    }
+  },
+  /** Marks a requisition Converted on the database (used after a job post is published). */
+  markConverted: async (id: string, jobPostId: number) => {
+    const target = requisitions.find((r) => r.id === id);
+    if (!target) return;
+    try {
+      await requisitionsApi.convert(target.dbId ?? id, jobPostId);
+    } catch (e) {
+      console.warn("API requisition convert error:", e);
     }
   },
   refresh: () => {

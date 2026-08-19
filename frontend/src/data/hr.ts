@@ -206,6 +206,9 @@ export type NewHire = {
   name: string;
   position: string;
   department: string;
+  /** Database position/department ids (Core HCM) — persisted to the new hire record. */
+  positionId?: number | null;
+  departmentId?: number | null;
   stage: "Pre-onboarding" | "Probationary" | "Regular";
   startDate: string;
   initials: string;
@@ -214,6 +217,9 @@ export type NewHire = {
     done: boolean;
     /** Database onboarding item id — used to persist toggles via the API. */
     dbId?: number;
+    /** Template item id — lets virtual (not-yet-materialized) items be
+     *  created on first completion. */
+    templateItemId?: number | null;
     /** Which stage's checklist template the item belongs to. */
     phase?: "Pre-onboarding" | "Probationary";
   }[];

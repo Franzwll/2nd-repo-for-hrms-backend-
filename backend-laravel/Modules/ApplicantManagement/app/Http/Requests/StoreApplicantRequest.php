@@ -11,6 +11,20 @@ class StoreApplicantRequest extends FormRequest
         return true;
     }
 
+    /**
+     * Decode flags_json when it arrives as a JSON string (multipart uploads
+     * always send it as a string, e.g. "[]"), so the 'array' rule passes.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('flags_json') && is_string($this->input('flags_json'))) {
+            $decoded = json_decode($this->input('flags_json'), true);
+            if (is_array($decoded)) {
+                $this->merge(['flags_json' => $decoded]);
+            }
+        }
+    }
+
     public function rules(): array
     {
         return [
@@ -24,7 +38,7 @@ class StoreApplicantRequest extends FormRequest
             'status'       => ['required', 'string', 'in:fit,other-role,credential,not-fit'],
             'stage'        => ['required', 'string', 'in:Screened,Interview Scheduled,Assessed,Offer,Hired,Rejected,Accepted'],
             'fit_score'    => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'resume'       => ['nullable', 'file', 'mimes:pdf,doc,docx', 'max:10240'],
+            'resume'       => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp,heic,heif,bmp,gif,tiff,tif,avif,svg', 'max:20480'],
         ];
     }
 }

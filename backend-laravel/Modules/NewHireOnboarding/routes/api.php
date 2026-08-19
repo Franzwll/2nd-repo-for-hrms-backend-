@@ -27,6 +27,9 @@ Route::prefix('v1')->group(function () {
     Route::get('new-hires/{new_hire}/onboarding-items', [EmployeeOnboardingItemController::class, 'index'])
          ->name('new-hires.onboarding-items.index');
 
+    Route::post('new-hires/{new_hire}/onboarding-items', [EmployeeOnboardingItemController::class, 'materialize'])
+         ->name('new-hires.onboarding-items.materialize');
+
     Route::post('new-hires/{new_hire}/onboarding-items/bulk', [EmployeeOnboardingItemController::class, 'bulkCreate'])
          ->name('new-hires.onboarding-items.bulk');
 

@@ -4,6 +4,23 @@
 
 const BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string) || 'http://127.0.0.1:8000/api/v1';
 
+/**
+ * Rebases a server-returned file URL (e.g. storage/... or an absolute URL
+ * baked from an old APP_URL/host) onto the backend origin the frontend is
+ * currently talking to, so files keep working even if the system folder,
+ * host or port moved.
+ */
+export function resolveStorageUrl(value: string | null): string | null {
+  if (!value) return null;
+  const origin = new URL(BASE_URL).origin;
+  try {
+    const u = new URL(value, origin);
+    return `${origin}${u.pathname}`;
+  } catch {
+    return value;
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
   
@@ -127,6 +144,12 @@ export const applicantsApi = {
   },
   update: (id: number | string, data: FormData | Record<string, any>) => {
     const isForm = data instanceof FormData;
+    if (isForm) {
+      // PHP never populates $_POST for raw multipart PUT bodies, so Laravel
+      // sees an empty request. Send POST with a _method=PUT override field —
+      // the standard Laravel pattern for multipart updates.
+      data.append('_method', 'PUT');
+    }
     return request<ApiApplicant>(`/applicants/${id}`, {
       method: isForm ? 'POST' : 'PUT',
       body: isForm ? data : JSON.stringify(data),
@@ -233,6 +256,12 @@ export const jobPostsApi = {
   },
   update: (id: number | string, data: FormData | Record<string, any>) => {
     const isForm = data instanceof FormData;
+    if (isForm) {
+      // PHP never populates $_POST for raw multipart PUT bodies, so Laravel
+      // sees an empty request. Send POST with a _method=PUT override field —
+      // the standard Laravel pattern for multipart updates.
+      data.append('_method', 'PUT');
+    }
     return request<ApiJobPost>(`/job-posts/${id}`, {
       method: isForm ? 'POST' : 'PUT',
       body: isForm ? data : JSON.stringify(data),
@@ -273,6 +302,47 @@ export const requisitionsApi = {
     }),
 };
 
+export interface ApiDepartment {
+  department_id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  positions_count?: number;
+}
+
+export interface ApiPosition {
+  position_id: number;
+  position_code: string;
+  title: string;
+  department_id: number;
+  department?: string | null;
+  level: string;
+  headcount: number;
+  filled_count: number;
+}
+
+/** Core HCM lookups — departments & positions live in the database. */
+export const coreHcmApi = {
+  departments: (params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiDepartment[]; meta: any }>(`/departments${qs ? `?${qs}` : ''}`);
+  },
+  createDepartment: (data: Record<string, any>) =>
+    request<ApiDepartment>('/departments', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  positions: (params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiPosition[]; meta: any }>(`/positions${qs ? `?${qs}` : ''}`);
+  },
+  createPosition: (data: Record<string, any>) =>
+    request<ApiPosition>('/positions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
 /* ========================================================================= */
 /* 3. NEW HIRE ONBOARDING                                                    */
 /* ========================================================================= */
@@ -293,7 +363,8 @@ export interface ApiNewHire {
   start_date: string;
   completion_percent?: number;
   onboarding_items?: {
-    employee_onboarding_item_id: number;
+    employee_onboarding_item_id: number | null;
+    template_item_id: number | null;
     item_text: string;
     done: boolean;
     phase?: "Pre-onboarding" | "Probationary" | null;
@@ -392,6 +463,11 @@ export const onboardingItemsApi = {
       method: 'POST',
       body: JSON.stringify({ template_id: templateId }),
     }),
+  materialize: (newHireId: number | string, templateItemId: number | string) =>
+    request<{ employee_onboarding_item_id: number; template_item_id: number; item_text: string; done: boolean; phase: string }>(
+      `/new-hires/${newHireId}/onboarding-items`,
+      { method: 'POST', body: JSON.stringify({ template_item_id: templateItemId }) }
+    ),
   toggle: (itemId: number | string, body?: { done: boolean }) =>
     request<{ employee_onboarding_item_id: number; done: boolean; completed_at: string | null }>(
       `/onboarding-items/${itemId}/toggle`,
@@ -452,5 +528,23 @@ export const settingsApi = {
     request<{ message: string; updated: number }>('/reset-default-password', {
       method: 'POST',
       body: JSON.stringify({ password }),
+    }),
+};
+
+/** Per-user portal settings — each user keeps their own designated values. */
+export const mySettingsApi = {
+  get: (user: string) =>
+    request<{ notifications: Record<string, boolean>; preferences: Record<string, string> }>(
+      `/my/settings?user=${encodeURIComponent(user)}`
+    ),
+  save: (scope: "notifications" | "preferences", user: string, value: any) =>
+    request<{ setting_key: string; setting_value: any }>(`/my/settings/${scope}`, {
+      method: 'PUT',
+      body: JSON.stringify({ user, value }),
+    }),
+  changePassword: (user: string, currentPassword: string, newPassword: string) =>
+    request<{ message: string }>('/my/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ user, current_password: currentPassword, new_password: newPassword }),
     }),
 };

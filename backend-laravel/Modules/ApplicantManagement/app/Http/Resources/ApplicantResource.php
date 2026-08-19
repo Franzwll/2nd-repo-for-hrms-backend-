@@ -24,7 +24,7 @@ class ApplicantResource extends JsonResource
             'summary'         => $this->summary,
             'flags_json'      => $this->flags_json ?? [],
             'resume_url'      => $this->resume_file_path
-                                    ? url('storage/resumes/' . basename($this->resume_file_path))
+                                    ? 'storage/resumes/' . basename($this->resume_file_path)
                                     : null,
             'created_at'      => $this->created_at?->toISOString(),
             'updated_at'      => $this->updated_at?->toISOString(),
