@@ -116,42 +116,27 @@ export function EmployeeEss() {
           />
 
           {/* 5 Main Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6 space-y-6">
-            <TabsList className="flex h-auto flex-wrap justify-start gap-1 border-b border-border bg-transparent p-0">
-              <TabsTrigger
-                value="overview"
-                className="data-[state=active]:border-primary data-[state=active]:bg-muted/80 rounded-md px-4 py-2 text-xs sm:text-sm font-medium gap-1.5"
-              >
-                <LayoutDashboard className="h-4 w-4" /> Overview
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
+            <TabsList className="flex h-auto flex-wrap justify-start">
+              <TabsTrigger className="flex items-center gap-1.5" value="overview">
+                <LayoutDashboard className="h-3.5 w-3.5" /> Overview
               </TabsTrigger>
-              <TabsTrigger
-                value="schedule"
-                className="data-[state=active]:border-primary data-[state=active]:bg-muted/80 rounded-md px-4 py-2 text-xs sm:text-sm font-medium gap-1.5"
-              >
-                <Layers className="h-4 w-4" /> Weekly Schedule
+              <TabsTrigger className="flex items-center gap-1.5" value="schedule">
+                <Layers className="h-3.5 w-3.5" /> Weekly Schedule
               </TabsTrigger>
-              <TabsTrigger
-                value="leave"
-                className="data-[state=active]:border-primary data-[state=active]:bg-muted/80 rounded-md px-4 py-2 text-xs sm:text-sm font-medium gap-1.5"
-              >
-                <Calendar className="h-4 w-4" /> Leave Balances
+              <TabsTrigger className="flex items-center gap-1.5" value="leave">
+                <Calendar className="h-3.5 w-3.5" /> Leave Balances
               </TabsTrigger>
-              <TabsTrigger
-                value="benefits"
-                className="data-[state=active]:border-primary data-[state=active]:bg-muted/80 rounded-md px-4 py-2 text-xs sm:text-sm font-medium gap-1.5"
-              >
-                <HeartHandshake className="h-4 w-4" /> Benefits &amp; Loans
+              <TabsTrigger className="flex items-center gap-1.5" value="benefits">
+                <HeartHandshake className="h-3.5 w-3.5" /> Benefits &amp; Loans
               </TabsTrigger>
-              <TabsTrigger
-                value="requests"
-                className="data-[state=active]:border-primary data-[state=active]:bg-muted/80 rounded-md px-4 py-2 text-xs sm:text-sm font-medium gap-1.5"
-              >
-                <Send className="h-4 w-4" /> All Requests
+              <TabsTrigger className="flex items-center gap-1.5" value="requests">
+                <Send className="h-3.5 w-3.5" /> All Requests
               </TabsTrigger>
             </TabsList>
 
             {/* Tab Contents */}
-            <TabsContent value="overview">
+            <TabsContent value="overview" className="mt-6">
               <EssOverviewTab
                 onOpenClock={() => setClockModalOpen(true)}
                 onOpenLeave={() => setLeaveModalOpen(true)}
@@ -160,19 +145,19 @@ export function EmployeeEss() {
               />
             </TabsContent>
 
-            <TabsContent value="schedule">
+            <TabsContent value="schedule" className="mt-6">
               <EssScheduleTab />
             </TabsContent>
 
-            <TabsContent value="leave">
+            <TabsContent value="leave" className="mt-6">
               <EssLeaveTab />
             </TabsContent>
 
-            <TabsContent value="benefits">
+            <TabsContent value="benefits" className="mt-6">
               <EssBenefitsTab />
             </TabsContent>
 
-            <TabsContent value="requests">
+            <TabsContent value="requests" className="mt-6">
               <EssRequestCenterTab />
             </TabsContent>
           </Tabs>
