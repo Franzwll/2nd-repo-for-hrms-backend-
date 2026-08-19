@@ -13,7 +13,7 @@ import {
 
 import { PublicShell } from "@/components/public/PublicShell";
 import { Card, CardContent } from "@/components/ui/card";
-import { company } from "@/data/company";
+import { VALUE_BODIES, useCompany } from "@/lib/landing";
 
 export const Route = createFileRoute("/_landing/about")({
   head: () => ({
@@ -35,9 +35,13 @@ export const Route = createFileRoute("/_landing/about")({
 });
 
 const valueIcons: Record<string, React.ElementType> = {
+  Care: Heart,
+  Integrity: Shield,
+  Excellence: Star,
+  Teamwork: Users,
+  Hospitality: Heart,
   Warmth: Heart,
   Craft: Star,
-  Integrity: Shield,
   Growth: TrendingUp,
 };
 
@@ -81,6 +85,8 @@ const historyMilestones = [
 ];
 
 function About() {
+  const { company } = useCompany();
+
   return (
     <PublicShell>
       <div className="mx-auto max-w-5xl px-4 py-14 md:px-8">
@@ -108,16 +114,16 @@ function About() {
         <h2 className="mt-12 font-display text-3xl font-semibold">Our Values</h2>
         <div className="gold-rule my-5" />
         <div className="grid gap-6 sm:grid-cols-2">
-          {company.values.map((v) => {
-            const Icon = valueIcons[v.title] ?? Star;
+          {company.values.map((value) => {
+            const Icon = valueIcons[value] ?? Star;
             return (
-              <div key={v.title} className="flex gap-4 rounded-md border border-border bg-card p-5">
+              <div key={value} className="flex gap-4 rounded-md border border-border bg-card p-5">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center">
                   <Icon className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-display text-xl font-semibold text-primary">{v.title}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{v.body}</p>
+                  <h3 className="font-display text-xl font-semibold text-primary">{value}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{VALUE_BODIES[value] ?? value}</p>
                 </div>
               </div>
             );

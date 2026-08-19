@@ -70,6 +70,7 @@ export type Position = {
   level: "Rank & File" | "Supervisory" | "Managerial" | "Executive";
   headcount: number;
   filled: number;
+  vacancies?: number;
   salaryBand: string;
   /** Numeric id in the backend `positions` table (Core HCM). */
   dbId?: number;

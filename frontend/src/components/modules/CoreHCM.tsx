@@ -1,41 +1,32 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
-  ArrowLeftRight,
   Award,
   Briefcase,
   Building2,
   CheckCircle2,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   DollarSign,
-  FileCheck,
-  FileText,
-  Filter,
+  Eye,
   GitBranch,
   History,
   Info,
-  Layers,
+  Pencil,
   Plus,
-  RotateCcw,
   Search,
   Send,
-  ShieldAlert,
   Sparkles,
   Trash2,
   TrendingUp,
   UserCheck,
-  UserPlus,
   Users,
   UserX,
+  X,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
-import { SortHead, useSort } from "@/components/portal/sortable";
-import { StatCard } from "@/components/portal/StatCard";
+import { Logo } from "@/components/brand/Logo";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,7 +41,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -61,7 +51,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -79,33 +68,33 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { DEFAULT_PAGE_SIZE, usePagination } from "@/hooks/usePagination";
+import { usePagination } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  departments as seedDepartments,
-  employees as seedEmployees,
-  orgChart as seedOrgChart,
-  positions as seedPositions,
-  salaryGrades as seedSalaryGrades,
-  hr3Recommendations as seedHr3Recommendations,
   type Department,
   type OrgNode,
   type Position,
   type Employee,
   type SalaryGrade,
-  type HR3Recommendation,
 } from "@/data/hr";
-import {
-  createProbationaryUserAccount,
-  deactivateUserAccount,
-  addAuditLog,
-  auditLogs,
-  type AuditEntry,
-} from "@/data/users";
 import { cn } from "@/lib/utils";
-import { requisitionStore, useRequisitions } from "@/data/requisitions";
+import { onHcmChanged, notifyHcmChanged } from "@/lib/hcm-sync";
+import { loadRecordDetail } from "@/lib/employeerecords";
+import { requisitionStore, useRequisitions, type Requisition } from "@/data/requisitions";
 import { type Role } from "@/lib/nav";
 import { buildProfile, Field, Section } from "./EmployeeRecords";
+import {
+  auditLogApi,
+  hcmApi,
+  requisitionsApi,
+  type ApiAuditLog,
+  type ApiDepartment,
+  type ApiEmployee,
+  type ApiHR3Recommendation,
+  type ApiOrgNode,
+  type ApiPosition,
+  type ApiSalaryGrade,
+} from "@/lib/api";
 
 const initialsOf = (name: string) =>
   name
@@ -118,15 +107,246 @@ const initialsOf = (name: string) =>
 const formatMoney = (val: number) =>
   new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(val);
 
+/** HRMS system logo (generic system mark, not the hotel brand). */
+function SystemLogo({ size = "sm", showText = false }: { size?: "sm" | "lg"; showText?: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-3">
+      <span
+        className={cn(
+          "grid shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-md ring-1 ring-primary/30",
+          size === "lg" ? "h-16 w-16" : "h-8 w-8",
+        )}
+      >
+        <Users className={size === "lg" ? "h-8 w-8" : "h-4 w-4"} />
+      </span>
+      {showText && (
+        <span className="flex flex-col leading-none">
+          <span className="font-display text-base font-bold uppercase tracking-[0.14em] text-foreground">
+            HRMS
+          </span>
+          <span className="mt-1 text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+            Human Resources
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
+
 /* =========================================================================
-   1. ORGANIZATIONAL CHART MODULE (Org Chart, Employee List, Lifecycle Logs)
+   SHARED CORE HCM DATA LAYER
+   ========================================================================= */
+
+type HcmData = {
+  employees: ApiEmployee[];
+  departments: ApiDepartment[];
+  positions: ApiPosition[];
+  salaryGrades: ApiSalaryGrade[];
+  orgChart: ApiOrgNode[];
+};
+
+let hcmData: HcmData = { employees: [], departments: [], positions: [], salaryGrades: [], orgChart: [] };
+let hcmFetched = false;
+const hcmListeners = new Set<() => void>();
+
+function emitHcm() {
+  hcmListeners.forEach((l) => l());
+}
+
+async function fetchHcmData() {
+  try {
+    const [emp, dep, pos, sg, org] = await Promise.all([
+      hcmApi.employees.list({ per_page: 500 }),
+      hcmApi.departments.list({ per_page: 500 }),
+      hcmApi.positions.list({ per_page: 500 }),
+      hcmApi.salaryGrades.list({ per_page: 500 }),
+      hcmApi.orgChart.list(),
+    ]);
+    hcmData = {
+      employees: emp.data ?? [],
+      departments: dep.data ?? [],
+      positions: pos.data ?? [],
+      salaryGrades: sg.data ?? [],
+      orgChart: org.data ?? [],
+    };
+  } catch (err) {
+    console.warn("Could not load Core HCM data.", err);
+  }
+  emitHcm();
+}
+
+function getHcmSnapshot() {
+  if (!hcmFetched && typeof window !== "undefined") {
+    hcmFetched = true;
+    fetchHcmData();
+  }
+  return hcmData;
+}
+
+function subscribeHcm(listener: () => void) {
+  hcmListeners.add(listener);
+  if (!hcmFetched) {
+    hcmFetched = true;
+    fetchHcmData();
+  }
+  return () => {
+    hcmListeners.delete(listener);
+  };
+}
+
+function useHcmData() {
+  return useSyncExternalStore(subscribeHcm, getHcmSnapshot);
+}
+
+async function refreshHcm() {
+  hcmFetched = false;
+  hcmData = { employees: [], departments: [], positions: [], salaryGrades: [], orgChart: [] };
+  await fetchHcmData();
+  notifyHcmChanged();
+}
+
+/* Keep Core HCM's local store in sync when other modules (Employee Records)
+   mutate shared employee data. */
+if (typeof window !== "undefined") {
+  onHcmChanged(() => {
+    hcmFetched = false;
+    fetchHcmData();
+  });
+}
+
+function toUiEmployee(e: ApiEmployee, employees: ApiEmployee[], sGrades: ApiSalaryGrade[]): Employee {
+  const supervisor = e.supervisor_employee_id
+    ? employees.find((x) => x.employee_id === e.supervisor_employee_id)
+    : undefined;
+  const sg = e.salary_grade_id ? sGrades.find((g) => g.salary_grade_id === e.salary_grade_id) : undefined;
+  const status = e.status === "On Leave" ? "Active" : (e.status as Employee["status"]) || "Active";
+  return {
+    id: e.employee_code,
+    name: e.full_name,
+    position: e.position_title,
+    department: e.department_name,
+    employmentType: e.employment_type === "Contractual" ? "Contractual" : e.employment_type,
+    dateHired: e.date_hired || "",
+    email: e.email,
+    phone: e.phone || "",
+    supervisor: supervisor?.full_name ?? "",
+    status,
+    salaryGrade: sg?.code ?? "SG-08",
+  };
+}
+
+type HR3Recommendation = {
+  id: string;
+  recommendationId: number;
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  currentType: "Probationary" | "Regular";
+  recommendationType: "Regularization" | "Promotion" | "Performance Review";
+  evaluationScore: number;
+  evaluator: string;
+  dateSubmitted: string;
+  status: "Pending HR Action" | "Approved & Processed" | "Deferred";
+  suggestedPosition?: string;
+  suggestedSalaryGrade?: string;
+  comments: string;
+};
+
+function toUiRecommendation(r: ApiHR3Recommendation): HR3Recommendation {
+  return {
+    id: r.id,
+    recommendationId: r.recommendation_id,
+    employeeId: r.employee_code ?? String(r.employee_id ?? ""),
+    employeeName: r.employee_name,
+    department: r.department,
+    currentType: r.current_employment_type === "Regular" ? "Regular" : "Probationary",
+    recommendationType: r.recommendation_type,
+    evaluationScore: r.evaluation_score,
+    evaluator: r.evaluator,
+    dateSubmitted: r.date_submitted ?? "",
+    status: r.status,
+    ...(r.suggested_position ? { suggestedPosition: r.suggested_position } : {}),
+    ...(r.suggested_salary_grade ? { suggestedSalaryGrade: r.suggested_salary_grade } : {}),
+    comments: r.comments ?? "",
+  };
+}
+
+function toUiDepartment(d: ApiDepartment): Department {
+  return {
+    code: d.code,
+    name: d.name,
+    description: d.description || "",
+    head: d.head || "Unassigned",
+    staff: d.staff_count ?? 0,
+    openRequisitions: 0,
+    budget: Number(d.budget) || 0,
+  };
+}
+
+function toUiPosition(p: ApiPosition, sGrades: ApiSalaryGrade[]): Position {
+  const sg = p.salary_grade_id ? sGrades.find((g) => g.salary_grade_id === p.salary_grade_id) : undefined;
+  return {
+    id: p.position_code,
+    title: p.title,
+    department: p.department_name || "",
+    level: (p.level as Position["level"]) || "Rank & File",
+    headcount: p.headcount,
+    filled: p.filled_count,
+    vacancies: Math.max(0, (p.headcount ?? 0) - (p.filled_count ?? 0)),
+    salaryBand: sg ? `${sg.code} (${formatMoney(Number(sg.min_salary))} – ${formatMoney(Number(sg.max_salary))})` : p.salary_grade || "",
+  };
+}
+
+function toUiSalaryGrade(g: ApiSalaryGrade): SalaryGrade {
+  return {
+    id: g.code,
+    code: g.code,
+    title: g.title,
+    minSalary: Number(g.min_salary),
+    maxSalary: Number(g.max_salary),
+    currency: g.currency_code,
+    level: (g.level as SalaryGrade["level"]) || "Rank & File",
+    notes: g.notes || "",
+  };
+}
+
+function buildOrgTree(orgNodes: ApiOrgNode[], employees: ApiEmployee[]): OrgNode {
+  const gm = employees.find((e) => e.position_title === "General Manager");
+  const root: OrgNode = {
+    name: gm?.full_name || "General Management",
+    title: gm?.position_title || "Hotel Leadership",
+    children: [],
+  };
+  for (const node of orgNodes) {
+    const staff = employees.filter((e) => e.department_id === node.department_id);
+    const head = node.head;
+    root.children!.push({
+      name: head?.full_name || node.name,
+      title: head?.position_title || node.name,
+      children: staff
+        .filter((e) => e.employee_id !== head?.employee_id)
+        .map((e) => ({ name: e.full_name, title: e.position_title })),
+    });
+  }
+  return root;
+}
+
+/* =========================================================================
+   1. ORGANIZATIONAL CHART MODULE
    ========================================================================= */
 
 export function OrgChartModule({ role = "admin" }: { role?: Role }) {
-  const [activeTab, setActiveTab] = useState<"org" | "employees" | "logs">("org");
+  const [activeTab, setActiveTab] = useState<"org" | "employees" | "logs">(() => {
+    const saved = typeof window !== "undefined" ? window.sessionStorage.getItem("hcm-org-tab") : null;
+    const valid = saved === "org" || saved === "employees" || saved === "logs" ? saved : "org";
+    return role !== "superadmin" && valid === "logs" ? "employees" : valid;
+  });
   const [empSearch, setEmpSearch] = useState("");
 
-  /** Jump to the Employee List tab with the chosen employee pre-searched. */
+  useEffect(() => {
+    window.sessionStorage.setItem("hcm-org-tab", activeTab);
+  }, [activeTab]);
+
   const viewEmployeeInList = (name: string) => {
     setEmpSearch(name);
     setActiveTab("employees");
@@ -140,30 +360,22 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
         description="Visualize reporting hierarchy, manage employee regularization & promotions, and track lifecycle transitions."
       />
 
-      {/* ICON-STYLED TABS AT TOP OF SECTION */}
       <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
         <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
-          <TabsTrigger
-            value="org"
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
-          >
+          <TabsTrigger value="org" className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer">
             <GitBranch className="mr-1.5 h-4 w-4" /> Org Chart
           </TabsTrigger>
-          <TabsTrigger
-            value="employees"
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
-          >
+          <TabsTrigger value="employees" className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer">
             <Users className="mr-1.5 h-4 w-4" /> Employee List
           </TabsTrigger>
-          <TabsTrigger
-            value="logs"
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
-          >
-            <History className="mr-1.5 h-4 w-4" /> Lifecycle Logs
-          </TabsTrigger>
+          {role === "superadmin" && (
+            <TabsTrigger value="logs" className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer">
+              <History className="mr-1.5 h-4 w-4" /> Lifecycle Logs
+            </TabsTrigger>
+          )}
         </TabsList>
 
-<TabsContent value="org" className="space-y-6">
+        <TabsContent value="org" className="space-y-6">
           <OrgChartVisualizer onViewEmployee={viewEmployeeInList} />
         </TabsContent>
 
@@ -171,30 +383,42 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
           <EmployeeListManager role={role} empSearch={empSearch} onEmpSearchChange={setEmpSearch} />
         </TabsContent>
 
-        <TabsContent value="logs" className="space-y-6">
-          <LifecycleLogsViewer />
-        </TabsContent>
+        {role === "superadmin" && (
+          <TabsContent value="logs" className="space-y-6">
+            <LifecycleLogsViewer />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
 }
 
-/* --- Org Chart Visualizer Sub-Component --- */
+/* --- Org Chart Visualizer --- */
 function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string) => void }) {
+  const hcm = useHcmData();
   const [selectedNode, setSelectedNode] = useState<OrgNode | null>(null);
   const [scale, setScale] = useState(0.58);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef<{ x: number; y: number; offsetX: number; offsetY: number; moved: boolean } | null>(null);
-  const selectedEmployee = seedEmployees.find((employee) => employee.name === selectedNode?.name);
-  const selectedDepartment = seedDepartments.find(
+
+  const employees = useMemo(() => hcm.employees.map((e) => toUiEmployee(e, hcm.employees, hcm.salaryGrades)), [hcm]);
+  const departments = useMemo(() => hcm.departments.map(toUiDepartment), [hcm]);
+  const orgTree = useMemo(() => buildOrgTree(hcm.orgChart, hcm.employees), [hcm]);
+
+  const selectedEmployee = employees.find((employee) => employee.name === selectedNode?.name);
+  const selectedDepartment = departments.find(
     (d) => d.head === selectedNode?.name || d.name === selectedEmployee?.department,
   );
   const departmentStaff = selectedDepartment
-    ? seedEmployees.filter((employee) => employee.department === selectedDepartment.name)
+    ? employees.filter(
+        (employee) =>
+          employee.department === selectedDepartment.name &&
+          employee.name !== selectedDepartment.head
+      )
     : [];
   const headEmployee = selectedDepartment
-    ? seedEmployees.find((employee) => employee.name === selectedDepartment.head)
+    ? employees.find((employee) => employee.name === selectedDepartment.head)
     : null;
 
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -229,16 +453,19 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
     <Card className="border-border/70 shadow-sm">
       <CardContent className="p-6">
         <div className="mb-6 border-b border-border/60 pb-4">
-          <h2 className="font-display text-xl font-semibold">Hierarchy Chart</h2>
+          <h2 className="flex items-center gap-3 font-display text-xl font-semibold">
+            <SystemLogo />
+            Hierarchy Chart
+          </h2>
           <p className="text-xs text-muted-foreground">
             Property reporting lines from General Management to department staff.
           </p>
         </div>
 
-<div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
           <div
             className="relative min-h-[35rem] touch-none overflow-hidden rounded-xl border border-border bg-[radial-gradient(var(--color-border)_1px,transparent_1px)] bg-[size:16px_16px] cursor-grab active:cursor-grabbing"
-onPointerDown={beginDrag}
+            onPointerDown={beginDrag}
             onPointerMove={drag}
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
@@ -247,7 +474,6 @@ onPointerDown={beginDrag}
               <div className="pointer-events-none absolute left-4 top-4 z-20 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground shadow-sm">Drag to explore · click any card for details</div>
             )}
 
-            {/* Internal Zoom Controls Floating Toolbar at Top Right */}
             <div className="absolute top-4 right-4 z-10 flex items-center gap-1 rounded-xl border border-border/80 bg-card/95 backdrop-blur-md p-1 shadow-lg">
               <Button size="icon" variant="ghost" className="h-7 w-7 cursor-pointer" aria-label="Zoom out" onClick={() => setScale((value) => Math.max(0.35, value - 0.08))}><ZoomOut className="h-4 w-4" /></Button>
               <span className="min-w-10 text-center text-xs font-semibold">{Math.round(scale * 100)}%</span>
@@ -256,31 +482,69 @@ onPointerDown={beginDrag}
             </div>
 
             <div className="absolute left-1/2 top-8 origin-top" style={{ transform: `translate(calc(-50% + ${offset.x}px), ${offset.y}px) scale(${scale})`, transition: dragStart.current ? "none" : "transform 150ms ease-out" }}>
-              <div className="min-w-[980px] py-4"><OrgTree node={seedOrgChart} root onSelect={setSelectedNode} /></div>
+              <div className="min-w-[980px] py-6">
+                <div className="mb-16 flex justify-center">
+                  <SystemLogo size="lg" showText />
+                </div>
+                <OrgTree
+                  node={orgTree}
+                  root
+                  selectedName={selectedNode?.name ?? null}
+                  onSelect={setSelectedNode}
+                />
+              </div>
             </div>
           </div>
 
-<aside className="space-y-4 rounded-xl border border-border bg-muted/25 p-4">
+          <aside className="space-y-4 rounded-xl border border-border bg-muted/25 p-4">
             {selectedDepartment ? (
               <div>
                 <p className="eyebrow">Department overview</p>
                 <h3 className="mt-1 font-display text-2xl font-semibold">{selectedDepartment.name}</h3>
                 <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{selectedDepartment.description}</p>
 
-                {/* Head Supervisor Card */}
-                <button
-                  type="button"
-                  onClick={() => onViewEmployee(selectedDepartment.head)}
-                  className="mt-4 w-full text-left rounded-xl border border-primary/30 bg-card p-3 shadow-xs transition-all hover:border-primary hover:bg-primary/5 hover:shadow-md cursor-pointer group"
-                >
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Head supervisor</p>
-                  <p className="mt-1 text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{selectedDepartment.head}</p>
-                  <p className="text-xs text-muted-foreground">{headEmployee?.position ?? "Department Head"}</p>
-                </button>
+                <div className="mt-4 w-full rounded-xl border border-primary/30 bg-card p-3 shadow-xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Head supervisor</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">{selectedDepartment.head}</p>
+                      <p className="text-xs text-muted-foreground">{headEmployee?.position ?? "Department Head"}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 shrink-0 px-2 text-xs text-primary hover:bg-primary/10"
+                      onClick={() => onViewEmployee(selectedDepartment.head)}
+                    >
+                      <Eye className="mr-1 h-3.5 w-3.5" /> View
+                    </Button>
+                  </div>
+                </div>
 
                 <div className="mt-4 flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Team members</p><Badge variant="secondary">{departmentStaff.length}</Badge></div>
                 <div className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1">
-                  {departmentStaff.map((employee) => <button key={employee.id} type="button" onClick={() => onViewEmployee(employee.name)} className="flex w-full items-center justify-between rounded-md bg-card px-2.5 py-2 text-left text-xs transition-colors hover:bg-primary/5 cursor-pointer"><span><span className="block font-medium">{employee.name}</span><span className="text-muted-foreground">{employee.position}</span></span><span className="text-primary font-medium">View</span></button>)}
+                  {departmentStaff.length > 0 ? (
+                    departmentStaff.map((employee) => (
+                      <div key={employee.id} className="flex w-full items-center justify-between rounded-md bg-card px-2.5 py-2 text-left text-xs">
+                        <span>
+                          <span className="block font-medium">{employee.name}</span>
+                          <span className="text-muted-foreground">{employee.position}</span>
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs text-primary hover:bg-primary/10"
+                          onClick={() => onViewEmployee(employee.name)}
+                        >
+                          <Eye className="mr-1 h-3.5 w-3.5" /> View
+                        </Button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-md border border-dashed border-border p-3 text-center text-xs text-muted-foreground">
+                      No current employees assigned to this department yet.
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -295,54 +559,82 @@ onPointerDown={beginDrag}
   );
 }
 
-function OrgNodeCard({ node, root = false, onSelect }: { node: OrgNode; root?: boolean; onSelect: (n: OrgNode) => void }) {
+function OrgNodeCard({
+  node,
+  selected = false,
+  onSelect,
+}: {
+  node: OrgNode;
+  selected?: boolean;
+  onSelect: (n: OrgNode) => void;
+}) {
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(node)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect(node);
+        }
+      }}
       className={cn(
-        "group relative inline-flex min-w-[200px] flex-col items-center rounded-xl border px-4 py-3.5 text-center shadow-md transition-all cursor-pointer hover:scale-[1.03] hover:border-primary hover:ring-2 hover:ring-gold/60 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        root ? "border-primary bg-primary/10 ring-2 ring-primary/40" : "border-border/80 bg-card"
+        "group relative inline-flex min-w-[200px] cursor-pointer flex-col items-center rounded-xl border px-4 py-3.5 text-center shadow-md transition-all hover:scale-[1.03] hover:border-primary hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        selected
+          ? "border-2 border-primary shadow-lg"
+          : "border-border/80 bg-card"
       )}
     >
-      <Avatar className="h-11 w-11 shadow-xs border border-border/60">
-        <AvatarFallback className={cn("text-xs font-bold", root ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground")}>
+      <Avatar className="h-11 w-11 border border-border/60 shadow-xs">
+        <AvatarFallback className="bg-secondary text-xs font-bold text-foreground">
           {initialsOf(node.name)}
         </AvatarFallback>
       </Avatar>
       <p className="mt-2 text-sm font-semibold leading-tight text-foreground group-hover:text-primary transition-colors">{node.name}</p>
       <p className="text-xs text-muted-foreground">{node.title}</p>
-    </button>
+    </div>
   );
 }
 
-function OrgTree({ node, root = false, onSelect }: { node: OrgNode; root?: boolean; onSelect: (n: OrgNode) => void }) {
+function OrgTree({
+  node,
+  root = false,
+  selectedName,
+  onSelect,
+}: {
+  node: OrgNode;
+  root?: boolean;
+  selectedName?: string | null | undefined;
+  onSelect: (n: OrgNode) => void;
+}) {
+  const children = node.children ?? [];
   return (
     <div className="flex flex-col items-center">
-      <OrgNodeCard node={node} root={root} onSelect={onSelect} />
-      {node.children && node.children.length > 0 && (
-        <div className="flex flex-col items-center">
-          <div className="h-6 w-px bg-border" />
-          <div className="relative flex justify-center">
-            {node.children.length > 1 && (
-              <div className="absolute top-0 h-px bg-border" style={{ left: "15%", right: "15%" }} />
-            )}
-            <div className="flex gap-8 pt-6">
-              {node.children.map((child) => (
+      <OrgNodeCard node={node} selected={selectedName === node.name} onSelect={onSelect} />
+      {children.length > 0 && (
+        <>
+          <div className="h-6 w-[2px] bg-muted-foreground/70" />
+          <div className="relative">
+            {children.length > 1 && <div className="absolute inset-x-0 top-0 h-[2px] bg-muted-foreground/70" />}
+            <div className="flex gap-10">
+              {children.map((child) => (
                 <div key={child.name} className="relative flex flex-col items-center">
-                  <div className="absolute -top-6 h-6 w-px bg-border" />
-                  <OrgTree node={child} onSelect={onSelect} />
+                  <div className="absolute left-1/2 top-0 h-6 w-[2px] -translate-x-1/2 bg-muted-foreground/70" />
+                  <div className="pt-6">
+                    <OrgTree node={child} selectedName={selectedName} onSelect={onSelect} />
+                  </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
 }
 
-/* --- Employee List Manager Sub-Component --- */
+/* --- Employee List Manager --- */
 function EmployeeListManager({
   role,
   empSearch,
@@ -352,30 +644,116 @@ function EmployeeListManager({
   empSearch: string;
   onEmpSearchChange: (value: string) => void;
 }) {
-  const [empList, setEmpList] = useState<Employee[]>(seedEmployees);
+  const hcm = useHcmData();
+  const employeeIdByCode = useMemo(
+    () => new Map(hcm.employees.map((e) => [e.employee_code, e.employee_id])),
+    [hcm.employees]
+  );
+  const [empList, setEmpList] = useState<Employee[]>([]);
+
+  useEffect(() => {
+    setEmpList(hcm.employees.map((e) => toUiEmployee(e, hcm.employees, hcm.salaryGrades)));
+  }, [hcm]);
+
   const [empDeptFilter, setEmpDeptFilter] = useState("all");
   const [empStatusFilter, setEmpStatusFilter] = useState("all");
   const [empTypeFilter, setEmpTypeFilter] = useState("all");
 
   const [acknowledgedIds, setAcknowledgedIds] = useState<Set<string>>(new Set());
   const [showViewAllRecs, setShowViewAllRecs] = useState(false);
-  const [recommendations, setRecommendations] = useState<HR3Recommendation[]>(seedHr3Recommendations);
+  const [recommendations, setRecommendations] = useState<HR3Recommendation[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    hcmApi.hr3Recommendations
+      .list()
+      .then((res) => {
+        if (!cancelled) setRecommendations(res.data.map(toUiRecommendation));
+      })
+      .catch(() => {
+        if (!cancelled) setRecommendations([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const [recStatusFilter, setRecStatusFilter] = useState("all");
+  const [recTypeFilter, setRecTypeFilter] = useState("all");
+  const [recSearch, setRecSearch] = useState("");
+  const filteredRecs = recommendations.filter(
+    (r) =>
+      (recStatusFilter === "all" ||
+        (recStatusFilter === "Acknowledged" && acknowledgedIds.has(r.employeeId) && r.status === "Pending HR Action") ||
+        recStatusFilter === r.status) &&
+      (recTypeFilter === "all" || r.recommendationType === recTypeFilter) &&
+      (() => {
+        const q = recSearch.trim().toLowerCase();
+        return (
+          !q ||
+          r.id.toLowerCase().includes(q) ||
+          r.employeeName.toLowerCase().includes(q) ||
+          r.department.toLowerCase().includes(q) ||
+          String(r.evaluationScore).includes(q) ||
+          r.comments.toLowerCase().includes(q)
+        );
+      })()
+  );
+  const recPage = usePagination(filteredRecs);
 
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
   const [viewingEmpInfo, setViewingEmpInfo] = useState<Employee | null>(null);
+  const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
+  const [editEmpForm, setEditEmpForm] = useState({
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    email: "",
+    personalEmail: "",
+    phone: "",
+    address: "",
+    birthDate: "",
+    gender: "",
+    civilStatus: "",
+    nationality: "",
+    position: "",
+    department: "",
+    supervisor: "",
+    employmentType: "Regular" as Employee["employmentType"],
+    dateHired: "",
+    status: "Active" as string,
+    salaryGrade: "",
+    salaryStep: "",
+    sssNumber: "",
+    philhealthNumber: "",
+    pagibigNumber: "",
+    tinNumber: "",
+    emergencyName: "",
+    emergencyRelation: "",
+    emergencyPhone: "",
+  });
+  const [showEditEmpModal, setShowEditEmpModal] = useState(false);
+  const [pendingEmpUnsaved, setPendingEmpUnsaved] = useState(false);
+  const [origEmpForm, setOrigEmpForm] = useState({ ...editEmpForm });
+  const empHasChanges = JSON.stringify(editEmpForm) !== JSON.stringify(origEmpForm);
 
   const [showPromoteModal, setShowPromoteModal] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
+  const [showRegularizeModal, setShowRegularizeModal] = useState(false);
 
   const [newPosition, setNewPosition] = useState("");
   const [newSalaryGrade, setNewSalaryGrade] = useState("SG-10");
   const [promotionNotes, setPromotionNotes] = useState("");
+  const [promotionRecId, setPromotionRecId] = useState("");
+
+  const [regularizeRecId, setRegularizeRecId] = useState("");
+  const [regularizeNotes, setRegularizeNotes] = useState("");
 
   const [exitType, setExitType] = useState<"Resigned" | "Retired" | "Terminated">("Resigned");
   const [exitNotes, setExitNotes] = useState("");
 
-  const [pendingConfirm, setPendingConfirm] = useState<{ type: "save_promote" | "save_exit" | "regularize"; data?: any } | null>(null);
-  const [pendingUnsavedExit, setPendingUnsavedExit] = useState<{ target: "promote" | "exit" } | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<{ type: "save_promote" | "save_exit" | "save_regularize"; data?: any } | null>(null);
+  const [pendingUnsavedExit, setPendingUnsavedExit] = useState<{ target: "promote" | "exit" | "regularize" } | null>(null);
 
   const hasPendingRec = (empId: string) =>
     recommendations.some((r) => r.employeeId === empId && r.status === "Pending HR Action");
@@ -383,6 +761,18 @@ function EmployeeListManager({
   const isAcknowledged = (empId: string) => acknowledgedIds.has(empId);
 
   const canActOnEmployee = (empId: string) => isAcknowledged(empId) || !hasPendingRec(empId);
+
+  /** Pending performance evaluations (HR3 recommendations) usable for an action. */
+  const recommendationsFor = (empId: string, type: "Regularization" | "Promotion") =>
+    recommendations.filter(
+      (r) =>
+        r.employeeId === empId &&
+        r.status === "Pending HR Action" &&
+        (r.recommendationType === type || r.recommendationType === "Performance Review")
+    );
+
+  const regularizeOptions = selectedEmp ? recommendationsFor(selectedEmp.id, "Regularization") : [];
+  const promotionOptions = selectedEmp ? recommendationsFor(selectedEmp.id, "Promotion") : [];
 
   const filteredEmployees = empList.filter((e) => {
     const q = empSearch.trim().toLowerCase();
@@ -399,123 +789,232 @@ function EmployeeListManager({
   });
 
   const empPage = usePagination(filteredEmployees);
-  const deptOptions = Array.from(new Set(seedEmployees.map((e) => e.department))).sort();
+  const deptOptions = Array.from(new Set(empList.map((e) => e.department))).sort();
+  const positionOptions = hcm.positions.map((p) => p.title).sort();
+  const supervisorOptions = empList.map((e) => e.name).sort();
+  const salaryGradeOptions = hcm.salaryGrades.map((g) => g.code);
 
-  const executeRegularization = (emp: Employee) => {
-    const updated = empList.map((e) =>
-      e.id === emp.id ? { ...e, employmentType: "Regular" as const, status: "Active" as const } : e
-    );
-    setEmpList(updated);
-    createProbationaryUserAccount(emp);
-    addAuditLog({
-      user: role === "superadmin" ? "Super Admin" : "HR Admin",
-      role: role === "superadmin" ? "Super Admin" : "Admin",
-      action: `Passed HR3 Evaluation & Regularized employee ${emp.name} (${emp.id})`,
-      module: "Core HCM",
-      ipAddress: "192.168.10.22",
-      severity: "Info",
-      department: emp.department,
-      device: "Chrome on Windows",
-    });
+  const executeRegularization = async () => {
+    if (!selectedEmp) return;
+    const dbId = employeeIdByCode.get(selectedEmp.id);
+    if (!dbId) {
+      toast.error(`Could not resolve ${selectedEmp.id} in Core HCM.`);
+      return;
+    }
+    const rec = recommendations.find((r) => r.id === regularizeRecId);
+    if (!rec) {
+      toast.error("Select a performance evaluation to justify regularization.");
+      return;
+    }
+    try {
+      await hcmApi.employees.regularize(dbId, {
+        effective_date: new Date().toISOString().slice(0, 10),
+        recommendation_id: rec.recommendationId,
+        notes: regularizeNotes || `Regularized via performance evaluation (${rec.evaluationScore}%).`,
+      });
+      toast.success(`${selectedEmp.name} has passed evaluation and is now a Regular Employee! User account active.`);
+      await refreshHcm();
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      toast.error(status === 403 ? "You do not have permission to perform this action." : "Could not regularize employee.");
+      return;
+    }
 
     setRecommendations((prev) =>
-      prev.map((r) => (r.employeeId === emp.id ? { ...r, status: "Approved & Processed" as const } : r))
+      prev.map((r) => (r.id === rec.id ? { ...r, status: "Approved & Processed" as const } : r))
     );
 
-    toast.success(`${emp.name} has passed evaluation and is now a Regular Employee! User account active.`);
+    setShowRegularizeModal(false);
+    setSelectedEmp(null);
+    setRegularizeRecId("");
+    setRegularizeNotes("");
   };
 
-  const executePromotion = () => {
+  const executePromotion = async () => {
     if (!selectedEmp || !newPosition) return;
-    const oldPosition = selectedEmp.position;
-    const oldSalary = selectedEmp.salaryGrade || "SG-08";
-
-    const updated: Employee[] = empList.map((e) => {
-      if (e.id === selectedEmp.id) {
-        const history = e.promotionHistory || [];
-        return {
-          ...e,
-          position: newPosition,
-          salaryGrade: newSalaryGrade,
-          status: "Active" as const,
-          promotionHistory: [
-            ...history,
-            {
-              date: new Date().toISOString().slice(0, 10),
-              oldPosition,
-              newPosition,
-              oldSalaryGrade: oldSalary,
-              newSalaryGrade,
-              notes: promotionNotes || "HR3 Succession planning promotion",
-            },
-          ],
-        };
-      }
-      return e;
-    });
-
-    setEmpList(updated);
-    addAuditLog({
-      user: role === "superadmin" ? "Super Admin" : "HR Admin",
-      role: role === "superadmin" ? "Super Admin" : "Admin",
-      action: `Promoted ${selectedEmp.name} to ${newPosition} (${newSalaryGrade})`,
-      module: "Core HCM",
-      ipAddress: "192.168.10.22",
-      severity: "Info",
-      department: selectedEmp.department,
-      device: "Chrome on Windows",
-    });
+    const dbId = employeeIdByCode.get(selectedEmp.id);
+    if (!dbId) {
+      toast.error(`Could not resolve ${selectedEmp.id} in Core HCM.`);
+      return;
+    }
+    const pos = hcm.positions.find((p) => p.title === newPosition || p.position_code === newPosition);
+    const sg = hcm.salaryGrades.find((g) => g.code === newSalaryGrade);
+    if (!pos) {
+      toast.error(`Position "${newPosition}" does not exist in Core HCM.`);
+      return;
+    }
+    const rec = recommendations.find((r) => r.id === promotionRecId);
+    if (!rec) {
+      toast.error("Select a performance evaluation to justify this promotion.");
+      return;
+    }
+    try {
+      await hcmApi.employees.promote(dbId, {
+        effective_date: new Date().toISOString().slice(0, 10),
+        new_position_id: pos.position_id,
+        new_salary_grade_id: sg?.salary_grade_id,
+        recommendation_id: rec.recommendationId,
+        notes: promotionNotes || `Promotion via performance evaluation (${rec.evaluationScore}%)`,
+      });
+      toast.success(`Promoted ${selectedEmp.name} to ${newPosition}! Salary Grade updated.`);
+      await refreshHcm();
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      toast.error(status === 403 ? "You do not have permission to perform this action." : "Could not promote employee.");
+      return;
+    }
 
     setRecommendations((prev) =>
-      prev.map((r) => (r.employeeId === selectedEmp.id ? { ...r, status: "Approved & Processed" as const } : r))
+      prev.map((r) => (r.id === rec.id ? { ...r, status: "Approved & Processed" as const } : r))
     );
 
-    toast.success(`Promoted ${selectedEmp.name} to ${newPosition}! Salary Grade updated.`);
     setShowPromoteModal(false);
     setSelectedEmp(null);
     setNewPosition("");
     setPromotionNotes("");
+    setPromotionRecId("");
   };
 
-  // Exit Separation Handler
-  const executeExit = () => {
+  const executeExit = async () => {
     if (!selectedEmp) return;
-
-    const updated: Employee[] = empList.map((e) => {
-      if (e.id === selectedEmp.id) {
-        return {
-          ...e,
-          status: exitType as any,
-          exitDetails: {
-            exitType,
-            exitDate: new Date().toISOString().slice(0, 10),
-            clearanceStatus: "Pending" as const,
-            coeStatus: "Pending" as const,
-            notes: exitNotes || `Employee exit via ${exitType}`,
-          },
-        };
-      }
-      return e;
-    });
-
-    setEmpList(updated);
-    deactivateUserAccount(selectedEmp.email, `Exit Status: ${exitType}`);
-
-    addAuditLog({
-      user: role === "superadmin" ? "Super Admin" : "HR Admin",
-      role: role === "superadmin" ? "Super Admin" : "Admin",
-      action: `Processed Exit Status (${exitType}) for ${selectedEmp.name}. ESS User account deactivated.`,
-      module: "Core HCM",
-      ipAddress: "192.168.10.22",
-      severity: "Warning",
-      department: selectedEmp.department,
-      device: "Chrome on Windows",
-    });
-
-    toast.warning(`Exit processed for ${selectedEmp.name} (${exitType}). System user account disabled.`);
+    const dbId = employeeIdByCode.get(selectedEmp.id);
+    if (!dbId) {
+      toast.error(`Could not resolve ${selectedEmp.id} in Core HCM.`);
+      return;
+    }
+    try {
+      await hcmApi.employees.exit(dbId, {
+        effective_date: new Date().toISOString().slice(0, 10),
+        exit_type: exitType,
+        exit_date: new Date().toISOString().slice(0, 10),
+        notes: exitNotes || `Employee exit via ${exitType}`,
+      });
+      toast.warning(`Exit processed for ${selectedEmp.name} (${exitType}). System user account disabled.`);
+      await refreshHcm();
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      toast.error(status === 403 ? "You do not have permission to perform this action." : "Could not process exit.");
+      return;
+    }
     setShowExitModal(false);
     setSelectedEmp(null);
     setExitNotes("");
+  };
+
+  const executeSaveEmployee = async () => {
+    if (!editingEmp) return;
+    const dbId = employeeIdByCode.get(editingEmp.id);
+    if (!dbId) {
+      toast.error(`Could not resolve ${editingEmp.id} in Core HCM.`);
+      return;
+    }
+    const pos = hcm.positions.find((p) => p.title === editEmpForm.position);
+    const dept = hcm.departments.find((d) => d.name === editEmpForm.department);
+    const sg = hcm.salaryGrades.find((g) => g.code === editEmpForm.salaryGrade);
+    const sup = hcm.employees.find((x) => x.full_name === editEmpForm.supervisor);
+    if (!pos || !dept) {
+      toast.error("Please select a valid position and department.");
+      return;
+    }
+    try {
+      await hcmApi.employees.update(dbId, {
+        first_name: editEmpForm.firstName,
+        middle_name: editEmpForm.middleName || null,
+        last_name: editEmpForm.lastName,
+        email: editEmpForm.email,
+        personal_email: editEmpForm.personalEmail || null,
+        phone: editEmpForm.phone || null,
+        address: editEmpForm.address || null,
+        birth_date: editEmpForm.birthDate || null,
+        gender: editEmpForm.gender || null,
+        civil_status: editEmpForm.civilStatus || null,
+        nationality: editEmpForm.nationality || null,
+        position_id: pos.position_id,
+        department_id: dept.department_id,
+        supervisor_employee_id: sup?.employee_id ?? null,
+        employment_type: editEmpForm.employmentType,
+        date_hired: editEmpForm.dateHired,
+        status: editEmpForm.status,
+        salary_grade_id: sg?.salary_grade_id ?? null,
+        salary_step: editEmpForm.salaryStep || null,
+        sss_number: editEmpForm.sssNumber || null,
+        philhealth_number: editEmpForm.philhealthNumber || null,
+        pagibig_number: editEmpForm.pagibigNumber || null,
+        tin_number: editEmpForm.tinNumber || null,
+        emergency_contacts: editEmpForm.emergencyName
+          ? [
+              {
+                name: editEmpForm.emergencyName,
+                relationship: editEmpForm.emergencyRelation || null,
+                phone: editEmpForm.emergencyPhone || null,
+                address: null,
+                is_primary: 1,
+              },
+            ]
+          : [],
+      });
+      toast.success(`${editEmpForm.firstName} ${editEmpForm.lastName}'s profile updated.`);
+      await refreshHcm();
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      toast.error(status === 403 ? "You do not have permission to modify employees." : "Could not update employee.");
+      return;
+    }
+    setShowEditEmpModal(false);
+    setEditingEmp(null);
+  };
+
+  const openEditEmployee = async (e: Employee) => {
+    setEditingEmp(e);
+    const dbId = employeeIdByCode.get(e.id);
+    let api: ApiEmployee | undefined = hcm.employees.find((x) => x.employee_code === e.id);
+    if (dbId) {
+      try {
+        api = (await hcmApi.employees.get(dbId)).data;
+      } catch {
+        /* fall back to the roster snapshot */
+      }
+    }
+    const emergency =
+      api?.emergency_contacts?.find((c) => c.is_primary) ?? api?.emergency_contacts?.[0];
+    const sup = api?.supervisor_employee_id
+      ? hcm.employees.find((x) => x.employee_id === api.supervisor_employee_id)
+      : undefined;
+    const sg = api?.salary_grade_id
+      ? hcm.salaryGrades.find((g) => g.salary_grade_id === api.salary_grade_id)
+      : undefined;
+    const nameParts = e.name.split(" ");
+    const form = {
+      firstName: api?.first_name ?? nameParts[0] ?? "",
+      middleName: api?.middle_name ?? "",
+      lastName: api?.last_name ?? nameParts.slice(1).join(" "),
+      email: api?.email ?? e.email,
+      personalEmail: api?.personal_email ?? "",
+      phone: api?.phone ?? e.phone,
+      address: api?.address ?? "",
+      birthDate: api?.birth_date ?? "",
+      gender: api?.gender ?? "",
+      civilStatus: api?.civil_status ?? "",
+      nationality: api?.nationality ?? "",
+      position: api?.position_title ?? e.position,
+      department: api?.department_name ?? e.department,
+      supervisor: sup?.full_name ?? e.supervisor,
+      employmentType: (api?.employment_type ?? e.employmentType) as Employee["employmentType"],
+      dateHired: api?.date_hired ?? e.dateHired,
+      status: api?.status ?? e.status,
+      salaryGrade: sg?.code ?? e.salaryGrade ?? "",
+      salaryStep: api?.salary_step ?? "",
+      sssNumber: api?.sss_number ?? "",
+      philhealthNumber: api?.philhealth_number ?? "",
+      pagibigNumber: api?.pagibig_number ?? "",
+      tinNumber: api?.tin_number ?? "",
+      emergencyName: emergency?.name ?? "",
+      emergencyRelation: emergency?.relationship ?? "",
+      emergencyPhone: emergency?.phone ?? "",
+    };
+    setEditEmpForm(form);
+    setOrigEmpForm(form);
+    setShowEditEmpModal(true);
   };
 
   return (
@@ -530,7 +1029,7 @@ function EmployeeListManager({
               </span>
               <div>
                 <CardTitle className="font-display text-lg font-semibold">
-                  Performance &amp; Development Handoff (HR3 Evaluations)
+                  Performance & Development Handoff (HR3 Evaluations)
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">
                   Prerequisites for employee Regularization and Promotion based on recent performance scores.
@@ -596,8 +1095,13 @@ function EmployeeListManager({
                       size="sm"
                       variant="outline"
                       className="h-7 text-xs border-gold/50 text-gold-foreground hover:bg-gold/10"
-                      onClick={() => {
-                        setAcknowledgedIds((prev) => new Set([...prev, rec.employeeId]));
+                      onClick={async () => {
+                        try {
+                          await hcmApi.hr3Recommendations.acknowledge(rec.recommendationId);
+                          setAcknowledgedIds((prev) => new Set([...prev, rec.employeeId]));
+                        } catch {
+                          toast.error("Could not acknowledge the evaluation. Please try again.");
+                        }
                       }}
                     >
                       <UserCheck className="mr-1 h-3.5 w-3.5" /> Acknowledge
@@ -617,20 +1121,53 @@ function EmployeeListManager({
 
       {/* VIEW ALL HR3 RECOMMENDATIONS DIALOG */}
       <Dialog open={showViewAllRecs} onOpenChange={setShowViewAllRecs}>
-        <DialogContent className="sm:max-w-3xl">
+        <DialogContent className="sm:max-w-6xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-gold" />
-              All Performance &amp; Development Handoff Requests
+              All Performance & Development Handoff Requests
             </DialogTitle>
             <DialogDescription>
               Full list of HR3 evaluation recommendations sent to Core HCM for action.
             </DialogDescription>
           </DialogHeader>
-          <div className="overflow-x-auto">
+          <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+            <div className="relative min-w-[14rem] flex-1 sm:max-w-xs">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-8 pl-8 text-xs"
+                placeholder="Search employee, ID, department…"
+                value={recSearch}
+                onChange={(e) => setRecSearch(e.target.value)}
+              />
+            </div>
+            <Select value={recStatusFilter} onValueChange={setRecStatusFilter}>
+              <SelectTrigger className="h-8 w-44 text-xs bg-card">
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="Pending HR Action">Pending HR Action</SelectItem>
+                <SelectItem value="Acknowledged">Acknowledged</SelectItem>
+                <SelectItem value="Approved & Processed">Approved & Processed</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={recTypeFilter} onValueChange={setRecTypeFilter}>
+              <SelectTrigger className="h-8 w-44 text-xs bg-card">
+                <SelectValue placeholder="All types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                <SelectItem value="Regularization">Regularization</SelectItem>
+                <SelectItem value="Promotion">Promotion</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="min-w-0">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Evaluation ID</TableHead>
                   <TableHead>Employee</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Type</TableHead>
@@ -640,8 +1177,9 @@ function EmployeeListManager({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recommendations.map((rec) => (
+                {recPage.pageItems.map((rec) => (
                   <TableRow key={rec.id}>
+                    <TableCell className="font-mono text-xs font-semibold text-muted-foreground">{rec.id}</TableCell>
                     <TableCell className="font-semibold text-sm">{rec.employeeName}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{rec.department}</TableCell>
                     <TableCell>
@@ -679,16 +1217,23 @@ function EmployeeListManager({
               </TableBody>
             </Table>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowViewAllRecs(false)}>Close</Button>
-          </DialogFooter>
+          <div className="mt-3">
+            <TablePagination
+              page={recPage.page}
+              pageCount={recPage.pageCount}
+              from={recPage.from}
+              to={recPage.to}
+              total={recPage.total}
+              label="recommendations"
+              onPageChange={recPage.setPage}
+            />
+          </div>
         </DialogContent>
       </Dialog>
 
       {/* MAIN EMPLOYEE ROSTER CARD */}
       <Card className="border-border/70 shadow-sm">
         <CardContent className="p-6">
-          {/* SEARCH & FILTER CONTROLS (UNIFIED HEIGHT & STYLES) */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="flex items-center gap-2 font-display text-xl font-semibold"><Users className="h-5 w-5 text-primary" /> Employee Roster</h2>
@@ -700,11 +1245,22 @@ function EmployeeListManager({
               <div className="relative min-w-[14rem]">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  className="h-9 border-border bg-card pl-8 text-xs shadow-2xs"
+                  className="h-9 border-border bg-card pl-8 pr-8 text-xs shadow-2xs"
                   placeholder="Search name, ID, position…"
                   value={empSearch}
                   onChange={(e) => onEmpSearchChange(e.target.value)}
                 />
+                {empSearch && (
+                  <button
+                    type="button"
+                    aria-label="Clear search"
+                    title="Clear search"
+                    onClick={() => onEmpSearchChange("")}
+                    className="absolute right-2 top-1/2 grid h-5 w-5 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
               <Select value={empDeptFilter} onValueChange={setEmpDeptFilter}>
                 <SelectTrigger className="h-9 w-44 text-xs bg-card shadow-2xs">
@@ -749,7 +1305,7 @@ function EmployeeListManager({
                   <TableHead>Employee ID</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Department</TableHead>
-                  <TableHead>Position &amp; Grade</TableHead>
+                  <TableHead>Position & Grade</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Date Hired</TableHead>
                   <TableHead>Status</TableHead>
@@ -797,42 +1353,63 @@ function EmployeeListManager({
                       </Badge>
                     </TableCell>
 
-                    {/* DEDICATED COLUMN FOR VIEW INFO BUTTON */}
                     <TableCell className="text-center">
                       <Button
                         size="sm"
                         variant="outline"
                         className="h-8 px-2.5 text-xs bg-muted/30 hover:bg-primary/10 hover:text-primary hover:border-primary/40"
-                        onClick={() => setViewingEmpInfo(e)}
+                        onClick={() => {
+                          loadRecordDetail(e.id);
+                          setViewingEmpInfo(e);
+                        }}
                       >
                         <Info className="mr-1.5 h-3.5 w-3.5 text-primary" /> View Info
                       </Button>
                     </TableCell>
 
-                    {/* ACTIONS COLUMN — Regularize & Promote gated by acknowledgement */}
                     <TableCell className="text-right">
                       <div className="flex justify-end items-center gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 px-2 text-xs"
+                          onClick={() => openEditEmployee(e)}
+                        >
+                          <Pencil className="mr-1 h-3 w-3" /> Edit
+                        </Button>
+
                         {e.employmentType === "Probationary" && e.status === "Active" && canActOnEmployee(e.id) && (
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-8 px-2 text-xs border-success/50 text-success hover:bg-success/10"
-                            onClick={() => setPendingConfirm({ type: "regularize", data: e })}
+                            onClick={() => {
+                              setSelectedEmp(e);
+                              setRegularizeRecId(recommendationsFor(e.id, "Regularization")[0]?.id ?? "");
+                              setRegularizeNotes("");
+                              setShowRegularizeModal(true);
+                            }}
                           >
                             <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Regularize
                           </Button>
                         )}
 
-                        {/* PROMOTE — only for Active Regular employees, and only if acknowledged (or no pending rec) */}
                         {e.status === "Active" && e.employmentType !== "Probationary" && canActOnEmployee(e.id) && (
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-8 px-2 text-xs"
+                            disabled={recommendationsFor(e.id, "Promotion").length === 0}
+                            title={
+                              recommendationsFor(e.id, "Promotion").length === 0
+                                ? "No performance evaluation on file — required before promoting."
+                                : undefined
+                            }
                             onClick={() => {
                               setSelectedEmp(e);
                               setNewPosition(e.position);
                               setNewSalaryGrade(e.salaryGrade || "SG-10");
+                              setPromotionRecId(recommendationsFor(e.id, "Promotion")[0]?.id ?? "");
                               setShowPromoteModal(true);
                             }}
                           >
@@ -840,7 +1417,6 @@ function EmployeeListManager({
                           </Button>
                         )}
 
-                        {/* Locked hint when pending acknowledgement */}
                         {e.status === "Active" && hasPendingRec(e.id) && !isAcknowledged(e.id) && (
                           <span className="text-[10px] text-muted-foreground italic pr-1">Acknowledge first</span>
                         )}
@@ -878,7 +1454,7 @@ function EmployeeListManager({
         </CardContent>
       </Card>
 
-      {/* VIEW EMPLOYEE INFO MODAL (mirrors Employee Records 201 file, without documents & history) */}
+      {/* VIEW EMPLOYEE INFO MODAL */}
       <Dialog open={!!viewingEmpInfo} onOpenChange={(open) => !open && setViewingEmpInfo(null)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
           {viewingEmpInfo &&
@@ -950,7 +1526,267 @@ function EmployeeListManager({
         </DialogContent>
       </Dialog>
 
-      {/* PROMOTION MODAL WITH CONFIRMATIONS */}
+      {/* EDIT EMPLOYEE MODAL */}
+      <Dialog
+        open={showEditEmpModal}
+        onOpenChange={(open) => {
+          if (!open && empHasChanges) {
+            setPendingEmpUnsaved(true);
+          } else if (!open) {
+            setShowEditEmpModal(false);
+            setEditingEmp(null);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-primary" /> Edit Employee — {editingEmp?.name}
+            </DialogTitle>
+            <DialogDescription>Update all employee profile information in Core HCM.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 py-2 text-xs">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Personal Details</Label>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">First Name</Label>
+                  <Input value={editEmpForm.firstName} onChange={(e) => setEditEmpForm({ ...editEmpForm, firstName: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Middle Name</Label>
+                  <Input value={editEmpForm.middleName} onChange={(e) => setEditEmpForm({ ...editEmpForm, middleName: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Last Name</Label>
+                  <Input value={editEmpForm.lastName} onChange={(e) => setEditEmpForm({ ...editEmpForm, lastName: e.target.value })} className="text-xs" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Contact Information</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Company Email</Label>
+                  <Input type="email" value={editEmpForm.email} onChange={(e) => setEditEmpForm({ ...editEmpForm, email: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Personal Email</Label>
+                  <Input type="email" value={editEmpForm.personalEmail} onChange={(e) => setEditEmpForm({ ...editEmpForm, personalEmail: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Mobile Number</Label>
+                  <Input value={editEmpForm.phone} onChange={(e) => setEditEmpForm({ ...editEmpForm, phone: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Home Address</Label>
+                  <Input value={editEmpForm.address} onChange={(e) => setEditEmpForm({ ...editEmpForm, address: e.target.value })} className="text-xs" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Other Personal Information</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Birth Date</Label>
+                  <Input type="date" value={editEmpForm.birthDate} onChange={(e) => setEditEmpForm({ ...editEmpForm, birthDate: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Gender</Label>
+                  <Select value={editEmpForm.gender} onValueChange={(v) => setEditEmpForm({ ...editEmpForm, gender: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="Select gender" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Male">Male</SelectItem>
+                      <SelectItem value="Female">Female</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Civil Status</Label>
+                  <Select value={editEmpForm.civilStatus} onValueChange={(v) => setEditEmpForm({ ...editEmpForm, civilStatus: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="Select civil status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Single">Single</SelectItem>
+                      <SelectItem value="Married">Married</SelectItem>
+                      <SelectItem value="Widowed">Widowed</SelectItem>
+                      <SelectItem value="Separated">Separated</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Nationality</Label>
+                  <Input value={editEmpForm.nationality} onChange={(e) => setEditEmpForm({ ...editEmpForm, nationality: e.target.value })} className="text-xs" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Employment Information</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Position</Label>
+                  <Select value={editEmpForm.position} onValueChange={(v) => setEditEmpForm({ ...editEmpForm, position: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="Select position" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {positionOptions.map((p) => (
+                        <SelectItem key={p} value={p}>{p}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Department</Label>
+                  <Select value={editEmpForm.department} onValueChange={(v) => setEditEmpForm({ ...editEmpForm, department: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {deptOptions.map((d) => (
+                        <SelectItem key={d} value={d}>{d}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Immediate Supervisor</Label>
+                  <Select value={editEmpForm.supervisor} onValueChange={(v) => setEditEmpForm({ ...editEmpForm, supervisor: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="Select supervisor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">— None —</SelectItem>
+                      {supervisorOptions.map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Employment Type</Label>
+                  <Select value={editEmpForm.employmentType} onValueChange={(v: any) => setEditEmpForm({ ...editEmpForm, employmentType: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Regular">Regular</SelectItem>
+                      <SelectItem value="Probationary">Probationary</SelectItem>
+                      <SelectItem value="Contractual">Contractual</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Date Hired</Label>
+                  <Input type="date" value={editEmpForm.dateHired} onChange={(e) => setEditEmpForm({ ...editEmpForm, dateHired: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Status</Label>
+                  <Select value={editEmpForm.status} onValueChange={(v) => setEditEmpForm({ ...editEmpForm, status: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Active">Active</SelectItem>
+                      <SelectItem value="On Leave">On Leave</SelectItem>
+                      <SelectItem value="Resigned">Resigned</SelectItem>
+                      <SelectItem value="Retired">Retired</SelectItem>
+                      <SelectItem value="Terminated">Terminated</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Salary Grade</Label>
+                  <Select value={editEmpForm.salaryGrade} onValueChange={(v) => setEditEmpForm({ ...editEmpForm, salaryGrade: v })}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="Select salary grade" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">— None —</SelectItem>
+                      {salaryGradeOptions.map((g) => (
+                        <SelectItem key={g} value={g}>{g}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Salary Step</Label>
+                  <Input value={editEmpForm.salaryStep} onChange={(e) => setEditEmpForm({ ...editEmpForm, salaryStep: e.target.value })} className="text-xs" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Government IDs</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">SSS Number</Label>
+                  <Input value={editEmpForm.sssNumber} onChange={(e) => setEditEmpForm({ ...editEmpForm, sssNumber: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">PhilHealth Number</Label>
+                  <Input value={editEmpForm.philhealthNumber} onChange={(e) => setEditEmpForm({ ...editEmpForm, philhealthNumber: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Pag-IBIG MID</Label>
+                  <Input value={editEmpForm.pagibigNumber} onChange={(e) => setEditEmpForm({ ...editEmpForm, pagibigNumber: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">TIN</Label>
+                  <Input value={editEmpForm.tinNumber} onChange={(e) => setEditEmpForm({ ...editEmpForm, tinNumber: e.target.value })} className="text-xs" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Emergency Contact</Label>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Name</Label>
+                  <Input value={editEmpForm.emergencyName} onChange={(e) => setEditEmpForm({ ...editEmpForm, emergencyName: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Relationship</Label>
+                  <Input value={editEmpForm.emergencyRelation} onChange={(e) => setEditEmpForm({ ...editEmpForm, emergencyRelation: e.target.value })} className="text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Contact Number</Label>
+                  <Input value={editEmpForm.emergencyPhone} onChange={(e) => setEditEmpForm({ ...editEmpForm, emergencyPhone: e.target.value })} className="text-xs" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (empHasChanges) {
+                  setPendingEmpUnsaved(true);
+                } else {
+                  setShowEditEmpModal(false);
+                  setEditingEmp(null);
+                }
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={executeSaveEmployee}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* PROMOTION MODAL */}
       <Dialog
         open={showPromoteModal}
         onOpenChange={(open) => {
@@ -990,16 +1826,37 @@ function EmployeeListManager({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {seedSalaryGrades.map((sg) => (
-                    <SelectItem key={sg.id} value={sg.code}>
-                      {sg.code} ({sg.title} · {formatMoney(sg.minSalary)} – {formatMoney(sg.maxSalary)})
+                  {hcm.salaryGrades.map((sg) => (
+                    <SelectItem key={sg.code} value={sg.code}>
+                      {sg.code} ({sg.title} · {formatMoney(Number(sg.min_salary))} – {formatMoney(Number(sg.max_salary))})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Succession Justification &amp; Evaluation Notes</Label>
+              <Label className="text-xs">Performance Evaluation (HR3) — required</Label>
+              {promotionOptions.length > 0 ? (
+                <Select value={promotionRecId} onValueChange={setPromotionRecId}>
+                  <SelectTrigger className="text-xs">
+                    <SelectValue placeholder="Select an evaluation" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {promotionOptions.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.recommendationType} · {r.evaluationScore}% · {r.dateSubmitted}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+                  No pending performance evaluation on file. A completed HR3 evaluation is required before promoting.
+                </div>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Succession Justification & Evaluation Notes</Label>
               <Textarea
                 value={promotionNotes}
                 onChange={(e) => setPromotionNotes(e.target.value)}
@@ -1023,14 +1880,94 @@ function EmployeeListManager({
             >
               Cancel
             </Button>
-            <Button onClick={() => setPendingConfirm({ type: "save_promote" })}>
+            <Button onClick={() => setPendingConfirm({ type: "save_promote" })} disabled={!promotionRecId}>
               Save Promotion
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* EXIT MODAL WITH CONFIRMATIONS */}
+      {/* REGULARIZATION MODAL */}
+      <Dialog
+        open={showRegularizeModal}
+        onOpenChange={(open) => {
+          if (!open && (regularizeRecId || regularizeNotes)) {
+            setPendingUnsavedExit({ target: "regularize" });
+          } else {
+            setShowRegularizeModal(open);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-success" /> Regularize Employee — {selectedEmp?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Convert to Regular status based on a completed performance evaluation in Core HCM.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+              Current employment type: <strong>{selectedEmp?.employmentType}</strong> · Current position:{" "}
+              <strong>{selectedEmp?.position}</strong>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Performance Evaluation (HR3) — required</Label>
+              {regularizeOptions.length > 0 ? (
+                <Select value={regularizeRecId} onValueChange={setRegularizeRecId}>
+                  <SelectTrigger className="text-xs">
+                    <SelectValue placeholder="Select an evaluation" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {regularizeOptions.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.recommendationType} · {r.evaluationScore}% · {r.dateSubmitted}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+                  No pending performance evaluation on file. A completed HR3 evaluation is required before regularization.
+                </div>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Evaluation Notes</Label>
+              <Textarea
+                value={regularizeNotes}
+                onChange={(e) => setRegularizeNotes(e.target.value)}
+                placeholder="Performance evaluation summary..."
+                rows={3}
+                className="text-xs"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (regularizeRecId || regularizeNotes) {
+                  setPendingUnsavedExit({ target: "regularize" });
+                } else {
+                  setShowRegularizeModal(false);
+                  setSelectedEmp(null);
+                }
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => setPendingConfirm({ type: "save_regularize" })} disabled={!regularizeRecId}>
+              Confirm Regularization
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* EXIT MODAL */}
       <Dialog
         open={showExitModal}
         onOpenChange={(open) => {
@@ -1065,7 +2002,7 @@ function EmployeeListManager({
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs">Clearance &amp; Exit Notes</Label>
+              <Label className="text-xs">Clearance & Exit Notes</Label>
               <Textarea
                 value={exitNotes}
                 onChange={(e) => setExitNotes(e.target.value)}
@@ -1094,7 +2031,7 @@ function EmployeeListManager({
               Cancel
             </Button>
             <Button variant="destructive" onClick={() => setPendingConfirm({ type: "save_exit" })}>
-              Confirm Exit &amp; Deactivate Account
+              Confirm Exit & Deactivate Account
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1108,7 +2045,7 @@ function EmployeeListManager({
             <AlertDialogDescription>
               {pendingConfirm?.type === "save_promote" && `Are you sure you want to promote ${selectedEmp?.name} to ${newPosition}?`}
               {pendingConfirm?.type === "save_exit" && `Are you sure you want to process exit status (${exitType}) for ${selectedEmp?.name}? User account will be disabled.`}
-              {pendingConfirm?.type === "regularize" && `Are you sure you want to convert ${pendingConfirm?.data?.name} to Regular employee status?`}
+              {pendingConfirm?.type === "save_regularize" && `Are you sure you want to convert ${selectedEmp?.name} to Regular employee status based on the selected performance evaluation?`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1117,7 +2054,7 @@ function EmployeeListManager({
               onClick={() => {
                 if (pendingConfirm?.type === "save_promote") executePromotion();
                 if (pendingConfirm?.type === "save_exit") executeExit();
-                if (pendingConfirm?.type === "regularize") executeRegularization(pendingConfirm.data);
+                if (pendingConfirm?.type === "save_regularize") executeRegularization();
                 setPendingConfirm(null);
               }}
             >
@@ -1143,10 +2080,41 @@ function EmployeeListManager({
               onClick={() => {
                 if (pendingUnsavedExit?.target === "promote") setShowPromoteModal(false);
                 if (pendingUnsavedExit?.target === "exit") setShowExitModal(false);
+                if (pendingUnsavedExit?.target === "regularize") {
+                  setShowRegularizeModal(false);
+                  setSelectedEmp(null);
+                  setRegularizeRecId("");
+                  setRegularizeNotes("");
+                }
                 setPendingUnsavedExit(null);
               }}
             >
-              Discard &amp; Exit
+              Discard & Exit
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* CONFIRMATION ALERT DIALOG (UNSAVED EMP EDIT) */}
+      <AlertDialog open={pendingEmpUnsaved} onOpenChange={(open) => !open && setPendingEmpUnsaved(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-amber-600">Unsaved Changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes in this form. Are you sure you want to exit without saving?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingEmpUnsaved(false)}>Keep Editing</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                setShowEditEmpModal(false);
+                setEditingEmp(null);
+                setPendingEmpUnsaved(false);
+              }}
+            >
+              Discard & Exit
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1155,7 +2123,7 @@ function EmployeeListManager({
   );
 }
 
-/* --- Lifecycle Logs Viewer Sub-Component --- */
+/* --- Lifecycle Logs Viewer --- */
 type LifecycleLog = {
   id: string;
   timestamp: string;
@@ -1169,77 +2137,72 @@ type LifecycleLog = {
   details: string;
 };
 
-const seedLifecycleLogs: LifecycleLog[] = [
-  {
-    id: "LC-2026-001",
-    timestamp: "2026-08-05 14:30",
-    category: "Regularization",
-    employeeName: "Camille Ortega",
-    employeeId: "EMP-0004",
-    position: "Guest Relations Officer",
-    department: "Front Office",
-    actor: "Bullseur Santiago",
-    actorRole: "HR Admin",
-    details: "Passed HR3 6-month evaluation score 94.8%. Status upgraded from Probationary to Regular.",
-  },
-  {
-    id: "LC-2026-002",
-    timestamp: "2026-08-04 11:15",
-    category: "Promotion",
-    employeeName: "Marjun Devera",
-    employeeId: "EMP-0006",
-    position: "F&B Captain / Service Supervisor",
-    department: "Food & Beverage",
-    actor: "Super Admin",
-    actorRole: "Super Admin",
-    details: "Promoted from F&B Attendant to F&B Captain (SG-10). Succession planning evaluation passed with distinction (96.5%).",
-  },
-  {
-    id: "LC-2026-003",
-    timestamp: "2026-08-02 09:45",
-    category: "Resignation",
-    employeeName: "Mark Anthony Santos",
-    employeeId: "EMP-0009",
-    position: "Night Auditor",
-    department: "Front Office",
-    actor: "Bullseur Santiago",
-    actorRole: "HR Admin",
-    details: "Voluntary resignation submitted with 30-day clearance notice. ESS portal user account deactivated.",
-  },
-  {
-    id: "LC-2026-004",
-    timestamp: "2026-07-29 16:00",
-    category: "Termination",
-    employeeName: "John Raymond Flores",
-    employeeId: "EMP-0012",
-    position: "Security Guard",
-    department: "Security",
-    actor: "Super Admin",
-    actorRole: "Super Admin",
-    details: "Employment contract terminated following HR performance & disciplinary review. System access revoked.",
-  },
-  {
-    id: "LC-2026-005",
-    timestamp: "2026-07-25 10:20",
-    category: "Retirement",
-    employeeName: "Lourdes Bautista",
-    employeeId: "EMP-0003",
-    position: "Executive Housekeeper",
-    department: "Housekeeping",
-    actor: "Bullseur Santiago",
-    actorRole: "HR Admin",
-    details: "Statutory age retirement processed after 25 years of service. Final pay calculation queued to Payroll.",
-  },
-];
-
 function LifecycleLogsViewer() {
+  const hcm = useHcmData();
   const [filterType, setFilterType] = useState("all");
   const [filterDept, setFilterDept] = useState("all");
   const [search, setSearch] = useState("");
+  const [logs, setLogs] = useState<LifecycleLog[]>([]);
+  const [logsError, setLogsError] = useState("");
 
-  const deptOptions = Array.from(new Set(seedLifecycleLogs.map((l) => l.department))).sort();
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLogsError("");
+      try {
+        const res = await auditLogApi.list({ module: "Core HCM", per_page: 100 });
+        if (cancelled) return;
+        const employees = hcm.employees;
+        const relevant = (res.data ?? []).filter((a) => {
+          const act = a.action.toLowerCase();
+          return act.includes("regulariz") || act.includes("promot") || act.includes("exit");
+        });
+        const mapped: LifecycleLog[] = relevant.map((a) => {
+          const detailsText = a.details || a.action || "";
+          const category: LifecycleLog["category"] =
+            a.action.includes("regulariz") || a.action.includes("Regulariz")
+              ? "Regularization"
+              : a.action.includes("promot") || a.action.includes("Promot")
+              ? "Promotion"
+              : detailsText.includes("Retired")
+              ? "Retirement"
+              : detailsText.includes("Terminated")
+              ? "Termination"
+              : "Resignation";
+          const emp = employees.find((e) => e.employee_code === a.target_id);
+          return {
+            id: `LC-${a.audit_log_id}`,
+            timestamp: (a.occurred_at || a.timestamp || "").replace("T", " ").slice(0, 16),
+            category,
+            employeeName: emp?.full_name || a.details?.replace(/^(Regularized|Promoted|Exited)\s+/, "").split(" ")[0] || a.target_id || "Unknown",
+            employeeId: a.target_id || "—",
+            position: emp?.position_title || "—",
+            department: emp?.department_name || "—",
+            actor: a.user || a.role || "System",
+            actorRole: a.role || "System",
+            details: detailsText,
+          };
+        });
+        setLogs(mapped);
+      } catch (err) {
+        if (cancelled) return;
+        const status = (err as { status?: number }).status;
+        if (status === 403) {
+          setLogsError("Your account does not have Audit Logs permission, so lifecycle transitions cannot be loaded.");
+        } else {
+          setLogsError("Could not load lifecycle transition logs from the audit trail.");
+        }
+        setLogs([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hcm.employees]);
 
-  const filteredLogs = seedLifecycleLogs.filter((log) => {
+  const deptOptions = Array.from(new Set(logs.map((l) => l.department))).sort();
+
+  const filteredLogs = logs.filter((log) => {
     const q = search.toLowerCase();
     const matchesSearch =
       !q ||
@@ -1327,9 +2290,9 @@ function LifecycleLogsViewer() {
                 <TableHead>Timestamp</TableHead>
                 <TableHead>Action Category</TableHead>
                 <TableHead>Target Employee (Status Changed)</TableHead>
-                <TableHead>Position &amp; Department</TableHead>
+                <TableHead>Position & Department</TableHead>
                 <TableHead>HR Admin / Actor</TableHead>
-                <TableHead>Action Details &amp; Justification</TableHead>
+                <TableHead>Action Details & Justification</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1360,7 +2323,7 @@ function LifecycleLogsViewer() {
               {filteredLogs.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="py-8 text-center text-xs text-muted-foreground">
-                    No matching lifecycle transition log entries found.
+                    {logsError || "No matching lifecycle transition log entries found."}
                   </TableCell>
                 </TableRow>
               )}
@@ -1383,38 +2346,36 @@ function LifecycleLogsViewer() {
 }
 
 /* =========================================================================
-   2. DEPARTMENT & POSITION MODULE (Dept & Pos, Salary Grades, Requisitions)
+   2. DEPARTMENT & POSITION MODULE
    ========================================================================= */
 
 export function DeptPosModule({ role = "admin" }: { role?: Role }) {
-  const [activeTab, setActiveTab] = useState<"deptpos" | "salary" | "reqs">("deptpos");
+  const [activeTab, setActiveTab] = useState<"deptpos" | "salary" | "reqs">(() => {
+    const saved = typeof window !== "undefined" ? window.sessionStorage.getItem("hcm-deptpos-tab") : null;
+    return (saved === "deptpos" || saved === "salary" || saved === "reqs" ? saved : "deptpos") as "deptpos" | "salary" | "reqs";
+  });
+
+  useEffect(() => {
+    window.sessionStorage.setItem("hcm-deptpos-tab", activeTab);
+  }, [activeTab]);
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Core HCM · Organization Setup"
-        title="Department, Position &amp; Salary Grade Management"
+        title="Department, Position & Salary Grade Management"
         description="Configure property departments, define position headcounts, manage salary grade structures, and approve requisitions."
       />
 
       <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
         <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
-          <TabsTrigger
-            value="deptpos"
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
-          >
+          <TabsTrigger value="deptpos" className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer">
             <Building2 className="mr-1.5 h-4 w-4" /> Department and Position
           </TabsTrigger>
-          <TabsTrigger
-            value="salary"
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
-          >
+          <TabsTrigger value="salary" className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer">
             <DollarSign className="mr-1.5 h-4 w-4" /> Salary Grade Management
           </TabsTrigger>
-          <TabsTrigger
-            value="reqs"
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
-          >
+          <TabsTrigger value="reqs" className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer">
             <Send className="mr-1.5 h-4 w-4" /> Requisitions
           </TabsTrigger>
         </TabsList>
@@ -1435,18 +2396,25 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
   );
 }
 
-/* --- Department and Position Manager Sub-Component --- */
+/* --- Department and Position Manager --- */
 function DepartmentAndPositionManager({ role }: { role: Role }) {
-  const [deptList, setDeptList] = useState<Department[]>(seedDepartments);
-  const [posList, setPosList] = useState<Position[]>(seedPositions);
-  const [sGrades] = useState<SalaryGrade[]>(seedSalaryGrades);
+  const hcm = useHcmData();
+  const reqs = useRequisitions();
 
-  // Independent search bars per table
+  const deptList = useMemo<Department[]>(() => hcm.departments.map(toUiDepartment), [hcm]);
+  const posList = useMemo<Position[]>(() => hcm.positions.map((p) => toUiPosition(p, hcm.salaryGrades)), [hcm]);
+  const sGrades = useMemo<SalaryGrade[]>(() => hcm.salaryGrades.map(toUiSalaryGrade), [hcm]);
+  const employees = useMemo(() => hcm.employees.map((e) => toUiEmployee(e, hcm.employees, hcm.salaryGrades)), [hcm]);
+
+  const deptIdByCode = useMemo(() => new Map(hcm.departments.map((d) => [d.code, d.department_id])), [hcm]);
+  const posIdByCode = useMemo(() => new Map(hcm.positions.map((p) => [p.position_code, p.position_id])), [hcm]);
+  const deptIdByName = useMemo(() => new Map(hcm.departments.map((d) => [d.name, d.department_id])), [hcm]);
+  const sgIdByCode = useMemo(() => new Map(hcm.salaryGrades.map((g) => [g.code, g.salary_grade_id])), [hcm]);
+
   const [deptTableSearch, setDeptTableSearch] = useState("");
   const [posTableSearch, setPosTableSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("all");
 
-  // Filtered lists
   const filteredDepts = deptList.filter(
     (d) =>
       !deptTableSearch.trim() ||
@@ -1471,12 +2439,10 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
   const [isNewPos, setIsNewPos] = useState(false);
   const [isNewDept, setIsNewDept] = useState(false);
 
-  // Department Form
   const [deptCode, setDeptCode] = useState("");
   const [deptName, setDeptName] = useState("");
   const [deptHead, setDeptHead] = useState("");
 
-  // Position Form
   const [posTitle, setPosTitle] = useState("");
   const [posDept, setPosDept] = useState("Front Office");
   const [posLevel, setPosLevel] = useState<Position["level"]>("Rank & File");
@@ -1484,99 +2450,230 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
   const [posFilled, setPosFilled] = useState("3");
   const [posSGrade, setPosSGrade] = useState("SG-05");
 
-  // Confirmation Alert States
   const [pendingConfirmSave, setPendingConfirmSave] = useState<{ type: "dept" | "pos" } | null>(null);
   const [pendingUnsavedExit, setPendingUnsavedExit] = useState<{ target: "dept" | "pos" } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ type: "dept" | "pos"; id: number; name: string } | null>(null);
 
-  // Helper: derive department staff count dynamically by summing position filled counts under that department
+  /* Vacancy requisition dialog (per department) */
+  const [reqDialogDept, setReqDialogDept] = useState<string | null>(null);
+  const [reqPosition, setReqPosition] = useState("");
+  const [reqCount, setReqCount] = useState("1");
+  const [reqUrgency, setReqUrgency] = useState("Normal");
+  const [reqJustification, setReqJustification] = useState("");
+  const [reqCountEdits, setReqCountEdits] = useState<Record<string, string>>({});
+
+  const deptPositions = useMemo(
+    () => posList.filter((p) => p.department === reqDialogDept),
+    [posList, reqDialogDept]
+  );
+  const deptReqs = useMemo(
+    () => reqs.filter((r) => r.department === reqDialogDept),
+    [reqs, reqDialogDept]
+  );
+
+  const openReqDialog = (dept: Department) => {
+    const firstPos = posList.find((p) => p.department === dept.name);
+    setReqDialogDept(dept.name);
+    setReqPosition(firstPos?.title ?? "");
+    setReqCount(String(firstPos ? Math.max(1, firstPos.headcount - firstPos.filled) : 1));
+    setReqUrgency("Normal");
+    setReqJustification("");
+    const edits: Record<string, string> = {};
+    reqs.filter((r) => r.department === dept.name).forEach((r) => {
+      edits[r.id] = String(r.count);
+    });
+    setReqCountEdits(edits);
+  };
+
+  const onReqPositionChange = (title: string) => {
+    setReqPosition(title);
+    const p = deptPositions.find((x) => x.title === title);
+    setReqCount(String(p ? Math.max(1, p.headcount - p.filled) : 1));
+  };
+
+  const submitRequisition = async () => {
+    if (!reqDialogDept) return;
+    const deptId = deptIdByName.get(reqDialogDept);
+    const pos = deptPositions.find((x) => x.title === reqPosition);
+    if (!deptId || !pos) {
+      toast.error("Select a valid position within the department.");
+      return;
+    }
+    const count = Math.max(1, Number(reqCount) || 1);
+    try {
+      await requisitionsApi.create({
+        position_id: posIdByCode.get(pos.id),
+        position_title: pos.title,
+        department_id: deptId,
+        requested_count: count,
+        urgency: reqUrgency,
+        justification: reqJustification.trim() || `Vacancy requisition for ${pos.title}`,
+        status: "Pending",
+        requested_at: new Date().toISOString().slice(0, 10),
+      });
+      toast.success(`Requisition for ${count} × ${pos.title} submitted.`);
+      await requisitionStore.refresh();
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      toast.error(status === 403 ? "You do not have permission to create requisitions." : "Could not submit requisition.");
+    }
+  };
+
+  const saveReqCount = async (r: Requisition) => {
+    const next = Math.max(1, Number(reqCountEdits[r.id]) || 1);
+    try {
+      if (r.dbId) {
+        await requisitionsApi.update(r.dbId, { requested_count: next });
+      }
+      setReqCountEdits((prev) => ({ ...prev, [r.id]: String(next) }));
+      toast.success(`${r.id} updated to ${next} slot${next !== 1 ? "s" : ""}.`);
+      await requisitionStore.refresh();
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      toast.error(status === 403 ? "You do not have permission to edit requisitions." : "Could not update requisition.");
+    }
+  };
+
+  const [origDeptCode, setOrigDeptCode] = useState("");
+  const [origDeptName, setOrigDeptName] = useState("");
+  const [origDeptHead, setOrigDeptHead] = useState("");
+  const [origPosTitle, setOrigPosTitle] = useState("");
+  const [origPosDept, setOrigPosDept] = useState("");
+  const [origPosLevel, setOrigPosLevel] = useState<Position["level"]>("Rank & File");
+  const [origPosTarget, setOrigPosTarget] = useState("");
+  const [origPosSGrade, setOrigPosSGrade] = useState("");
+
+  const deptHasChanges = deptCode !== origDeptCode || deptName !== origDeptName || deptHead !== origDeptHead;
+  const posHasChanges = posTitle !== origPosTitle || posDept !== origPosDept || posLevel !== origPosLevel || posTarget !== origPosTarget || posSGrade !== origPosSGrade;
+
   const getDerivedStaffCount = (deptName: string) => {
     return posList.filter((p) => p.department === deptName).reduce((acc, curr) => acc + curr.filled, 0);
   };
 
-  // Helper: list candidate heads strictly belonging to the SAME department
   const getDeptSpecificHeads = (targetDeptName: string) => {
-    return seedEmployees.filter(
+    return employees.filter(
       (emp) => emp.status === "Active" && emp.department === targetDeptName
     );
   };
 
-
-  // Save Department Handler
-  const executeSaveDepartment = () => {
+  const executeSaveDepartment = async () => {
     if (!deptName || !deptCode) {
       toast.error("Department Name and Code are required.");
       return;
     }
 
-    if (isNewDept) {
-      const newD: Department = {
-        code: deptCode,
-        name: deptName,
-        description: "",
-        head: "Unassigned",
-        staff: 0,
-        openRequisitions: 0,
-        budget: 0,
-      };
-      setDeptList((prev) => [...prev, newD]);
-      toast.success(`Department ${deptName} created.`);
-    } else if (editingDept) {
-      setDeptList((prev) =>
-        prev.map((d) => (d.code === editingDept.code ? { ...d, code: deptCode, name: deptName, head: deptHead || d.head } : d))
-      );
-      toast.success(`Department ${deptName} updated.`);
+    try {
+      if (isNewDept) {
+        await hcmApi.departments.create({ code: deptCode, name: deptName, description: "" });
+        toast.success(`Department ${deptName} created.`);
+      } else if (editingDept) {
+        const dbId = deptIdByCode.get(editingDept.code);
+        if (!dbId) {
+          toast.error(`Could not resolve department ${editingDept.code} in Core HCM.`);
+          return;
+        }
+        const headEmp = employees.find((e) => e.name === deptHead && e.department === deptName);
+        await hcmApi.departments.update(dbId, {
+          code: deptCode,
+          name: deptName,
+          head_employee_id: headEmp ? hcm.employees.find((e) => e.full_name === deptHead)?.employee_id : null,
+        });
+        toast.success(`Department ${deptName} updated.`);
+      }
+      await refreshHcm();
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 422) {
+        const msg = (err as { errors?: Record<string, string[]> }).errors;
+        toast.error(msg ? Object.values(msg).flat()[0] : "Validation failed.");
+      } else if (status === 403) {
+        toast.error("You do not have permission to modify departments.");
+      } else {
+        toast.error("Could not save department.");
+      }
+      return;
     }
 
     setEditingDept(null);
     setIsNewDept(false);
   };
 
-  // Save Position Handler
-  const executeSavePosition = () => {
+  const executeDelete = async () => {
+    if (!pendingDelete) return;
+    try {
+      if (pendingDelete.type === "dept") {
+        await hcmApi.departments.remove(pendingDelete.id);
+        toast.success(`Department "${pendingDelete.name}" deleted.`);
+      } else if (pendingDelete.type === "pos") {
+        await hcmApi.positions.remove(pendingDelete.id);
+        toast.success(`Position "${pendingDelete.name}" deleted.`);
+      }
+      await refreshHcm();
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      toast.error(status === 422 ? (err as Error).message : "Could not delete. It may be in use.");
+      return;
+    }
+    setPendingDelete(null);
+  };
+
+  const executeSavePosition = async () => {
     if (!posTitle) {
       toast.error("Job position title is required.");
       return;
     }
 
-    const sgObj = sGrades.find((sg) => sg.code === posSGrade);
-    const bandLabel = sgObj ? `${posSGrade} (${formatMoney(sgObj.minSalary)} – ${formatMoney(sgObj.maxSalary)})` : posSGrade;
-
-    if (isNewPos) {
-      const newP: Position = {
-        id: `POS-0${posList.length + 1}`,
-        title: posTitle,
-        department: posDept,
-        level: posLevel,
-        headcount: Number(posTarget) || 1,
-        filled: Number(posFilled) || 0,
-        salaryBand: bandLabel,
-      };
-      setPosPosList((prev) => [...prev, newP]);
-      toast.success(`Position ${posTitle} added to ${posDept}.`);
-    } else if (editingPos) {
-      setPosPosList((prev) =>
-        prev.map((p) =>
-          p.id === editingPos.id
-            ? {
-                ...p,
-                title: posTitle,
-                department: posDept,
-                level: posLevel,
-                headcount: Number(posTarget),
-                filled: Number(posFilled),
-                salaryBand: bandLabel,
-              }
-            : p
-        )
-      );
-      toast.success(`Position ${posTitle} updated.`);
+    try {
+      if (isNewPos) {
+        const deptDbId = deptIdByName.get(posDept);
+        const sgDbId = sgIdByCode.get(posSGrade);
+        if (!deptDbId || !sgDbId) {
+          toast.error("Selected department or salary grade could not be resolved in Core HCM.");
+          return;
+        }
+        await hcmApi.positions.create({
+          title: posTitle,
+          department_id: deptDbId,
+          salary_grade_id: sgDbId,
+          level: posLevel,
+          headcount: Number(posTarget) || 1,
+        });
+        toast.success(`Position ${posTitle} added to ${posDept}.`);
+      } else if (editingPos) {
+        const dbId = posIdByCode.get(editingPos.id);
+        const deptDbId = deptIdByName.get(posDept);
+        const sgDbId = sgIdByCode.get(posSGrade);
+        if (!dbId || !deptDbId || !sgDbId) {
+          toast.error("Position, department, or salary grade could not be resolved in Core HCM.");
+          return;
+        }
+        await hcmApi.positions.update(dbId, {
+          position_code: editingPos.id,
+          title: posTitle,
+          department_id: deptDbId,
+          salary_grade_id: sgDbId,
+          level: posLevel,
+          headcount: Number(posTarget),
+        });
+        toast.success(`Position ${posTitle} updated.`);
+      }
+      await refreshHcm();
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 422) {
+        const msg = (err as { errors?: Record<string, string[]> }).errors;
+        toast.error(msg ? Object.values(msg).flat()[0] : "Validation failed.");
+      } else if (status === 403) {
+        toast.error("You do not have permission to modify positions.");
+      } else {
+        toast.error("Could not save position.");
+      }
+      return;
     }
 
     setEditingPos(null);
     setIsNewPos(false);
   };
-
-  const setPosPosList = setPosList;
 
   return (
     <div className="space-y-8">
@@ -1585,7 +2682,7 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
         <CardHeader className="border-b border-border/50 pb-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold"><Building2 className="h-4 w-4 text-primary" /> Hotel &amp; Restaurant Departments</CardTitle>
+              <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold"><Building2 className="h-4 w-4 text-primary" /> Hotel & Restaurant Departments</CardTitle>
               <p className="text-xs text-muted-foreground">
                 {filteredDepts.length} department{filteredDepts.length !== 1 ? "s" : ""} found
               </p>
@@ -1600,18 +2697,20 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                   onChange={(e) => setDeptTableSearch(e.target.value)}
                 />
               </div>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setDeptCode(`DEP-0${deptList.length + 1}`);
-                  setDeptName("");
-                  setDeptHead("");
-                  setIsNewDept(true);
-                  setEditingDept({ code: "", name: "", description: "", head: "Unassigned", staff: 0, openRequisitions: 0, budget: 0 });
-                }}
-              >
-                <Plus className="mr-1.5 h-4 w-4" /> Add Department
-              </Button>
+              {role === "superadmin" && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setDeptCode(`DEP-0${deptList.length + 1}`);
+                    setDeptName("");
+                    setDeptHead("");
+                    setIsNewDept(true);
+                    setEditingDept({ code: "", name: "", description: "", head: "Unassigned", staff: 0, openRequisitions: 0, budget: 0 });
+                  }}
+                >
+                  <Plus className="mr-1.5 h-4 w-4" /> Add Department
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -1645,21 +2744,47 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center pr-6">
-                      <div className="flex justify-center">
+                      <div className="flex justify-center gap-1.5">
+                        {role === "superadmin" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 text-xs"
+                            onClick={() => {
+                              setEditingDept(d);
+                              setDeptCode(d.code);
+                              setDeptName(d.name);
+                              setDeptHead(d.head);
+                              setOrigDeptCode(d.code);
+                              setOrigDeptName(d.name);
+                              setOrigDeptHead(d.head);
+                              setIsNewDept(false);
+                            }}
+                          >
+                            <Pencil className="mr-1 h-3 w-3" /> Edit
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-8 px-3 text-xs"
-                          onClick={() => {
-                            setEditingDept(d);
-                            setDeptCode(d.code);
-                            setDeptName(d.name);
-                            setDeptHead(d.head);
-                            setIsNewDept(false);
-                          }}
+                          className="h-8 px-2 text-xs border-primary/40 text-primary hover:bg-primary/10"
+                          onClick={() => openReqDialog(d)}
                         >
-                          Edit
+                          <Send className="mr-1 h-3 w-3" /> Requisition
                         </Button>
+                        {role === "superadmin" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              const dbId = deptIdByCode.get(d.code);
+                              if (dbId) setPendingDelete({ type: "dept", id: dbId, name: d.name });
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -1686,7 +2811,7 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
         <CardHeader className="border-b border-border/50 pb-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold"><Briefcase className="h-4 w-4 text-primary" /> Job Positions &amp; Salary Bands</CardTitle>
+              <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold"><Briefcase className="h-4 w-4 text-primary" /> Job Positions & Salary Bands</CardTitle>
               <p className="text-xs text-muted-foreground">
                 {filteredPositions.length} position{filteredPositions.length !== 1 ? "s" : ""} found
               </p>
@@ -1712,21 +2837,23 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                   ))}
                 </SelectContent>
               </Select>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setPosTitle("");
-                  setPosDept(deptList[0]?.name || "Front Office");
-                  setPosLevel("Rank & File");
-                  setPosTarget("5");
-                  setPosFilled("3");
-                  setPosSGrade("SG-05");
-                  setIsNewPos(true);
-                  setEditingPos({ id: "", title: "", department: "", level: "Rank & File", headcount: 5, filled: 3, salaryBand: "" });
-                }}
-              >
-                <Plus className="mr-1.5 h-4 w-4" /> Add Position
-              </Button>
+              {role === "superadmin" && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setPosTitle("");
+                    setPosDept(deptList[0]?.name || "Front Office");
+                    setPosLevel("Rank & File");
+                    setPosTarget("5");
+                    setPosFilled("3");
+                    setPosSGrade("SG-05");
+                    setIsNewPos(true);
+                    setEditingPos({ id: "", title: "", department: "", level: "Rank & File", headcount: 5, filled: 3, salaryBand: "" });
+                  }}
+                >
+                  <Plus className="mr-1.5 h-4 w-4" /> Add Position
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -1742,8 +2869,9 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                   <TableHead>Level</TableHead>
                   <TableHead className="text-center">Target Headcount</TableHead>
                   <TableHead className="text-center">Filled Staff</TableHead>
+                  <TableHead className="text-center">Vacancies</TableHead>
                   <TableHead>Assigned Salary Grade / Band</TableHead>
-                  <TableHead className="w-28 text-center pr-4">Actions</TableHead>
+                  {role === "superadmin" && <TableHead className="w-28 text-center pr-4">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1759,28 +2887,58 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                     </TableCell>
                     <TableCell className="text-center font-mono text-xs">{p.headcount}</TableCell>
                     <TableCell className="text-center font-mono text-xs font-semibold">{p.filled}</TableCell>
-                    <TableCell className="text-xs text-primary font-medium">{p.salaryBand}</TableCell>
-                    <TableCell className="text-center pr-4">
-                      <div className="flex justify-center">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 px-3 text-xs"
-                          onClick={() => {
-                            setEditingPos(p);
-                            setPosTitle(p.title);
-                            setPosDept(p.department);
-                            setPosLevel(p.level);
-                            setPosTarget(String(p.headcount));
-                            setPosFilled(String(p.filled));
-                            setPosSGrade(p.salaryBand.split(" ")[0] || "SG-05");
-                            setIsNewPos(false);
-                          }}
-                        >
-                          Edit
-                        </Button>
-                      </div>
+                    <TableCell className="text-center">
+                      <Badge
+                        variant={p.vacancies && p.vacancies > 0 ? "outline" : "secondary"}
+                        className={
+                          p.vacancies && p.vacancies > 0
+                            ? "border-gold/40 bg-gold/10 text-gold font-mono text-xs"
+                            : "font-mono text-xs"
+                        }
+                      >
+                        {p.vacancies ?? 0}
+                      </Badge>
                     </TableCell>
+                    <TableCell className="text-xs text-primary font-medium">{p.salaryBand}</TableCell>
+                    {role === "superadmin" && (
+                      <TableCell className="text-center pr-4">
+                        <div className="flex justify-center gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-3 text-xs"
+                            onClick={() => {
+                              setEditingPos(p);
+                              setPosTitle(p.title);
+                              setPosDept(p.department);
+                              setPosLevel(p.level);
+                              setPosTarget(String(p.headcount));
+                              setPosFilled(String(p.filled));
+                              setPosSGrade(p.salaryBand.split(" ")[0] || "SG-05");
+                              setOrigPosTitle(p.title);
+                              setOrigPosDept(p.department);
+                              setOrigPosLevel(p.level);
+                              setOrigPosTarget(String(p.headcount));
+                              setOrigPosSGrade(p.salaryBand.split(" ")[0] || "SG-05");
+                              setIsNewPos(false);
+                            }}
+                          >
+                            <Pencil className="mr-1 h-3 w-3" /> Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              const dbId = posIdByCode.get(p.id);
+                              if (dbId) setPendingDelete({ type: "pos", id: dbId, name: p.title });
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -1800,14 +2958,15 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
         </CardContent>
       </Card>
 
-      {/* EDIT / ADD DEPARTMENT MODAL WITH DYNAMIC POSITIONS & DERIVED STAFF */}
+      {/* EDIT / ADD DEPARTMENT MODAL */}
       <Dialog
         open={!!editingDept}
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && deptHasChanges) {
             setPendingUnsavedExit({ target: "dept" });
-          } else {
-            setEditingDept(editingDept);
+          } else if (!open) {
+            setEditingDept(null);
+            setIsNewDept(false);
           }
         }}
       >
@@ -1831,7 +2990,6 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
               </div>
             </div>
 
-            {/* DEPARTMENT HEAD SELECTION: HIDDEN ON ADD NEW DEPT, STRICTLY FILTERED TO SAME DEPT ON EDIT */}
             {!isNewDept && editingDept ? (
               <div className="space-y-1">
                 <Label className="text-xs">Department Head (Active {editingDept.name} Staff Only)</Label>
@@ -1860,7 +3018,6 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
               </div>
             )}
 
-            {/* DYNAMIC ASSOCIATED POSITIONS LISTING */}
             <div className="space-y-1.5 rounded-lg border p-3 bg-muted/20">
               <Label className="text-xs font-semibold">Associated Job Positions in {deptName || "Department"}:</Label>
               {posList.filter((p) => p.department === deptName).length > 0 ? (
@@ -1880,7 +3037,6 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
               )}
             </div>
 
-            {/* DERIVED STAFF COUNT (READ ONLY) */}
             <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
               <div>
                 <span className="font-semibold text-xs text-foreground">Total Staff Count (Derived):</span>
@@ -1893,7 +3049,17 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingUnsavedExit({ target: "dept" })}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (deptHasChanges) {
+                  setPendingUnsavedExit({ target: "dept" });
+                } else {
+                  setEditingDept(null);
+                  setIsNewDept(false);
+                }
+              }}
+            >
               Cancel
             </Button>
             <Button onClick={() => setPendingConfirmSave({ type: "dept" })}>
@@ -1903,14 +3069,15 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
         </DialogContent>
       </Dialog>
 
-      {/* EDIT / ADD POSITION MODAL WITH SALARY GRADE SELECTOR */}
+      {/* EDIT / ADD POSITION MODAL */}
       <Dialog
         open={!!editingPos}
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && posHasChanges) {
             setPendingUnsavedExit({ target: "pos" });
-          } else {
-            setEditingPos(editingPos);
+          } else if (!open) {
+            setEditingPos(null);
+            setIsNewPos(false);
           }
         }}
       >
@@ -1949,7 +3116,7 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Rank & File">Rank &amp; File</SelectItem>
+                    <SelectItem value="Rank & File">Rank & File</SelectItem>
                     <SelectItem value="Supervisory">Supervisory</SelectItem>
                     <SelectItem value="Managerial">Managerial</SelectItem>
                     <SelectItem value="Executive">Executive</SelectItem>
@@ -1965,11 +3132,10 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Filled Staff</Label>
-                <Input type="number" value={posFilled} onChange={(e) => setPosFilled(e.target.value)} className="text-xs" />
+                <Input type="number" value={posFilled} disabled className="text-xs bg-muted" />
               </div>
             </div>
 
-            {/* DYNAMIC SALARY GRADE SELECTION DROPDOWN */}
             <div className="space-y-1">
               <Label className="text-xs font-semibold text-primary">Assign Salary Grade (From Salary Grade Management)</Label>
               <Select value={posSGrade} onValueChange={setPosSGrade}>
@@ -1988,7 +3154,17 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingUnsavedExit({ target: "pos" })}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (posHasChanges) {
+                  setPendingUnsavedExit({ target: "pos" });
+                } else {
+                  setEditingPos(null);
+                  setIsNewPos(false);
+                }
+              }}
+            >
               Cancel
             </Button>
             <Button onClick={() => setPendingConfirmSave({ type: "pos" })}>
@@ -2023,6 +3199,27 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* CONFIRMATION ALERT DIALOG (DELETE) */}
+      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">Confirm Deletion</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {pendingDelete?.type === "dept" ? "department" : "position"} "{pendingDelete?.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={executeDelete}
+            >
+              Yes, Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* CONFIRMATION ALERT DIALOG (UNSAVED CHANGES EXIT) */}
       <AlertDialog open={!!pendingUnsavedExit} onOpenChange={(open) => !open && setPendingUnsavedExit(null)}>
         <AlertDialogContent>
@@ -2048,35 +3245,141 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                 setPendingUnsavedExit(null);
               }}
             >
-              Discard &amp; Close
+              Discard & Close
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* VACANCY REQUISITION DIALOG (per department) */}
+      <Dialog open={!!reqDialogDept} onOpenChange={(open) => !open && setReqDialogDept(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5 text-primary" /> Vacancy Requisition — {reqDialogDept}
+            </DialogTitle>
+            <DialogDescription>
+              Send a new requisition for this department or adjust the requested slots of existing requisitions.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-xs">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">New Requisition</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Position</Label>
+                  <Select value={reqPosition} onValueChange={onReqPositionChange}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue placeholder="Select position" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {deptPositions.map((p) => (
+                        <SelectItem key={p.id} value={p.title}>{p.title}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Number of Vacancies</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={reqCount}
+                    onChange={(e) => setReqCount(e.target.value)}
+                    className="text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Urgency</Label>
+                  <Select value={reqUrgency} onValueChange={setReqUrgency}>
+                    <SelectTrigger className="text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["Normal", "High", "Urgent", "Low"].map((u) => (
+                        <SelectItem key={u} value={u}>{u}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Justification</Label>
+                  <Input
+                    value={reqJustification}
+                    onChange={(e) => setReqJustification(e.target.value)}
+                    placeholder="Reason for hiring…"
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+              <Button size="sm" onClick={submitRequisition} className="mt-2">
+                <Send className="mr-2 h-3.5 w-3.5" /> Send Requisition
+              </Button>
+            </div>
+
+            {deptReqs.length > 0 && (
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Existing Requisitions — edit slots</Label>
+                <div className="space-y-2">
+                  {deptReqs.map((r) => (
+                    <div
+                      key={r.id}
+                      className="flex items-center justify-between gap-2 rounded-md border border-border p-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium">{r.id} · {r.position}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {r.status} · {r.urgency}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Input
+                          type="number"
+                          min={1}
+                          className="h-8 w-16 text-center text-xs"
+                          value={reqCountEdits[r.id] ?? String(r.count)}
+                          onChange={(e) =>
+                            setReqCountEdits((prev) => ({ ...prev, [r.id]: e.target.value }))
+                          }
+                        />
+                        <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => saveReqCount(r)}>
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-/* --- Salary Grade Manager Sub-Component --- */
+/* --- Salary Grade Manager --- */
 function SalaryGradeManager() {
-  const [grades, setGrades] = useState<SalaryGrade[]>(seedSalaryGrades);
+  const hcm = useHcmData();
+  const grades = useMemo<SalaryGrade[]>(() => hcm.salaryGrades.map(toUiSalaryGrade), [hcm]);
   const [sgSearch, setSgSearch] = useState("");
   const [sgLevelFilter, setSgLevelFilter] = useState("all");
+  const [pendingDelete, setPendingDelete] = useState<{ type: "sg"; id: number; name: string } | null>(null);
 
-  const [editingSG, setEditingSG] = useState<SalaryGrade | null>(null);
-  const [isNewSG, setIsNewSG] = useState(false);
-
-  // Form states
-  const [sgCode, setSgCode] = useState("");
-  const [sgTitle, setSgTitle] = useState("");
-  const [sgMin, setSgMin] = useState("20000");
-  const [sgMax, setSgMax] = useState("28000");
-  const [sgLevel, setSgLevel] = useState<SalaryGrade["level"]>("Rank & File");
-  const [sgNotes, setSgNotes] = useState("");
-
-  // Confirmation Alert States
-  const [pendingConfirmSave, setPendingConfirmSave] = useState(false);
-  const [pendingDeleteSG, setPendingDeleteSG] = useState<SalaryGrade | null>(null);
+  const executeDelete = async () => {
+    if (!pendingDelete) return;
+    try {
+      await hcmApi.salaryGrades.remove(pendingDelete.id);
+      toast.success(`Salary grade "${pendingDelete.name}" deleted.`);
+      await refreshHcm();
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      toast.error(status === 422 ? (err as Error).message : "Could not delete. It may be in use.");
+      return;
+    }
+    setPendingDelete(null);
+  };
 
   const filteredGrades = grades.filter((g) => {
     const q = sgSearch.toLowerCase().trim();
@@ -2091,59 +3394,12 @@ function SalaryGradeManager() {
 
   const sgPage = usePagination(filteredGrades);
 
-  const executeSaveGrade = () => {
-    if (!sgCode || !sgTitle) {
-      toast.error("Salary Grade Code and Title are required.");
-      return;
-    }
-
-    if (isNewSG) {
-      const newSG: SalaryGrade = {
-        id: sgCode,
-        code: sgCode,
-        title: sgTitle,
-        minSalary: Number(sgMin) || 18000,
-        maxSalary: Number(sgMax) || 25000,
-        currency: "PHP",
-        level: sgLevel,
-        notes: sgNotes,
-      };
-      setGrades((prev) => [...prev, newSG]);
-      toast.success(`Salary Grade ${sgCode} created.`);
-    } else if (editingSG) {
-      setGrades((prev) =>
-        prev.map((g) =>
-          g.id === editingSG.id
-            ? {
-                ...g,
-                code: sgCode,
-                title: sgTitle,
-                minSalary: Number(sgMin),
-                maxSalary: Number(sgMax),
-                level: sgLevel,
-                notes: sgNotes,
-              }
-            : g
-        )
-      );
-      toast.success(`Salary Grade ${sgCode} updated.`);
-    }
-
-    setEditingSG(null);
-    setIsNewSG(false);
-  };
-
-  const executeDeleteGrade = (sg: SalaryGrade) => {
-    setGrades((prev) => prev.filter((g) => g.id !== sg.id));
-    toast.success(`Salary Grade ${sg.code} deleted.`);
-  };
-
   return (
     <Card className="border-border/70 shadow-sm">
       <CardHeader className="border-b border-border/50 pb-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold"><DollarSign className="h-4 w-4 text-primary" /> Salary Grade &amp; Compensation Management</CardTitle>
+            <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold"><DollarSign className="h-4 w-4 text-primary" /> Salary Grade & Compensation Management</CardTitle>
             <p className="text-xs text-muted-foreground">
               {filteredGrades.length} grade structure{filteredGrades.length !== 1 ? "s" : ""} found
             </p>
@@ -2164,27 +3420,12 @@ function SalaryGradeManager() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All job levels</SelectItem>
-                <SelectItem value="Rank & File">Rank &amp; File</SelectItem>
+                <SelectItem value="Rank & File">Rank & File</SelectItem>
                 <SelectItem value="Supervisory">Supervisory</SelectItem>
                 <SelectItem value="Managerial">Managerial</SelectItem>
                 <SelectItem value="Executive">Executive</SelectItem>
               </SelectContent>
             </Select>
-            <Button
-              size="sm"
-              onClick={() => {
-                setSgCode(`SG-${grades.length + 10}`);
-                setSgTitle("New Grade Level");
-                setSgMin("25000");
-                setSgMax("35000");
-                setSgLevel("Supervisory");
-                setSgNotes("");
-                setIsNewSG(true);
-                setEditingSG({ id: "", code: "", title: "", minSalary: 25000, maxSalary: 35000, currency: "PHP", level: "Supervisory" });
-              }}
-            >
-              <Plus className="mr-1.5 h-4 w-4" /> Add Salary Grade
-            </Button>
           </div>
         </div>
       </CardHeader>
@@ -2199,7 +3440,8 @@ function SalaryGradeManager() {
               <TableHead className="text-right">Min Salary</TableHead>
               <TableHead className="text-right">Max Salary</TableHead>
               <TableHead>Pay Band Range</TableHead>
-              <TableHead className="w-28 text-center pr-6">Actions</TableHead>
+              <TableHead className="text-right pr-6">Currency</TableHead>
+              <TableHead className="text-center pr-4">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -2217,34 +3459,19 @@ function SalaryGradeManager() {
                 <TableCell className="text-xs text-muted-foreground">
                   {formatMoney(sg.minSalary)} – {formatMoney(sg.maxSalary)}
                 </TableCell>
-                <TableCell className="text-center pr-6">
-                  <div className="flex justify-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 px-2.5 text-xs"
-                      onClick={() => {
-                        setEditingSG(sg);
-                        setSgCode(sg.code);
-                        setSgTitle(sg.title);
-                        setSgMin(String(sg.minSalary));
-                        setSgMax(String(sg.maxSalary));
-                        setSgLevel(sg.level);
-                        setSgNotes(sg.notes || "");
-                        setIsNewSG(false);
-                      }}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10"
-                      onClick={() => setPendingDeleteSG(sg)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                <TableCell className="text-right pr-6 font-mono text-xs">{sg.currency}</TableCell>
+                <TableCell className="text-center pr-4">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
+                    onClick={() => {
+                      const dbId = hcm.salaryGrades.find((g) => g.code === sg.code)?.salary_grade_id;
+                      if (dbId) setPendingDelete({ type: "sg", id: dbId, name: sg.code });
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}
@@ -2263,111 +3490,22 @@ function SalaryGradeManager() {
         </div>
       </CardContent>
 
-      {/* EDIT / ADD SALARY GRADE MODAL */}
-      <Dialog open={!!editingSG} onOpenChange={(open) => !open && setEditingSG(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{isNewSG ? "Create Salary Grade" : `Edit Salary Grade — ${editingSG?.code}`}</DialogTitle>
-            <DialogDescription>Define compensation ranges for positions.</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2 text-xs">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Grade Code</Label>
-                <Input value={sgCode} onChange={(e) => setSgCode(e.target.value)} className="text-xs" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Job Level Alignment</Label>
-                <Select value={sgLevel} onValueChange={(v: any) => setSgLevel(v)}>
-                  <SelectTrigger className="text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Rank & File">Rank &amp; File</SelectItem>
-                    <SelectItem value="Supervisory">Supervisory</SelectItem>
-                    <SelectItem value="Managerial">Managerial</SelectItem>
-                    <SelectItem value="Executive">Executive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs">Pay Band Title</Label>
-              <Input value={sgTitle} onChange={(e) => setSgTitle(e.target.value)} className="text-xs" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Minimum Monthly Salary (₱)</Label>
-                <Input type="number" value={sgMin} onChange={(e) => setSgMin(e.target.value)} className="text-xs" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Maximum Monthly Salary (₱)</Label>
-                <Input type="number" value={sgMax} onChange={(e) => setSgMax(e.target.value)} className="text-xs" />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs">Notes / Coverage</Label>
-              <Textarea value={sgNotes} onChange={(e) => setSgNotes(e.target.value)} rows={2} className="text-xs" />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingSG(null)}>
-              Cancel
-            </Button>
-            <Button onClick={() => setPendingConfirmSave(true)}>
-              Save Salary Grade
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* CONFIRMATION SAVE SALARY GRADE */}
-      <AlertDialog open={pendingConfirmSave} onOpenChange={setPendingConfirmSave}>
+      {/* DELETE CONFIRMATION DIALOG */}
+      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Save Salary Grade Changes?</AlertDialogTitle>
+            <AlertDialogTitle className="text-destructive">Confirm Deletion</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to save salary grade "{sgCode}" ({formatMoney(Number(sgMin))} – {formatMoney(Number(sgMax))})?
+              Are you sure you want to delete salary grade "{pendingDelete?.name}"? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingConfirmSave(false)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                executeSaveGrade();
-                setPendingConfirmSave(false);
-              }}
-            >
-              Yes, Save Grade
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* CONFIRMATION DELETE SALARY GRADE */}
-      <AlertDialog open={!!pendingDeleteSG} onOpenChange={(open) => !open && setPendingDeleteSG(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-destructive">Delete Salary Grade?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete salary grade "{pendingDeleteSG?.code}"? Positions assigned to this grade will need to be re-assigned.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingDeleteSG(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setPendingDelete(null)}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                if (pendingDeleteSG) executeDeleteGrade(pendingDeleteSG);
-                setPendingDeleteSG(null);
-              }}
+              onClick={executeDelete}
             >
-              Delete Grade
+              Yes, Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -2376,7 +3514,7 @@ function SalaryGradeManager() {
   );
 }
 
-/* --- Requisition Manager Sub-Component --- */
+/* --- Requisition Manager --- */
 function RequisitionManager() {
   const reqs = useRequisitions();
   const [reqSearch, setReqSearch] = useState("");

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Position extends Model
 {
@@ -23,5 +24,15 @@ class Position extends Model
     public function department(): BelongsTo
     {
         return $this->belongsTo(Department::class, 'department_id', 'department_id');
+    }
+
+    public function salaryGrade(): BelongsTo
+    {
+        return $this->belongsTo(SalaryGrade::class, 'salary_grade_id', 'salary_grade_id');
+    }
+
+    public function employees(): HasMany
+    {
+        return $this->hasMany(Employee::class, 'position_id', 'position_id');
     }
 }

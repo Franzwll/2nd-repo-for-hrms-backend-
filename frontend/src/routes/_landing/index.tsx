@@ -5,8 +5,7 @@ import { PublicShell } from "@/components/public/PublicShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { company, facilities } from "@/data/company";
-import { jobs, peso } from "@/data/jobs";
+import { peso, useCompany, useLandingJobs } from "@/lib/landing";
 import heroImage from "@/assets/hero-oxford-suites.jpg";
 
 export const Route = createFileRoute("/_landing/")({
@@ -30,7 +29,9 @@ export const Route = createFileRoute("/_landing/")({
 });
 
 function Landing() {
-  const featured = jobs.filter((j) => j.active).slice(0, 3);
+  const { company } = useCompany();
+  const { jobs } = useLandingJobs();
+  const featured = jobs.slice(0, 3);
 
   return (
     <PublicShell>
@@ -75,7 +76,7 @@ function Landing() {
             {
               icon: Briefcase,
               title: "Open Vacancies",
-              body: `${jobs.filter((j) => j.active).length} live openings across front office, housekeeping, kitchen and service — updated daily.`,
+              body: `${jobs.length} live openings across front office, housekeeping, kitchen and service — updated daily.`,
             },
             {
               icon: Sparkles,
@@ -106,7 +107,7 @@ function Landing() {
           <h2 className="mt-1 font-display text-4xl font-semibold">Facilities & Services</h2>
           <div className="gold-rule my-6" />
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {facilities.map((f) => (
+            {company.facilities.map((f) => (
               <div key={f.name} className="rounded-md border border-border bg-card p-5">
                 <h3 className="font-display text-xl font-semibold">{f.name}</h3>
                 <p className="mt-2 text-sm text-muted-foreground">{f.body}</p>

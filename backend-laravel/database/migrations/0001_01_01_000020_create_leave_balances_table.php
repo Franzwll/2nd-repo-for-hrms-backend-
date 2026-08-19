@@ -12,14 +12,13 @@ return new class extends Migration
             $table->id('leave_balance_id');
             $table->unsignedBigInteger('employee_id');
             $table->string('leave_type', 80);
-            $table->decimal('allocated', 10, 2)->default(0);
-            $table->decimal('used', 10, 2)->default(0);
-            $table->decimal('remaining', 10, 2)->default(0);
-            $table->string('period', 30)->nullable();
+            $table->smallInteger('period_year');
+            $table->decimal('total_days', 6, 2)->default(0);
+            $table->decimal('used_days', 6, 2)->default(0);
             $table->timestamp('created_at')->useCurrent();
             $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
 
-            $table->unique(['employee_id', 'leave_type', 'period'], 'uq_leave_balances_natural');
+            $table->unique(['employee_id', 'leave_type', 'period_year'], 'uq_leave_balances_natural');
             $table->index('employee_id', 'idx_leave_balances_employee_id');
 
             $table->foreign('employee_id', 'fk_leave_balances_employee_id')
