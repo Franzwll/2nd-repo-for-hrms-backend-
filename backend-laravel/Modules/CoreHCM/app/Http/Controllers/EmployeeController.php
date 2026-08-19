@@ -324,10 +324,17 @@ class EmployeeController extends Controller
 
     private function nextEmployeeCode(): string
     {
-        $last = Employee::max('employee_code');
-        $next = $last ? ((int) substr($last, 4)) + 1 : 1;
+        return DB::transaction(function () {
+            DB::selectOne('SELECT GET_LOCK(?, 5)', ['employee_code_gen']);
+            try {
+                $last = Employee::max('employee_code');
+                $next = $last ? ((int) substr($last, 4)) + 1 : 1;
 
-        return 'EMP-' . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+                return 'EMP-' . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+            } finally {
+                DB::selectOne('SELECT RELEASE_LOCK(?)', ['employee_code_gen']);
+            }
+        });
     }
 
     /**

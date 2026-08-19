@@ -7,6 +7,7 @@ use App\Models\Position;
 use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Modules\CoreHCM\Http\Requests\StorePositionRequest;
 use Modules\CoreHCM\Http\Requests\UpdatePositionRequest;
 use Modules\CoreHCM\Http\Resources\PositionResource;
@@ -111,8 +112,15 @@ class PositionController extends Controller
 
     private function nextCode(): string
     {
-        $count = Position::count() + 1;
+        return DB::transaction(function () {
+            DB::selectOne('SELECT GET_LOCK(?, 5)', ['position_code_gen']);
+            try {
+                $count = Position::count() + 1;
 
-        return 'POS-' . str_pad((string) $count, 3, '0', STR_PAD_LEFT);
+                return 'POS-' . str_pad((string) $count, 3, '0', STR_PAD_LEFT);
+            } finally {
+                DB::selectOne('SELECT RELEASE_LOCK(?)', ['position_code_gen']);
+            }
+        });
     }
 }

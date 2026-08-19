@@ -9,7 +9,7 @@ use Modules\CoreHCM\Http\Controllers\OrgChartController;
 use Modules\CoreHCM\Http\Controllers\PositionController;
 use Modules\CoreHCM\Http\Controllers\SalaryGradeController;
 
-Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
+Route::middleware(['auth:sanctum', 'permission:Dashboard'])->prefix('v1')->group(function () {
     Route::get('dashboard/stats', [DashboardController::class, 'stats']);
 });
 

@@ -9,6 +9,7 @@ use App\Models\JobPost;
 use App\Models\SystemSetting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Modules\Landing\Http\Requests\JobApplicationRequest;
 use Modules\Landing\Http\Resources\AnnouncementResource;
 use Modules\Landing\Http\Resources\JobPostResource;
@@ -156,9 +157,16 @@ class LandingController extends Controller
 
     private function nextApplicantCode(): string
     {
-        $last = Applicant::max('applicant_code');
-        $next = $last ? ((int) substr($last, 4)) + 1 : 1;
+        return DB::transaction(function () {
+            DB::selectOne('SELECT GET_LOCK(?, 5)', ['applicant_code_gen']);
+            try {
+                $last = Applicant::max('applicant_code');
+                $next = $last ? ((int) substr($last, 4)) + 1 : 1;
 
-        return 'APP-' . str_pad((string) $next, 5, '0', STR_PAD_LEFT);
+                return 'APP-' . str_pad((string) $next, 5, '0', STR_PAD_LEFT);
+            } finally {
+                DB::selectOne('SELECT RELEASE_LOCK(?)', ['applicant_code_gen']);
+            }
+        });
     }
 }
