@@ -17,7 +17,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { myProfile } from "@/data/ess";
-import { newHiresApi, onboardingItemsApi, type ApiNewHire } from "@/lib/api";
+import { newHiresApi, onboardingItemsApi, essApi, type ApiNewHire, type ApiEssOverview } from "@/lib/api";
+import { getUser } from "@/lib/auth";
 
 type Phase = "Pre-onboarding" | "Probationary";
 
@@ -81,17 +82,40 @@ function ChecklistRow({ item, onComplete }: { item: ChecklistItem; onComplete: (
 }
 
 export function EmployeeOnboarding() {
-  // The current user's new hire record + checklist come from the database.
+  const user = getUser();
+  const [overview, setOverview] = useState<ApiEssOverview | null>(null);
   const [newHire, setNewHire] = useState<ApiNewHire | null>(null);
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<ChecklistItem[]>([]);
+
+  useEffect(() => {
+    essApi.overview().then(setOverview).catch(() => {});
+  }, []);
+
+  const profileName = overview?.employee?.name || user?.full_name || myProfile.name;
+  const profileEmail = overview?.employee?.email || user?.email;
+  const profileEmpCode = overview?.employee?.code || myProfile.employeeId;
+  const profilePosition = overview?.employee?.position || myProfile.position;
+  const profileDepartment = overview?.employee?.department || user?.department_name || myProfile.department;
+  const employmentType =
+    overview?.employee?.employment_type ||
+    newHire?.stage ||
+    myProfile.employmentType;
 
   useEffect(() => {
     newHiresApi
       .list({ per_page: 100 })
       .then((res) => {
         const mine =
-          res.data.find((h) => h.name === myProfile.name) ?? res.data[0] ?? null;
+          res.data.find(
+            (h) =>
+              (user?.employee_id && h.employee_id === user.employee_id) ||
+              h.name.toLowerCase() === profileName.toLowerCase() ||
+              (profileEmail && h.email === profileEmail)
+          ) ??
+          res.data[0] ??
+          null;
+
         setNewHire(mine);
         return mine;
       })
@@ -125,7 +149,7 @@ export function EmployeeOnboarding() {
         toast.error("Could not load your onboarding checklist");
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [profileName, profileEmail, user?.employee_id]);
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("recent");
@@ -224,7 +248,7 @@ export function EmployeeOnboarding() {
   return (
     <div>
       <PageHeader
-        eyebrow="Employee Portal"
+        eyebrow={<span className="uppercase font-semibold tracking-wider">{profilePosition} · {profileDepartment}</span>}
         title="New Hire Onboarding"
         description="Complete these requirements to finish your onboarding. This menu disappears once HR marks onboarding as complete."
       />
@@ -247,10 +271,13 @@ export function EmployeeOnboarding() {
                   NEW HIRE ONBOARDING
                 </p>
                 <h2 className="text-2xl font-bold font-display text-foreground mt-1">
-                  {myProfile.name}
+                  {profileName}
                 </h2>
                 <p className="text-sm font-medium text-muted-foreground mt-0.5">
-                  Employee ID: <span className="text-foreground font-mono font-semibold">{myProfile.employeeId}</span>
+                  Employee ID: <span className="text-foreground font-mono font-semibold">{profileEmpCode}</span>
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {profilePosition} · {profileDepartment}
                 </p>
               </div>
 
@@ -260,7 +287,7 @@ export function EmployeeOnboarding() {
                   variant="outline"
                   className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40 text-base sm:text-lg px-4 py-1.5 font-bold uppercase tracking-widest self-start sm:self-auto shadow-xs"
                 >
-                  {myProfile.employmentType.toUpperCase()}
+                  {employmentType.toUpperCase()}
                 </Badge>
                 <span className="text-xs text-muted-foreground font-medium">Employment Status</span>
                 {newHire?.stage && (

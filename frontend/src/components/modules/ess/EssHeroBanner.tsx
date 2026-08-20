@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Clock, Calendar, FileText, FileCheck, ArrowRight, ShieldCheck } from "lucide-react";
 import { myProfile } from "@/data/ess";
 import { essApi, type ApiEssOverview } from "@/lib/api";
+import { getUser } from "@/lib/auth";
 
 interface EssHeroBannerProps {
   onOpenClock: () => void;
@@ -18,6 +19,7 @@ export function EssHeroBanner({
   onOpenPayslip,
   onOpenDocRequest,
 }: EssHeroBannerProps) {
+  const user = getUser();
   const [time, setTime] = useState(new Date());
   const [overview, setOverview] = useState<ApiEssOverview | null>(null);
 
@@ -30,10 +32,17 @@ export function EssHeroBanner({
     essApi.overview().then(setOverview).catch(() => {});
   }, []);
 
-  const employeeName = overview?.employee?.name || myProfile.name;
+  const greeting = useMemo(() => {
+    const hour = time.getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 18) return "Good afternoon";
+    return "Good evening";
+  }, [time]);
+
+  const employeeName = overview?.employee?.name || user?.full_name || myProfile.name;
   const firstName = employeeName.split(" ")[0];
   const position = overview?.employee?.position || myProfile.position;
-  const department = overview?.employee?.department || myProfile.department;
+  const department = overview?.employee?.department || user?.department_name || myProfile.department;
   const supervisor = overview?.employee?.supervisor || myProfile.supervisor;
   const shiftText = overview?.today_schedule?.is_rest_day
     ? "Rest Day (Off Duty)"
@@ -69,7 +78,7 @@ export function EssHeroBanner({
           </div>
 
           <h2 className="text-2xl sm:text-3xl font-bold font-display tracking-tight text-foreground">
-            Welcome back, {firstName} 👋
+            {greeting}, {firstName} 👋
           </h2>
 
           <p className="text-xs sm:text-sm text-muted-foreground">

@@ -38,6 +38,15 @@ import { authApi } from "@/lib/api";
 import { clearSession, getUser } from "@/lib/auth";
 
 
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 export function PortalShell({ role, children }: { role: Role; children: ReactNode }) {
   const [open, setOpen] = useState(true);
   const navigate = useNavigate();
@@ -400,20 +409,20 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                   className="flex items-center gap-2 rounded-full border border-border bg-background py-1 pl-1 pr-3 transition-colors hover:bg-muted"
                 >
                   <Avatar className="h-7 w-7">
-                    <AvatarFallback className="bg-primary text-[0.7rem] text-primary-foreground">
-                      {meta.initials}
+                    <AvatarFallback className="bg-primary text-[0.7rem] text-primary-foreground font-semibold">
+                      {getInitials(displayName) || meta.initials}
                     </AvatarFallback>
                   </Avatar>
                   <span className="hidden text-sm sm:inline">
-                    Welcome, <span className="font-medium">{meta.user.split(" ")[0]}</span>
+                    Welcome, <span className="font-medium">{displayName.split(" ")[0]}</span>
                   </span>
                   <ChevronDown className="hidden h-4 w-4 text-muted-foreground sm:inline" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
-                  <p className="text-sm font-medium">{displayName}</p>
-                  <p className="text-xs font-normal text-muted-foreground">{meta.label}</p>
+                  <p className="text-sm font-medium truncate">{displayName}</p>
+                  <p className="text-xs font-normal text-muted-foreground truncate">{user?.department_name || meta.label}</p>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
