@@ -99,6 +99,33 @@ class Employee extends Model
         return $this->hasOne(SystemUser::class, 'employee_id', 'employee_id');
     }
 
+    public function essRequests(): HasMany
+    {
+        return $this->hasMany(EssRequest::class, 'employee_id', 'employee_id')
+            ->orderByDesc('filed_at');
+    }
+
+    public function leaveBalances(): HasMany
+    {
+        return $this->hasMany(LeaveBalance::class, 'employee_id', 'employee_id');
+    }
+
+    public function workSchedules(): HasMany
+    {
+        return $this->hasMany(WorkSchedule::class, 'employee_id', 'employee_id');
+    }
+
+    public function benefits(): HasMany
+    {
+        return $this->hasMany(EmployeeBenefit::class, 'employee_id', 'employee_id');
+    }
+
+    public function attendanceRecords(): HasMany
+    {
+        return $this->hasMany(AttendanceRecord::class, 'employee_id', 'employee_id')
+            ->orderByDesc('work_date');
+    }
+
     public function getFullNameAttribute(): string
     {
         return trim(implode(' ', array_filter([
