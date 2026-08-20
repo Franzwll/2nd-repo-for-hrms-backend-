@@ -1283,3 +1283,45 @@ export const essApi = {
   auditLogs: () => request<{ logs: any[] }>('/ess/admin/audit-logs'),
 };
 
+export interface ApiChatbotReply {
+  reply: string;
+  quick_replies: string[];
+  topic: string | null;
+}
+
+export interface ApiChatbotFaq {
+  faq_id: number;
+  question: string;
+  answer: string;
+  keywords: string | null;
+  enabled: boolean;
+  sort_order: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export const chatbotApi = {
+  chat: (data: { message: string; session_id?: string | null; topic?: string | null }) =>
+    request<ApiChatbotReply>('/landing/chat', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
+export const chatbotFaqApi = {
+  list: () => request<{ data: ApiChatbotFaq[] }>('/chatbot/faqs'),
+  create: (data: { question: string; answer: string; keywords?: string | null; enabled?: boolean; sort_order?: number }) =>
+    request<{ message: string; data: ApiChatbotFaq }>('/chatbot/faqs', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  update: (
+    id: number | string,
+    data: { question?: string; answer?: string; keywords?: string | null; enabled?: boolean; sort_order?: number }
+  ) =>
+    request<{ message: string; data: ApiChatbotFaq }>(`/chatbot/faqs/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  remove: (id: number | string) => request<{ message: string }>(`/chatbot/faqs/${id}`, { method: 'DELETE' }),
+};
