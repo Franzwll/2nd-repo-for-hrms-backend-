@@ -9,7 +9,7 @@ use Modules\CoreHCM\Http\Controllers\OrgChartController;
 use Modules\CoreHCM\Http\Controllers\PositionController;
 use Modules\CoreHCM\Http\Controllers\SalaryGradeController;
 
-Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
+Route::middleware(['auth:sanctum', 'permission:Dashboard'])->prefix('v1')->group(function () {
     Route::get('dashboard/stats', [DashboardController::class, 'stats']);
 });
 
@@ -18,6 +18,8 @@ Route::middleware(['auth:sanctum', 'permission:Core HCM'])->prefix('v1')->group(
     Route::apiResource('positions', PositionController::class)->except(['show']);
     Route::get('salary-grades', [SalaryGradeController::class, 'index']);
     Route::get('salary-grades/{salary_grade}', [SalaryGradeController::class, 'show']);
+    Route::post('salary-grades', [SalaryGradeController::class, 'store']);
+    Route::put('salary-grades/{salary_grade}', [SalaryGradeController::class, 'update']);
     Route::delete('salary-grades/{salary_grade}', [SalaryGradeController::class, 'destroy']);
     Route::get('org-chart', [OrgChartController::class, 'index']);
 

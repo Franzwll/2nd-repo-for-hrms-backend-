@@ -6,6 +6,8 @@ export type Department = {
   staff: number;
   openRequisitions: number;
   budget: number;
+  /** Numeric id in the backend `departments` table (Core HCM). */
+  dbId?: number;
 };
 
 export const departments: Department[] = [
@@ -17,6 +19,7 @@ export const departments: Department[] = [
     staff: 14,
     openRequisitions: 3,
     budget: 2800000,
+    dbId: 1,
   },
   {
     code: "DEP-FB",
@@ -26,6 +29,7 @@ export const departments: Department[] = [
     staff: 22,
     openRequisitions: 6,
     budget: 3500000,
+    dbId: 2,
   },
   {
     code: "DEP-KC",
@@ -35,6 +39,7 @@ export const departments: Department[] = [
     staff: 19,
     openRequisitions: 4,
     budget: 4200000,
+    dbId: 3,
   },
   {
     code: "DEP-HK",
@@ -44,6 +49,7 @@ export const departments: Department[] = [
     staff: 25,
     openRequisitions: 5,
     budget: 2400000,
+    dbId: 4,
   },
   {
     code: "DEP-HR",
@@ -53,6 +59,7 @@ export const departments: Department[] = [
     staff: 9,
     openRequisitions: 1,
     budget: 3100000,
+    dbId: 5,
   },
 ];
 
@@ -65,6 +72,8 @@ export type Position = {
   filled: number;
   vacancies?: number;
   salaryBand: string;
+  /** Numeric id in the backend `positions` table (Core HCM). */
+  dbId?: number;
 };
 
 export const positions: Position[] = [
@@ -76,6 +85,7 @@ export const positions: Position[] = [
     headcount: 8,
     filled: 5,
     salaryBand: "₱18,000 – ₱22,000",
+    dbId: 1,
   },
   {
     id: "POS-002",
@@ -85,6 +95,7 @@ export const positions: Position[] = [
     headcount: 3,
     filled: 3,
     salaryBand: "₱25,000 – ₱30,000",
+    dbId: 2,
   },
   {
     id: "POS-003",
@@ -94,6 +105,7 @@ export const positions: Position[] = [
     headcount: 12,
     filled: 8,
     salaryBand: "₱15,000 – ₱18,000",
+    dbId: 3,
   },
   {
     id: "POS-004",
@@ -103,6 +115,7 @@ export const positions: Position[] = [
     headcount: 4,
     filled: 2,
     salaryBand: "₱16,000 – ₱19,000",
+    dbId: 4,
   },
   {
     id: "POS-005",
@@ -112,6 +125,7 @@ export const positions: Position[] = [
     headcount: 10,
     filled: 6,
     salaryBand: "₱16,000 – ₱20,000",
+    dbId: 5,
   },
   {
     id: "POS-006",
@@ -121,6 +135,7 @@ export const positions: Position[] = [
     headcount: 2,
     filled: 2,
     salaryBand: "₱32,000 – ₱38,000",
+    dbId: 6,
   },
   {
     id: "POS-007",
@@ -130,6 +145,7 @@ export const positions: Position[] = [
     headcount: 18,
     filled: 13,
     salaryBand: "₱14,000 – ₱17,000",
+    dbId: 7,
   },
   {
     id: "POS-008",
@@ -139,6 +155,7 @@ export const positions: Position[] = [
     headcount: 3,
     filled: 2,
     salaryBand: "₱20,000 – ₱25,000",
+    dbId: 8,
   },
 ];
 
@@ -190,10 +207,23 @@ export type NewHire = {
   name: string;
   position: string;
   department: string;
+  /** Database position/department ids (Core HCM) — persisted to the new hire record. */
+  positionId?: number | null;
+  departmentId?: number | null;
   stage: "Pre-onboarding" | "Probationary" | "Regular";
   startDate: string;
   initials: string;
-  checklist: { item: string; done: boolean }[];
+  checklist: {
+    item: string;
+    done: boolean;
+    /** Database onboarding item id — used to persist toggles via the API. */
+    dbId?: number;
+    /** Template item id — lets virtual (not-yet-materialized) items be
+     *  created on first completion. */
+    templateItemId?: number | null;
+    /** Which stage's checklist template the item belongs to. */
+    phase?: "Pre-onboarding" | "Probationary";
+  }[];
   email: string;
   phone: string;
 };

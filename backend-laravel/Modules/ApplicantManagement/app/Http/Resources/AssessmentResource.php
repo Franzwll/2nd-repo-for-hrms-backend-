@@ -9,6 +9,8 @@ class AssessmentResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $applicant = $this->whenLoaded('applicant');
+
         return [
             'assessment_id'    => $this->assessment_id,
             'applicant_id'     => $this->applicant_id,
@@ -20,6 +22,14 @@ class AssessmentResource extends JsonResource
             'remarks'          => $this->remarks,
             'created_at'       => $this->created_at?->toISOString(),
             'updated_at'       => $this->updated_at?->toISOString(),
+            'applicant'        => $applicant ? [
+                'applicant_id'   => $applicant->applicant_id,
+                'applicant_code' => $applicant->applicant_code,
+                'name'           => $applicant->name,
+                'position'       => $applicant->jobPost?->title,
+                'department'     => $applicant->jobPost?->department?->name,
+                'stage'          => $applicant->stage,
+            ] : null,
         ];
     }
 }

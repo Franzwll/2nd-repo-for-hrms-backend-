@@ -128,6 +128,17 @@ export interface ApiInterview {
   interviewer_employee_id: number | null;
   interviewer_name: string | null;
   status: "Scheduled" | "Completed" | "No Show";
+  applicant?: {
+    applicant_id: number;
+    applicant_code: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    position?: string | null;
+    department?: string | null;
+    stage: string;
+    fit_score: number | null;
+  } | null;
 }
 
 export interface ApiAssessment {
@@ -139,6 +150,25 @@ export interface ApiAssessment {
   total_score: number | null;
   outcome: "Recommended" | "Hold" | "Not Recommended";
   remarks: string | null;
+  applicant?: {
+    applicant_id: number;
+    applicant_code: string;
+    name: string;
+    position?: string | null;
+    department?: string | null;
+    stage: string;
+  } | null;
+}
+
+export function resolveStorageUrl(value: string | null): string | null {
+  if (!value) return null;
+  const origin = new URL(BASE_URL).origin;
+  try {
+    const u = new URL(value, origin);
+    return `${origin}${u.pathname}`;
+  } catch {
+    return value;
+  }
 }
 
 export const applicantsApi = {
@@ -219,6 +249,8 @@ export interface ApiJobPost {
   skills: string[];
   benefits: string[];
   platforms?: string[];
+  picture: string | null;
+  picture_url: string | null;
   applicants_count?: number;
 }
 
@@ -309,10 +341,12 @@ export interface ApiNewHire {
   start_date: string;
   completion_percent?: number;
   onboarding_items?: {
-    employee_onboarding_item_id: number;
+    employee_onboarding_item_id: number | null;
     item_text: string;
     done: boolean;
     completed_at: string | null;
+    template_item_id: number | null;
+    phase: string;
   }[];
 }
 
@@ -407,10 +441,15 @@ export const onboardingItemsApi = {
       method: 'POST',
       body: JSON.stringify({ template_id: templateId }),
     }),
-  toggle: (itemId: number | string) =>
+  materialize: (newHireId: number | string, templateItemId: number | string) =>
+    request<{ employee_onboarding_item_id: number; template_item_id: number; item_text: string; done: boolean; phase: string }>(
+      `/new-hires/${newHireId}/onboarding-items`,
+      { method: 'POST', body: JSON.stringify({ template_item_id: templateItemId }) }
+    ),
+  toggle: (itemId: number | string, body?: { done: boolean }) =>
     request<{ employee_onboarding_item_id: number; done: boolean; completed_at: string | null }>(
       `/onboarding-items/${itemId}/toggle`,
-      { method: 'PATCH' }
+      body ? { method: 'PATCH', body: JSON.stringify(body) } : { method: 'PATCH' }
     ),
 };
 
@@ -441,6 +480,13 @@ export interface ApiSystemSetting {
   updated_by_user_id: number | null;
 }
 
+export const assessmentsApi = {
+  list: (params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiAssessment[]; meta: any }>(`/assessments${qs ? `?${qs}` : ''}`);
+  },
+};
+
 export const settingsApi = {
   getAll: () => request<{ data: ApiSystemSetting[]; map: Record<string, any> }>('/settings'),
   get: (key: string) => request<ApiSystemSetting>(`/settings/${key}`),
@@ -455,6 +501,12 @@ export const settingsApi = {
       body: JSON.stringify({ settings }),
     }),
   delete: (key: string) => request<{ message: string }>(`/settings/${key}`, { method: 'DELETE' }),
+  listSystemUsers: () => request<{ data: ApiSystemUser[] }>('/system-users'),
+  resetDefaultPassword: (password: string) =>
+    request<{ message: string; updated: number }>('/reset-default-password', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
 };
 
 /* ========================================================================= */
@@ -486,6 +538,23 @@ export interface ApiVerifyResponse {
   };
 }
 
+export const mySettingsApi = {
+  get: (user: string) =>
+    request<{ notifications: Record<string, boolean>; preferences: Record<string, string> }>(
+      `/my/settings?user=${encodeURIComponent(user)}`
+    ),
+  save: (scope: "notifications" | "preferences", user: string, value: any) =>
+    request<{ setting_key: string; setting_value: any }>(`/my/settings/${scope}`, {
+      method: 'PUT',
+      body: JSON.stringify({ user, value }),
+    }),
+  changePassword: (user: string, currentPassword: string, newPassword: string) =>
+    request<{ message: string }>('/my/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ user, current_password: currentPassword, new_password: newPassword }),
+    }),
+};
+
 export const authApi = {
   login: (email: string, password: string) =>
     request<ApiLoginResponse>('/auth/login', {
@@ -504,6 +573,16 @@ export const authApi = {
     }),
   me: () => request<{ user: ApiVerifyResponse['user'] }>('/auth/me'),
   logout: () => request<{ message: string }>('/auth/logout', { method: 'POST' }),
+  forgotPassword: (email: string) =>
+    request<{ message: string }>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  resetPassword: (token: string, password: string) =>
+    request<{ message: string }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password, password_confirmation: password }),
+    }),
 };
 
 /* ========================================================================= */
@@ -603,7 +682,7 @@ export interface ApiHR3Recommendation {
   evaluation_score: number;
   evaluator: string;
   date_submitted: string | null;
-  status: "Pending HR Action" | "Approved & Processed" | "Deferred";
+  status: "Pending HR Action" | "Approved & Processed" | "Deferred" | "Acknowledged";
   suggested_position: string | null;
   suggested_salary_grade: string | null;
   comments: string | null;
@@ -627,6 +706,7 @@ export interface ApiPosition {
   title: string;
   department_id: number;
   department_name?: string;
+  department?: string | null;
   salary_grade_id: number;
   salary_grade?: string;
   level: string;
@@ -655,6 +735,27 @@ export interface ApiOrgNode {
   filled: number;
   positions: ApiPosition[];
 }
+
+export const coreHcmApi = {
+  departments: (params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiDepartment[]; meta: any }>(`/departments${qs ? `?${qs}` : ''}`);
+  },
+  createDepartment: (data: Record<string, any>) =>
+    request<ApiDepartment>('/departments', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  positions: (params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiPosition[]; meta: any }>(`/positions${qs ? `?${qs}` : ''}`);
+  },
+  createPosition: (data: Record<string, any>) =>
+    request<ApiPosition>('/positions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
 
 export const hcmApi = {
   employees: {
@@ -732,6 +833,16 @@ export const hcmApi = {
       const qs = new URLSearchParams(params).toString();
       return request<{ data: ApiSalaryGrade[]; meta: any }>(`/salary-grades${qs ? `?${qs}` : ''}`);
     },
+    create: (data: Record<string, any>) =>
+      request<{ message: string; data: ApiSalaryGrade }>('/salary-grades', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    update: (id: number | string, data: Record<string, any>) =>
+      request<{ message: string; data: ApiSalaryGrade }>(`/salary-grades/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
     remove: (id: number | string) =>
       request<{ message: string }>(`/salary-grades/${id}`, { method: 'DELETE' }),
   },

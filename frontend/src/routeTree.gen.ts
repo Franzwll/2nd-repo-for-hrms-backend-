@@ -16,8 +16,10 @@ import { Route as LandingIndexRouteImport } from './routes/_landing/index'
 import { Route as LandingAboutRouteImport } from './routes/_landing/about'
 import { Route as LandingContactRouteImport } from './routes/_landing/contact'
 import { Route as LandingFaqRouteImport } from './routes/_landing/faq'
+import { Route as LoginForgotPasswordRouteImport } from './routes/_login/forgot-password'
 import { Route as LoginLoginRouteImport } from './routes/_login/login'
 import { Route as LoginOtpRouteImport } from './routes/_login/otp'
+import { Route as LoginResetPasswordRouteImport } from './routes/_login/reset-password'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as EmployeeIndexRouteImport } from './routes/employee/index'
 import { Route as SuperadminIndexRouteImport } from './routes/superadmin/index'
@@ -85,6 +87,11 @@ const LandingFaqRoute = LandingFaqRouteImport.update({
   path: '/faq',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginForgotPasswordRoute = LoginForgotPasswordRouteImport.update({
+  id: '/_login/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginLoginRoute = LoginLoginRouteImport.update({
   id: '/_login/login',
   path: '/login',
@@ -93,6 +100,11 @@ const LoginLoginRoute = LoginLoginRouteImport.update({
 const LoginOtpRoute = LoginOtpRouteImport.update({
   id: '/_login/otp',
   path: '/otp',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginResetPasswordRoute = LoginResetPasswordRouteImport.update({
+  id: '/_login/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -277,8 +289,10 @@ export interface FileRoutesByFullPath {
   '/about': typeof LandingAboutRoute
   '/contact': typeof LandingContactRoute
   '/faq': typeof LandingFaqRoute
+  '/forgot-password': typeof LoginForgotPasswordRoute
   '/login': typeof LoginLoginRoute
   '/otp': typeof LoginOtpRoute
+  '/reset-password': typeof LoginResetPasswordRoute
   '/': typeof LandingIndexRoute
   '/admin/': typeof AdminIndexRoute
   '/employee/': typeof EmployeeIndexRoute
@@ -316,8 +330,10 @@ export interface FileRoutesByTo {
   '/about': typeof LandingAboutRoute
   '/contact': typeof LandingContactRoute
   '/faq': typeof LandingFaqRoute
+  '/forgot-password': typeof LoginForgotPasswordRoute
   '/login': typeof LoginLoginRoute
   '/otp': typeof LoginOtpRoute
+  '/reset-password': typeof LoginResetPasswordRoute
   '/': typeof LandingIndexRoute
   '/admin': typeof AdminIndexRoute
   '/employee': typeof EmployeeIndexRoute
@@ -359,8 +375,10 @@ export interface FileRoutesById {
   '/_landing/about': typeof LandingAboutRoute
   '/_landing/contact': typeof LandingContactRoute
   '/_landing/faq': typeof LandingFaqRoute
+  '/_login/forgot-password': typeof LoginForgotPasswordRoute
   '/_login/login': typeof LoginLoginRoute
   '/_login/otp': typeof LoginOtpRoute
+  '/_login/reset-password': typeof LoginResetPasswordRoute
   '/_landing/': typeof LandingIndexRoute
   '/admin/': typeof AdminIndexRoute
   '/employee/': typeof EmployeeIndexRoute
@@ -403,8 +421,10 @@ export interface FileRouteTypes {
     | '/about'
     | '/contact'
     | '/faq'
+    | '/forgot-password'
     | '/login'
     | '/otp'
+    | '/reset-password'
     | '/'
     | '/admin/'
     | '/employee/'
@@ -442,8 +462,10 @@ export interface FileRouteTypes {
     | '/about'
     | '/contact'
     | '/faq'
+    | '/forgot-password'
     | '/login'
     | '/otp'
+    | '/reset-password'
     | '/'
     | '/admin'
     | '/employee'
@@ -484,8 +506,10 @@ export interface FileRouteTypes {
     | '/_landing/about'
     | '/_landing/contact'
     | '/_landing/faq'
+    | '/_login/forgot-password'
     | '/_login/login'
     | '/_login/otp'
+    | '/_login/reset-password'
     | '/_landing/'
     | '/admin/'
     | '/employee/'
@@ -527,8 +551,10 @@ export interface RootRouteChildren {
   LandingAboutRoute: typeof LandingAboutRoute
   LandingContactRoute: typeof LandingContactRoute
   LandingFaqRoute: typeof LandingFaqRoute
+  LoginForgotPasswordRoute: typeof LoginForgotPasswordRoute
   LoginLoginRoute: typeof LoginLoginRoute
   LoginOtpRoute: typeof LoginOtpRoute
+  LoginResetPasswordRoute: typeof LoginResetPasswordRoute
   LandingIndexRoute: typeof LandingIndexRoute
   LandingJobsJobIdRoute: typeof LandingJobsJobIdRoute
   LandingJobsIndexRoute: typeof LandingJobsIndexRoute
@@ -585,6 +611,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LandingFaqRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_login/forgot-password': {
+      id: '/_login/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof LoginForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_login/login': {
       id: '/_login/login'
       path: '/login'
@@ -597,6 +630,13 @@ declare module '@tanstack/react-router' {
       path: '/otp'
       fullPath: '/otp'
       preLoaderRoute: typeof LoginOtpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_login/reset-password': {
+      id: '/_login/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof LoginResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -919,8 +959,10 @@ const rootRouteChildren: RootRouteChildren = {
   LandingAboutRoute: LandingAboutRoute,
   LandingContactRoute: LandingContactRoute,
   LandingFaqRoute: LandingFaqRoute,
+  LoginForgotPasswordRoute: LoginForgotPasswordRoute,
   LoginLoginRoute: LoginLoginRoute,
   LoginOtpRoute: LoginOtpRoute,
+  LoginResetPasswordRoute: LoginResetPasswordRoute,
   LandingIndexRoute: LandingIndexRoute,
   LandingJobsJobIdRoute: LandingJobsJobIdRoute,
   LandingJobsIndexRoute: LandingJobsIndexRoute,

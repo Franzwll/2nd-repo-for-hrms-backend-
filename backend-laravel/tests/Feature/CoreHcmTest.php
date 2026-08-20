@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Employee;
 use App\Models\EmployeePositionHistory;
+use App\Models\Hr3Recommendation;
 use App\Models\Position;
 use App\Models\SystemUser;
 use Tests\Concerns\RefreshesSeededDatabase;
@@ -72,15 +73,33 @@ class CoreHcmTest extends TestCase
         $id = $employee['employee_id'];
         $this->assertStringStartsWith('EMP-', $employee['employee_code']);
 
+        $regularization = Hr3Recommendation::create([
+            'employee_id' => $id,
+            'recommendation_type' => 'Regularization',
+            'evaluation_score' => 92.5,
+            'date_submitted' => '2026-11-20',
+            'status' => 'Pending HR Action',
+        ]);
+
         $this->postJson("/api/v1/employees/{$id}/regularize", [
             'effective_date' => '2026-12-01',
+            'recommendation_id' => $regularization->recommendation_id,
         ], $this->authHeaders($token))
             ->assertOk()
             ->assertJsonPath('data.employment_type', 'Regular');
 
+        $promotion = Hr3Recommendation::create([
+            'employee_id' => $id,
+            'recommendation_type' => 'Promotion',
+            'evaluation_score' => 95.0,
+            'date_submitted' => '2026-12-01',
+            'status' => 'Pending HR Action',
+        ]);
+
         $this->postJson("/api/v1/employees/{$id}/promote", [
             'effective_date' => '2026-12-02',
             'new_position_id' => 2,
+            'recommendation_id' => $promotion->recommendation_id,
         ], $this->authHeaders($token))->assertOk();
 
         $this->postJson("/api/v1/employees/{$id}/exit", [

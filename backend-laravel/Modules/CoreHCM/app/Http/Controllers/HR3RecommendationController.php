@@ -44,8 +44,14 @@ class HR3RecommendationController extends Controller
 
     public function acknowledge(Hr3Recommendation $recommendation): JsonResponse
     {
+        if ($recommendation->status !== 'Pending HR Action') {
+            return response()->json(['message' => 'This recommendation has already been processed.'], 422);
+        }
+
         $employee = $recommendation->employee;
         $name = $employee ? trim(($employee->first_name ?? '') . ' ' . ($employee->last_name ?? '')) : 'Unknown';
+
+        $recommendation->update(['status' => 'Acknowledged']);
 
         AuditLogger::log(
             'HR3 recommendation acknowledged',

@@ -1,11 +1,12 @@
-import { useState, useMemo } from "react";
-import { Info, Check, Search, ArrowUpDown, Circle } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Info, Check, Search, ArrowUpDown, Circle, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -16,6 +17,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { myProfile } from "@/data/ess";
+import { newHiresApi, onboardingItemsApi, type ApiNewHire } from "@/lib/api";
+
+type Phase = "Pre-onboarding" | "Probationary";
 
 type ChecklistItem = {
   id: string;
@@ -25,80 +29,156 @@ type ChecklistItem = {
   done: boolean;
   rank: number;
   actionLabel: string;
+  phase: Phase;
+  /** Database onboarding item id — used to toggle completion via the API. */
+  dbId?: number;
+  /** Template item id — virtual items are materialized on first completion. */
+  templateItemId?: number | null;
 };
 
+function ChecklistRow({ item, onComplete }: { item: ChecklistItem; onComplete: (i: ChecklistItem) => void }) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-4">
+      <div className="flex items-start gap-3">
+        {item.done ? (
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white mt-0.5">
+            <Check className="h-4 w-4 stroke-[3]" />
+          </div>
+        ) : (
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-amber-500 text-amber-500 mt-0.5">
+            <Circle className="h-3 w-3 fill-amber-500" />
+          </div>
+        )}
+        <div>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-foreground">{item.title}</p>
+            <Badge
+              variant="outline"
+              className={
+                item.done
+                  ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[11px]"
+                  : "bg-amber-500/10 text-amber-600 border-amber-500/30 text-[11px]"
+              }
+            >
+              {item.done ? "Completed" : "Pending"}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">{item.date}</p>
+        </div>
+      </div>
+
+      {!item.done && item.actionLabel && (
+        <Button
+          size="sm"
+          className="sm:ml-auto"
+          onClick={() => onComplete(item)}
+        >
+          {item.actionLabel}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function EmployeeOnboarding() {
-  const [items, setItems] = useState<ChecklistItem[]>([
-    {
-      id: "chk-policies",
-      title: "Acknowledge Company Policies",
-      date: "Pending your action",
-      isoDate: "2026-08-01",
-      done: false,
-      rank: 0,
-      actionLabel: "Acknowledge",
-    },
-    {
-      id: "chk-agreement",
-      title: "Accept Employment Agreement",
-      date: "Pending your action",
-      isoDate: "2026-08-01",
-      done: false,
-      rank: 0,
-      actionLabel: "Review & Accept",
-    },
-    {
-      id: "chk-info",
-      title: "Confirm Personal Information",
-      date: "Completed Feb 2, 2026",
-      isoDate: "2026-02-02",
-      done: true,
-      rank: 1,
-      actionLabel: "",
-    },
-    {
-      id: "chk-gov",
-      title: "Submit Government Requirements",
-      date: "Completed Feb 3, 2026",
-      isoDate: "2026-02-03",
-      done: true,
-      rank: 1,
-      actionLabel: "",
-    },
-    {
-      id: "chk-med",
-      title: "Submit Medical Clearance",
-      date: "Completed Feb 3, 2026",
-      isoDate: "2026-02-03",
-      done: true,
-      rank: 1,
-      actionLabel: "",
-    },
-  ]);
+  // The current user's new hire record + checklist come from the database.
+  const [newHire, setNewHire] = useState<ApiNewHire | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<ChecklistItem[]>([]);
+
+  useEffect(() => {
+    newHiresApi
+      .list({ per_page: 100 })
+      .then((res) => {
+        const mine =
+          res.data.find((h) => h.name === myProfile.name) ?? res.data[0] ?? null;
+        setNewHire(mine);
+        return mine;
+      })
+      .then((mine) => {
+        if (!mine) return;
+        return onboardingItemsApi
+          .listForNewHire(mine.new_hire_id)
+          .then((apiItems) => {
+            setItems(
+              apiItems.map((i) => ({
+                id: i.employee_onboarding_item_id
+                  ? `chk-${i.employee_onboarding_item_id}`
+                  : `virt-${i.template_item_id}`,
+                dbId: i.employee_onboarding_item_id ?? undefined,
+                templateItemId: i.template_item_id ?? null,
+                title: i.item_text,
+                date: i.done && i.completed_at
+                  ? `Completed ${new Date(i.completed_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                  : "Pending your action",
+                isoDate: i.done && i.completed_at ? i.completed_at.slice(0, 10) : "2026-08-01",
+                done: Boolean(i.done),
+                rank: i.done ? 1 : 0,
+                actionLabel: i.done ? "" : "Mark Complete",
+                phase: i.phase === "Pre-onboarding" ? "Pre-onboarding" : "Probationary",
+              })),
+            );
+          });
+      })
+      .catch((err) => {
+        console.warn("Could not load onboarding checklist from API:", err);
+        toast.error("Could not load your onboarding checklist");
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("recent");
 
   const completedCount = items.filter((i) => i.done).length;
   const totalCount = items.length;
-  const pct = Math.round((completedCount / totalCount) * 100);
+  const pct = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
 
-  const handleComplete = (id: string, title: string) => {
+  const handleComplete = (target: ChecklistItem) => {
     const todayIso = new Date().toISOString().slice(0, 10);
-    setItems((prev) =>
-      prev.map((i) => {
-        if (i.id !== id) return i;
-        return {
-          ...i,
-          done: true,
-          rank: 1,
-          date: "Completed just now",
-          isoDate: todayIso,
-          actionLabel: "",
-        };
-      })
-    );
-    toast.success(`"${title}" step completed!`);
+    const updateLocal = () =>
+      setItems((prev) =>
+        prev.map((i) => {
+          if (i.id !== target.id) return i;
+          return {
+            ...i,
+            done: true,
+            rank: 1,
+            date: "Completed just now",
+            isoDate: todayIso,
+            actionLabel: "",
+          };
+        }),
+      );
+    updateLocal();
+    toast.success(`"${target.title}" step completed!`);
+
+    // Virtual template items (no row in the database yet) are materialized
+    // on first completion so the done state persists.
+    if (!target.dbId && target.templateItemId && newHire) {
+      onboardingItemsApi
+        .materialize(newHire.new_hire_id, target.templateItemId)
+        .then((created) => {
+          setItems((prev) =>
+            prev.map((i) =>
+              i.id === target.id ? { ...i, dbId: created.employee_onboarding_item_id } : i,
+            ),
+          );
+          return onboardingItemsApi.toggle(created.employee_onboarding_item_id, { done: true });
+        })
+        .catch((e) => {
+          console.warn("Could not save completion on database API:", e);
+          toast.error("Could not save completion — please retry.");
+        });
+    } else if (target.dbId) {
+      onboardingItemsApi
+        .toggle(target.dbId, { done: true })
+        .catch((e) => {
+          console.warn("Could not toggle onboarding item on database API:", e);
+          toast.error("Could not save completion — please retry.");
+        });
+    }
+
     if (completedCount + 1 >= totalCount) {
       setTimeout(() => {
         toast.success("Onboarding checklist complete! Awaiting HR verification.");
@@ -120,6 +200,26 @@ export function EmployeeOnboarding() {
         return 0;
       });
   }, [items, search, filter]);
+
+  // The onboarding responds to the hire's current stage: the ACTIVE phase is
+  // always shown as a plain (non-collapsible) list, while the OTHER phase —
+  // e.g. the old finished pre-onboarding checklist once the hire is in
+  // probation — is tucked inside the collapsible section.
+  const currentPhase =
+    newHire?.stage === "Probationary" ? "Probationary" : "Pre-onboarding";
+
+  const activeItems = filteredItems.filter(
+    (i) => (i.phase === "Pre-onboarding") === (currentPhase === "Pre-onboarding"),
+  );
+  const archivedItems = filteredItems.filter(
+    (i) => (i.phase === "Pre-onboarding") !== (currentPhase === "Pre-onboarding"),
+  );
+  const archivedDoneCount = items.filter(
+    (i) => (i.phase === "Pre-onboarding") !== (currentPhase === "Pre-onboarding") && i.done,
+  ).length;
+  const archivedTotalCount = items.filter(
+    (i) => (i.phase === "Pre-onboarding") !== (currentPhase === "Pre-onboarding"),
+  ).length;
 
   return (
     <div>
@@ -155,14 +255,26 @@ export function EmployeeOnboarding() {
               </div>
 
               {/* Prominent Employment Status */}
-              <div className="flex flex-col sm:items-end">
+              <div className="flex flex-col sm:items-end gap-2">
                 <Badge
                   variant="outline"
                   className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40 text-base sm:text-lg px-4 py-1.5 font-bold uppercase tracking-widest self-start sm:self-auto shadow-xs"
                 >
                   {myProfile.employmentType.toUpperCase()}
                 </Badge>
-                <span className="text-xs text-muted-foreground mt-1 font-medium">Employment Status</span>
+                <span className="text-xs text-muted-foreground font-medium">Employment Status</span>
+                {newHire?.stage && (
+                  <Badge
+                    variant="outline"
+                    className={
+                      newHire.stage === "Pre-onboarding"
+                        ? "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40 text-xs px-3 py-1 font-semibold uppercase tracking-widest self-start sm:self-auto"
+                        : "bg-gold/15 text-gold-foreground border-gold/40 text-xs px-3 py-1 font-semibold uppercase tracking-widest self-start sm:self-auto"
+                    }
+                  >
+                    {newHire.stage}
+                  </Badge>
+                )}
               </div>
             </div>
 
@@ -205,59 +317,67 @@ export function EmployeeOnboarding() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="divide-y divide-border">
-              {filteredItems.length === 0 ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">
-                  No checklist items match the current filter.
-                </div>
-              ) : (
-                filteredItems.map((item) => (
-                  <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-4">
-                    <div className="flex items-start gap-3">
-                      {item.done ? (
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white mt-0.5">
-                          <Check className="h-4 w-4 stroke-[3]" />
-                        </div>
-                      ) : (
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-amber-500 text-amber-500 mt-0.5">
-                          <Circle className="h-3 w-3 fill-amber-500" />
-                        </div>
-                      )}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-semibold text-foreground">{item.title}</p>
-                          <Badge
-                            variant="outline"
-                            className={
-                              item.done
-                                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[11px]"
-                                : "bg-amber-500/10 text-amber-600 border-amber-500/30 text-[11px]"
-                            }
-                          >
-                            {item.done ? "Completed" : "Pending"}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">{item.date}</p>
-                      </div>
+            {loading ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                Loading your onboarding checklist...
+              </div>
+            ) : filteredItems.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                {totalCount === 0
+                  ? "No onboarding checklist assigned yet — your HR admin will assign requirements once you start."
+                  : "No checklist items match the current filter."}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Current-stage checklist — always visible, no collapsible */}
+                <div className="divide-y divide-border">
+                  {activeItems.map((item) => (
+                    <ChecklistRow
+                      key={item.id}
+                      item={item}
+                      onComplete={handleComplete}
+                    />
+                  ))}
+                  {activeItems.length === 0 && filteredItems.length > 0 && (
+                    <div className="py-4 text-center text-sm text-muted-foreground">
+                      No {currentPhase.toLowerCase()} tasks.
                     </div>
+                  )}
+                </div>
 
-                    {!item.done && item.actionLabel && (
-                      <Button
-                        size="sm"
-                        className="sm:ml-auto"
-                        onClick={() => handleComplete(item.id, item.title)}
-                      >
-                        {item.actionLabel}
-                      </Button>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
+                {/* Other phase (e.g. old finished pre-onboarding checklist
+                    while in probation) — collapsible */}
+                {archivedItems.length > 0 && (
+                  <Collapsible className="border-t border-border pt-4">
+                    <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium transition-colors hover:bg-muted/50">
+                      <span className="flex items-center gap-1.5">
+                        <ChevronDown className="h-3.5 w-3.5" />
+                        {currentPhase === "Probationary"
+                          ? "Finished pre-onboarding checklist"
+                          : "Probationary tasks"}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {archivedDoneCount}/{archivedTotalCount} done
+                      </span>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="overflow-hidden transition-all data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+                      <div className="divide-y divide-border pl-1.5">
+                        {archivedItems.map((item) => (
+                          <ChecklistRow
+                            key={item.id}
+                            item={item}
+                            onComplete={handleComplete}
+                          />
+                        ))}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
     </div>
   );
 }
-

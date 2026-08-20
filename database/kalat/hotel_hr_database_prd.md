@@ -91,7 +91,7 @@ Column conventions: every table has a surrogate `*_id` primary key; `created_at`
 
 ### Domain 2 — Recruitment (7 tables)
 
-**9. `job_posts`** — job_post_id PK; slug UQ; title; department_id FK→departments; position_id FK→positions (nullable); employment_type; schedule; salary_min; salary_max; vacancies; filled_count; posted_date; status; active; experience_level; education_level; summary; description; responsibilities_json; qualifications_json; skills_json; benefits_json; created_at; updated_at
+**9. `job_posts`** — job_post_id PK; slug UQ; title; department_id FK→departments; position_id FK→positions (nullable); employment_type; schedule; salary_min; salary_max; vacancies; filled_count; posted_date; status; active; experience_level; education_level; summary; description; responsibilities_json; qualifications_json; skills_json; benefits_json; picture; created_at; updated_at
 
 **10. `job_post_platforms`** — job_post_platform_id PK; job_post_id FK→job_posts; platform; published_at; status; created_at; **UNIQUE (job_post_id, platform)**
 

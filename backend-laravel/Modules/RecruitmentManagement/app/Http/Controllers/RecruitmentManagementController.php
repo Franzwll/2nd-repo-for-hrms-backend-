@@ -5,7 +5,7 @@ namespace Modules\RecruitmentManagement\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 use Modules\RecruitmentManagement\Http\Requests\StoreJobPostRequest;
 use Modules\RecruitmentManagement\Http\Requests\UpdateJobPostRequest;
 use Modules\RecruitmentManagement\Http\Resources\JobPostResource;
@@ -15,7 +15,7 @@ use Modules\RecruitmentManagement\Models\JobPostPlatform;
 class RecruitmentManagementController extends Controller
 {
     /* ------------------------------------------------------------------ */
-    /* GET /api/v1/job-posts                                               */
+    /* GET /api/v1/job-posts */
     /* ------------------------------------------------------------------ */
 
     public function index(Request $request): JsonResponse
@@ -26,7 +26,7 @@ class RecruitmentManagementController extends Controller
         if ($search = $request->query('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'like', "%{$search}%")
-                  ->orWhereHas('department', fn ($d) => $d->where('name', 'like', "%{$search}%"));
+                    ->orWhereHas('department', fn ($d) => $d->where('name', 'like', "%{$search}%"));
             });
         }
         if ($status = $request->query('status')) {
@@ -38,9 +38,9 @@ class RecruitmentManagementController extends Controller
         // date range: '7', '30', '90', 'year'
         if ($dateRange = $request->query('date_range')) {
             $cutoff = match ($dateRange) {
-                '7'    => now()->subDays(7),
-                '30'   => now()->subDays(30),
-                '90'   => now()->subDays(90),
+                '7' => now()->subDays(7),
+                '30' => now()->subDays(30),
+                '90' => now()->subDays(90),
                 'year' => now()->startOfYear(),
                 default => null,
             };
@@ -49,38 +49,43 @@ class RecruitmentManagementController extends Controller
             }
         }
 
-        $perPage   = (int) $request->query('per_page', 15);
+        $perPage = (int) $request->query('per_page', 15);
         $paginated = $query->paginate($perPage);
 
         return response()->json([
             'data' => JobPostResource::collection($paginated->items()),
             'meta' => [
                 'current_page' => $paginated->currentPage(),
-                'last_page'    => $paginated->lastPage(),
-                'per_page'     => $paginated->perPage(),
-                'total'        => $paginated->total(),
+                'last_page' => $paginated->lastPage(),
+                'per_page' => $paginated->perPage(),
+                'total' => $paginated->total(),
             ],
         ]);
     }
 
     /* ------------------------------------------------------------------ */
-    /* POST /api/v1/job-posts                                              */
+    /* POST /api/v1/job-posts */
     /* ------------------------------------------------------------------ */
 
     public function store(StoreJobPostRequest $request): JsonResponse
     {
         $data = $request->validated();
 
-        // Map frontend field names to DB column names
-        $data['slug']                  = JobPost::generateSlug($data['title']);
+        // title and slug are derived from the linked position by the JobPost model
         $data['responsibilities_json'] = $data['responsibilities'] ?? [];
-        $data['qualifications_json']   = $data['qualifications']   ?? [];
-        $data['skills_json']           = $data['skills']           ?? [];
-        $data['benefits_json']         = $data['benefits']         ?? [];
-        $data['posted_date']           = $data['posted_date']      ?? now()->toDateString();
+        $data['qualifications_json'] = $data['qualifications'] ?? [];
+        $data['skills_json'] = $data['skills'] ?? [];
+        $data['benefits_json'] = $data['benefits'] ?? [];
+        $data['posted_date'] = $data['posted_date'] ?? now()->toDateString();
 
         $platforms = $data['platforms'] ?? [];
         unset($data['responsibilities'], $data['qualifications'], $data['skills'], $data['benefits'], $data['platforms']);
+
+        // Handle poster picture upload
+        if ($request->hasFile('picture')) {
+            $data['picture'] = $request->file('picture')->store('job-post-pictures', 'public');
+        }
+        unset($data['picture_file']);
 
         $jobPost = JobPost::create($data);
 
@@ -94,23 +99,24 @@ class RecruitmentManagementController extends Controller
     }
 
     /* ------------------------------------------------------------------ */
-    /* GET /api/v1/job-posts/{job_post}                                    */
+    /* GET /api/v1/job-posts/{job_post} */
     /* ------------------------------------------------------------------ */
 
     public function show(int $job_post): JsonResponse
     {
         $model = JobPost::with(['department', 'platforms', 'applicants'])->findOrFail($job_post);
+
         return response()->json(new JobPostResource($model));
     }
 
     /* ------------------------------------------------------------------ */
-    /* PUT /api/v1/job-posts/{job_post}                                    */
+    /* PUT /api/v1/job-posts/{job_post} */
     /* ------------------------------------------------------------------ */
 
     public function update(UpdateJobPostRequest $request, int $job_post): JsonResponse
     {
         $model = JobPost::findOrFail($job_post);
-        $data  = $request->validated();
+        $data = $request->validated();
 
         if (isset($data['responsibilities'])) {
             $data['responsibilities_json'] = $data['responsibilities'];
@@ -132,6 +138,15 @@ class RecruitmentManagementController extends Controller
         $platforms = $data['platforms'] ?? null;
         unset($data['platforms']);
 
+        // Handle poster picture replacement
+        if ($request->hasFile('picture')) {
+            if ($model->picture && Storage::disk('public')->exists($model->picture)) {
+                Storage::disk('public')->delete($model->picture);
+            }
+            $data['picture'] = $request->file('picture')->store('job-post-pictures', 'public');
+        }
+        unset($data['picture_file']);
+
         $model->update($data);
 
         if ($platforms !== null) {
@@ -142,34 +157,43 @@ class RecruitmentManagementController extends Controller
     }
 
     /* ------------------------------------------------------------------ */
-    /* DELETE /api/v1/job-posts/{job_post}                                 */
+    /* DELETE /api/v1/job-posts/{job_post} */
     /* ------------------------------------------------------------------ */
 
     public function destroy(int $job_post): JsonResponse
     {
-        JobPost::findOrFail($job_post)->delete();
+        $model = JobPost::findOrFail($job_post);
+
+        // Clean up poster picture
+        if ($model->picture && Storage::disk('public')->exists($model->picture)) {
+            Storage::disk('public')->delete($model->picture);
+        }
+
+        $model->delete();
+
         return response()->json(['message' => 'Job post deleted.']);
     }
 
     /* ------------------------------------------------------------------ */
-    /* PATCH /api/v1/job-posts/{job_post}/toggle                           */
-    /* Flip active flag; also updates status (Open <-> Closed)             */
+    /* PATCH /api/v1/job-posts/{job_post}/toggle */
+    /* Flip active flag; also updates status (Open <-> Closed) */
     /* ------------------------------------------------------------------ */
 
     public function toggleActive(int $job_post): JsonResponse
     {
-        $model     = JobPost::findOrFail($job_post);
+        $model = JobPost::findOrFail($job_post);
         $newActive = ! $model->active;
         $model->update([
             'active' => $newActive,
             'status' => $newActive ? 'Open' : 'Closed',
         ]);
+
         return response()->json(new JobPostResource($model->load(['department', 'platforms'])));
     }
 
     /* ------------------------------------------------------------------ */
-    /* POST /api/v1/job-posts/{job_post}/publish                           */
-    /* Set status=Open and persist platform choices                        */
+    /* POST /api/v1/job-posts/{job_post}/publish */
+    /* Set status=Open and persist platform choices */
     /* ------------------------------------------------------------------ */
 
     public function publish(Request $request, int $job_post): JsonResponse
@@ -177,13 +201,13 @@ class RecruitmentManagementController extends Controller
         $model = JobPost::findOrFail($job_post);
 
         $data = $request->validate([
-            'platforms'   => ['required', 'array', 'min:1'],
+            'platforms' => ['required', 'array', 'min:1'],
             'platforms.*' => ['string', 'in:Website,Facebook,Instagram,Indeed'],
         ]);
 
         $model->update([
-            'status'      => 'Open',
-            'active'      => true,
+            'status' => 'Open',
+            'active' => true,
             'posted_date' => $model->posted_date ?? now()->toDateString(),
         ]);
 
@@ -193,23 +217,23 @@ class RecruitmentManagementController extends Controller
     }
 
     /* ------------------------------------------------------------------ */
-    /* GET /api/v1/job-posts/stats                                         */
+    /* GET /api/v1/job-posts/stats */
     /* ------------------------------------------------------------------ */
 
     public function stats(): JsonResponse
     {
         return response()->json([
-            'total'            => JobPost::count(),
-            'open'             => JobPost::where('status', 'Open')->count(),
-            'draft'            => JobPost::where('status', 'Draft')->count(),
-            'closed'           => JobPost::where('status', 'Closed')->count(),
-            'total_vacancies'  => (int) JobPost::sum('vacancies'),
-            'total_filled'     => (int) JobPost::sum('filled_count'),
+            'total' => JobPost::count(),
+            'open' => JobPost::where('status', 'Open')->count(),
+            'draft' => JobPost::where('status', 'Draft')->count(),
+            'closed' => JobPost::where('status', 'Closed')->count(),
+            'total_vacancies' => (int) JobPost::sum('vacancies'),
+            'total_filled' => (int) JobPost::sum('filled_count'),
         ]);
     }
 
     /* ------------------------------------------------------------------ */
-    /* Private helpers                                                      */
+    /* Private helpers */
     /* ------------------------------------------------------------------ */
 
     private function syncPlatforms(JobPost $jobPost, array $platforms): void
