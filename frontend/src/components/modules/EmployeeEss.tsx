@@ -6,9 +6,6 @@ import {
   FileText,
   TrendingUp,
   FileCheck,
-  Calendar,
-  Layers,
-  HeartHandshake,
   Send,
   ArrowLeft,
 } from "lucide-react";
@@ -18,12 +15,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EssHeroBanner } from "@/components/modules/ess/EssHeroBanner";
 import { EssOverviewTab } from "@/components/modules/ess/tabs/EssOverviewTab";
 import { EssAttendanceTab } from "@/components/modules/ess/tabs/EssAttendanceTab";
-import { EssLeaveTab } from "@/components/modules/ess/tabs/EssLeaveTab";
 import { EssPayrollTab } from "@/components/modules/ess/tabs/EssPayrollTab";
 import { EssDocumentsTab } from "@/components/modules/ess/tabs/EssDocumentsTab";
 import { EssPerformanceTab } from "@/components/modules/ess/tabs/EssPerformanceTab";
-import { EssScheduleTab } from "@/components/modules/ess/tabs/EssScheduleTab";
-import { EssBenefitsTab } from "@/components/modules/ess/tabs/EssBenefitsTab";
 import { EssRequestCenterTab } from "@/components/modules/ess/tabs/EssRequestCenterTab";
 import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
 import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
@@ -115,23 +109,26 @@ export function EmployeeEss() {
             onOpenDocRequest={() => setDocRequestModalOpen(true)}
           />
 
-          {/* 5 Main Tabs */}
+          {/* ESS Section Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
             <TabsList className="flex h-auto flex-wrap justify-start">
               <TabsTrigger className="flex items-center gap-1.5" value="overview">
                 <LayoutDashboard className="h-3.5 w-3.5" /> Overview
               </TabsTrigger>
-              <TabsTrigger className="flex items-center gap-1.5" value="schedule">
-                <Layers className="h-3.5 w-3.5" /> Weekly Schedule
+              <TabsTrigger className="flex items-center gap-1.5" value="attendance">
+                <Clock className="h-3.5 w-3.5" /> Attendance
               </TabsTrigger>
-              <TabsTrigger className="flex items-center gap-1.5" value="leave">
-                <Calendar className="h-3.5 w-3.5" /> Leave Balances
+              <TabsTrigger className="flex items-center gap-1.5" value="payroll">
+                <FileText className="h-3.5 w-3.5" /> Payroll
               </TabsTrigger>
-              <TabsTrigger className="flex items-center gap-1.5" value="benefits">
-                <HeartHandshake className="h-3.5 w-3.5" /> Benefits &amp; Loans
+              <TabsTrigger className="flex items-center gap-1.5" value="performance">
+                <TrendingUp className="h-3.5 w-3.5" /> Performance
+              </TabsTrigger>
+              <TabsTrigger className="flex items-center gap-1.5" value="documents">
+                <FileCheck className="h-3.5 w-3.5" /> Company Documents
               </TabsTrigger>
               <TabsTrigger className="flex items-center gap-1.5" value="requests">
-                <Send className="h-3.5 w-3.5" /> All Requests
+                <Send className="h-3.5 w-3.5" /> Request Center
               </TabsTrigger>
             </TabsList>
 
@@ -145,16 +142,20 @@ export function EmployeeEss() {
               />
             </TabsContent>
 
-            <TabsContent value="schedule" className="mt-6">
-              <EssScheduleTab />
+            <TabsContent value="attendance" className="mt-6">
+              <EssAttendanceTab />
             </TabsContent>
 
-            <TabsContent value="leave" className="mt-6">
-              <EssLeaveTab />
+            <TabsContent value="payroll" className="mt-6">
+              <EssPayrollTab />
             </TabsContent>
 
-            <TabsContent value="benefits" className="mt-6">
-              <EssBenefitsTab />
+            <TabsContent value="performance" className="mt-6">
+              <EssPerformanceTab />
+            </TabsContent>
+
+            <TabsContent value="documents" className="mt-6">
+              <EssDocumentsTab />
             </TabsContent>
 
             <TabsContent value="requests" className="mt-6">

@@ -216,6 +216,75 @@ export function EssPayrollTab() {
         </Card>
       </div>
 
+      {/* Statutory Benefits & Company Loans Section */}
+      <Card className="border-border/70 shadow-xs">
+        <CardHeader className="pb-3">
+          <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-primary" />
+            Statutory Benefits &amp; Active Loans
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Official government identification numbers, healthcare coverage, and active salary loan deduction schedules.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-xl border border-border/70 p-4 space-y-1.5 shadow-xs bg-muted/10">
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider">SSS Number</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/30">Active</span>
+              </div>
+              <p className="text-base font-mono font-bold text-foreground">34-5678901-2</p>
+              <p className="text-xs text-muted-foreground">Monthly Contribution: ₱950.00</p>
+            </div>
+
+            <div className="rounded-xl border border-border/70 p-4 space-y-1.5 shadow-xs bg-muted/10">
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider">PhilHealth</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/30">Active</span>
+              </div>
+              <p className="text-base font-mono font-bold text-foreground">12-345678901-2</p>
+              <p className="text-xs text-muted-foreground">Monthly Premium: ₱450.00</p>
+            </div>
+
+            <div className="rounded-xl border border-border/70 p-4 space-y-1.5 shadow-xs bg-muted/10">
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider">Pag-IBIG (HDMF)</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/30">Active</span>
+              </div>
+              <p className="text-base font-mono font-bold text-foreground">1234-5678-9012</p>
+              <p className="text-xs text-muted-foreground">Monthly Savings: ₱200.00</p>
+            </div>
+
+            <div className="rounded-xl border border-border/70 p-4 space-y-1.5 shadow-xs bg-muted/10">
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider">HMO Healthcare</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 font-semibold border border-purple-500/30">Maxicare</span>
+              </div>
+              <p className="text-base font-mono font-bold text-foreground">MX-8892014</p>
+              <p className="text-xs text-muted-foreground">MBL Coverage: ₱150,000 / yr</p>
+            </div>
+          </div>
+
+          {/* Active Loans Sub-card */}
+          <div className="mt-4 rounded-xl border border-border/70 p-4 bg-muted/20">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Active Company / SSS Salary Loan
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Remaining Balance: <strong className="text-foreground">₱8,400.00</strong> · Deduction: <strong className="text-rose-600">-₱700.00 / cut-off</strong> (12 of 24 terms completed)
+                </p>
+              </div>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-background border border-border/80 self-start sm:self-auto">
+                Next Deduction: {myPayroll.nextPayout}
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Inquiry Form & Requests Table */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="border-border/70 shadow-xs">
