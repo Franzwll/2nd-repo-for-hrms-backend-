@@ -1,10 +1,7 @@
 import { useState } from "react";
-import { Award, BookOpen, Building, CheckCircle2, Send, TrendingUp, Sparkles, ShieldCheck } from "lucide-react";
+import { Award, BookOpen, Building, CheckCircle2, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import {
   Table,
@@ -21,22 +18,8 @@ import { toast } from "sonner";
 
 export function EssPerformanceTab() {
   const [courses, setCourses] = useState(myLearningCourses);
-  const [promoPosition, setPromoPosition] = useState("");
-  const [promoJustification, setPromoJustification] = useState("");
-  const [lastPromo, setLastPromo] = useState(myPerformance.lastPromotionRequest);
-
   const [selectedCourse, setSelectedCourse] = useState<any | null>(null);
   const [certModalOpen, setCertModalOpen] = useState(false);
-
-  const handlePromoSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!promoPosition) return;
-    const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    setLastPromo({ position: promoPosition, status: "Pending", date: todayStr });
-    toast.success("Promotion request submitted successfully to Department Head and HR.");
-    setPromoPosition("");
-    setPromoJustification("");
-  };
 
   const handleOpenCert = (course: any) => {
     setSelectedCourse(course);
@@ -47,7 +30,7 @@ export function EssPerformanceTab() {
     <div className="space-y-6">
       {/* 4 Performance Metric Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
             <div className="text-xs uppercase font-semibold text-muted-foreground tracking-wider flex items-center gap-1.5">
               <TrendingUp className="h-3.5 w-3.5 text-primary" /> Last Performance Review
@@ -57,7 +40,7 @@ export function EssPerformanceTab() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
             <div className="text-xs uppercase font-semibold text-muted-foreground tracking-wider flex items-center gap-1.5">
               <Award className="h-3.5 w-3.5 text-primary" /> Competency Rating
@@ -67,7 +50,7 @@ export function EssPerformanceTab() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
             <div className="text-xs uppercase font-semibold text-muted-foreground tracking-wider flex items-center gap-1.5">
               <BookOpen className="h-3.5 w-3.5 text-primary" /> LMS Training Progress
@@ -79,7 +62,7 @@ export function EssPerformanceTab() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
             <div className="text-xs uppercase font-semibold text-muted-foreground tracking-wider flex items-center gap-1.5">
               <Building className="h-3.5 w-3.5 text-primary" /> Salary Grade &amp; Step
@@ -146,60 +129,6 @@ export function EssPerformanceTab() {
               ))}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
-
-      {/* Promotion Request Application Card */}
-      <Card className="border-border/70 shadow-xs">
-        <CardHeader>
-          <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-primary" />
-            Apply for Career Promotion / Salary Step Reclassification
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Submit a formal promotion application endorsed by your direct supervisor and reviewed by HR.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handlePromoSubmit} className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Position Applied For</Label>
-                <Input
-                  placeholder="e.g., Senior Line Cook / Chef de Partie"
-                  value={promoPosition}
-                  onChange={(e) => setPromoPosition(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Current Position</Label>
-                <Input value={myProfile.position} disabled className="bg-muted text-muted-foreground" />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Key Accomplishments &amp; Justification</Label>
-              <Textarea
-                rows={3}
-                placeholder="Highlight your notable milestones, certifications, and leadership contributions..."
-                value={promoJustification}
-                onChange={(e) => setPromoJustification(e.target.value)}
-                required
-              />
-            </div>
-            <Button type="submit" className="gap-1.5">
-              <Send className="h-4 w-4" /> Submit Promotion Application
-            </Button>
-          </form>
-
-          <div className="mt-6 border-t border-border pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-            <span className="text-muted-foreground">Last Promotion Application Record:</span>
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-foreground">{lastPromo.position}</span>
-              <EssStatusBadge status={lastPromo.status} />
-              <span className="text-muted-foreground">— Filed on {lastPromo.date}</span>
-            </div>
-          </div>
         </CardContent>
       </Card>
 
