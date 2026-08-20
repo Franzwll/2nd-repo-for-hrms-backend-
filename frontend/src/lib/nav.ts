@@ -43,7 +43,7 @@ const recruitmentChildren = (base: string) => [
 ];
 
 const essChildren = (base: string) => [
-  { label: "All Requests", to: `${base}/ess` },
+  { label: "Overview", to: `${base}/ess` },
   { label: "Attendance", to: `${base}/ess?category=Attendance` },
   { label: "Payroll", to: `${base}/ess?category=Payroll` },
   { label: "Performance", to: `${base}/ess?category=Performance` },
