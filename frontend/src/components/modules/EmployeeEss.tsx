@@ -85,15 +85,7 @@ export function EmployeeEss() {
                 <ArrowLeft className="h-3.5 w-3.5" /> Back to ESS Overview
               </Link>
             </Button>
-          ) : (
-            <Button
-              size="sm"
-              onClick={() => setClockModalOpen(true)}
-              className="gap-1.5 shadow-xs bg-primary text-primary-foreground font-medium text-xs"
-            >
-              <Clock className="h-3.5 w-3.5" /> Daily Web Clocking
-            </Button>
-          )
+          ) : undefined
         }
       />
 
