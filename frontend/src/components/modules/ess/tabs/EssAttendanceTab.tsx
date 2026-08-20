@@ -30,7 +30,6 @@ import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { myAttendance } from "@/data/ess";
 import { DtrCorrectionModal } from "@/components/modules/ess/modals/DtrCorrectionModal";
-import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
 import { ShiftSwapModal } from "@/components/modules/ess/modals/ShiftSwapModal";
 import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
@@ -48,7 +47,6 @@ export function EssAttendanceTab() {
 
   const [attSearch, setAttSearch] = useState("");
   const [attSort, setAttSort] = useState("date-desc");
-  const [clockModalOpen, setClockModalOpen] = useState(false);
   const [correctionModalOpen, setCorrectionModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -132,8 +130,8 @@ export function EssAttendanceTab() {
 
   return (
     <div className="space-y-6">
-      {/* 4 Attendance & Schedule Metric Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Attendance & Leave Metric Cards */}
+      <div className="grid gap-4 sm:grid-cols-3">
         <Card className="border-border/70 shadow-xs">
           <CardContent className="p-4">
             <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Today Time In</p>
@@ -157,29 +155,6 @@ export function EssAttendanceTab() {
               {balances.find((b) => b.type.includes("Vacation"))?.available ?? 13} Days
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">Available for rest &amp; travel</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/70 shadow-xs flex flex-col justify-between">
-          <CardContent className="p-4">
-            <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Quick Actions</p>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <Button
-                size="sm"
-                className="text-xs gap-1 h-8 bg-primary text-primary-foreground font-medium"
-                onClick={() => setClockModalOpen(true)}
-              >
-                <Clock className="h-3.5 w-3.5" /> Clock In/Out
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-xs gap-1 h-8"
-                onClick={() => setLeaveModalOpen(true)}
-              >
-                <Calendar className="h-3.5 w-3.5 text-emerald-600" /> Apply Leave
-              </Button>
-            </div>
           </CardContent>
         </Card>
       </div>
@@ -489,7 +464,6 @@ export function EssAttendanceTab() {
       </Tabs>
 
       {/* Modals */}
-      <QuickClockModal open={clockModalOpen} onOpenChange={setClockModalOpen} />
       <DtrCorrectionModal
         open={correctionModalOpen}
         onOpenChange={setCorrectionModalOpen}
