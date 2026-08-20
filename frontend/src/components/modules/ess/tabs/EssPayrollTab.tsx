@@ -1,5 +1,25 @@
 import { useState, useMemo } from "react";
-import { FileText, Download, Eye, Send, Search, ArrowUpDown, HelpCircle, Building2, CheckCircle2 } from "lucide-react";
+import {
+  FileText,
+  Download,
+  Eye,
+  Send,
+  Search,
+  ArrowUpDown,
+  HelpCircle,
+  Building2,
+  CheckCircle2,
+  Wallet,
+  TrendingUp,
+  Receipt,
+  FileSpreadsheet,
+  ShieldCheck,
+  HeartHandshake,
+  Building,
+  Stethoscope,
+  Landmark,
+  MessageSquareText,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -97,25 +117,40 @@ export function EssPayrollTab() {
     <div className="space-y-6">
       {/* 3 Main Payroll Cards */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
-            <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Net Pay (Latest Cut-off)</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Net Pay (Latest Cut-off)</p>
+              <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600 dark:text-emerald-400">
+                <Wallet className="h-4 w-4" />
+              </div>
+            </div>
             <p className="mt-1 text-3xl font-bold font-display text-emerald-600 dark:text-emerald-400">₱{myPayroll.net.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground mt-1">Next payout date: <strong className="text-foreground">{myPayroll.nextPayout}</strong></p>
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
-            <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Gross Earnings</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Gross Earnings</p>
+              <div className="rounded-lg bg-primary/10 p-2 text-primary">
+                <TrendingUp className="h-4 w-4" />
+              </div>
+            </div>
             <p className="mt-1 text-2xl font-bold font-display text-foreground">₱{myPayroll.gross.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground mt-1">Includes basic pay, OT &amp; allowances</p>
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
-            <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Total Deductions</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Total Deductions</p>
+              <div className="rounded-lg bg-rose-500/10 p-2 text-rose-600 dark:text-rose-400">
+                <Receipt className="h-4 w-4" />
+              </div>
+            </div>
             <p className="mt-1 text-2xl font-bold font-display text-rose-600 dark:text-rose-400">
               -₱{(myPayroll.gross - myPayroll.net).toLocaleString()}
             </p>
@@ -185,7 +220,10 @@ export function EssPayrollTab() {
         {/* Current Period Breakdown */}
         <Card className="border-border/70 shadow-xs">
           <CardHeader className="pb-3">
-            <CardTitle className="font-display text-xl font-semibold">Latest Pay Stub Breakdown</CardTitle>
+            <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5 text-primary" />
+              Latest Pay Stub Breakdown
+            </CardTitle>
             <p className="text-xs text-muted-foreground">Itemized item distribution for current period.</p>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -231,7 +269,9 @@ export function EssPayrollTab() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl border border-border/70 p-4 space-y-1.5 shadow-xs bg-muted/10">
               <div className="flex items-center justify-between">
-                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider">SSS Number</span>
+                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5 text-primary" /> SSS Number
+                </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/30">Active</span>
               </div>
               <p className="text-base font-mono font-bold text-foreground">34-5678901-2</p>
@@ -240,7 +280,9 @@ export function EssPayrollTab() {
 
             <div className="rounded-xl border border-border/70 p-4 space-y-1.5 shadow-xs bg-muted/10">
               <div className="flex items-center justify-between">
-                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider">PhilHealth</span>
+                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-1.5">
+                  <HeartHandshake className="h-3.5 w-3.5 text-emerald-600" /> PhilHealth
+                </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/30">Active</span>
               </div>
               <p className="text-base font-mono font-bold text-foreground">12-345678901-2</p>
@@ -249,7 +291,9 @@ export function EssPayrollTab() {
 
             <div className="rounded-xl border border-border/70 p-4 space-y-1.5 shadow-xs bg-muted/10">
               <div className="flex items-center justify-between">
-                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider">Pag-IBIG (HDMF)</span>
+                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-1.5">
+                  <Building className="h-3.5 w-3.5 text-blue-600" /> Pag-IBIG (HDMF)
+                </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/30">Active</span>
               </div>
               <p className="text-base font-mono font-bold text-foreground">1234-5678-9012</p>
@@ -258,7 +302,9 @@ export function EssPayrollTab() {
 
             <div className="rounded-xl border border-border/70 p-4 space-y-1.5 shadow-xs bg-muted/10">
               <div className="flex items-center justify-between">
-                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider">HMO Healthcare</span>
+                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-1.5">
+                  <Stethoscope className="h-3.5 w-3.5 text-purple-600" /> HMO Healthcare
+                </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 font-semibold border border-purple-500/30">Maxicare</span>
               </div>
               <p className="text-base font-mono font-bold text-foreground">MX-8892014</p>
@@ -271,7 +317,7 @@ export function EssPayrollTab() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Active Company / SSS Salary Loan
+                  <Landmark className="h-4 w-4 text-emerald-600" /> Active Company / SSS Salary Loan
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Remaining Balance: <strong className="text-foreground">₱8,400.00</strong> · Deduction: <strong className="text-rose-600">-₱700.00 / cut-off</strong> (12 of 24 terms completed)
@@ -289,7 +335,10 @@ export function EssPayrollTab() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="border-border/70 shadow-xs">
           <CardHeader>
-            <CardTitle className="font-display text-xl font-semibold">Submit Payroll Inquiry / OT Request</CardTitle>
+            <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+              <HelpCircle className="h-5 w-5 text-primary" />
+              Submit Payroll Inquiry / OT Request
+            </CardTitle>
             <p className="text-xs text-muted-foreground">Report discrepancy or request certified copy.</p>
           </CardHeader>
           <CardContent>
@@ -338,7 +387,10 @@ export function EssPayrollTab() {
         <Card className="border-border/70 shadow-xs">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
             <div>
-              <CardTitle className="font-display text-xl font-semibold">My Payroll Requests</CardTitle>
+              <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+                <MessageSquareText className="h-5 w-5 text-primary" />
+                My Payroll Requests
+              </CardTitle>
               <p className="text-xs text-muted-foreground">Click row to track audit status.</p>
             </div>
             <div className="flex items-center gap-2">

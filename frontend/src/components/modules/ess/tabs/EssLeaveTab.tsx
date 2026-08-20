@@ -1,5 +1,16 @@
 import { useState, useEffect } from "react";
-import { Calendar, Plus, Clock, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import {
+  Calendar,
+  Plus,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  Palmtree,
+  Stethoscope,
+  CalendarDays,
+  HeartHandshake,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -56,12 +67,22 @@ export function EssLeaveTab() {
     setTimelineOpen(true);
   };
 
+  const getLeaveIcon = (type: string) => {
+    if (type.includes("Vacation")) return <Palmtree className="h-4 w-4 text-amber-600" />;
+    if (type.includes("Sick")) return <Stethoscope className="h-4 w-4 text-emerald-600" />;
+    if (type.includes("Emergency")) return <AlertCircle className="h-4 w-4 text-rose-600" />;
+    return <CalendarDays className="h-4 w-4 text-primary" />;
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Header & Apply CTA */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h3 className="text-xl font-bold font-display text-foreground">Leave Balances &amp; Accrual</h3>
+          <h3 className="text-xl font-bold font-display text-foreground flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-primary" />
+            Leave Balances &amp; Accrual
+          </h3>
           <p className="text-xs text-muted-foreground">
             Track statutory and company-granted paid leave allocations for calendar year 2026.
           </p>
@@ -87,7 +108,9 @@ export function EssLeaveTab() {
                   <CardContent className="p-4 space-y-3">
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{l.type}</p>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                          {getLeaveIcon(l.type)} {l.type}
+                        </p>
                         <p className="text-2xl font-bold font-display text-foreground mt-1">
                           {remaining} <span className="text-xs font-normal text-muted-foreground">/ {l.total} days</span>
                         </p>

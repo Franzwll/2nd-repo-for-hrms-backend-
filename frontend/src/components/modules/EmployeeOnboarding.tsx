@@ -1,5 +1,14 @@
 import { useState, useMemo, useEffect } from "react";
-import { Info, Check, Search, ArrowUpDown, Circle, ChevronDown } from "lucide-react";
+import {
+  Info,
+  Check,
+  Search,
+  ArrowUpDown,
+  Circle,
+  ChevronDown,
+  ListChecks,
+  UserCheck,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
@@ -256,7 +265,10 @@ export function EmployeeOnboarding() {
         {/* ONBOARDING CHECKLIST Card */}
         <Card className="border-border/70">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
-            <CardTitle className="font-display text-xl font-semibold">ONBOARDING CHECKLIST</CardTitle>
+            <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+              <ListChecks className="h-5 w-5 text-primary" />
+              ONBOARDING CHECKLIST
+            </CardTitle>
             <div className="flex items-center gap-2">
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

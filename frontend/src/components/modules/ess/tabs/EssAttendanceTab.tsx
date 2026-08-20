@@ -5,10 +5,15 @@ import {
   Search,
   ArrowUpDown,
   Calendar,
+  CalendarCheck,
+  Palmtree,
   Layers,
   ArrowLeftRight,
   MapPin,
   Loader2,
+  FileEdit,
+  FileText,
+  CalendarDays,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -134,25 +139,40 @@ export function EssAttendanceTab() {
     <div className="space-y-6">
       {/* Attendance & Leave Metric Cards */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
-            <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Today Time In</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Today Time In</p>
+              <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600 dark:text-emerald-400">
+                <Clock className="h-4 w-4" />
+              </div>
+            </div>
             <p className="mt-1 text-2xl font-bold font-display text-emerald-600 dark:text-emerald-400">{myAttendance.today.timeIn}</p>
             <p className="text-xs text-muted-foreground mt-0.5">Time Out: <strong className="text-foreground">{myAttendance.today.timeOut}</strong></p>
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
-            <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Monthly Attendance</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Monthly Attendance</p>
+              <div className="rounded-lg bg-primary/10 p-2 text-primary">
+                <CalendarCheck className="h-4 w-4" />
+              </div>
+            </div>
             <p className="mt-1 text-2xl font-bold font-display text-foreground">{myAttendance.monthly.present} Days Present</p>
             <p className="text-xs text-muted-foreground mt-0.5">{myAttendance.monthly.late} Late · {myAttendance.monthly.absent} Absent</p>
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
-            <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Vacation Leave Balance</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Vacation Leave Balance</p>
+              <div className="rounded-lg bg-amber-500/10 p-2 text-amber-600 dark:text-amber-400">
+                <Palmtree className="h-4 w-4" />
+              </div>
+            </div>
             <p className="mt-1 text-2xl font-bold font-display text-primary">
               {balances.find((b) => b.type.includes("Vacation"))?.available ?? 13} Days
             </p>
@@ -233,7 +253,10 @@ export function EssAttendanceTab() {
           <Card className="border-border/70 shadow-xs">
             <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
               <div>
-                <CardTitle className="font-display text-xl font-semibold">My Attendance Correction Requests</CardTitle>
+                <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+                  <FileEdit className="h-5 w-5 text-primary" />
+                  My Attendance Correction Requests
+                </CardTitle>
                 <p className="text-xs text-muted-foreground">Click row to track approval progress &amp; reviewer comments.</p>
               </div>
               <div className="flex items-center gap-2">
@@ -422,7 +445,10 @@ export function EssAttendanceTab() {
           {/* Leave History Table */}
           <Card className="border-border/70 shadow-xs">
             <CardHeader className="pb-3">
-              <CardTitle className="font-display text-xl font-semibold">Leave Application History</CardTitle>
+              <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary" />
+                Leave Application History
+              </CardTitle>
               <p className="text-xs text-muted-foreground">Filed leave requests and approval progress.</p>
             </CardHeader>
             <CardContent>
