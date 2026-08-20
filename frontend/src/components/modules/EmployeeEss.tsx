@@ -1,12 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouterState, Link } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   Clock,
   FileText,
-  TrendingUp,
   FileCheck,
-  Send,
+  Calendar,
   ArrowLeft,
 } from "lucide-react";
 import { PageHeader } from "@/components/portal/PageHeader";
@@ -15,15 +14,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EssHeroBanner } from "@/components/modules/ess/EssHeroBanner";
 import { EssOverviewTab } from "@/components/modules/ess/tabs/EssOverviewTab";
 import { EssAttendanceTab } from "@/components/modules/ess/tabs/EssAttendanceTab";
+import { EssLeaveTab } from "@/components/modules/ess/tabs/EssLeaveTab";
 import { EssPayrollTab } from "@/components/modules/ess/tabs/EssPayrollTab";
 import { EssDocumentsTab } from "@/components/modules/ess/tabs/EssDocumentsTab";
 import { EssPerformanceTab } from "@/components/modules/ess/tabs/EssPerformanceTab";
-import { EssRequestCenterTab } from "@/components/modules/ess/tabs/EssRequestCenterTab";
 import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
 import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
 import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewerModal";
 import { DocumentRequestModal } from "@/components/modules/ess/modals/DocumentRequestModal";
-import { myProfile, myPayroll } from "@/data/ess";
+import { myPayroll } from "@/data/ess";
 
 export function EmployeeEss() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -99,36 +98,28 @@ export function EmployeeEss() {
           {categoryParam === "Documents" && <EssDocumentsTab />}
         </div>
       ) : (
-        /* MAIN ESS SECTION (All Requests / Portal Hub) */
+        /* MAIN ESS SECTION (Portal Hub) */
         <div className="space-y-6">
-          {/* Hero Banner with Live Clock, Shift Status & Fast Action Modals */}
-          <EssHeroBanner
-            onOpenClock={() => setClockModalOpen(true)}
-            onOpenLeave={() => setLeaveModalOpen(true)}
-            onOpenPayslip={() => setPayslipModalOpen(true)}
-            onOpenDocRequest={() => setDocRequestModalOpen(true)}
-          />
+          {/* Hero Banner with Live Clock and Shift Status */}
+          <EssHeroBanner />
 
-          {/* ESS Section Tabs */}
+          {/* Action Tabs: Overview, Web Clocking, Applying Leave, Latest Payslip, Request COE */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
             <TabsList className="flex h-auto flex-wrap justify-start">
               <TabsTrigger className="flex items-center gap-1.5" value="overview">
                 <LayoutDashboard className="h-3.5 w-3.5" /> Overview
               </TabsTrigger>
-              <TabsTrigger className="flex items-center gap-1.5" value="attendance">
-                <Clock className="h-3.5 w-3.5" /> Attendance
+              <TabsTrigger className="flex items-center gap-1.5" value="clocking">
+                <Clock className="h-3.5 w-3.5" /> Web Clocking
               </TabsTrigger>
-              <TabsTrigger className="flex items-center gap-1.5" value="payroll">
-                <FileText className="h-3.5 w-3.5" /> Payroll
+              <TabsTrigger className="flex items-center gap-1.5" value="leave">
+                <Calendar className="h-3.5 w-3.5" /> Applying Leave
               </TabsTrigger>
-              <TabsTrigger className="flex items-center gap-1.5" value="performance">
-                <TrendingUp className="h-3.5 w-3.5" /> Performance
+              <TabsTrigger className="flex items-center gap-1.5" value="payslip">
+                <FileText className="h-3.5 w-3.5" /> Latest Payslip
               </TabsTrigger>
-              <TabsTrigger className="flex items-center gap-1.5" value="documents">
-                <FileCheck className="h-3.5 w-3.5" /> Company Documents
-              </TabsTrigger>
-              <TabsTrigger className="flex items-center gap-1.5" value="requests">
-                <Send className="h-3.5 w-3.5" /> Request Center
+              <TabsTrigger className="flex items-center gap-1.5" value="coe">
+                <FileCheck className="h-3.5 w-3.5" /> Request COE
               </TabsTrigger>
             </TabsList>
 
@@ -142,24 +133,20 @@ export function EmployeeEss() {
               />
             </TabsContent>
 
-            <TabsContent value="attendance" className="mt-6">
+            <TabsContent value="clocking" className="mt-6">
               <EssAttendanceTab />
             </TabsContent>
 
-            <TabsContent value="payroll" className="mt-6">
+            <TabsContent value="leave" className="mt-6">
+              <EssLeaveTab />
+            </TabsContent>
+
+            <TabsContent value="payslip" className="mt-6">
               <EssPayrollTab />
             </TabsContent>
 
-            <TabsContent value="performance" className="mt-6">
-              <EssPerformanceTab />
-            </TabsContent>
-
-            <TabsContent value="documents" className="mt-6">
+            <TabsContent value="coe" className="mt-6">
               <EssDocumentsTab />
-            </TabsContent>
-
-            <TabsContent value="requests" className="mt-6">
-              <EssRequestCenterTab />
             </TabsContent>
           </Tabs>
         </div>
