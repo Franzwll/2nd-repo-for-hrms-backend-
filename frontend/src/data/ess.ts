@@ -8,9 +8,11 @@ export type ESSRequest = {
   category: string;
   type: string;
   filed: string;
-  status: "Pending" | "Under Review" | "Approved" | "Rejected" | "Completed";
+  status: "Pending" | "Under Review" | "Approved" | "Rejected" | "Completed" | "Returned for Clarification";
   assignedTo: string;
   details: string;
+  returnedCount?: number | undefined;
+  note?: string | undefined;
 };
 
 export const essRequests: ESSRequest[] = [

@@ -23,8 +23,8 @@ import { essApi, type ApiEssRequestItem } from "@/lib/api";
 import { toast } from "sonner";
 
 export function EssRequestCenterTab() {
-  const [category, setCategory] = useState(requestCategories[0]!.name);
-  const [requestType, setRequestType] = useState(requestCategories[0]!.types[0]);
+  const [category, setCategory] = useState(requestCategories[0]?.name || "");
+  const [requestType, setRequestType] = useState(requestCategories[0]?.types[0] || "");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [reason, setReason] = useState("");
@@ -229,7 +229,7 @@ export function EssRequestCenterTab() {
                   onValueChange={(val) => {
                     setCategory(val);
                     const found = requestCategories.find((c) => c.name === val);
-                    if (found && found.types.length > 0) setRequestType(found.types[0]);
+                    if (found && found.types.length > 0) setRequestType(found.types[0] || "");
                   }}
                 >
                   <SelectTrigger>

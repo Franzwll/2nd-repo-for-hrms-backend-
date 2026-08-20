@@ -1221,13 +1221,13 @@ export const essApi = {
     return request<{ requests: ApiEssRequestItem[] }>(`/ess/my-requests${qs ? `?${qs}` : ''}`);
   },
   createRequest: (data: {
-    category_code?: string;
-    category_name?: string;
+    category_code?: string | undefined;
+    category_name?: string | undefined;
     request_type: string;
-    date_from?: string;
-    date_to?: string;
+    date_from?: string | undefined;
+    date_to?: string | undefined;
     details: string;
-    attachment_path?: string;
+    attachment_path?: string | null | undefined;
   }) =>
     request<{ message: string; request: any }>('/ess/requests', {
       method: 'POST',
@@ -1257,7 +1257,7 @@ export const essApi = {
   },
   updateRequestStatus: (
     id: string | number,
-    data: { status: string; note?: string }
+    data: { status: string; note?: string | undefined }
   ) =>
     request<{ message: string; request: any }>(`/ess/admin/requests/${id}/status`, {
       method: 'PATCH',
@@ -1267,8 +1267,8 @@ export const essApi = {
     employee_id: number;
     category_name: string;
     request_type: string;
-    date_from?: string;
-    date_to?: string;
+    date_from?: string | undefined;
+    date_to?: string | undefined;
     details: string;
   }) =>
     request<{ message: string; request: any }>('/ess/admin/requests/behalf', {
