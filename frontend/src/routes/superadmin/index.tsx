@@ -59,13 +59,15 @@ export const Route = createFileRoute("/superadmin/")({
 
 const CHART = ["var(--color-primary)", "var(--color-gold)", "var(--color-success)", "var(--color-caution)", "var(--color-muted-foreground)"];
 
-const initials = (name: string) =>
-  name
+const initials = (name: string | null | undefined) =>
+  (name ?? "")
+    .trim()
     .split(" ")
+    .filter(Boolean)
     .map((p) => p[0])
     .slice(0, 2)
     .join("")
-    .toUpperCase();
+    .toUpperCase() || "?";
 
 const accountStatusClass = (status: string) => {
   switch (status) {
@@ -358,7 +360,7 @@ export function SuperAdminDashboard() {
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0">
-                        <p className="truncate text-xs font-medium">{u.name}</p>
+                        <p className="truncate text-xs font-medium">{u.name ?? "Unlinked account"}</p>
                         <p className="truncate text-[11px] text-muted-foreground">
                           {u.department ?? "—"} · {formatDateTime(u.last_login_at)}
                         </p>
