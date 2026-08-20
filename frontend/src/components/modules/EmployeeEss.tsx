@@ -103,35 +103,25 @@ export function EmployeeEss() {
           {/* Hero Banner with Live Clock and Shift Status */}
           <EssHeroBanner />
 
-          {/* Action Tabs & Quick Actions */}
+          {/* Action Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <TabsList className="flex h-auto flex-wrap justify-start">
-                <TabsTrigger className="flex items-center gap-1.5" value="overview">
-                  <LayoutDashboard className="h-3.5 w-3.5" /> Overview
-                </TabsTrigger>
-                <TabsTrigger className="flex items-center gap-1.5" value="clocking">
-                  <Clock className="h-3.5 w-3.5" /> Web Clocking
-                </TabsTrigger>
-                <TabsTrigger className="flex items-center gap-1.5" value="leave">
-                  <Calendar className="h-3.5 w-3.5" /> Applying Leave
-                </TabsTrigger>
-                <TabsTrigger className="flex items-center gap-1.5" value="payslip">
-                  <FileText className="h-3.5 w-3.5" /> Latest Payslip
-                </TabsTrigger>
-                <TabsTrigger className="flex items-center gap-1.5" value="coe">
-                  <FileCheck className="h-3.5 w-3.5" /> Request COE
-                </TabsTrigger>
-              </TabsList>
-
-              <Button
-                size="sm"
-                onClick={() => setClockModalOpen(true)}
-                className="gap-1.5 shadow-xs bg-primary text-primary-foreground font-medium text-xs shrink-0 self-start sm:self-auto"
-              >
-                <Clock className="h-3.5 w-3.5" /> Daily Web Clocking
-              </Button>
-            </div>
+            <TabsList className="flex h-auto flex-wrap justify-start">
+              <TabsTrigger className="flex items-center gap-1.5" value="overview">
+                <LayoutDashboard className="h-3.5 w-3.5" /> Overview
+              </TabsTrigger>
+              <TabsTrigger className="flex items-center gap-1.5" value="clocking">
+                <Clock className="h-3.5 w-3.5" /> Web Clocking
+              </TabsTrigger>
+              <TabsTrigger className="flex items-center gap-1.5" value="leave">
+                <Calendar className="h-3.5 w-3.5" /> Applying Leave
+              </TabsTrigger>
+              <TabsTrigger className="flex items-center gap-1.5" value="payslip">
+                <FileText className="h-3.5 w-3.5" /> Latest Payslip
+              </TabsTrigger>
+              <TabsTrigger className="flex items-center gap-1.5" value="coe">
+                <FileCheck className="h-3.5 w-3.5" /> Request COE
+              </TabsTrigger>
+            </TabsList>
 
             {/* Tab Contents */}
             <TabsContent value="overview" className="mt-6">
