@@ -30,6 +30,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { myAttendance } from "@/data/ess";
 import { DtrCorrectionModal } from "@/components/modules/ess/modals/DtrCorrectionModal";
+import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
 import { ShiftSwapModal } from "@/components/modules/ess/modals/ShiftSwapModal";
 import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
@@ -47,6 +48,7 @@ export function EssAttendanceTab() {
 
   const [attSearch, setAttSearch] = useState("");
   const [attSort, setAttSort] = useState("date-desc");
+  const [clockModalOpen, setClockModalOpen] = useState(false);
   const [correctionModalOpen, setCorrectionModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -161,7 +163,7 @@ export function EssAttendanceTab() {
 
       {/* Sub-Navigation Tabs inside Attendance */}
       <Tabs value={subSection} onValueChange={setSubSection} className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <TabsList className="bg-muted/60 p-1">
             <TabsTrigger value="dtr" className="text-xs gap-1.5">
               <Clock className="h-3.5 w-3.5" /> Attendance Logs &amp; DTR
@@ -173,6 +175,14 @@ export function EssAttendanceTab() {
               <Calendar className="h-3.5 w-3.5" /> Leave Balances &amp; Filing
             </TabsTrigger>
           </TabsList>
+
+          <Button
+            size="sm"
+            onClick={() => setClockModalOpen(true)}
+            className="gap-1.5 shadow-xs bg-primary text-primary-foreground font-medium text-xs shrink-0 self-start sm:self-auto"
+          >
+            <Clock className="h-3.5 w-3.5" /> Daily Web Clocking
+          </Button>
         </div>
 
         {/* 1. DTR Logs & Correction Sub-tab */}
@@ -464,6 +474,7 @@ export function EssAttendanceTab() {
       </Tabs>
 
       {/* Modals */}
+      <QuickClockModal open={clockModalOpen} onOpenChange={setClockModalOpen} />
       <DtrCorrectionModal
         open={correctionModalOpen}
         onOpenChange={setCorrectionModalOpen}
