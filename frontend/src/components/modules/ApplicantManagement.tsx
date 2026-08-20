@@ -113,21 +113,30 @@ import { jobs } from "@/data/jobs";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { SortHead, useSort } from "@/components/portal/sortable";
-import { applicantsApi, assessmentsApi, interviewsApi, jobPostsApi, settingsApi, type ApiApplicant, type ApiInterview, type ApiSystemUser } from "@/lib/api";
+import { applicantsApi, assessmentsApi, interviewsApi, jobPostsApi, settingsApi, userManagementApi, type ApiApplicant, type ApiInterview, type ApiSystemUser } from "@/lib/api";
+
+const VALID_STATUSES: ApplicantStatus[] = ["fit", "other-role", "credential", "not-fit"];
+
+function normalizeApplicantStatus(status: any): ApplicantStatus {
+  if (status && VALID_STATUSES.includes(status)) {
+    return status as ApplicantStatus;
+  }
+  return "not-fit";
+}
 
 function transformApiApplicant(a: ApiApplicant): Applicant {
   return {
     id: a.applicant_code || `APP-${a.applicant_id}`,
     dbId: a.applicant_id,
-    name: a.name,
-    email: a.email,
+    name: a.name || `Applicant #${a.applicant_id}`,
+    email: a.email || "",
     phone: a.phone || "0912 345 6789",
     position: a.job_post?.title || "Front Desk Receptionist",
-    jobId: String(a.job_post_id),
+    jobId: String(a.job_post_id ?? ""),
     appliedAt: a.applied_at ? a.applied_at.slice(0, 16).replace("T", " ") : "2026-07-25 12:00",
     score: a.fit_score || 0,
-    status: a.status,
-    stage: a.stage,
+    status: normalizeApplicantStatus(a.status),
+    stage: (a.stage as any) || "Screened",
     source: (a.source || "Online Portal") as any,
     entities: a.screening_entities?.map((e) => ({ label: e.label, value: e.value })) || [],
     breakdown: a.screening_scores?.map((s) => ({ criterion: s.criterion, score: s.score })) || [],
@@ -525,8 +534,8 @@ export function ApplicantManagement({
       .catch(() => {
         console.warn("Could not fetch schedulable days, using default.");
       });
-    settingsApi
-      .listSystemUsers()
+    userManagementApi.users
+      .list()
       .then((res) => setAssessors(res.data))
       .catch(() => {
         console.warn("Could not fetch system users for assessor selector.");

@@ -128,6 +128,17 @@ export interface ApiInterview {
   interviewer_employee_id: number | null;
   interviewer_name: string | null;
   status: "Scheduled" | "Completed" | "No Show";
+  applicant?: {
+    applicant_id: number;
+    applicant_code: string;
+    name: string;
+    email?: string;
+    phone?: string;
+    position?: string;
+    department?: string;
+    stage?: string;
+    fit_score?: number | null;
+  } | null;
 }
 
 export interface ApiAssessment {
@@ -139,6 +150,14 @@ export interface ApiAssessment {
   total_score: number | null;
   outcome: "Recommended" | "Hold" | "Not Recommended";
   remarks: string | null;
+  applicant?: {
+    applicant_id: number;
+    applicant_code: string;
+    name: string;
+    position?: string;
+    department?: string;
+    stage?: string;
+  } | null;
 }
 
 export function resolveStorageUrl(value: string | null): string | null {
