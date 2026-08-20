@@ -4,7 +4,6 @@ import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
@@ -37,7 +36,7 @@ type ChecklistItem = {
   templateItemId?: number | null;
 };
 
-function ChecklistRow({ item, onComplete }: { item: ChecklistItem; onComplete: (i: ChecklistItem) => void }) {
+function ChecklistRow({ item }: { item: ChecklistItem }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-4">
       <div className="flex items-start gap-3">
@@ -61,22 +60,12 @@ function ChecklistRow({ item, onComplete }: { item: ChecklistItem; onComplete: (
                   : "bg-amber-500/10 text-amber-600 border-amber-500/30 text-[11px]"
               }
             >
-              {item.done ? "Completed" : "Pending"}
+              {item.done ? "Completed" : "Pending Admin Verification"}
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">{item.date}</p>
         </div>
       </div>
-
-      {!item.done && item.actionLabel && (
-        <Button
-          size="sm"
-          className="sm:ml-auto"
-          onClick={() => onComplete(item)}
-        >
-          {item.actionLabel}
-        </Button>
-      )}
     </div>
   );
 }
@@ -157,58 +146,6 @@ export function EmployeeOnboarding() {
   const completedCount = items.filter((i) => i.done).length;
   const totalCount = items.length;
   const pct = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
-
-  const handleComplete = (target: ChecklistItem) => {
-    const todayIso = new Date().toISOString().slice(0, 10);
-    const updateLocal = () =>
-      setItems((prev) =>
-        prev.map((i) => {
-          if (i.id !== target.id) return i;
-          return {
-            ...i,
-            done: true,
-            rank: 1,
-            date: "Completed just now",
-            isoDate: todayIso,
-            actionLabel: "",
-          };
-        }),
-      );
-    updateLocal();
-    toast.success(`"${target.title}" step completed!`);
-
-    // Virtual template items (no row in the database yet) are materialized
-    // on first completion so the done state persists.
-    if (!target.dbId && target.templateItemId && newHire) {
-      onboardingItemsApi
-        .materialize(newHire.new_hire_id, target.templateItemId)
-        .then((created) => {
-          setItems((prev) =>
-            prev.map((i) =>
-              i.id === target.id ? { ...i, dbId: created.employee_onboarding_item_id } : i,
-            ),
-          );
-          return onboardingItemsApi.toggle(created.employee_onboarding_item_id, { done: true });
-        })
-        .catch((e) => {
-          console.warn("Could not save completion on database API:", e);
-          toast.error("Could not save completion — please retry.");
-        });
-    } else if (target.dbId) {
-      onboardingItemsApi
-        .toggle(target.dbId, { done: true })
-        .catch((e) => {
-          console.warn("Could not toggle onboarding item on database API:", e);
-          toast.error("Could not save completion — please retry.");
-        });
-    }
-
-    if (completedCount + 1 >= totalCount) {
-      setTimeout(() => {
-        toast.success("Onboarding checklist complete! Awaiting HR verification.");
-      }, 500);
-    }
-  };
 
   const filteredItems = useMemo(() => {
     return items
@@ -362,7 +299,6 @@ export function EmployeeOnboarding() {
                     <ChecklistRow
                       key={item.id}
                       item={item}
-                      onComplete={handleComplete}
                     />
                   ))}
                   {activeItems.length === 0 && filteredItems.length > 0 && (
@@ -393,7 +329,6 @@ export function EmployeeOnboarding() {
                           <ChecklistRow
                             key={item.id}
                             item={item}
-                            onComplete={handleComplete}
                           />
                         ))}
                       </div>
