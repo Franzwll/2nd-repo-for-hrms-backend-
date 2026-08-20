@@ -21,7 +21,7 @@ class DashboardController extends Controller
         return response()->json([
             'data' => [
                 'applicants' => $this->applicants(),
-                'interviews' => ['scheduled' => Interview::where('status', 'Scheduled')->count()],
+                'interviews' => ['scheduled' => $this->scheduledInterviews()],
                 'job_posts' => $this->jobPosts(),
                 'new_hires' => $this->newHires(),
                 'employees' => $this->employees(),
@@ -61,6 +61,15 @@ class DashboardController extends Controller
         ];
     }
 
+    private function scheduledInterviews(): int
+    {
+        if (! class_exists(Interview::class)) {
+            return 0;
+        }
+
+        return Interview::where('status', 'Scheduled')->count();
+    }
+
     private function jobPosts(): array
     {
         $open = JobPost::whereIn('status', ['published', 'Open'])->where('active', 1);
@@ -74,6 +83,10 @@ class DashboardController extends Controller
 
     private function newHires(): array
     {
+        if (! class_exists(NewHire::class)) {
+            return ['total' => 0, 'by_stage' => collect()];
+        }
+
         $hires = NewHire::select('stage')->get();
 
         return [

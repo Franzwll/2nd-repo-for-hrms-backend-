@@ -27,7 +27,6 @@
 -- create the "hotel_hr" database manually and remove these two lines.
 CREATE DATABASE hotel_hr WITH ENCODING 'UTF8';
 \connect hotel_hr
-
 -- ---------------------------------------------------------------------------
 -- Domain 1: Organization & Core HCM
 -- ---------------------------------------------------------------------------

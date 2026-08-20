@@ -45,6 +45,7 @@ type State = {
 const seed: State = {
   announcements: [],
   notifications: [],
+  loading: true,
 };
 const seedNotifications: Notification[] = [
   {

@@ -13,7 +13,7 @@ const getCache = new Map<string, { expiresAt: number; promise: Promise<any> }>()
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
-  
+
   const headers: Record<string, string> = {
     'Accept': 'application/json',
     ...(options.headers as Record<string, string> || {}),
@@ -249,6 +249,8 @@ export interface ApiJobPost {
   skills: string[];
   benefits: string[];
   platforms?: string[];
+  picture: string | null;
+  picture_url: string | null;
   applicants_count?: number;
 }
 
@@ -339,10 +341,12 @@ export interface ApiNewHire {
   start_date: string;
   completion_percent?: number;
   onboarding_items?: {
-    employee_onboarding_item_id: number;
+    employee_onboarding_item_id: number | null;
     item_text: string;
     done: boolean;
     completed_at: string | null;
+    template_item_id: number | null;
+    phase: string;
   }[];
 }
 
@@ -437,10 +441,15 @@ export const onboardingItemsApi = {
       method: 'POST',
       body: JSON.stringify({ template_id: templateId }),
     }),
-  toggle: (itemId: number | string) =>
+  materialize: (newHireId: number | string, templateItemId: number | string) =>
+    request<{ employee_onboarding_item_id: number; template_item_id: number; item_text: string; done: boolean; phase: string }>(
+      `/new-hires/${newHireId}/onboarding-items`,
+      { method: 'POST', body: JSON.stringify({ template_item_id: templateItemId }) }
+    ),
+  toggle: (itemId: number | string, body?: { done: boolean }) =>
     request<{ employee_onboarding_item_id: number; done: boolean; completed_at: string | null }>(
       `/onboarding-items/${itemId}/toggle`,
-      { method: 'PATCH' }
+      body ? { method: 'PATCH', body: JSON.stringify(body) } : { method: 'PATCH' }
     ),
 };
 
@@ -492,6 +501,12 @@ export const settingsApi = {
       body: JSON.stringify({ settings }),
     }),
   delete: (key: string) => request<{ message: string }>(`/settings/${key}`, { method: 'DELETE' }),
+  listSystemUsers: () => request<{ data: ApiSystemUser[] }>('/system-users'),
+  resetDefaultPassword: (password: string) =>
+    request<{ message: string; updated: number }>('/reset-default-password', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
 };
 
 /* ========================================================================= */
@@ -691,6 +706,7 @@ export interface ApiPosition {
   title: string;
   department_id: number;
   department_name?: string;
+  department?: string | null;
   salary_grade_id: number;
   salary_grade?: string;
   level: string;
@@ -1102,4 +1118,210 @@ export const landingApi = {
         body: JSON.stringify(data),
       }
     ),
+};
+
+/* ========================================================================= */
+/* 10. EMPLOYEE SELF-SERVICE (ESS) & ESS MANAGEMENT                           */
+/* ========================================================================= */
+
+export interface ApiEssEmployee {
+  id: number;
+  code: string;
+  name: string;
+  email: string;
+  department: string;
+  position: string;
+  supervisor: string;
+  employment_type?: string;
+  date_hired?: string;
+}
+
+export interface ApiLeaveBalance {
+  id?: number;
+  type: string;
+  total: number;
+  used: number;
+  available: number;
+  period_year?: number;
+}
+
+export interface ApiScheduleDay {
+  day: string;
+  shift: string;
+  time: string;
+  hours: string;
+  location: string;
+}
+
+export interface ApiEssOverview {
+  employee: ApiEssEmployee;
+  today_schedule: {
+    shift_name: string;
+    time: string;
+    is_rest_day: boolean;
+    location: string;
+  };
+  today_attendance: {
+    time_in: string | null;
+    time_out: string | null;
+    status: string;
+  };
+  leave_balances: ApiLeaveBalance[];
+  pending_requests_count: number;
+  recent_requests: any[];
+}
+
+export interface ApiEssBenefit {
+  employee_benefit_id: number;
+  benefit_name: string;
+  reference_value: string | null;
+  note: string | null;
+  status: string;
+  effective_date: string | null;
+}
+
+export interface ApiEssRequestItem {
+  id: string;
+  db_id?: number;
+  employee?: string;
+  employeeId?: string;
+  department?: string;
+  category: string;
+  category_code?: string;
+  type: string;
+  filed: string;
+  date_from?: string;
+  date_to?: string;
+  status: "Pending" | "Under Review" | "Approved" | "Rejected" | "Completed" | "Returned for Clarification";
+  assignedTo?: string;
+  assigned_to?: string;
+  details: string;
+  note?: string;
+  returnedCount?: number;
+  attachment_path?: string | null;
+}
+
+export interface ApiEssCategory {
+  ess_category_id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  is_open: boolean;
+  sort_order: number;
+}
+
+export const essApi = {
+  // Employee Portal
+  overview: () => request<ApiEssOverview>('/ess/my-overview'),
+  schedule: () => request<{ employee: ApiEssEmployee; weekly_roster: ApiScheduleDay[] }>('/ess/my-schedule'),
+  leaves: () => request<{ balances: ApiLeaveBalance[]; history: any[] }>('/ess/my-leaves'),
+  benefits: () => request<{ benefits: ApiEssBenefit[] }>('/ess/my-benefits'),
+  myRequests: (params?: Record<string, any>) => {
+    const qs = params ? new URLSearchParams(params).toString() : '';
+    return request<{ requests: ApiEssRequestItem[] }>(`/ess/my-requests${qs ? `?${qs}` : ''}`);
+  },
+  createRequest: (data: {
+    category_code?: string | undefined;
+    category_name?: string | undefined;
+    request_type: string;
+    date_from?: string | undefined;
+    date_to?: string | undefined;
+    details: string;
+    attachment_path?: string | null | undefined;
+  }) =>
+    request<{ message: string; request: any }>('/ess/requests', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  clock: (action: 'clock_in' | 'clock_out') =>
+    request<{ message: string; record: any }>('/ess/clock', {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    }),
+
+  // Admin & Superadmin Management
+  adminRequests: (params?: Record<string, any>) => {
+    const qs = params ? new URLSearchParams(params).toString() : '';
+    return request<{
+      counts: {
+        total: number;
+        pending: number;
+        under_review: number;
+        approved: number;
+        completed: number;
+        rejected: number;
+        returned: number;
+      };
+      requests: ApiEssRequestItem[];
+    }>(`/ess/admin/requests${qs ? `?${qs}` : ''}`);
+  },
+  updateRequestStatus: (
+    id: string | number,
+    data: { status: string; note?: string | undefined }
+  ) =>
+    request<{ message: string; request: any }>(`/ess/admin/requests/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  fileOnBehalf: (data: {
+    employee_id: number;
+    category_name: string;
+    request_type: string;
+    date_from?: string | undefined;
+    date_to?: string | undefined;
+    details: string;
+  }) =>
+    request<{ message: string; request: any }>('/ess/admin/requests/behalf', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  categories: () => request<{ categories: ApiEssCategory[] }>('/ess/admin/categories'),
+  toggleCategory: (id: string | number) =>
+    request<{ message: string; category: ApiEssCategory }>(`/ess/admin/categories/${id}/toggle`, {
+      method: 'PUT',
+    }),
+  auditLogs: () => request<{ logs: any[] }>('/ess/admin/audit-logs'),
+};
+
+export interface ApiChatbotReply {
+  reply: string;
+  quick_replies: string[];
+  topic: string | null;
+}
+
+export interface ApiChatbotFaq {
+  faq_id: number;
+  question: string;
+  answer: string;
+  keywords: string | null;
+  enabled: boolean;
+  sort_order: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export const chatbotApi = {
+  chat: (data: { message: string; session_id?: string | null; topic?: string | null }) =>
+    request<ApiChatbotReply>('/landing/chat', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
+export const chatbotFaqApi = {
+  list: () => request<{ data: ApiChatbotFaq[] }>('/chatbot/faqs'),
+  create: (data: { question: string; answer: string; keywords?: string | null; enabled?: boolean; sort_order?: number }) =>
+    request<{ message: string; data: ApiChatbotFaq }>('/chatbot/faqs', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  update: (
+    id: number | string,
+    data: { question?: string; answer?: string; keywords?: string | null; enabled?: boolean; sort_order?: number }
+  ) =>
+    request<{ message: string; data: ApiChatbotFaq }>(`/chatbot/faqs/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  remove: (id: number | string) => request<{ message: string }>(`/chatbot/faqs/${id}`, { method: 'DELETE' }),
 };
