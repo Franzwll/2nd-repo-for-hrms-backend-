@@ -54,6 +54,7 @@ export function EssPayrollTab() {
   ]);
 
   const [paySearch, setPaySearch] = useState("");
+  const [payFilterType, setPayFilterType] = useState("all");
   const [paySort, setPaySort] = useState("date-desc");
   const [payType, setPayType] = useState("Payroll Clarification");
   const [payPeriod, setPayPeriod] = useState("");
@@ -64,14 +65,18 @@ export function EssPayrollTab() {
 
   const filteredPayRequests = useMemo(() => {
     return payRequests
-      .filter((r) => !paySearch || r.type.toLowerCase().includes(paySearch.toLowerCase()) || r.status.toLowerCase().includes(paySearch.toLowerCase()))
+      .filter((r) => {
+        const matchesSearch = !paySearch || r.type.toLowerCase().includes(paySearch.toLowerCase()) || r.status.toLowerCase().includes(paySearch.toLowerCase());
+        const matchesType = payFilterType === "all" || r.type.toLowerCase().includes(payFilterType.toLowerCase());
+        return matchesSearch && matchesType;
+      })
       .sort((a, b) => {
         if (paySort === "date-desc") return b.isoDate.localeCompare(a.isoDate);
         if (paySort === "date-asc") return a.isoDate.localeCompare(b.isoDate);
         if (paySort === "status") return a.statusRank - b.statusRank;
         return 0;
       });
-  }, [payRequests, paySearch, paySort]);
+  }, [payRequests, paySearch, payFilterType, paySort]);
 
   const payPage = usePagination(filteredPayRequests);
 
@@ -393,15 +398,28 @@ export function EssPayrollTab() {
               </CardTitle>
               <p className="text-xs text-muted-foreground">Click row to track audit status.</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Input
                 placeholder="Search..."
                 value={paySearch}
                 onChange={(e) => setPaySearch(e.target.value)}
-                className="h-8 w-[120px]"
+                className="h-8 w-[100px] sm:w-[120px]"
               />
+              <Select value={payFilterType} onValueChange={setPayFilterType}>
+                <SelectTrigger className="h-8 w-[125px]">
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="Overtime">Overtime</SelectItem>
+                  <SelectItem value="Clarification">Clarification</SelectItem>
+                  <SelectItem value="Dispute">Dispute</SelectItem>
+                  <SelectItem value="Payslip">Payslip Copy</SelectItem>
+                  <SelectItem value="Loan">Loan Request</SelectItem>
+                </SelectContent>
+              </Select>
               <Select value={paySort} onValueChange={setPaySort}>
-                <SelectTrigger className="h-8 w-[130px]">
+                <SelectTrigger className="h-8 w-[125px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
