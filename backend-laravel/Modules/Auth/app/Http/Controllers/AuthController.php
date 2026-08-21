@@ -22,7 +22,8 @@ class AuthController extends Controller
 
     public function login(LoginRequest $request): JsonResponse
     {
-        $user = SystemUser::where('email', $request->string('email'))->first();
+        $login = $request->string('email');
+        $user = SystemUser::where('email', $login)->orWhere('username', $login)->first();
 
         if (! $user || ! Hash::check($request->string('password'), $user->password_hash)) {
             AuditLogger::log(
@@ -30,7 +31,7 @@ class AuthController extends Controller
                 'Authentication',
                 'Warning',
                 'user',
-                $user?->username,
+                $user?->username ?: $login,
                 'Invalid credentials supplied.',
                 $user
             );
