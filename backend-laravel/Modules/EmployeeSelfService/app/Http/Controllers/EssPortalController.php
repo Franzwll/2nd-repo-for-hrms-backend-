@@ -20,17 +20,17 @@ class EssPortalController extends Controller
 {
     /**
      * Resolve the current authenticated employee.
-     * Fallback to first active employee if logged-in user is an admin without explicit employee_id.
+     * Returns null when the authenticated user has no linked employee record
+     * so callers respond 403/404 instead of falling back to an arbitrary record.
      */
     protected function resolveEmployee(Request $request): ?Employee
     {
         $user = $request->user();
-        if ($user?->employee_id) {
-            return Employee::with(['department', 'position', 'supervisor'])->find($user->employee_id);
+        if (! $user?->employee_id) {
+            return null;
         }
 
-        // For demo/admin fallback, find an employee or the first available
-        return Employee::with(['department', 'position', 'supervisor'])->first();
+        return Employee::with(['department', 'position', 'supervisor'])->find($user->employee_id);
     }
 
     /**
@@ -360,7 +360,7 @@ class EssPortalController extends Controller
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date',
             'details' => 'required|string',
-            'attachment_path' => 'nullable|string',
+            'attachment_path' => ['nullable', 'string', 'max:255', 'regex:/^[\w\-.\/\\: ]+$/'],
         ]);
 
         // Find or associate category

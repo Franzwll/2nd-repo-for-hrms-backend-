@@ -125,6 +125,14 @@ class RoleController extends Controller
 
     public function updatePermissions(UpdateRolePermissionsRequest $request, SystemRole $role): JsonResponse
     {
+        if ($role->role_id === $request->user()->role_id) {
+            return response()->json(['message' => 'You cannot change the permissions of your own role.'], 403);
+        }
+
+        if ($role->role_id === 1) {
+            return response()->json(['message' => 'The Super Admin role permissions cannot be modified.'], 403);
+        }
+
         $permissions = $request->input('permissions');
 
         DB::transaction(function () use ($role, $permissions) {
