@@ -12,7 +12,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Calendar,
-  Sparkles,
+  Award,
   Bot,
 } from "lucide-react";
 
@@ -25,7 +25,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { myAttendance, myEmployeeDocuments, myPayroll, myPerformance, myProfile, wireframeActivity } from "@/data/ess";
 import { essApi, newHiresApi, onboardingItemsApi, type ApiEssOverview, type ApiEssRequestItem } from "@/lib/api";
 import { getUser } from "@/lib/auth";
-import { EssAiAssistantModal } from "@/components/modules/ess/modals/EssAiAssistantModal";
 
 export const Route = createFileRoute("/employee/")({
   component: EmployeeDashboard,
@@ -37,7 +36,6 @@ function EmployeeDashboard() {
   const [requests, setRequests] = useState<ApiEssRequestItem[]>([]);
   const [pendingTasks, setPendingTasks] = useState<string[]>([]);
   const [loadingOnboarding, setLoadingOnboarding] = useState(true);
-  const [aiModalOpen, setAiModalOpen] = useState(false);
 
   // Time of day greeting
   const greeting = useMemo(() => {
@@ -100,9 +98,8 @@ function EmployeeDashboard() {
       .finally(() => setLoadingOnboarding(false));
   }, [employeeName, user?.employee_id, user?.email]);
 
-  // Combined top actions from real requests and fallback activities
   const topActions = useMemo(() => {
-    if (requests.length > 0) {
+    if (requests && requests.length > 0) {
       return requests.slice(0, 5).map((r) => ({
         type: r.type,
         category: r.category,
@@ -110,7 +107,12 @@ function EmployeeDashboard() {
         status: r.status,
       }));
     }
-    return wireframeActivity.slice(0, 5);
+    return wireframeActivity.slice(0, 5).map((a) => ({
+      type: a.type,
+      category: a.category,
+      date: a.date,
+      status: a.status,
+    }));
   }, [requests]);
 
   const shiftBadgeText = overview?.today_schedule?.is_rest_day
@@ -131,11 +133,6 @@ function EmployeeDashboard() {
         }
         title={`${greeting}, ${firstName} 👋`}
         description="Here's what's happening with your employment today."
-        actions={
-          <Button asChild>
-            <Link to="/employee/ess" search={{}}>Go to ESS Management</Link>
-          </Button>
-        }
       />
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -222,7 +219,7 @@ function EmployeeDashboard() {
               >
                 <Link to="/employee/ess" search={{ category: "Recognition" }}>
                   <div className="rounded-md bg-amber-500/10 p-2 text-amber-600">
-                    <Sparkles className="h-5 w-5" />
+                    <Award className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-sm">Recognition</p>
@@ -323,7 +320,7 @@ function EmployeeDashboard() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 font-display text-xl font-semibold">
-                <Sparkles className="h-5 w-5 text-amber-500" />
+                <Award className="h-5 w-5 text-amber-500" />
                 Social Recognition
               </div>
               <Button asChild variant="ghost" size="sm" className="text-amber-600 font-semibold">
@@ -415,7 +412,7 @@ function EmployeeDashboard() {
 
             <Button asChild variant="outline" size="sm" className="mt-4 w-full sm:w-auto border-amber-500/30 hover:bg-amber-500/10 text-foreground font-semibold">
               <Link to="/employee/ess" search={{ category: "Recognition" }}>
-                Give Kudos &amp; View Wall <Sparkles className="ml-2 h-4 w-4 text-amber-500" />
+                Give Kudos &amp; View Wall <Award className="ml-2 h-4 w-4 text-amber-500" />
               </Link>
             </Button>
           </CardContent>
@@ -425,13 +422,6 @@ function EmployeeDashboard() {
       <div className="mt-6">
         <AnnouncementsCard role="employee" />
       </div>
-
-      <EssAiAssistantModal
-        open={aiModalOpen}
-        onOpenChange={setAiModalOpen}
-      />
     </div>
   );
 }
-
-

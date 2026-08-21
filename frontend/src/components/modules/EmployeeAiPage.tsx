@@ -349,7 +349,7 @@ export function EmployeeAiPage() {
             <div className="flex items-center gap-2">
               <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
               <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs font-semibold flex items-center gap-1.5 py-0.5">
-                <Sparkles className="h-3 w-3" /> Oxford HR AI Concierge
+                <Bot className="h-3.5 w-3.5" /> Oxford HR AI Concierge
               </Badge>
               <span className="text-xs text-muted-foreground hidden sm:inline">· Live Context for {firstName}</span>
             </div>
@@ -364,10 +364,7 @@ export function EmployeeAiPage() {
             {messages.length === 0 ? (
               /* HERO STATE (Claude/Modern Style Layout) */
               <div className="h-full flex flex-col justify-center items-center max-w-xl mx-auto text-center space-y-7 py-8">
-                <div className="space-y-3">
-                  <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-gradient-to-tr from-primary/20 via-amber-500/20 to-primary/10 text-primary shadow-xs border border-primary/20">
-                    <Sparkles className="h-7 w-7 text-primary" />
-                  </div>
+                <div className="space-y-2">
                   <h2 className="font-display text-2xl sm:text-4xl font-bold tracking-tight text-foreground">
                     How can I help you today, {firstName}?
                   </h2>
@@ -480,7 +477,7 @@ export function EmployeeAiPage() {
                           <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-2 text-left shadow-2xs">
                             <div className="flex items-center justify-between gap-2">
                               <span className="font-bold text-xs text-foreground flex items-center gap-1.5">
-                                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                                <Bot className="h-3.5 w-3.5 text-primary" />
                                 {msg.actionCard.title}
                               </span>
                               <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px]">
