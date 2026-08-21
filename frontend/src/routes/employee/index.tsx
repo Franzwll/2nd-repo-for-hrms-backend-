@@ -184,111 +184,124 @@ function EmployeeDashboard() {
         <StatCard label="Position" value={position} hint={employmentType} icon={ClipboardCheck} tone="gold" />
       </div>
 
-      {/* Quick Actions Grid (6-column responsive layout) */}
+      {/* Quick Actions Grid (Centered cards with icon, description, and View Details button) */}
       <div className="mt-6">
         <Card className="border-border/70">
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="font-display text-xl font-semibold">Quick Actions</CardTitle>
+            <p className="text-xs text-muted-foreground">Access core employee self-service modules and automated HR tools.</p>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-              <Button
-                asChild
-                variant="outline"
-                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all shadow-2xs"
-              >
-                <Link to="/employee/ess" search={{ category: "Attendance" }}>
-                  <div className="p-2 text-primary rounded-md bg-primary/10">
-                    <Clock className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm">Attendance</p>
-                    <p className="text-xs text-muted-foreground font-normal truncate">Time in/out &amp; logs</p>
-                  </div>
-                </Link>
-              </Button>
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+              {/* 1. Attendance */}
+              <div className="rounded-2xl border border-border/70 bg-card p-5 flex flex-col items-center text-center justify-between gap-3 transition-all hover:border-primary/50 hover:shadow-sm">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
+                  <Clock className="h-6 w-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-display text-base font-bold text-foreground">Attendance</h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Time in/out, biometric logs &amp; shift schedules.
+                  </p>
+                </div>
+                <Button asChild size="sm" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs h-8">
+                  <Link to="/employee/ess" search={{ category: "Attendance" }}>
+                    View Details
+                  </Link>
+                </Button>
+              </div>
 
-              <Button
-                asChild
-                variant="outline"
-                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all shadow-2xs"
-              >
-                <Link to="/employee/ess" search={{ category: "Payroll" }}>
-                  <div className="rounded-md bg-emerald-500/10 p-2 text-emerald-600">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm">Payroll</p>
-                    <p className="text-xs text-muted-foreground font-normal truncate">Payslips &amp; breakdown</p>
-                  </div>
-                </Link>
-              </Button>
+              {/* 2. Payroll */}
+              <div className="rounded-2xl border border-border/70 bg-card p-5 flex flex-col items-center text-center justify-between gap-3 transition-all hover:border-primary/50 hover:shadow-sm">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
+                  <FileText className="h-6 w-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-display text-base font-bold text-foreground">Payroll</h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Itemized payslips, net pay &amp; statutory deductions.
+                  </p>
+                </div>
+                <Button asChild size="sm" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs h-8">
+                  <Link to="/employee/ess" search={{ category: "Payroll" }}>
+                    View Details
+                  </Link>
+                </Button>
+              </div>
 
-              <Button
-                asChild
-                variant="outline"
-                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all shadow-2xs"
-              >
-                <Link to="/employee/ess" search={{ category: "Performance" }}>
-                  <div className="rounded-md bg-purple-500/10 p-2 text-purple-600">
-                    <TrendingUp className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm">Performance</p>
-                    <p className="text-xs text-muted-foreground font-normal truncate">LMS courses &amp; scores</p>
-                  </div>
-                </Link>
-              </Button>
+              {/* 3. Performance */}
+              <div className="rounded-2xl border border-border/70 bg-card p-5 flex flex-col items-center text-center justify-between gap-3 transition-all hover:border-primary/50 hover:shadow-sm">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
+                  <TrendingUp className="h-6 w-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-display text-base font-bold text-foreground">Performance</h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    LMS courses, training scores &amp; appraisals.
+                  </p>
+                </div>
+                <Button asChild size="sm" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs h-8">
+                  <Link to="/employee/ess" search={{ category: "Performance" }}>
+                    View Details
+                  </Link>
+                </Button>
+              </div>
 
-              <Button
-                asChild
-                variant="outline"
-                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all shadow-2xs"
-              >
-                <Link to="/employee/ess" search={{ category: "Documents" }}>
-                  <div className="rounded-md bg-blue-500/10 p-2 text-blue-600">
-                    <FileCheck className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm">Document</p>
-                    <p className="text-xs text-muted-foreground font-normal truncate">COE &amp; HR clearances</p>
-                  </div>
-                </Link>
-              </Button>
+              {/* 4. Documents */}
+              <div className="rounded-2xl border border-border/70 bg-card p-5 flex flex-col items-center text-center justify-between gap-3 transition-all hover:border-primary/50 hover:shadow-sm">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
+                  <FileCheck className="h-6 w-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-display text-base font-bold text-foreground">Documents</h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Certificate of Employment &amp; HR clearances.
+                  </p>
+                </div>
+                <Button asChild size="sm" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs h-8">
+                  <Link to="/employee/ess" search={{ category: "Documents" }}>
+                    View Details
+                  </Link>
+                </Button>
+              </div>
 
-              <Button
-                asChild
-                variant="outline"
-                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all shadow-2xs"
-              >
-                <Link to="/employee/ess" search={{ category: "Recognition" }}>
-                  <div className="rounded-md bg-amber-500/10 p-2 text-amber-600">
-                    <Award className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm">Recognition</p>
-                    <p className="text-xs text-muted-foreground font-normal truncate">Kudos &amp; Wall of Fame</p>
-                  </div>
-                </Link>
-              </Button>
+              {/* 5. Recognition */}
+              <div className="rounded-2xl border border-border/70 bg-card p-5 flex flex-col items-center text-center justify-between gap-3 transition-all hover:border-primary/50 hover:shadow-sm">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
+                  <Award className="h-6 w-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-display text-base font-bold text-foreground">Recognition</h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Peer kudos, Wall of Fame &amp; hotel pillars.
+                  </p>
+                </div>
+                <Button asChild size="sm" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs h-8">
+                  <Link to="/employee/ess" search={{ category: "Recognition" }}>
+                    View Details
+                  </Link>
+                </Button>
+              </div>
 
-              <Button
-                asChild
-                variant="outline"
-                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all shadow-2xs cursor-pointer border-primary/40 bg-gradient-to-br from-primary/10 via-background to-amber-500/10"
-              >
-                <Link to="/employee/ai">
-                  <div className="rounded-md bg-rose-500/15 p-2 text-rose-600 shadow-2xs">
-                    <Bot className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm flex items-center gap-1.5 text-foreground">
-                      <span>HR AI Concierge</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground font-normal truncate">Ask questions &amp; help</p>
-                  </div>
-                </Link>
-              </Button>
+              {/* 6. HR AI Concierge */}
+              <div className="rounded-2xl border border-primary/40 bg-gradient-to-b from-primary/5 to-card p-5 flex flex-col items-center text-center justify-between gap-3 transition-all hover:border-primary hover:shadow-sm">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-2xs">
+                  <Bot className="h-6 w-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-display text-base font-bold text-foreground flex items-center justify-center gap-1.5">
+                    HR AI Concierge
+                  </h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    24/7 intelligent policy &amp; benefits assistant.
+                  </p>
+                </div>
+                <Button asChild size="sm" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs h-8">
+                  <Link to="/employee/ai">
+                    Open Assistant
+                  </Link>
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
