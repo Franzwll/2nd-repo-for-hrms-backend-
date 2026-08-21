@@ -1,0 +1,230 @@
+# HRMS Backend Setup Guide — Recruitment & Onboarding + Core HR
+
+**Client:** Oxford Suites Makati
+**Stack:** React/Vite/TS (done) → Laravel API → Python (spaCy NER + OCR) → MySQL
+
+---
+
+## 1. Architecture decision
+
+Three services, three responsibilities:
+
+| Service | Role | Talks to |
+|---|---|---|
+| `frontend` (React) | UI only, no business logic | Laravel API (REST) |
+| `backend-laravel` | Auth, business rules, data, source of truth | MySQL, Python NLP service |
+| `nlp-service` (Python/FastAPI) | Stateless: OCR + NER + screening score | Called by Laravel only, never by the frontend directly |
+
+**Why the frontend never talks to Python directly:** keeps one auth boundary (Laravel/Sanctum), keeps the NLP service swappable/rewritable later without touching the frontend, and keeps applicant data validated/logged in one place before it hits an ML service.
+
+**Communication:** Laravel calls Python over plain HTTP (`Http::post()` via Guzzle) synchronously for now. If resume processing gets slow later, swap to a queued job (Laravel queue → job calls Python → updates DB → frontend polls or gets notified). Don't build the queue yet — build it when you actually feel the latency.
+
+---
+
+## 2. Repo / folder structure (root)
+
+Use a **multi-repo or monorepo with 3 top-level folders** — either works, monorepo is easier for 3 devs to coordinate early on:
+
+```
+hotel-restaurant-hrms/
+├── frontend/                  # existing React app (from Lovable export)
+├── backend-laravel/           # Laravel API
+├── nlp-service/                # Python FastAPI + spaCy + OCR
+├── docs/                       # ERDs, API contracts, meeting notes
+├── docker-compose.yml          # runs all 3 + MySQL together
+└── README.md
+```
+
+---
+
+## 3. Laravel backend — modular structure
+
+Since you want "organized per module," don't use Laravel's default flat `app/Http/Controllers` for everything. Install **`nwidart/laravel-modules`** — it lets each module be a self-contained mini-app (own controllers, models, migrations, routes, requests). This also makes it trivial to assign one module per dev with minimal merge conflicts.
+
+```bash
+composer require nwidart/laravel-modules
+php artisan module:make ApplicantManagement
+php artisan module:make RecruitmentManagement
+php artisan module:make NewHireOnboarding
+php artisan module:make CoreHCM
+php artisan module:make EmployeeSelfService
+php artisan module:make EmployeeRecords
+php artisan module:make UserManagement
+php artisan module:make AuditLog
+```
+
+Resulting structure:
+
+```
+backend-laravel/
+├── app/
+│   ├── Http/Middleware/          # shared middleware (role checks, audit logging)
+│   ├── Models/                   # ONLY truly shared models (User, Role)
+│   └── Services/
+│       └── NlpService.php        # single HTTP client wrapper for calling Python
+├── Modules/
+│   ├── ApplicantManagement/
+│   │   ├── Http/Controllers/
+│   │   ├── Http/Requests/
+│   │   ├── Models/                # Applicant, Resume, ApplicantDocument
+│   │   ├── Database/Migrations/
+│   │   ├── Routes/api.php
+│   │   ├── Services/              # calls App\Services\NlpService
+│   │   └── Resources/             # API resource/transformers
+│   ├── RecruitmentManagement/
+│   │   ├── Models/                # JobPosting, JobRequisition, Interview
+│   │   └── ... (same pattern)
+│   ├── NewHireOnboarding/
+│   │   ├── Models/                # OnboardingChecklist, OnboardingTask
+│   │   └── ...
+│   ├── CoreHCM/
+│   │   ├── Models/                # Employee, Department, Position
+│   │   └── ...
+│   ├── EmployeeSelfService/
+│   │   ├── Models/                # LeaveRequest (read-only views into other modules), Requests
+│   │   └── ...
+│   ├── EmployeeRecords/
+│   │   ├── Models/                # EmployeeDocument, EmploymentHistory
+│   │   └── ...
+│   ├── UserManagement/
+│   │   ├── Models/                # User, Role, Permission (Spatie)
+│   │   └── ...
+│   └── AuditLog/
+│       ├── Models/                # ActivityLog
+│       └── ...
+├── routes/
+│   └── api.php                    # only global/public routes (auth, jobs listing)
+├── database/
+│   └── migrations/                # only truly shared tables (users, roles)
+├── config/
+├── .env.example
+└── composer.json
+```
+
+Rules to keep this clean:
+- A module never directly queries another module's tables — it calls that module's Service class, or fires/listens to Laravel events (e.g. `ApplicantHired` event → `NewHireOnboarding` listens and auto-creates onboarding checklist).
+- Shared stuff (auth, roles, base User model, audit logging middleware) lives in `app/`, not in a module.
+- Public site (Home, About, FAQ, Jobs, Job Details, Login) hits a small set of public, unauthenticated routes inside `RecruitmentManagement` + `ApplicantManagement` (job listing, job detail, resume submission) — no separate module needed for that.
+
+---
+
+## 4. Python NLP/OCR microservice structure
+
+```
+nlp-service/
+├── app/
+│   ├── main.py                    # FastAPI entrypoint
+│   ├── api/
+│   │   └── routes/
+│   │       ├── ocr.py             # POST /ocr/extract
+│   │       ├── ner.py             # POST /ner/extract-entities
+│   │       └── screening.py       # POST /screening/score  (OCR + NER + match combined)
+│   ├── core/
+│   │   └── config.py              # env vars, model paths
+│   ├── services/
+│   │   ├── ocr_service.py         # pytesseract / easyocr wrapper
+│   │   ├── ner_service.py         # spaCy pipeline wrapper
+│   │   └── scoring_service.py     # matches extracted skills/roles vs job requirements
+│   ├── schemas/                   # pydantic request/response models
+│   └── utils/
+├── models_spacy/
+│   └── role_specific_ner/         # your custom-trained spaCy model goes here
+├── tests/
+├── requirements.txt
+└── Dockerfile
+```
+
+Endpoint contract Laravel will call (define this early, in `docs/api-contract.md`, so all 3 devs build against it):
+
+```
+POST /screening/score
+Request:  { "resume_file": <base64 or multipart>, "job_id": "...", "required_skills": [...] }
+Response: {
+  "extracted_text": "...",
+  "entities": { "skills": [...], "job_titles": [...], "education": [...], "experience_years": 3 },
+  "match_score": 0.82,
+  "matched_skills": [...],
+  "missing_skills": [...]
+}
+```
+
+---
+
+## 5. Step-by-step setup
+
+**Step 1 — Laravel project**
+```bash
+composer create-project laravel/laravel backend-laravel
+cd backend-laravel
+composer require nwidart/laravel-modules laravel/sanctum spatie/laravel-permission
+php artisan vendor:publish --provider="Spatie\Permission\PermissionServiceProvider"
+```
+Configure `.env` for MySQL, run `php artisan migrate`.
+
+**Step 2 — Auth & roles**
+Set up Sanctum for SPA token auth (frontend is React/Vite — Sanctum's SPA mode fits well). Define 3 roles via Spatie: `super_admin`, `admin`, `employee`, matching your nav structure exactly.
+
+**Step 3 — Scaffold modules**
+Run `php artisan module:make` for each module listed above. Build migrations module-by-module, starting with `UserManagement` and `CoreHCM` (everything else depends on Employee existing).
+
+**Step 4 — Python service**
+```bash
+mkdir nlp-service && cd nlp-service
+python -m venv venv && source venv/bin/activate
+pip install fastapi uvicorn spacy pytesseract pdf2image python-multipart pillow
+python -m spacy download en_core_web_sm   # base model, fine-tune later for role-specific NER
+```
+Install Tesseract OCR at the OS level (not just the pip wrapper) — `pytesseract` needs the actual binary.
+
+**Step 5 — Laravel ↔ Python connection**
+Build one `App\Services\NlpService` class in Laravel that wraps `Http::post(config('services.nlp.url').'/screening/score', [...])`. Every module that needs NLP calls this one class — don't let each module make its own HTTP calls.
+
+**Step 6 — Docker Compose**
+Wire all 3 + MySQL together so any dev can run the full stack with one command:
+```yaml
+services:
+  mysql: ...
+  backend-laravel: ...
+  nlp-service: ...
+```
+(happy to generate the full docker-compose.yml file if you want it)
+
+**Step 7 — Frontend integration**
+Since the frontend came from Lovable, check for and remove:
+- Any Supabase client/config tied to a Lovable-managed project (you're moving persistence to Laravel/MySQL)
+- The `lovable-tagger` Vite plugin in `vite.config.ts`, if present
+- Any Lovable badge/meta tags in `index.html`
+- `.lovable` config folders if any exist
+
+Then point all API calls to `backend-laravel`'s base URL via an `.env` variable (`VITE_API_URL`), and swap any Supabase auth calls for Sanctum-based calls.
+
+**Step 8 — Git workflow**
+`main` (stable) → `develop` (integration) → `feature/module-name` branches. Each dev works only inside their assigned Module folder to keep merge conflicts minimal.
+
+---
+
+## 6. Suggested 3-dev split
+
+| Dev | Owns |
+|---|---|
+| **Dev A** | `ApplicantManagement` + `RecruitmentManagement` (Laravel) + connecting the public job-application flow on the frontend |
+| **Dev B** | `CoreHCM` + `EmployeeSelfService` + `EmployeeRecords` (Laravel) + `NewHireOnboarding`, plus `UserManagement`/roles setup |
+| **Dev C** | `nlp-service` (Python: OCR, spaCy NER, scoring) + `NlpService` integration class in Laravel + Docker/deployment |
+
+This splits along your subsystem boundaries, keeps the ML-heavy work isolated to one person, and means Dev A/B rarely touch the same files.
+
+---
+
+## 7. Order of build (don't build modules in isolation — build vertically)
+
+1. Auth + roles + Users table (whole team needs this first)
+2. Core HCM: Employee, Department, Position tables — everything else references Employee
+3. Applicant Management: Applicant, Resume upload endpoint (stub NLP call with dummy data first)
+4. NLP service: OCR + NER working standalone, tested via Postman
+5. Wire NLP service into the resume upload flow for real
+6. Recruitment Management: job postings, interview scheduling
+7. New Hire Onboarding: triggered on "hired" status
+8. ESS + Employee Records
+9. Audit logs + Settings last — they hook into everything else via events, easiest to bolt on at the end
+
+Want me to generate the actual `docker-compose.yml`, the base Laravel `NlpService.php` client, or the FastAPI skeleton for `nlp-service` next?

@@ -1,0 +1,187 @@
+here is the info that should be helpful and relevant: 
+
+
+
+Our title is "Design and Development of Recruitment Management in Hotels and Restaurants using spaCy-based Natural Language Processing (NLP) for Roles - Specific with a Feature of Applicant Screening using Named Entity Recognition (NER)."
+
+
+
+Our system is Hotel and Restaurant that should create of a whole section by creating their own each assigned subsystem, here is our subsystem:
+
+
+
+HOTEL AND RESTAURANT - Whole Section System 
+
+
+
+Human Resource Management System (HRMS / HCM)  - Our specific subsystem category
+
+Recruitment & Onboarding - Our Subsystem and below is their module
+
+Applicant Management
+
+Recruitment Management
+
+New Hire Onboarding
+
+
+
+Core HR - Our Subsystem and below is their module
+
+Core Human Capital Management (HCM)
+
+Employee Self-Service (ESS)
+
+Employee Records Management 
+
+Ferdy [PPLX],  — 7/22/26, 7:42 PM
+
+Workforce Management
+
+Time and Attendance System
+
+Shift and Schedule Management
+
+Timesheet Management
+
+Leave Management
+
+Workforce Analytics (added)
+
+
+
+Performance & Development
+
+Performance Management
+
+Competency Management
+
+Learning Management
+
+Training Management
+
+Succession Planning
+
+Social Recognition
+
+Payroll & Benefits
+
+
+
+Payroll Management
+
+Compensation Planning
+
+Claims and Reimbursement
+
+HMO & Benefits Administration
+
+HR Analytics Dashboard
+
+
+
+Financial Management System (TRANSACTION CORE)
+
+General Ledger
+
+Accounts Payable (AP)
+
+Accounts Receivable (AR)
+
+Disbursement Management
+
+Collection Management
+
+Budget Management
+
+Cash Management (added)
+
+Financial Reporting & Analytics (added)
+
+Tax Management (added)
+
+
+
+Supply Chain & Inventory Management
+
+Smart Warehousing System (SWS)
+
+Inventory Management System (added)
+
+Procurement & Sourcing Management (PSM)
+
+Supplier / Vendor Management (added)
+
+Purchase Order Management (added)
+
+Document Tracking & Logistics Records System (DTRS)
+
+
+
+Fleet & Transportation Management
+
+Fleet & Vehicle Management (FVM)
+
+Vehicle Reservation & Dispatch System (VRDS)
+
+Driver and Trip Performance Monitoring
+
+Fuel Management System (added)
+
+Transport Cost Analysis & Optimization (TCAO)
+
+Route Planning & Optimization (added)
+
+Mobile Fleet Command App (Optional)
+
+
+
+Facilities & Administrative Management
+
+Facilities Reservation System
+
+Visitor Management System
+
+Document Management (Archiving System)
+
+Records Retention & Compliance (added)
+
+Legal Management System
+
+Contract Management (added)
+
+
+
+HOTEL MANAGEMENT SYSTEM
+
+Guest & Customer Management
+
+Reservation & Booking System
+
+Front Office Operations
+
+Room & Housekeeping Management
+
+Billing & Payment System
+
+Inventory & Staff Management
+
+Administration & Analytics
+
+
+
+RESTAURANT MANAGEMENT SYSTEM
+
+Customer & Table Management
+
+Menu Management System
+
+Order Management System
+
+Kitchen Order System (KOT)
+
+POS & Billing System
+
+Inventory & Staff Management
+
+Administration & Analytics
