@@ -29,8 +29,36 @@ class EssPortalController extends Controller
             return Employee::with(['department', 'position', 'supervisor'])->find($user->employee_id);
         }
 
-        // For demo/admin fallback, find an employee or the first available
-        return Employee::with(['department', 'position', 'supervisor'])->first();
+        if ($user?->email) {
+            $emp = Employee::with(['department', 'position', 'supervisor'])
+                ->where('email', $user->email)
+                ->orWhere('personal_email', $user->email)
+                ->first();
+            if ($emp) {
+                return $emp;
+            }
+        }
+
+        if ($user?->full_name) {
+            $names = explode(' ', trim($user->full_name));
+            $firstName = $names[0] ?? '';
+            $lastName = count($names) > 1 ? end($names) : '';
+            $query = Employee::with(['department', 'position', 'supervisor'])->where('first_name', $firstName);
+            if ($lastName) {
+                $query->where('last_name', $lastName);
+            }
+            $emp = $query->first();
+            if ($emp) {
+                return $emp;
+            }
+        }
+
+        // For demo superadmin/admin accounts (roles 1, 2) fallback to first employee
+        if ($user && in_array((int) $user->role_id, [1, 2])) {
+            return Employee::with(['department', 'position', 'supervisor'])->first();
+        }
+
+        return null;
     }
 
     /**
@@ -38,10 +66,42 @@ class EssPortalController extends Controller
      */
     public function getOverview(Request $request): JsonResponse
     {
+        $user = $request->user();
         $employee = $this->resolveEmployee($request);
 
         if (! $employee) {
-            return response()->json(['message' => 'Employee profile not found.'], 404);
+            $newHire = \Modules\NewHireOnboarding\Models\NewHire::with(['department', 'position'])
+                ->where('email', $user?->email)
+                ->orWhere('name', $user?->full_name)
+                ->first();
+
+            return response()->json([
+                'employee' => [
+                    'id' => null,
+                    'code' => $newHire?->new_hire_code ?? 'EMP-NEW',
+                    'name' => $user?->full_name ?? ($newHire?->name ?? 'Employee'),
+                    'email' => $user?->email ?? ($newHire?->email ?? ''),
+                    'department' => $newHire?->department?->name ?? ($user?->department_name ?? 'General'),
+                    'position' => $newHire?->position?->title ?? ($user?->department_name ? $user->department_name . ' Staff' : 'Staff'),
+                    'supervisor' => 'HR Administration',
+                    'employment_type' => $newHire?->stage ?? 'Pre-onboarding',
+                    'date_hired' => $newHire?->start_date ?? date('Y-m-d'),
+                    'status' => 'Active',
+                ],
+                'today_schedule' => [
+                    'shift_name' => 'Morning Shift',
+                    'time' => '07:00 AM - 04:00 PM',
+                    'is_rest_day' => false,
+                    'location' => 'Oxford Suites Makati',
+                ],
+                'today_attendance' => [
+                    'time_in' => null,
+                    'time_out' => null,
+                    'status' => 'Not Clocked In',
+                ],
+                'leave_balances' => [],
+                'pending_requests_count' => 0,
+            ]);
         }
 
         $today = Carbon::today();

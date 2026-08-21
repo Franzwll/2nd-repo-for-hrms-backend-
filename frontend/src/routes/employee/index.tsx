@@ -44,10 +44,10 @@ function EmployeeDashboard() {
     return "Good evening";
   }, []);
 
-  const employeeName = overview?.employee?.name || user?.full_name || myProfile.name;
+  const employeeName = user?.full_name || overview?.employee?.name || myProfile.name;
   const firstName = employeeName.split(" ")[0];
   const position = overview?.employee?.position || myProfile.position;
-  const department = overview?.employee?.department || user?.department_name || myProfile.department;
+  const department = user?.department_name || overview?.employee?.department || myProfile.department;
   const employmentType = overview?.employee?.employment_type || "Probationary Status";
 
   useEffect(() => {
