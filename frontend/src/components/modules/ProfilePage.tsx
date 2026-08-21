@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
 
 import {
@@ -31,6 +31,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { roleMeta, type Role } from "@/lib/nav";
+import { getUser } from "@/lib/auth";
+import { essApi } from "@/lib/api";
 
 type ProfileState = {
   fullName: string;
@@ -110,11 +112,66 @@ function initialsOf(name: string) {
 }
 
 export function ProfilePage({ role }: { role: Role }) {
-  const [profile, setProfile] = useState<ProfileState>(seedByRole[role]);
-  const [draft, setDraft] = useState<ProfileState>(seedByRole[role]);
+  const user = getUser();
+  const seed = seedByRole[role];
+
+  const initialProfile: ProfileState = {
+    fullName: user?.full_name || seed.fullName,
+    email: user?.email || seed.email,
+    phone: seed.phone,
+    position: (user?.department_name ? `${user.department_name} Staff` : "") || seed.position,
+    department: user?.department_name || seed.department,
+    employeeId: user?.employee_id ? `EMP-000${user.employee_id}` : seed.employeeId,
+    dateCreated: seed.dateCreated,
+    lastLogin: user?.last_login_at
+      ? new Date(user.last_login_at).toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : seed.lastLogin,
+    status: user?.status || seed.status,
+  };
+
+  const [profile, setProfile] = useState<ProfileState>(initialProfile);
+  const [draft, setDraft] = useState<ProfileState>(initialProfile);
   const [editing, setEditing] = useState(false);
   const [photo, setPhoto] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (role === "employee") {
+      essApi
+        .overview()
+        .then((ov) => {
+          if (ov?.employee) {
+            setProfile((prev) => ({
+              ...prev,
+              fullName: user?.full_name || ov.employee.name || prev.fullName,
+              email: user?.email || ov.employee.email || prev.email,
+              position: ov.employee.position || prev.position,
+              department: user?.department_name || ov.employee.department || prev.department,
+              employeeId: ov.employee.code || prev.employeeId,
+              dateCreated: ov.employee.date_hired || prev.dateCreated,
+              status: user?.status || prev.status,
+            }));
+            setDraft((prev) => ({
+              ...prev,
+              fullName: user?.full_name || ov.employee.name || prev.fullName,
+              email: user?.email || ov.employee.email || prev.email,
+              position: ov.employee.position || prev.position,
+              department: user?.department_name || ov.employee.department || prev.department,
+              employeeId: ov.employee.code || prev.employeeId,
+              dateCreated: ov.employee.date_hired || prev.dateCreated,
+              status: user?.status || prev.status,
+            }));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [role, user?.full_name, user?.email, user?.department_name]);
 
   const value = editing ? draft : profile;
   const settingsPath =
