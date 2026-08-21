@@ -455,7 +455,7 @@ export function Chatbot() {
         className="fixed bottom-6 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105"
       >
         {open ? <X className="h-5 w-5" /> : <Bot className="h-6 w-6" />}
-        {!open && unread && (
+        {!open && mounted && unread && (
           <span className="absolute right-0.5 top-0.5 h-3 w-3 rounded-full bg-destructive ring-2 ring-background" />
         )}
       </button>

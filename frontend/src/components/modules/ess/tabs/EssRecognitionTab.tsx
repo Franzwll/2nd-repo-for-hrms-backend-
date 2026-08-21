@@ -55,40 +55,40 @@ const CORE_VALUES = [
     id: "Guest Delight",
     label: "Guest Delight",
     icon: Star,
-    color: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
-    activeColor: "bg-amber-500 text-white shadow-xs",
+    color: "bg-primary/10 text-primary border-primary/20",
+    activeColor: "bg-primary text-primary-foreground shadow-xs",
     desc: "Exceeding guest expectations with warmth and prompt hospitality.",
   },
   {
     id: "Teamwork & Malasakit",
     label: "Teamwork & Malasakit",
     icon: Users,
-    color: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
-    activeColor: "bg-emerald-600 text-white shadow-xs",
+    color: "bg-primary/10 text-primary border-primary/20",
+    activeColor: "bg-primary text-primary-foreground shadow-xs",
     desc: "Cross-departmental care, collaboration, and supporting teammates.",
   },
   {
     id: "Going the Extra Mile",
     label: "Going the Extra Mile",
     icon: Sparkles,
-    color: "bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30",
-    activeColor: "bg-purple-600 text-white shadow-xs",
+    color: "bg-primary/10 text-primary border-primary/20",
+    activeColor: "bg-primary text-primary-foreground shadow-xs",
     desc: "Taking initiative beyond duty to resolve urgent guest or operational needs.",
   },
   {
     id: "Operational Excellence",
     label: "Operational Excellence",
     icon: TrendingUp,
-    color: "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30",
-    activeColor: "bg-sky-600 text-white shadow-xs",
+    color: "bg-primary/10 text-primary border-primary/20",
+    activeColor: "bg-primary text-primary-foreground shadow-xs",
     desc: "Flawless standards in cleanliness, kitchen prep, and hotel safety.",
   },
   {
     id: "Integrity & Trust",
     label: "Integrity & Trust",
     icon: ShieldCheck,
-    color: "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30",
-    activeColor: "bg-blue-600 text-white shadow-xs",
+    color: "bg-primary/10 text-primary border-primary/20",
+    activeColor: "bg-primary text-primary-foreground shadow-xs",
     desc: "Honesty, punctuality, and unwavering professionalism in hotel service.",
   },
 ] as const;
@@ -376,48 +376,48 @@ export function EssRecognitionTab() {
 
   return (
     <div className="space-y-6">
-      {/* Top Banner & Stats Overview */}
+      {/* Top Banner & Stats Overview - Oxford Red & White Theme */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-border/70 shadow-xs bg-gradient-to-br from-amber-500/10 via-card to-card hover:border-amber-500/40 transition-all">
+        <Card className="border-border/70 shadow-xs bg-card hover:border-primary/50 transition-all">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Kudos Received</p>
-              <p className="mt-1 text-3xl font-bold font-display text-amber-600 dark:text-amber-400">
+              <p className="mt-1 text-3xl font-bold font-display text-primary">
                 {myReceivedCount} <span className="text-xs font-normal text-muted-foreground">shout-outs</span>
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">Top: ⭐ Guest Delight (2)</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Top: ⭐ Guest Delight</p>
             </div>
-            <div className="rounded-xl bg-amber-500/15 p-3 text-amber-600 dark:text-amber-400">
-              <Star className="h-6 w-6" />
+            <div className="rounded-xl bg-primary/10 p-3 text-primary border border-primary/20">
+              <Award className="h-6 w-6" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs bg-gradient-to-br from-primary/10 via-card to-card hover:border-primary/40 transition-all">
+        <Card className="border-border/70 shadow-xs bg-card hover:border-primary/50 transition-all">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Kudos Given</p>
               <p className="mt-1 text-3xl font-bold font-display text-primary">
                 {myGivenCount} <span className="text-xs font-normal text-muted-foreground">sent</span>
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">Fostering teamwork &amp; morale</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Fostering hotel excellence</p>
             </div>
-            <div className="rounded-xl bg-primary/15 p-3 text-primary">
-              <Award className="h-6 w-6" />
+            <div className="rounded-xl bg-primary/10 p-3 text-primary border border-primary/20">
+              <Heart className="h-6 w-6" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs bg-gradient-to-br from-emerald-500/10 via-card to-card hover:border-emerald-500/40 transition-all">
+        <Card className="border-border/70 shadow-xs bg-card hover:border-primary/50 transition-all">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Oxford Service Values</p>
-              <p className="mt-1 text-2xl font-bold font-display text-emerald-600 dark:text-emerald-400">
+              <p className="mt-1 text-2xl font-bold font-display text-foreground">
                 5 Core Pillars
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">Recognizing hotel excellence</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Recognizing hotel hospitality</p>
             </div>
-            <div className="rounded-xl bg-emerald-500/15 p-3 text-emerald-600 dark:text-emerald-400">
+            <div className="rounded-xl bg-primary/10 p-3 text-primary border border-primary/20">
               <Building2 className="h-6 w-6" />
             </div>
           </CardContent>
@@ -433,7 +433,7 @@ export function EssRecognitionTab() {
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-primary" />
+                    <Award className="h-5 w-5 text-primary" />
                     Wall of Fame &amp; Peer Recognitions
                   </CardTitle>
                   <p className="text-xs text-muted-foreground mt-0.5">
@@ -442,13 +442,13 @@ export function EssRecognitionTab() {
                 </div>
 
                 {/* Scope Filter Pills */}
-                <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-lg self-start sm:self-auto">
+                <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-lg self-start sm:self-auto border border-border/60">
                   <button
                     type="button"
                     onClick={() => setActiveFilter("all")}
                     className={`text-xs px-2.5 py-1 rounded-md font-medium transition-all ${
                       activeFilter === "all"
-                        ? "bg-background text-foreground shadow-2xs font-semibold"
+                        ? "bg-primary text-primary-foreground shadow-2xs font-semibold"
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -459,7 +459,7 @@ export function EssRecognitionTab() {
                     onClick={() => setActiveFilter("received")}
                     className={`text-xs px-2.5 py-1 rounded-md font-medium transition-all ${
                       activeFilter === "received"
-                        ? "bg-background text-foreground shadow-2xs font-semibold"
+                        ? "bg-primary text-primary-foreground shadow-2xs font-semibold"
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -470,7 +470,7 @@ export function EssRecognitionTab() {
                     onClick={() => setActiveFilter("given")}
                     className={`text-xs px-2.5 py-1 rounded-md font-medium transition-all ${
                       activeFilter === "given"
-                        ? "bg-background text-foreground shadow-2xs font-semibold"
+                        ? "bg-primary text-primary-foreground shadow-2xs font-semibold"
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -487,11 +487,11 @@ export function EssRecognitionTab() {
                     placeholder="Search kudos or colleagues..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-8 h-8 text-xs"
+                    className="pl-8 h-8 text-xs focus:border-primary"
                   />
                 </div>
                 <Select value={selectedValueFilter} onValueChange={setSelectedValueFilter}>
-                  <SelectTrigger className="h-8 text-xs w-[160px]">
+                  <SelectTrigger className="h-8 text-xs w-[160px] focus:border-primary">
                     <SelectValue placeholder="All Core Values" />
                   </SelectTrigger>
                   <SelectContent>
@@ -529,14 +529,14 @@ export function EssRecognitionTab() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3">
                           <div className="relative flex items-center">
-                            <Avatar className="h-9 w-9 border border-border">
-                              <AvatarFallback className="bg-primary/10 text-primary font-semibold text-xs">
+                            <Avatar className="h-9 w-9 border border-border/80 bg-muted">
+                              <AvatarFallback className="bg-muted text-foreground font-semibold text-xs">
                                 {post.senderInitials}
                               </AvatarFallback>
                             </Avatar>
-                            <span className="mx-1.5 text-xs text-muted-foreground font-semibold">→</span>
-                            <Avatar className="h-9 w-9 border border-border ring-2 ring-primary/20">
-                              <AvatarFallback className="bg-emerald-500/10 text-emerald-600 font-semibold text-xs">
+                            <span className="mx-1.5 text-xs text-primary font-bold">→</span>
+                            <Avatar className="h-9 w-9 border border-primary/40 ring-2 ring-primary/20 bg-primary/10">
+                              <AvatarFallback className="bg-primary/10 text-primary font-bold text-xs">
                                 {post.recipientInitials}
                               </AvatarFallback>
                             </Avatar>
@@ -552,14 +552,14 @@ export function EssRecognitionTab() {
                         </div>
 
                         {/* Core Value Badge */}
-                        <Badge variant="outline" className={`${coreValueMeta.color} text-[11px] font-semibold flex items-center gap-1 shrink-0`}>
+                        <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[11px] font-semibold flex items-center gap-1 shrink-0">
                           <Icon className="h-3 w-3" />
                           <span>{post.coreValue}</span>
                         </Badge>
                       </div>
 
                       {/* Recognition Message Box */}
-                      <div className="rounded-lg bg-muted/30 border border-border/50 p-3 text-xs sm:text-sm text-foreground leading-relaxed">
+                      <div className="rounded-xl bg-muted/20 border border-border/60 p-3.5 text-xs sm:text-sm text-foreground leading-relaxed">
                         "{post.message}"
                       </div>
 
@@ -570,8 +570,8 @@ export function EssRecognitionTab() {
                           onClick={() => handleToggleReaction(post.id, "clap")}
                           className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
                             post.userReactions.includes("clap")
-                              ? "bg-primary/15 border-primary/40 text-primary shadow-2xs"
-                              : "bg-muted/40 border-border/70 text-muted-foreground hover:bg-muted"
+                              ? "bg-primary/15 border-primary/50 text-primary shadow-2xs"
+                              : "bg-background border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                           }`}
                         >
                           <span>👏</span>
@@ -583,8 +583,8 @@ export function EssRecognitionTab() {
                           onClick={() => handleToggleReaction(post.id, "heart")}
                           className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
                             post.userReactions.includes("heart")
-                              ? "bg-rose-500/15 border-rose-500/40 text-rose-600 shadow-2xs"
-                              : "bg-muted/40 border-border/70 text-muted-foreground hover:bg-muted"
+                              ? "bg-primary/15 border-primary/50 text-primary shadow-2xs"
+                              : "bg-background border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                           }`}
                         >
                           <span>❤️</span>
@@ -596,8 +596,8 @@ export function EssRecognitionTab() {
                           onClick={() => handleToggleReaction(post.id, "star")}
                           className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
                             post.userReactions.includes("star")
-                              ? "bg-amber-500/15 border-amber-500/40 text-amber-600 shadow-2xs"
-                              : "bg-muted/40 border-border/70 text-muted-foreground hover:bg-muted"
+                              ? "bg-primary/15 border-primary/50 text-primary shadow-2xs"
+                              : "bg-background border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                           }`}
                         >
                           <span>⭐</span>
@@ -609,8 +609,8 @@ export function EssRecognitionTab() {
                           onClick={() => handleToggleReaction(post.id, "fire")}
                           className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
                             post.userReactions.includes("fire")
-                              ? "bg-orange-500/15 border-orange-500/40 text-orange-600 shadow-2xs"
-                              : "bg-muted/40 border-border/70 text-muted-foreground hover:bg-muted"
+                              ? "bg-primary/15 border-primary/50 text-primary shadow-2xs"
+                              : "bg-background border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                           }`}
                         >
                           <span>🔥</span>
@@ -643,7 +643,7 @@ export function EssRecognitionTab() {
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">Recognize Colleague</Label>
                   <Select value={recipient} onValueChange={setRecipient}>
-                    <SelectTrigger className="h-9 text-xs">
+                    <SelectTrigger className="h-9 text-xs focus:border-primary">
                       <SelectValue placeholder="Select team member..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -670,16 +670,16 @@ export function EssRecognitionTab() {
                           onClick={() => setSelectedCoreValue(cv.id as any)}
                           className={`flex items-center gap-2.5 p-2.5 rounded-lg border text-left text-xs transition-all ${
                             isSelected
-                              ? `${cv.activeColor} border-transparent ring-2 ring-primary/40`
-                              : "border-border/70 bg-card hover:bg-muted/50 text-foreground"
+                              ? "bg-primary text-primary-foreground border-primary shadow-xs ring-2 ring-primary/30"
+                              : "border-border/70 bg-card hover:bg-primary/5 hover:border-primary/40 text-foreground"
                           }`}
                         >
-                          <div className={`p-1.5 rounded-md ${isSelected ? "bg-white/20 text-white" : cv.color}`}>
+                          <div className={`p-1.5 rounded-md ${isSelected ? "bg-white/20 text-white" : "bg-primary/10 text-primary border border-primary/20"}`}>
                             <Icon className="h-4 w-4" />
                           </div>
                           <div>
                             <p className="font-bold">{cv.label}</p>
-                            <p className={`text-[11px] line-clamp-1 ${isSelected ? "text-white/80" : "text-muted-foreground"}`}>
+                            <p className={`text-[11px] line-clamp-1 ${isSelected ? "text-white/90" : "text-muted-foreground"}`}>
                               {cv.desc}
                             </p>
                           </div>
@@ -703,12 +703,12 @@ export function EssRecognitionTab() {
                     placeholder="Write sincere praise on how they went above and beyond..."
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
-                    className="text-xs"
+                    className="text-xs focus:border-primary"
                     required
                   />
                 </div>
 
-                <Button type="submit" className="w-full gap-1.5 shadow-xs font-semibold text-xs h-9">
+                <Button type="submit" className="w-full gap-1.5 shadow-xs font-semibold text-xs h-9 bg-primary text-primary-foreground hover:bg-primary/90">
                   <Send className="h-4 w-4" /> Post Recognition to Wall
                 </Button>
               </form>
