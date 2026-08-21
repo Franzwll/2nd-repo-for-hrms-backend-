@@ -49,26 +49,33 @@ function getInitials(name: string) {
 
 export function PortalShell({ role, children }: { role: Role; children: ReactNode }) {
   const [open, setOpen] = useState(true);
-  const [time, setTime] = useState(new Date());
+  const [mounted, setMounted] = useState(false);
+  const [time, setTime] = useState<Date>(new Date());
 
   useEffect(() => {
+    setMounted(true);
+    setTime(new Date());
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const timeString = time.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
+  const timeString = mounted
+    ? time.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      })
+    : "--:--:-- --";
 
-  const dateString = time.toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  const dateString = mounted
+    ? time.toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "Loading...";
 
   const navigate = useNavigate();
   const meta = roleMeta[role];
@@ -270,10 +277,10 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
           <div className="flex items-center gap-3 sm:gap-4">
             {/* Live Digital Clock & Date */}
             <div className="flex flex-col items-end justify-center rounded-xl border border-border/80 bg-background/80 px-3 py-1.5 shadow-2xs">
-              <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider leading-none">
+              <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider leading-none" suppressHydrationWarning>
                 {dateString}
               </p>
-              <p className="font-mono text-sm sm:text-base font-bold text-primary leading-tight mt-0.5">
+              <p className="font-mono text-sm sm:text-base font-bold text-primary leading-tight mt-0.5" suppressHydrationWarning>
                 {timeString}
               </p>
             </div>
