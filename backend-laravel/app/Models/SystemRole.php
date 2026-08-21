@@ -13,6 +13,13 @@ class SystemRole extends Model
     protected $fillable = [
         'role_name',
         'description',
+        'is_super_admin',
+        'is_protected',
+    ];
+
+    protected $casts = [
+        'is_super_admin' => 'boolean',
+        'is_protected' => 'boolean',
     ];
 
     public function permissions(): HasMany

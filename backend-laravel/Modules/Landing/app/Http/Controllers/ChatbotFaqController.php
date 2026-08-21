@@ -36,15 +36,6 @@ class ChatbotFaqController extends Controller
 
         $faq = ChatbotFaq::create($request->validated());
 
-        AuditLogger::log(
-            'Chatbot FAQ created',
-            'Chatbot',
-            'Info',
-            'faq',
-            (string) $faq->faq_id,
-            'Created chatbot FAQ "' . $faq->question . '".'
-        );
-
         return response()->json([
             'message' => 'FAQ created successfully.',
             'data' => new ChatbotFaqResource($faq),
@@ -56,15 +47,6 @@ class ChatbotFaqController extends Controller
         $this->ensureAdmin();
 
         $faq->update($request->validated());
-
-        AuditLogger::log(
-            'Chatbot FAQ updated',
-            'Chatbot',
-            'Info',
-            'faq',
-            (string) $faq->faq_id,
-            'Updated chatbot FAQ "' . $faq->question . '".'
-        );
 
         return response()->json([
             'message' => 'FAQ updated successfully.',
@@ -78,15 +60,6 @@ class ChatbotFaqController extends Controller
 
         $question = $faq->question;
         $faq->delete();
-
-        AuditLogger::log(
-            'Chatbot FAQ deleted',
-            'Chatbot',
-            'Info',
-            'faq',
-            (string) $faq->faq_id,
-            'Deleted chatbot FAQ "' . $question . '".'
-        );
 
         return response()->json(['message' => 'FAQ deleted successfully.']);
     }

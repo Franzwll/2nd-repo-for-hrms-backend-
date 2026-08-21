@@ -34,6 +34,7 @@ export type Notification = {
   time: string;
   read: boolean;
   tone: "info" | "success" | "warning";
+  targetType: string | null;
 };
 
 type State = {
@@ -56,6 +57,7 @@ function mapNotification(n: ApiNotification): Notification {
     time: n.time,
     read: n.read,
     tone: (n.tone as Notification["tone"]) ?? "info",
+    targetType: n.target_type ?? null,
   };
 }
 
@@ -72,6 +74,7 @@ function set(next: Partial<State>) {
 }
 
 let loaded = false;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 async function loadAnnouncements() {
   try {
@@ -106,6 +109,13 @@ function ensureLoaded() {
     loaded = true;
     loadAnnouncements();
     loadNotifications();
+  }
+
+  // Poll for new notifications so the bell updates without a page reload.
+  if (!pollTimer) {
+    pollTimer = setInterval(() => {
+      loadNotifications();
+    }, 30_000);
   }
 }
 
@@ -145,6 +155,7 @@ export function usePortalState() {
         // optimistic update already applied
       }
     },
+    refreshNotifications: loadNotifications,
     addAnnouncement: async (input: {
       title: string;
       body: string;
@@ -176,6 +187,7 @@ export function usePortalState() {
             time: "Just now",
             read: false,
             tone: "info",
+            targetType: null,
           },
           ...state.notifications,
         ],

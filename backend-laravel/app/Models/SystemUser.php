@@ -73,10 +73,20 @@ class SystemUser extends Authenticatable
         return $this->permissions->pluck('permission_level', 'module_name')->all();
     }
 
+    public function isSuperAdmin(): bool
+    {
+        // Prefer the explicit role flag; fall back to the legacy role_id = 1
+        // convention so existing sessions/records keep behaving correctly.
+        if ($this->relationLoaded('role') && $this->role) {
+            return (bool) $this->role->is_super_admin;
+        }
+
+        return (int) $this->role_id === 1;
+    }
+
     public function hasModuleAccess(string $module): bool
     {
-        // Super Admin (role_id = 1) has access to all modules
-        if ((int) $this->role_id === 1) {
+        if ($this->isSuperAdmin()) {
             return true;
         }
 

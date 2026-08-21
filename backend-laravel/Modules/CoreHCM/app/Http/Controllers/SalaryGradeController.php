@@ -4,7 +4,6 @@ namespace Modules\CoreHCM\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\SalaryGrade;
-use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\CoreHCM\Http\Requests\StoreSalaryGradeRequest;
@@ -39,15 +38,6 @@ class SalaryGradeController extends Controller
     {
         $salary_grade = SalaryGrade::create($request->validated());
 
-        AuditLogger::log(
-            'Salary grade created',
-            'Core HCM',
-            'Info',
-            'salary-grade',
-            (string) $salary_grade->code,
-            'Created salary grade ' . $salary_grade->code,
-        );
-
         return response()->json([
             'message' => 'Salary grade created successfully.',
             'data' => new SalaryGradeResource($salary_grade),
@@ -57,15 +47,6 @@ class SalaryGradeController extends Controller
     public function update(UpdateSalaryGradeRequest $request, SalaryGrade $salary_grade): JsonResponse
     {
         $salary_grade->update($request->validated());
-
-        AuditLogger::log(
-            'Salary grade updated',
-            'Core HCM',
-            'Info',
-            'salary-grade',
-            (string) $salary_grade->code,
-            'Updated salary grade ' . $salary_grade->code,
-        );
 
         return response()->json([
             'message' => 'Salary grade updated successfully.',
@@ -81,15 +62,6 @@ class SalaryGradeController extends Controller
 
         $code = $salary_grade->code;
         $salary_grade->delete();
-
-        AuditLogger::log(
-            'Salary grade deleted',
-            'Core HCM',
-            'Warning',
-            'salary-grade',
-            $code,
-            'Deleted salary grade ' . $code,
-        );
 
         return response()->json(['message' => 'Salary grade deleted successfully.']);
     }

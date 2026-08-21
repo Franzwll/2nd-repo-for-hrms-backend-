@@ -33,8 +33,8 @@ class PermissionMiddleware
             [$module, $requiredLevel] = explode(':', $module, 2);
         }
 
-        // Super Admin (role_id = 1) bypasses all permission checks
-        if ((int) $user->role_id === 1) {
+        // Super Admin bypasses all permission checks
+        if ($user->isSuperAdmin()) {
             return $next($request);
         }
 
