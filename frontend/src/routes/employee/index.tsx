@@ -317,81 +317,104 @@ function EmployeeDashboard() {
           </CardContent>
         </Card>
 
-        {/* Recent Actions Card (Top 5 Latest + Unfinished Onboarding Tasks) */}
+        {/* Social Recognition & Wall of Fame Card */}
         <Card className="border-border/70 flex flex-col justify-between">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 font-display text-xl font-semibold">
-                <Activity className="h-5 w-5 text-primary" />
-                Recent Actions
+                <Sparkles className="h-5 w-5 text-amber-500" />
+                Social Recognition
               </div>
-              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
-                Top 5 Latest
-              </Badge>
+              <Button asChild variant="ghost" size="sm" className="text-amber-600 font-semibold">
+                <Link to="/employee/ess" search={{ category: "Recognition" }}>
+                  Wall of Fame <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                </Link>
+              </Button>
             </div>
 
             <div className="mt-4 space-y-3">
-              {/* Top 5 latest actions list */}
-              <div className="space-y-2">
-                {topActions.map((act, index) => (
-                  <div key={index} className="flex items-center justify-between text-xs sm:text-sm border-b border-border/50 pb-1.5">
+              {/* Highlight Shoutouts */}
+              <div className="space-y-2.5">
+                <div className="rounded-xl border border-border/70 bg-muted/20 p-3 text-xs space-y-1.5 transition-colors hover:border-amber-500/40 hover:bg-amber-500/5">
+                  <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 overflow-hidden">
-                      <span className="font-medium text-foreground truncate">{act.type}</span>
-                      <span className="text-xs text-muted-foreground shrink-0">({act.category})</span>
+                      <div className="h-6 w-6 rounded-full bg-amber-500/20 text-amber-700 font-bold text-[10px] grid place-items-center shrink-0">
+                        CA
+                      </div>
+                      <span className="font-semibold text-foreground truncate">Chef Antonio</span>
+                      <span className="text-muted-foreground text-[11px]">→</span>
+                      <span className="font-semibold text-primary truncate">Aldrex M. Cordon</span>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs text-muted-foreground">{act.date}</span>
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] px-1.5 py-0 ${
-                          act.status === "Pending"
-                            ? "bg-amber-500/10 text-amber-600 border-amber-500/30"
-                            : act.status === "Approved"
-                            ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
-                            : "bg-blue-500/10 text-blue-600 border-blue-500/30"
-                        }`}
-                      >
-                        {act.status}
-                      </Badge>
-                    </div>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-emerald-500/10 text-emerald-600 border-emerald-500/30 shrink-0">
+                      Teamwork &amp; Malasakit
+                    </Badge>
                   </div>
-                ))}
-              </div>
+                  <p className="text-muted-foreground text-[11px] line-clamp-2 leading-relaxed">
+                    "Maintained peak efficiency and spotless kitchen line standards during the Saturday banquet rush."
+                  </p>
+                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-0.5">
+                    <span>👏 15</span>
+                    <span>❤️ 8</span>
+                    <span>🔥 4</span>
+                    <span className="ml-auto text-[10px] text-muted-foreground">Today</span>
+                  </div>
+                </div>
 
-              {/* Unfinished onboarding section */}
-              {pendingTasks.length > 0 ? (
-                <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3 mt-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-amber-800 dark:text-amber-300">
-                      <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
-                      Unfinished Onboarding Tasks ({pendingTasks.length})
+                <div className="rounded-xl border border-border/70 bg-muted/20 p-3 text-xs space-y-1.5 transition-colors hover:border-amber-500/40 hover:bg-amber-500/5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <div className="h-6 w-6 rounded-full bg-primary/20 text-primary font-bold text-[10px] grid place-items-center shrink-0">
+                        BS
+                      </div>
+                      <span className="font-semibold text-foreground truncate">Bullseur Santiago</span>
+                      <span className="text-muted-foreground text-[11px]">→</span>
+                      <span className="font-semibold text-primary truncate">Maria Santos</span>
                     </div>
-                    <Button asChild variant="link" size="sm" className="h-auto p-0 text-xs text-amber-800 dark:text-amber-300 font-semibold underline">
-                      <Link to="/employee/onboarding">Start Tasks</Link>
-                    </Button>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-500/10 text-amber-600 border-amber-500/30 shrink-0">
+                      Guest Delight
+                    </Badge>
                   </div>
-                  <ul className="mt-1 space-y-0.5 text-xs text-amber-700 dark:text-amber-400 pl-6 list-disc">
-                    {pendingTasks.slice(0, 3).map((task, i) => (
-                      <li key={i}>{task}</li>
-                    ))}
-                    {pendingTasks.length > 3 && (
-                      <li className="list-none text-[11px] font-medium text-amber-600">
-                        + {pendingTasks.length - 3} more requirements
-                      </li>
-                    )}
-                  </ul>
+                  <p className="text-muted-foreground text-[11px] line-clamp-2 leading-relaxed">
+                    "Exceeded guest expectations with proactive check-in care and warm hospitality."
+                  </p>
+                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-0.5">
+                    <span>⭐ 12</span>
+                    <span>👏 9</span>
+                    <span>❤️ 5</span>
+                    <span className="ml-auto text-[10px] text-muted-foreground">Yesterday</span>
+                  </div>
                 </div>
-              ) : (
-                <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3 mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                  All onboarding tasks are completed!
+
+                <div className="rounded-xl border border-border/70 bg-muted/20 p-3 text-xs space-y-1.5 transition-colors hover:border-amber-500/40 hover:bg-amber-500/5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <div className="h-6 w-6 rounded-full bg-purple-500/20 text-purple-700 font-bold text-[10px] grid place-items-center shrink-0">
+                        RV
+                      </div>
+                      <span className="font-semibold text-foreground truncate">Ricardo Villanueva</span>
+                      <span className="text-muted-foreground text-[11px]">→</span>
+                      <span className="font-semibold text-primary truncate">Ana Ramos</span>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-purple-500/10 text-purple-600 border-purple-500/30 shrink-0">
+                      Going the Extra Mile
+                    </Badge>
+                  </div>
+                  <p className="text-muted-foreground text-[11px] line-clamp-2 leading-relaxed">
+                    "Stepped up to assist guest concierge services seamlessly during peak afternoon check-outs."
+                  </p>
+                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-0.5">
+                    <span>👏 11</span>
+                    <span>⭐ 7</span>
+                    <span>❤️ 6</span>
+                    <span className="ml-auto text-[10px] text-muted-foreground">2 days ago</span>
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
 
-            <Button asChild variant="outline" size="sm" className="mt-4 w-full sm:w-auto">
-              <Link to="/employee/ess" search={{}}>
-                View All Actions <ArrowRight className="ml-2 h-4 w-4" />
+            <Button asChild variant="outline" size="sm" className="mt-4 w-full sm:w-auto border-amber-500/30 hover:bg-amber-500/10 text-foreground font-semibold">
+              <Link to="/employee/ess" search={{ category: "Recognition" }}>
+                Give Kudos &amp; View Wall <Sparkles className="ml-2 h-4 w-4 text-amber-500" />
               </Link>
             </Button>
           </CardContent>
