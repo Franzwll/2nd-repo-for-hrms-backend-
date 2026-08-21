@@ -13,7 +13,7 @@ const getCache = new Map<string, { expiresAt: number; promise: Promise<any> }>()
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
-  
+
   const headers: Record<string, string> = {
     'Accept': 'application/json',
     ...(options.headers as Record<string, string> || {}),
@@ -132,12 +132,12 @@ export interface ApiInterview {
     applicant_id: number;
     applicant_code: string;
     name: string;
-    email: string;
-    phone: string | null;
-    position?: string | null;
-    department?: string | null;
-    stage: string;
-    fit_score: number | null;
+    email?: string;
+    phone?: string;
+    position?: string;
+    department?: string;
+    stage?: string;
+    fit_score?: number | null;
   } | null;
 }
 
@@ -154,9 +154,9 @@ export interface ApiAssessment {
     applicant_id: number;
     applicant_code: string;
     name: string;
-    position?: string | null;
-    department?: string | null;
-    stage: string;
+    position?: string;
+    department?: string;
+    stage?: string;
   } | null;
 }
 

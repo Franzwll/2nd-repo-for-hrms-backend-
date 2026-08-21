@@ -55,6 +55,10 @@ class UserController extends Controller
     {
         $validated = $request->validated();
 
+        if ((int) $validated['role_id'] === 1 && $request->user()->role_id !== 1) {
+            return response()->json(['message' => 'Only a Super Admin can create a Super Admin account.'], 403);
+        }
+
         $user = SystemUser::create([
             ...$validated,
             'password_hash' => Hash::make($validated['password']),
@@ -86,6 +90,15 @@ class UserController extends Controller
     public function update(UpdateUserRequest $request, SystemUser $user): JsonResponse
     {
         $validated = $request->validated();
+
+        if ((int) $validated['role_id'] === 1 && $request->user()->role_id !== 1) {
+            return response()->json(['message' => 'Only a Super Admin can assign the Super Admin role.'], 403);
+        }
+
+        if ($user->system_user_id === $request->user()->system_user_id
+            && (int) $validated['role_id'] !== $request->user()->role_id) {
+            return response()->json(['message' => 'You cannot change your own role.'], 403);
+        }
 
         if (empty($validated['password'])) {
             unset($validated['password']);

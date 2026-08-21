@@ -45,6 +45,10 @@ export const statusMeta: Record<
   },
 };
 
+export const getStatusMeta = (status: any) => {
+  return statusMeta[status as ApplicantStatus] ?? statusMeta["not-fit"];
+};
+
 export const applicants: Applicant[] = [
   {
     id: "APP-1041",

@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 use Modules\Settings\Http\Requests\BulkUpsertSettingRequest;
 use Modules\Settings\Http\Requests\UpsertSettingRequest;
 use Modules\Settings\Http\Resources\SystemSettingResource;
@@ -15,14 +14,20 @@ use Modules\Settings\Models\SystemUser;
 
 class SettingsController extends Controller
 {
+    private const SENSITIVE_KEYS = ['default_password'];
+
     /* ------------------------------------------------------------------ */
     /* GET /api/v1/settings                                                */
     /* Returns all settings as a flat key → value map (plus full rows)    */
     /* ------------------------------------------------------------------ */
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $settings = SystemSetting::orderBy('setting_key')->get();
+
+        if (! $this->isFullSettings($request)) {
+            $settings = $settings->reject(fn ($setting) => in_array($setting->setting_key, self::SENSITIVE_KEYS, true));
+        }
 
         return response()->json([
             // Full row collection (for admin table view)
@@ -37,8 +42,12 @@ class SettingsController extends Controller
     /* GET /api/v1/settings/{key}                                          */
     /* ------------------------------------------------------------------ */
 
-    public function show(string $key): JsonResponse
+    public function show(Request $request, string $key): JsonResponse
     {
+        if (in_array($key, self::SENSITIVE_KEYS, true) && ! $this->isFullSettings($request)) {
+            return response()->json(['message' => 'Resource not found.'], 404);
+        }
+
         $setting = SystemSetting::where('setting_key', $key)->firstOrFail();
         return response()->json(new SystemSettingResource($setting));
     }
@@ -117,6 +126,7 @@ class SettingsController extends Controller
     /* Change the default password of ALL system users at once, and store  */
     /* it in system_settings so newly created accounts (new hires, etc.)   */
     /* start with the same default password.                               */
+    /* Restricted to Super Admin (permission:Settings:Full).               */
     /* ------------------------------------------------------------------ */
 
     public function resetDefaultPassword(Request $request): JsonResponse
@@ -141,5 +151,12 @@ class SettingsController extends Controller
             'message' => "Default password changed for {$updated} active user(s).",
             'updated' => $updated,
         ]);
+    }
+
+    private function isFullSettings(Request $request): bool
+    {
+        $level = $request->user()?->permissions->firstWhere('module_name', 'Settings')?->permission_level;
+
+        return $level === 'Full';
     }
 }
