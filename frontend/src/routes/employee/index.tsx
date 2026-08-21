@@ -22,8 +22,14 @@ import { StatCard } from "@/components/portal/StatCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { myAttendance, myEmployeeDocuments, myPayroll, myPerformance, myProfile, wireframeActivity } from "@/data/ess";
-import { essApi, newHiresApi, onboardingItemsApi, type ApiEssOverview, type ApiEssRequestItem } from "@/lib/api";
+import {
+  essApi,
+  newHiresApi,
+  onboardingItemsApi,
+  type ApiEssOverview,
+  type ApiEssRequestItem,
+  type ApiRecognitionItem,
+} from "@/lib/api";
 import { getUser } from "@/lib/auth";
 
 export const Route = createFileRoute("/employee/")({
@@ -34,6 +40,7 @@ function EmployeeDashboard() {
   const user = getUser();
   const [overview, setOverview] = useState<ApiEssOverview | null>(null);
   const [requests, setRequests] = useState<ApiEssRequestItem[]>([]);
+  const [recognitions, setRecognitions] = useState<ApiRecognitionItem[]>([]);
   const [pendingTasks, setPendingTasks] = useState<string[]>([]);
   const [loadingOnboarding, setLoadingOnboarding] = useState(true);
 
@@ -45,11 +52,11 @@ function EmployeeDashboard() {
     return "Good evening";
   }, []);
 
-  const employeeName = user?.full_name || overview?.employee?.name || myProfile.name;
+  const employeeName = user?.full_name || overview?.employee?.name || "Employee";
   const firstName = employeeName.split(" ")[0];
-  const position = overview?.employee?.position || myProfile.position;
-  const department = user?.department_name || overview?.employee?.department || myProfile.department;
-  const employmentType = overview?.employee?.employment_type || "Probationary Status";
+  const position = overview?.employee?.position || (user?.department_name ? `${user.department_name} Staff` : "Staff");
+  const department = user?.department_name || overview?.employee?.department || "General";
+  const employmentType = overview?.employee?.employment_type || "Probationary";
 
   useEffect(() => {
     // 1. Fetch ESS Overview
@@ -68,7 +75,17 @@ function EmployeeDashboard() {
       })
       .catch(() => {});
 
-    // 3. Fetch Onboarding Tasks
+    // 3. Fetch Social Recognitions
+    essApi
+      .recognitions()
+      .then((res) => {
+        if (res.recognitions) {
+          setRecognitions(res.recognitions);
+        }
+      })
+      .catch(() => {});
+
+    // 4. Fetch Onboarding Tasks
     newHiresApi
       .list({ per_page: 100 })
       .then((res) => {
@@ -107,17 +124,24 @@ function EmployeeDashboard() {
         status: r.status,
       }));
     }
-    return wireframeActivity.slice(0, 5).map((a) => ({
-      type: a.type,
-      category: a.category,
-      date: a.date,
-      status: a.status,
-    }));
+    return [
+      { type: "Vacation Leave (VL) Request", category: "Attendance", date: "Aug 18, 2026", status: "Approved" },
+      { type: "Biometrics Correction", category: "Attendance", date: "Aug 14, 2026", status: "Completed" },
+      { type: "Certificate of Employment (COE)", category: "Documents", date: "Aug 10, 2026", status: "Pending" },
+      { type: "Night Differential Inquiry", category: "Payroll", date: "Aug 05, 2026", status: "Completed" },
+      { type: "Food Safety Level 2 Certification", category: "Performance", date: "Aug 02, 2026", status: "Completed" },
+    ];
   }, [requests]);
 
   const shiftBadgeText = overview?.today_schedule?.is_rest_day
     ? "Rest Day (Off Duty)"
     : `On Shift (${overview?.today_schedule?.time || "07:00 AM – 04:00 PM"})`;
+
+  const availableLeaves = overview?.monthly_attendance?.total_leave_available ?? (overview?.leave_balances?.reduce((acc, b) => acc + b.available, 0) || 15);
+  const netPay = overview?.payroll_summary?.estimated_net ?? 28080;
+  const nextPayoutDate = overview?.payroll_summary?.next_payout ?? "August 30, 2026";
+  const lmsDone = overview?.performance_summary?.lms_completed ?? 4;
+  const lmsTotal = overview?.performance_summary?.lms_total ?? 4;
 
   return (
     <div>
@@ -135,8 +159,28 @@ function EmployeeDashboard() {
         description="Here's what's happening with your employment today."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <StatCard label="Department" value={department} hint="Oxford Suites Makati" icon={Headset} tone="primary" />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Leave Balance"
+          value={`${availableLeaves} days`}
+          hint="Available paid leave credits"
+          icon={Clock}
+          tone="primary"
+        />
+        <StatCard
+          label="Take-Home Pay"
+          value={`₱${netPay.toLocaleString()}`}
+          hint={`Next payout ${nextPayoutDate}`}
+          icon={FileText}
+          tone="success"
+        />
+        <StatCard
+          label="LMS Training"
+          value={`${lmsDone}/${lmsTotal}`}
+          hint={`${overview?.performance_summary?.competency_level ?? "Proficient"} competency`}
+          icon={TrendingUp}
+          tone="primary"
+        />
         <StatCard label="Position" value={position} hint={employmentType} icon={ClipboardCheck} tone="gold" />
       </div>
 
@@ -271,31 +315,31 @@ function EmployeeDashboard() {
                 <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   <Clock className="h-3.5 w-3.5 text-primary" /> Attendance
                 </div>
-                <p className="mt-1 text-lg font-bold font-display">{myAttendance.monthly.present} Present</p>
+                <p className="mt-1 text-lg font-bold font-display">{overview?.monthly_attendance?.present ?? 18} Present</p>
                 <p className="text-xs text-muted-foreground">
-                  {overview?.today_attendance?.time_in ? `In ${overview.today_attendance.time_in}` : `Time In ${myAttendance.today.timeIn}`} · {myAttendance.monthly.late} late
+                  {overview?.today_attendance?.time_in ? `In ${overview.today_attendance.time_in}` : "Not clocked in"} · {overview?.monthly_attendance?.late ?? 0} late
                 </p>
               </Link>
               <Link to="/employee/ess" search={{ category: "Payroll" }} className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5">
                 <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   <FileText className="h-3.5 w-3.5 text-emerald-600" /> Payroll
                 </div>
-                <p className="mt-1 text-lg font-bold font-display">₱{myPayroll.net.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">Next payout {myPayroll.nextPayout}</p>
+                <p className="mt-1 text-lg font-bold font-display">₱{netPay.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Next payout {nextPayoutDate}</p>
               </Link>
               <Link to="/employee/ess" search={{ category: "Performance" }} className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5">
                 <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   <TrendingUp className="h-3.5 w-3.5 text-purple-600" /> Performance
                 </div>
-                <p className="mt-1 text-lg font-bold font-display">{myPerformance.lmsCoursesCompleted}/{myPerformance.lmsCoursesAssigned} Courses</p>
-                <p className="text-xs text-muted-foreground">Avg {myPerformance.averageScore} · {myPerformance.competencyLevel}</p>
+                <p className="mt-1 text-lg font-bold font-display">{lmsDone}/{lmsTotal} Courses</p>
+                <p className="text-xs text-muted-foreground">{overview?.performance_summary?.competency_level ?? "Proficient"} rating</p>
               </Link>
               <Link to="/employee/ess" search={{ category: "Documents" }} className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5">
                 <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   <FileCheck className="h-3.5 w-3.5 text-blue-600" /> Documents
                 </div>
-                <p className="mt-1 text-lg font-bold font-display">{myEmployeeDocuments.filter((d) => d.status !== "Missing").length} Submitted</p>
-                <p className="text-xs text-amber-600">{myEmployeeDocuments.filter((d) => d.status === "Missing").length} missing requirement</p>
+                <p className="mt-1 text-lg font-bold font-display">{requests.filter((r) => r.category === "Documents" || r.type.includes("COE")).length || 3} Files</p>
+                <p className="text-xs text-muted-foreground">{overview?.pending_requests_count ?? 0} active request(s)</p>
               </Link>
             </div>
 
@@ -333,80 +377,75 @@ function EmployeeDashboard() {
             <div className="mt-4 space-y-3">
               {/* Highlight Shoutouts */}
               <div className="space-y-2.5">
-                <div className="rounded-xl border border-border/70 bg-muted/20 p-3 text-xs space-y-1.5 transition-colors hover:border-amber-500/40 hover:bg-amber-500/5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      <div className="h-6 w-6 rounded-full bg-amber-500/20 text-amber-700 font-bold text-[10px] grid place-items-center shrink-0">
-                        CA
+                {(recognitions.length > 0 ? recognitions.slice(0, 3) : [
+                  {
+                    id: "rec-1",
+                    sender: "Chef Antonio",
+                    recipient: "Aldrex M. Cordon",
+                    senderAvatar: "CA",
+                    badge: "Teamwork & Malasakit",
+                    badgeColor: "emerald",
+                    message: "Maintained peak efficiency and spotless kitchen line standards during the Saturday banquet rush.",
+                    reactions: { clap: 15, heart: 8, fire: 4, star: 6 },
+                    timeAgo: "Today",
+                  },
+                  {
+                    id: "rec-2",
+                    sender: "Bullseur Santiago",
+                    recipient: "Maria Santos",
+                    senderAvatar: "BS",
+                    badge: "Guest Delight",
+                    badgeColor: "amber",
+                    message: "Exceeded guest expectations with proactive check-in care and warm hospitality.",
+                    reactions: { clap: 9, heart: 5, fire: 3, star: 12 },
+                    timeAgo: "Yesterday",
+                  },
+                  {
+                    id: "rec-3",
+                    sender: "Ricardo Villanueva",
+                    recipient: "Ana Ramos",
+                    senderAvatar: "RV",
+                    badge: "Going the Extra Mile",
+                    badgeColor: "purple",
+                    message: "Stepped up to assist guest concierge services seamlessly during peak afternoon check-outs.",
+                    reactions: { clap: 11, heart: 6, fire: 5, star: 7 },
+                    timeAgo: "2 days ago",
+                  },
+                ]).map((rec) => (
+                  <div key={rec.id} className="rounded-xl border border-border/70 bg-muted/20 p-3 text-xs space-y-1.5 transition-colors hover:border-amber-500/40 hover:bg-amber-500/5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <div className="h-6 w-6 rounded-full bg-primary/20 text-primary font-bold text-[10px] grid place-items-center shrink-0">
+                          {rec.senderAvatar || rec.sender.slice(0, 2).toUpperCase()}
+                        </div>
+                        <span className="font-semibold text-foreground truncate">{rec.sender}</span>
+                        <span className="text-muted-foreground text-[11px]">→</span>
+                        <span className="font-semibold text-primary truncate">{rec.recipient}</span>
                       </div>
-                      <span className="font-semibold text-foreground truncate">Chef Antonio</span>
-                      <span className="text-muted-foreground text-[11px]">→</span>
-                      <span className="font-semibold text-primary truncate">Aldrex M. Cordon</span>
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] px-1.5 py-0 shrink-0 ${
+                          rec.badgeColor === "emerald"
+                            ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                            : rec.badgeColor === "purple"
+                            ? "bg-purple-500/10 text-purple-600 border-purple-500/30"
+                            : "bg-amber-500/10 text-amber-600 border-amber-500/30"
+                        }`}
+                      >
+                        {rec.badge}
+                      </Badge>
                     </div>
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-emerald-500/10 text-emerald-600 border-emerald-500/30 shrink-0">
-                      Teamwork &amp; Malasakit
-                    </Badge>
-                  </div>
-                  <p className="text-muted-foreground text-[11px] line-clamp-2 leading-relaxed">
-                    "Maintained peak efficiency and spotless kitchen line standards during the Saturday banquet rush."
-                  </p>
-                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-0.5">
-                    <span>👏 15</span>
-                    <span>❤️ 8</span>
-                    <span>🔥 4</span>
-                    <span className="ml-auto text-[10px] text-muted-foreground">Today</span>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-border/70 bg-muted/20 p-3 text-xs space-y-1.5 transition-colors hover:border-amber-500/40 hover:bg-amber-500/5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      <div className="h-6 w-6 rounded-full bg-primary/20 text-primary font-bold text-[10px] grid place-items-center shrink-0">
-                        BS
-                      </div>
-                      <span className="font-semibold text-foreground truncate">Bullseur Santiago</span>
-                      <span className="text-muted-foreground text-[11px]">→</span>
-                      <span className="font-semibold text-primary truncate">Maria Santos</span>
+                    <p className="text-muted-foreground text-[11px] line-clamp-2 leading-relaxed">
+                      "{rec.message}"
+                    </p>
+                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-0.5">
+                      <span>👏 {rec.reactions?.clap ?? 0}</span>
+                      <span>❤️ {rec.reactions?.heart ?? 0}</span>
+                      <span>🔥 {rec.reactions?.fire ?? 0}</span>
+                      <span className="ml-auto text-[10px] text-muted-foreground">{rec.timeAgo}</span>
                     </div>
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-500/10 text-amber-600 border-amber-500/30 shrink-0">
-                      Guest Delight
-                    </Badge>
                   </div>
-                  <p className="text-muted-foreground text-[11px] line-clamp-2 leading-relaxed">
-                    "Exceeded guest expectations with proactive check-in care and warm hospitality."
-                  </p>
-                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-0.5">
-                    <span>⭐ 12</span>
-                    <span>👏 9</span>
-                    <span>❤️ 5</span>
-                    <span className="ml-auto text-[10px] text-muted-foreground">Yesterday</span>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-border/70 bg-muted/20 p-3 text-xs space-y-1.5 transition-colors hover:border-amber-500/40 hover:bg-amber-500/5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      <div className="h-6 w-6 rounded-full bg-purple-500/20 text-purple-700 font-bold text-[10px] grid place-items-center shrink-0">
-                        RV
-                      </div>
-                      <span className="font-semibold text-foreground truncate">Ricardo Villanueva</span>
-                      <span className="text-muted-foreground text-[11px]">→</span>
-                      <span className="font-semibold text-primary truncate">Ana Ramos</span>
-                    </div>
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-purple-500/10 text-purple-600 border-purple-500/30 shrink-0">
-                      Going the Extra Mile
-                    </Badge>
-                  </div>
-                  <p className="text-muted-foreground text-[11px] line-clamp-2 leading-relaxed">
-                    "Stepped up to assist guest concierge services seamlessly during peak afternoon check-outs."
-                  </p>
-                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-0.5">
-                    <span>👏 11</span>
-                    <span>⭐ 7</span>
-                    <span>❤️ 6</span>
-                    <span className="ml-auto text-[10px] text-muted-foreground">2 days ago</span>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
 

@@ -1153,6 +1153,54 @@ export interface ApiScheduleDay {
   location: string;
 }
 
+export interface ApiRecognitionItem {
+  id: string;
+  sender: string;
+  senderRole: string;
+  senderAvatar: string;
+  recipient: string;
+  recipientRole: string;
+  recipientAvatar: string;
+  badge: string;
+  badgeColor: string;
+  message: string;
+  reactions: {
+    clap: number;
+    heart: number;
+    fire: number;
+    star: number;
+  };
+  timeAgo: string;
+  createdAt: string;
+}
+
+export interface ApiPayrollData {
+  employee_name: string;
+  position: string;
+  department: string;
+  baseSalary: number;
+  allowances: number;
+  gross: number;
+  net: number;
+  nextPayout: string;
+  deductions: {
+    sss: number;
+    philhealth: number;
+    pagibig: number;
+    tax: number;
+    total: number;
+  };
+  payslips: {
+    id: string;
+    period: string;
+    gross: number;
+    deductions: number;
+    net: number;
+    payoutDate: string;
+    status: string;
+  }[];
+}
+
 export interface ApiEssOverview {
   employee: ApiEssEmployee;
   today_schedule: {
@@ -1165,6 +1213,24 @@ export interface ApiEssOverview {
     time_in: string | null;
     time_out: string | null;
     status: string;
+  };
+  monthly_attendance?: {
+    present: number;
+    late: number;
+    absent: number;
+    overtime_hours: number;
+    total_leave_available: number;
+  };
+  payroll_summary?: {
+    base_salary: number;
+    estimated_net: number;
+    next_payout: string;
+  };
+  performance_summary?: {
+    lms_completed: number;
+    lms_total: number;
+    competency_level: string;
+    average_score: number;
   };
   leave_balances: ApiLeaveBalance[];
   pending_requests_count: number;
@@ -1216,6 +1282,18 @@ export const essApi = {
   schedule: () => request<{ employee: ApiEssEmployee; weekly_roster: ApiScheduleDay[] }>('/ess/my-schedule'),
   leaves: () => request<{ balances: ApiLeaveBalance[]; history: any[] }>('/ess/my-leaves'),
   benefits: () => request<{ benefits: ApiEssBenefit[] }>('/ess/my-benefits'),
+  myPayroll: () => request<ApiPayrollData>('/ess/my-payroll'),
+  recognitions: () => request<{ recognitions: ApiRecognitionItem[] }>('/ess/recognitions'),
+  sendKudos: (data: { recipient: string; badge: string; message: string }) =>
+    request<{ message: string; recognition: ApiRecognitionItem; recognitions: ApiRecognitionItem[] }>('/ess/recognitions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  reactKudos: (id: string, reaction: 'clap' | 'heart' | 'fire' | 'star') =>
+    request<{ message: string; recognitions: ApiRecognitionItem[] }>(`/ess/recognitions/${id}/react`, {
+      method: 'POST',
+      body: JSON.stringify({ reaction }),
+    }),
   myRequests: (params?: Record<string, any>) => {
     const qs = params ? new URLSearchParams(params).toString() : '';
     return request<{ requests: ApiEssRequestItem[] }>(`/ess/my-requests${qs ? `?${qs}` : ''}`);

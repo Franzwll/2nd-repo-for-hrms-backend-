@@ -166,7 +166,7 @@ const INITIAL_POSTS: RecognitionPost[] = [
   },
 ];
 
-import { newHiresApi } from "@/lib/api";
+import { newHiresApi, essApi, type ApiRecognitionItem } from "@/lib/api";
 
 const STORAGE_KEY = "oxford_social_recognitions";
 
@@ -195,6 +195,33 @@ export function EssRecognitionTab() {
   const [recipient, setRecipient] = useState<string>("");
   const [selectedCoreValue, setSelectedCoreValue] = useState<RecognitionPost["coreValue"]>("Guest Delight");
   const [message, setMessage] = useState("");
+
+  // Fetch from backend
+  useEffect(() => {
+    essApi
+      .recognitions()
+      .then((res) => {
+        if (res.recognitions && res.recognitions.length > 0) {
+          const apiMapped: RecognitionPost[] = res.recognitions.map((r) => ({
+            id: r.id,
+            senderName: r.sender,
+            senderRole: r.senderRole || "Oxford Staff",
+            senderInitials: r.senderAvatar || r.sender.slice(0, 2).toUpperCase(),
+            recipientName: r.recipient,
+            recipientRole: r.recipientRole || "Oxford Staff",
+            recipientInitials: r.recipientAvatar || r.recipient.slice(0, 2).toUpperCase(),
+            coreValue: (r.badge as RecognitionPost["coreValue"]) || "Guest Delight",
+            message: r.message,
+            timestamp: r.timeAgo || "Today",
+            isoDate: r.createdAt || new Date().toISOString(),
+            reactions: r.reactions || { clap: 1, heart: 0, star: 0, fire: 0 },
+            userReactions: [],
+          }));
+          setPosts(apiMapped);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Fetch live new hires / employees from backend to populate colleague dropdown dynamically
   useEffect(() => {
@@ -269,7 +296,7 @@ export function EssRecognitionTab() {
     p.senderName.toLowerCase().includes(currentUserName.toLowerCase())
   ).length;
 
-  const handleToggleReaction = (postId: string, reactionType: "clap" | "heart" | "star" | "fire") => {
+  const handleToggleReaction = async (postId: string, reactionType: "clap" | "heart" | "star" | "fire") => {
     setPosts((prev) =>
       prev.map((post) => {
         if (post.id !== postId) return post;
@@ -290,9 +317,15 @@ export function EssRecognitionTab() {
         };
       })
     );
+
+    try {
+      await essApi.reactKudos(postId, reactionType);
+    } catch {
+      // ignore
+    }
   };
 
-  const handleSendRecognition = (e: React.FormEvent) => {
+  const handleSendRecognition = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!recipient) {
       toast.error("Please select a colleague to recognize.");
@@ -312,7 +345,7 @@ export function EssRecognitionTab() {
     const newPost: RecognitionPost = {
       id: `rec-${Date.now()}`,
       senderName: currentUserName,
-      senderRole: `${myProfile.position} · ${myProfile.department}`,
+      senderRole: `${user?.department_name || myProfile.department} Staff`,
       senderInitials: currentUserName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase(),
       recipientName: recipientObj.name,
       recipientRole: recipientObj.role,
@@ -329,6 +362,16 @@ export function EssRecognitionTab() {
     toast.success(`Recognition sent to ${recipientObj.name}! 🎉`);
     setRecipient("");
     setMessage("");
+
+    try {
+      await essApi.sendKudos({
+        recipient: recipientObj.name,
+        badge: selectedCoreValue,
+        message: message.trim(),
+      });
+    } catch {
+      // optimistic state retained
+    }
   };
 
   return (

@@ -157,7 +157,7 @@ export function EmployeeAiPage() {
       return {
         id: `bot-${Date.now()}`,
         sender: "bot",
-        text: `**Oxford Suites Makati Payroll Schedule & Guidelines:**\n\n• **Payout Dates**: 15th and 30th/31st of each month.\n• **Cut-off Periods**:\n  - 1st–15th: Paid on the 30th.\n  - 16th–end of month: Paid on the 15th of the following month.\n• **Next Upcoming Payout**: **${myPayroll.nextPayout || "August 30, 2026"}**.\n• **Night Differential**: 10% premium for hotel shifts rendered between 10:00 PM and 6:00 AM.\n• **13th Month Pay**: Disbursed on or before December 15 annually.`,
+        text: `**Oxford Suites Makati Payroll Schedule & Guidelines:**\n\n• **Payout Dates**: 15th and 30th/31st of each month.\n• **Cut-off Periods**:\n  - 1st–15th: Paid on the 30th.\n  - 16th–end of month: Paid on the 15th of the following month.\n• **Next Upcoming Payout**: **${overview?.payroll_summary?.next_payout || "August 30, 2026"}**.\n• **Night Differential**: 10% premium for hotel shifts rendered between 10:00 PM and 6:00 AM.\n• **13th Month Pay**: Disbursed on or before December 15 annually.`,
         timestamp: timeStr,
         actionCard: {
           title: "View Payslips & Breakdown",

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   FileText,
   Download,
@@ -38,14 +38,32 @@ import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { myPayroll } from "@/data/ess";
+import { essApi, type ApiPayrollData } from "@/lib/api";
 import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewerModal";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
 import { toast } from "sonner";
 
 export function EssPayrollTab() {
-  const [selectedPayslipPeriod, setSelectedPayslipPeriod] = useState<string>("2026-07-01 – 07-15");
-  const [selectedPayslipNet, setSelectedPayslipNet] = useState<number>(myPayroll.net);
+  const [payrollData, setPayrollData] = useState<ApiPayrollData | null>(null);
+  const [selectedPayslipPeriod, setSelectedPayslipPeriod] = useState<string>("Aug 01 - Aug 15, 2026");
+  const [selectedPayslipNet, setSelectedPayslipNet] = useState<number>(28080);
   const [payslipModalOpen, setPayslipModalOpen] = useState(false);
+
+  useEffect(() => {
+    essApi
+      .myPayroll()
+      .then((res) => {
+        setPayrollData(res);
+        if (res.net) setSelectedPayslipNet(res.net);
+      })
+      .catch(() => {});
+  }, []);
+
+  const currentNet = payrollData?.net ?? myPayroll.net;
+  const currentGross = payrollData?.gross ?? myPayroll.gross;
+  const currentDeductions = payrollData?.deductions?.total ?? (myPayroll.gross - myPayroll.net);
+  const nextPayout = payrollData?.nextPayout ?? myPayroll.nextPayout;
+  const payslipsList = payrollData?.payslips?.length ? payrollData.payslips : myPayroll.payslips;
 
   const [payRequests, setPayRequests] = useState([
     { id: "REQ-4407", date: "Jul 28, 2026", isoDate: "2026-07-28", type: "Overtime Request (4 hrs)", status: "Pending", statusRank: 0, details: "Kitchen prep for banquet event." },
@@ -130,8 +148,8 @@ export function EssPayrollTab() {
                 <Wallet className="h-4 w-4" />
               </div>
             </div>
-            <p className="mt-1 text-3xl font-bold font-display text-emerald-600 dark:text-emerald-400">₱{myPayroll.net.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-1">Next payout date: <strong className="text-foreground">{myPayroll.nextPayout}</strong></p>
+            <p className="mt-1 text-3xl font-bold font-display text-emerald-600 dark:text-emerald-400">₱{currentNet.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground mt-1">Next payout date: <strong className="text-foreground">{nextPayout}</strong></p>
           </CardContent>
         </Card>
 
@@ -143,7 +161,7 @@ export function EssPayrollTab() {
                 <TrendingUp className="h-4 w-4" />
               </div>
             </div>
-            <p className="mt-1 text-2xl font-bold font-display text-foreground">₱{myPayroll.gross.toLocaleString()}</p>
+            <p className="mt-1 text-2xl font-bold font-display text-foreground">₱{currentGross.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground mt-1">Includes basic pay, OT &amp; allowances</p>
           </CardContent>
         </Card>
@@ -157,7 +175,7 @@ export function EssPayrollTab() {
               </div>
             </div>
             <p className="mt-1 text-2xl font-bold font-display text-rose-600 dark:text-rose-400">
-              -₱{(myPayroll.gross - myPayroll.net).toLocaleString()}
+              -₱{currentDeductions.toLocaleString()}
             </p>
             <p className="text-xs text-muted-foreground mt-1">SSS, PhilHealth, Pag-IBIG &amp; Tax</p>
           </CardContent>
