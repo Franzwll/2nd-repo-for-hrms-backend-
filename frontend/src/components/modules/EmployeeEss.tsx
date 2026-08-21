@@ -7,6 +7,7 @@ import {
   FileCheck,
   Calendar,
   ArrowLeft,
+  Sparkles,
 } from "lucide-react";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import { EssLeaveTab } from "@/components/modules/ess/tabs/EssLeaveTab";
 import { EssPayrollTab } from "@/components/modules/ess/tabs/EssPayrollTab";
 import { EssDocumentsTab } from "@/components/modules/ess/tabs/EssDocumentsTab";
 import { EssPerformanceTab } from "@/components/modules/ess/tabs/EssPerformanceTab";
+import { EssRecognitionTab } from "@/components/modules/ess/tabs/EssRecognitionTab";
 import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
 import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
 import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewerModal";
@@ -38,7 +40,7 @@ export function EmployeeEss() {
   const params = new URLSearchParams(searchStr || "");
   const categoryParam = params.get("category");
 
-  const isDedicatedModule = ["Attendance", "Payroll", "Performance", "Documents"].includes(
+  const isDedicatedModule = ["Attendance", "Payroll", "Performance", "Documents", "Recognition"].includes(
     categoryParam || ""
   );
 
@@ -52,6 +54,8 @@ export function EmployeeEss() {
         return "Employee Self-Service · Performance";
       case "Documents":
         return "Employee Self-Service · Company Documents";
+      case "Recognition":
+        return "Employee Self-Service · Social Recognition & Kudos";
       default:
         return "EMPLOYEE SELF-SERVICE";
     }
@@ -64,9 +68,11 @@ export function EmployeeEss() {
       case "Payroll":
         return "View net pay information, payslips history, breakdown details, and submit inquiries.";
       case "Performance":
-        return "Track LMS learning modules, view evaluation scores, competency rating, and promotion applications.";
+        return "Track LMS learning modules, view evaluation scores, and competency rating.";
       case "Documents":
         return "View submitted, missing, and available employee documents and request official HR records.";
+      case "Recognition":
+        return "Praise colleagues, give kudos, and celebrate hotel service values on the public Wall of Fame.";
       default:
         return "View your employee information, activities, and HR services.";
     }
@@ -96,6 +102,7 @@ export function EmployeeEss() {
           {categoryParam === "Payroll" && <EssPayrollTab />}
           {categoryParam === "Performance" && <EssPerformanceTab />}
           {categoryParam === "Documents" && <EssDocumentsTab />}
+          {categoryParam === "Recognition" && <EssRecognitionTab />}
         </div>
       ) : (
         /* MAIN ESS SECTION (Portal Hub) */
@@ -120,6 +127,9 @@ export function EmployeeEss() {
               </TabsTrigger>
               <TabsTrigger className="flex items-center gap-1.5" value="coe">
                 <FileCheck className="h-3.5 w-3.5" /> Request COE
+              </TabsTrigger>
+              <TabsTrigger className="flex items-center gap-1.5" value="recognition">
+                <Sparkles className="h-3.5 w-3.5" /> Recognition &amp; Kudos
               </TabsTrigger>
             </TabsList>
 
@@ -147,6 +157,10 @@ export function EmployeeEss() {
 
             <TabsContent value="coe" className="mt-6">
               <EssDocumentsTab />
+            </TabsContent>
+
+            <TabsContent value="recognition" className="mt-6">
+              <EssRecognitionTab />
             </TabsContent>
           </Tabs>
         </div>
