@@ -1325,3 +1325,29 @@ export const chatbotFaqApi = {
     }),
   remove: (id: number | string) => request<{ message: string }>(`/chatbot/faqs/${id}`, { method: 'DELETE' }),
 };
+
+/* ========================================================================= */
+/* 11. NOTIFICATIONS                                                          */
+/* ========================================================================= */
+
+export interface ApiNotification {
+  id: string;
+  notification_id: number;
+  title: string;
+  detail: string;
+  time: string;
+  read: boolean;
+  tone: 'info' | 'success' | 'warning';
+  type: string;
+  module: string | null;
+  created_at: string;
+}
+
+export const notificationsApi = {
+  list: () =>
+    request<{ data: ApiNotification[]; unread_count: number }>('/notifications'),
+  markRead: (id: number | string) =>
+    request<{ message: string }>(`/notifications/${id}/read`, { method: 'PATCH' }),
+  markAllRead: () =>
+    request<{ message: string }>('/notifications/mark-all-read', { method: 'POST' }),
+};

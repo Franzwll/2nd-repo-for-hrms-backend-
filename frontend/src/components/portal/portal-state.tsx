@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { announcementsApi } from "@/lib/api";
+import { announcementsApi, notificationsApi, type ApiNotification } from "@/lib/api";
 
 export type Audience = "All" | "Employee" | "Admin" | "Super Admin";
 
@@ -47,76 +47,21 @@ const seed: State = {
   notifications: [],
   loading: true,
 };
-const seedNotifications: Notification[] = [
-  {
-    id: "NTF-005",
-    title: "3 new applicants for Front Desk Receptionist",
-    detail: "Resume screening finished — 2 ranked as Perfect for the job.",
-    time: "8 min ago",
-    read: false,
-    tone: "info",
-  },
-  {
-    id: "NTF-004",
-    title: "Leave request awaiting approval",
-    detail: "Rosa Aquino filed a 2-day vacation leave starting Aug 6.",
-    time: "1 hr ago",
-    read: false,
-    tone: "warning",
-  },
-  {
-    id: "NTF-003",
-    title: "Onboarding checklist completed",
-    detail: "Kevin Dela Cruz finished all pre-onboarding requirements.",
-    time: "3 hrs ago",
-    read: false,
-    tone: "success",
-  },
-  {
-    id: "NTF-002",
-    title: "Job post published",
-    detail: "'Line Cook' is now live on Indeed and Facebook.",
-    time: "Yesterday",
-    read: true,
-    tone: "info",
-  },
-  {
-    id: "NTF-001",
-    title: "Account suspended",
-    detail: "mdevera was suspended after 3 failed login attempts.",
-    time: "2 days ago",
-    read: true,
-    tone: "warning",
-  },
-];
 
-const READ_STORAGE_KEY = "hrms-notifications-read";
-
-function loadReadFlags(): Set<string> {
-  try {
-    const raw = localStorage.getItem(READ_STORAGE_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw);
-    return new Set(Array.isArray(parsed) ? parsed : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function persistReadFlags(notifications: Notification[]) {
-  try {
-    const readIds = notifications.filter((n) => n.read).map((n) => n.id);
-    localStorage.setItem(READ_STORAGE_KEY, JSON.stringify(readIds));
-  } catch {
-    /* storage unavailable — ignore */
-  }
+function mapNotification(n: ApiNotification): Notification {
+  return {
+    id: n.id,
+    title: n.title,
+    detail: n.detail,
+    time: n.time,
+    read: n.read,
+    tone: (n.tone as Notification["tone"]) ?? "info",
+  };
 }
 
 let state: State = {
   announcements: [],
-  notifications: seedNotifications.map((n) =>
-    loadReadFlags().has(n.id) ? { ...n, read: true } : n
-  ),
+  notifications: [],
   loading: true,
 };
 const listeners = new Set<() => void>();
@@ -147,10 +92,20 @@ async function loadAnnouncements() {
   }
 }
 
+async function loadNotifications() {
+  try {
+    const res = await notificationsApi.list();
+    set({ notifications: (res.data ?? []).map(mapNotification) });
+  } catch {
+    // keep empty list on failure
+  }
+}
+
 function ensureLoaded() {
   if (!loaded) {
     loaded = true;
     loadAnnouncements();
+    loadNotifications();
   }
 }
 
@@ -172,15 +127,23 @@ export function usePortalState() {
     notifications: snapshot.notifications,
     loading: snapshot.loading,
     unreadCount: snapshot.notifications.filter((n) => !n.read).length,
-    markAllRead: () => {
+    markAllRead: async () => {
       const next = state.notifications.map((n) => ({ ...n, read: true }));
       set({ notifications: next });
-      persistReadFlags(next);
+      try {
+        await notificationsApi.markAllRead();
+      } catch {
+        // optimistic update already applied
+      }
     },
-    markRead: (id: string) => {
+    markRead: async (id: string) => {
       const next = state.notifications.map((n) => (n.id === id ? { ...n, read: true } : n));
       set({ notifications: next });
-      persistReadFlags(next);
+      try {
+        await notificationsApi.markRead(id);
+      } catch {
+        // optimistic update already applied
+      }
     },
     addAnnouncement: async (input: {
       title: string;

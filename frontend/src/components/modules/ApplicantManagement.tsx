@@ -114,6 +114,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { SortHead, useSort } from "@/components/portal/sortable";
 import { applicantsApi, assessmentsApi, interviewsApi, jobPostsApi, settingsApi, userManagementApi, type ApiApplicant, type ApiInterview, type ApiSystemUser } from "@/lib/api";
+import { exportToCsv, type CsvColumn } from "@/lib/csv-export";
 
 const VALID_STATUSES: ApplicantStatus[] = ["fit", "other-role", "credential", "not-fit"];
 
@@ -1059,6 +1060,92 @@ export function ApplicantManagement({
         );
       }
     }
+  };
+
+  /** Generates and downloads a CSV report based on the selected report type. */
+  const generateReport = (reportId: string) => {
+    const timestamp = new Date().toISOString().slice(0, 10);
+
+    if (reportId === "all") {
+      const columns: CsvColumn<Applicant>[] = [
+        { header: "Applicant ID", accessor: (r) => r.id },
+        { header: "Name", accessor: (r) => r.name },
+        { header: "Email", accessor: (r) => r.email },
+        { header: "Phone", accessor: (r) => r.phone },
+        { header: "Position", accessor: (r) => r.position },
+        { header: "Applied At", accessor: (r) => r.appliedAt },
+        { header: "Score (%)", accessor: (r) => r.score },
+        { header: "Status", accessor: (r) => statusMeta[r.status].label },
+        { header: "Stage", accessor: (r) => r.stage },
+        { header: "Source", accessor: (r) => r.source },
+      ];
+      exportToCsv(`applicants-all-${timestamp}`, columns, rows);
+    } else if (reportId === "status") {
+      type StatusRow = { status: string; count: number; avgScore: number };
+      const statusRows: StatusRow[] = (Object.keys(statusMeta) as ApplicantStatus[]).map((k) => {
+        const group = rows.filter((a) => a.status === k);
+        return {
+          status: statusMeta[k].label,
+          count: group.length,
+          avgScore: group.length ? Math.round(group.reduce((t, a) => t + a.score, 0) / group.length) : 0,
+        };
+      });
+      const columns: CsvColumn<StatusRow>[] = [
+        { header: "Status", accessor: (r) => r.status },
+        { header: "Count", accessor: (r) => r.count },
+        { header: "Average Score (%)", accessor: (r) => r.avgScore },
+      ];
+      exportToCsv(`applicants-by-status-${timestamp}`, columns, statusRows);
+    } else if (reportId === "position") {
+      type PosRow = { position: string; total: number; passed: number; passRate: string };
+      const posMap = new Map<string, Applicant[]>();
+      rows.forEach((a) => {
+        const list = posMap.get(a.position) ?? [];
+        list.push(a);
+        posMap.set(a.position, list);
+      });
+      const posRows: PosRow[] = Array.from(posMap.entries()).map(([pos, list]) => ({
+        position: pos,
+        total: list.length,
+        passed: list.filter((a) => a.score >= passing).length,
+        passRate: list.length ? `${Math.round((list.filter((a) => a.score >= passing).length / list.length) * 100)}%` : "0%",
+      }));
+      const columns: CsvColumn<PosRow>[] = [
+        { header: "Position", accessor: (r) => r.position },
+        { header: "Total Applicants", accessor: (r) => r.total },
+        { header: "Passed Screening", accessor: (r) => r.passed },
+        { header: "Pass Rate", accessor: (r) => r.passRate },
+      ];
+      exportToCsv(`applicants-by-position-${timestamp}`, columns, posRows);
+    } else if (reportId === "screening") {
+      const columns: CsvColumn<Applicant>[] = [
+        { header: "Applicant ID", accessor: (r) => r.id },
+        { header: "Name", accessor: (r) => r.name },
+        { header: "Position", accessor: (r) => r.position },
+        { header: "Score (%)", accessor: (r) => r.score },
+        { header: "Status", accessor: (r) => statusMeta[r.status].label },
+        { header: "Extracted Entities", accessor: (r) => r.entities.map((e) => `${e.label}: ${e.value}`).join("; ") },
+        { header: "Flags", accessor: (r) => r.flags.join("; ") || "None" },
+        { header: "Summary", accessor: (r) => r.summary },
+      ];
+      exportToCsv(`screening-results-${timestamp}`, columns, rows);
+    } else if (reportId === "interview") {
+      const columns: CsvColumn<Interview>[] = [
+        { header: "Interview ID", accessor: (r) => r.id },
+        { header: "Applicant", accessor: (r) => r.applicant },
+        { header: "Position", accessor: (r) => r.position },
+        { header: "Date", accessor: (r) => r.date },
+        { header: "Time", accessor: (r) => r.time },
+        { header: "Mode", accessor: (r) => r.mode },
+        { header: "Interviewer", accessor: (r) => r.interviewer },
+        { header: "Status", accessor: (r) => r.status },
+      ];
+      exportToCsv(`interview-summary-${timestamp}`, columns, interviews);
+    }
+
+    toast.success("Report downloaded", {
+      description: "CSV file has been saved to your downloads folder.",
+    });
   };
 
   /** Downloads a printable interview evaluation form for an applicant. */
@@ -4168,11 +4255,10 @@ export function ApplicantManagement({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() =>
-                    toast.success(`${r.title} report generated`, {
-                      description: "Ready to download from Reports history.",
-                    })
-                  }
+                  onClick={() => {
+                    generateReport(r.id);
+                    setReportsOpen(false);
+                  }}
                 >
                   <Download className="mr-2 h-4 w-4" /> Generate
                 </Button>
