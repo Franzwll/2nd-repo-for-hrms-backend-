@@ -8,7 +8,6 @@ import {
   Calendar,
   ArrowLeft,
   Sparkles,
-  TrendingUp,
 } from "lucide-react";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -129,12 +128,6 @@ export function EmployeeEss() {
               <TabsTrigger className="flex items-center gap-1.5" value="coe">
                 <FileCheck className="h-3.5 w-3.5" /> Request COE
               </TabsTrigger>
-              <TabsTrigger className="flex items-center gap-1.5" value="performance">
-                <TrendingUp className="h-3.5 w-3.5" /> Performance
-              </TabsTrigger>
-              <TabsTrigger className="flex items-center gap-1.5" value="recognition">
-                <Sparkles className="h-3.5 w-3.5" /> Social Recognition
-              </TabsTrigger>
             </TabsList>
 
             {/* Tab Contents */}
@@ -161,14 +154,6 @@ export function EmployeeEss() {
 
             <TabsContent value="coe" className="mt-6">
               <EssDocumentsTab />
-            </TabsContent>
-
-            <TabsContent value="performance" className="mt-6">
-              <EssPerformanceTab />
-            </TabsContent>
-
-            <TabsContent value="recognition" className="mt-6">
-              <EssRecognitionTab />
             </TabsContent>
           </Tabs>
         </div>
