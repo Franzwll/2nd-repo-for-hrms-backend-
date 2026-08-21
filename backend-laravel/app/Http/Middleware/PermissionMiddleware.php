@@ -26,6 +26,18 @@ class PermissionMiddleware
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
+        // Laravel splits middleware params on the first colon, then by comma.
+        // Routes written as "permission:User Management:Full" arrive here with
+        // $module = "User Management:Full". Normalize that into module + level.
+        if (str_contains($module, ':')) {
+            [$module, $requiredLevel] = explode(':', $module, 2);
+        }
+
+        // Super Admin (role_id = 1) bypasses all permission checks
+        if ((int) $user->role_id === 1) {
+            return $next($request);
+        }
+
         $level = $user->permissions->firstWhere('module_name', $module)?->permission_level ?? 'None';
 
         if (self::rank($level) < self::rank($requiredLevel)) {

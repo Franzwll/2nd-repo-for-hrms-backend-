@@ -56,8 +56,12 @@ export function AnnouncementDialog({
       setBody("");
       setAudience("All");
       onOpenChange(false);
-    } catch {
-      toast.error("Could not post the announcement. Please try again.");
+    } catch (e) {
+      const msg =
+        e instanceof Error && e.message
+          ? e.message
+          : "Could not post the announcement. Please try again.";
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

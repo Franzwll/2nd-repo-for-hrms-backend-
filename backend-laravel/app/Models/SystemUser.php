@@ -75,6 +75,11 @@ class SystemUser extends Authenticatable
 
     public function hasModuleAccess(string $module): bool
     {
+        // Super Admin (role_id = 1) has access to all modules
+        if ((int) $this->role_id === 1) {
+            return true;
+        }
+
         $level = $this->permissions->firstWhere('module_name', $module)?->permission_level ?? 'None';
 
         return $level !== 'None';
