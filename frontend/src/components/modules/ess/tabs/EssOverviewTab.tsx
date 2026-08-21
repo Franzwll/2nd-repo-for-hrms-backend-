@@ -63,6 +63,40 @@ export function EssOverviewTab({
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
 
+  // Dynamic Social Recognition Stats
+  const [recStats, setRecStats] = useState({ received: 4, given: 2, topPillar: "Guest Delight" });
+
+  useEffect(() => {
+    const updateStats = () => {
+      try {
+        const raw = localStorage.getItem("oxford_social_recognitions");
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            const userName = overview?.employee?.name || "Kevin Dela Cruz";
+            const received = list.filter((p: any) =>
+              p.recipientName?.toLowerCase().includes(userName.toLowerCase())
+            ).length;
+            const given = list.filter((p: any) =>
+              p.senderName?.toLowerCase().includes(userName.toLowerCase())
+            ).length;
+            setRecStats({
+              received: Math.max(0, received),
+              given: Math.max(0, given),
+              topPillar: "Guest Delight",
+            });
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    updateStats();
+    window.addEventListener("recognition_updated", updateStats);
+    return () => window.removeEventListener("recognition_updated", updateStats);
+  }, [overview]);
+
   useEffect(() => {
     const loadOverviewData = async () => {
       try {
@@ -276,10 +310,10 @@ export function EssOverviewTab({
             </div>
             <div className="mt-3">
               <p className="text-xl font-bold font-display text-amber-600 dark:text-amber-400">
-                4 Received <span className="text-xs font-normal text-muted-foreground">· 2 Given</span>
+                {recStats.received} Received <span className="text-xs font-normal text-muted-foreground">· {recStats.given} Given</span>
               </p>
               <p className="text-xs text-muted-foreground mt-1 truncate">
-                Top Pillar: <strong className="text-foreground">⭐ Guest Delight</strong>
+                Top Pillar: <strong className="text-foreground">⭐ {recStats.topPillar}</strong>
               </p>
             </div>
             <Button
