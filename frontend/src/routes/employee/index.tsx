@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Calendar,
   Sparkles,
+  Bot,
 } from "lucide-react";
 
 import { AnnouncementsCard } from "@/components/portal/AnnouncementsCard";
@@ -24,6 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { myAttendance, myEmployeeDocuments, myPayroll, myPerformance, myProfile, wireframeActivity } from "@/data/ess";
 import { essApi, newHiresApi, onboardingItemsApi, type ApiEssOverview, type ApiEssRequestItem } from "@/lib/api";
 import { getUser } from "@/lib/auth";
+import { EssAiAssistantModal } from "@/components/modules/ess/modals/EssAiAssistantModal";
 
 export const Route = createFileRoute("/employee/")({
   component: EmployeeDashboard,
@@ -35,6 +37,7 @@ function EmployeeDashboard() {
   const [requests, setRequests] = useState<ApiEssRequestItem[]>([]);
   const [pendingTasks, setPendingTasks] = useState<string[]>([]);
   const [loadingOnboarding, setLoadingOnboarding] = useState(true);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
 
   // Time of day greeting
   const greeting = useMemo(() => {
@@ -140,14 +143,14 @@ function EmployeeDashboard() {
         <StatCard label="Position" value={position} hint={employmentType} icon={ClipboardCheck} tone="gold" />
       </div>
 
-      {/* Quick Actions Grid (5-column responsive layout) */}
+      {/* Quick Actions Grid (6-column responsive layout) */}
       <div className="mt-6">
         <Card className="border-border/70">
           <CardHeader>
             <CardTitle className="font-display text-xl font-semibold">Quick Actions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
               <Button
                 asChild
                 variant="outline"
@@ -226,6 +229,23 @@ function EmployeeDashboard() {
                     <p className="text-xs text-muted-foreground font-normal truncate">Kudos &amp; Wall of Fame</p>
                   </div>
                 </Link>
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAiModalOpen(true)}
+                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all shadow-2xs cursor-pointer border-primary/40 bg-gradient-to-br from-primary/10 via-background to-amber-500/10"
+              >
+                <div className="rounded-md bg-rose-500/15 p-2 text-rose-600 shadow-2xs">
+                  <Bot className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm flex items-center gap-1.5 text-foreground">
+                    <span>HR AI Concierge</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground font-normal truncate">Ask questions &amp; help</p>
+                </div>
               </Button>
             </div>
           </CardContent>
@@ -381,6 +401,11 @@ function EmployeeDashboard() {
       <div className="mt-6">
         <AnnouncementsCard role="employee" />
       </div>
+
+      <EssAiAssistantModal
+        open={aiModalOpen}
+        onOpenChange={setAiModalOpen}
+      />
     </div>
   );
 }

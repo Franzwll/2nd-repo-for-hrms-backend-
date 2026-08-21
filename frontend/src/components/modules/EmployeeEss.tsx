@@ -8,6 +8,7 @@ import {
   Calendar,
   ArrowLeft,
   Sparkles,
+  Bot,
 } from "lucide-react";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal
 import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
 import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewerModal";
 import { DocumentRequestModal } from "@/components/modules/ess/modals/DocumentRequestModal";
+import { EssAiAssistantModal } from "@/components/modules/ess/modals/EssAiAssistantModal";
 import { myPayroll } from "@/data/ess";
 
 export function EmployeeEss() {
@@ -34,6 +36,7 @@ export function EmployeeEss() {
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [payslipModalOpen, setPayslipModalOpen] = useState(false);
   const [docRequestModalOpen, setDocRequestModalOpen] = useState(false);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
 
   // Sync category query parameter from TanStack Router URL (e.g. ?category=Attendance)
   const searchStr = useRouterState({ select: (s) => s.location.searchStr });
@@ -159,6 +162,16 @@ export function EmployeeEss() {
         </div>
       )}
 
+      {/* Floating AI Concierge Trigger Button */}
+      <button
+        type="button"
+        onClick={() => setAiModalOpen(true)}
+        aria-label="Open Oxford HR AI Assistant"
+        className="fixed bottom-6 right-6 z-40 flex h-13 w-13 items-center justify-center rounded-full bg-gradient-to-tr from-primary via-primary to-amber-600 text-white shadow-xl hover:scale-105 active:scale-95 transition-all focus:outline-none focus:ring-4 focus:ring-primary/20 cursor-pointer group"
+      >
+        <Bot className="h-6 w-6 group-hover:rotate-12 transition-transform" />
+      </button>
+
       {/* Global Modals */}
       <QuickClockModal open={clockModalOpen} onOpenChange={setClockModalOpen} />
       <LeaveApplicationModal open={leaveModalOpen} onOpenChange={setLeaveModalOpen} />
@@ -171,6 +184,18 @@ export function EmployeeEss() {
       <DocumentRequestModal
         open={docRequestModalOpen}
         onOpenChange={setDocRequestModalOpen}
+      />
+      <EssAiAssistantModal
+        open={aiModalOpen}
+        onOpenChange={setAiModalOpen}
+        onNavigateCategory={(cat) => {
+          if (cat === "Attendance") setActiveTab("clocking");
+          else if (cat === "Payroll") setActiveTab("payslip");
+          else if (cat === "Documents") setActiveTab("coe");
+          else if (cat === "Recognition") {
+            window.location.href = "/employee/ess?category=Recognition";
+          }
+        }}
       />
     </div>
   );
