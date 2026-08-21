@@ -48,6 +48,7 @@ const essChildren = (base: string) => [
   { label: "Payroll", to: `${base}/ess?category=Payroll` },
   { label: "Performance", to: `${base}/ess?category=Performance` },
   { label: "Company Documents", to: `${base}/ess?category=Documents` },
+  { label: "Social Recognition", to: `${base}/ess?category=Recognition` },
 ];
 
 const hcmChildren = (base: string) => [
