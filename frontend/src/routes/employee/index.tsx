@@ -12,6 +12,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Calendar,
+  Sparkles,
 } from "lucide-react";
 
 import { AnnouncementsCard } from "@/components/portal/AnnouncementsCard";
@@ -139,18 +140,18 @@ function EmployeeDashboard() {
         <StatCard label="Position" value={position} hint={employmentType} icon={ClipboardCheck} tone="gold" />
       </div>
 
-      {/* Quick Actions Grid (1 row with 3-column layout) */}
+      {/* Quick Actions Grid (5-column responsive layout) */}
       <div className="mt-6">
         <Card className="border-border/70">
           <CardHeader>
             <CardTitle className="font-display text-xl font-semibold">Quick Actions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
               <Button
                 asChild
                 variant="outline"
-                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all"
+                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all shadow-2xs"
               >
                 <Link to="/employee/ess" search={{ category: "Attendance" }}>
                   <div className="p-2 text-primary rounded-md bg-primary/10">
@@ -158,7 +159,7 @@ function EmployeeDashboard() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-sm">Attendance</p>
-                    <p className="text-xs text-muted-foreground font-normal">Time in/out &amp; corrections</p>
+                    <p className="text-xs text-muted-foreground font-normal truncate">Time in/out &amp; logs</p>
                   </div>
                 </Link>
               </Button>
@@ -166,7 +167,7 @@ function EmployeeDashboard() {
               <Button
                 asChild
                 variant="outline"
-                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all"
+                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all shadow-2xs"
               >
                 <Link to="/employee/ess" search={{ category: "Payroll" }}>
                   <div className="rounded-md bg-emerald-500/10 p-2 text-emerald-600">
@@ -174,7 +175,7 @@ function EmployeeDashboard() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-sm">Payroll</p>
-                    <p className="text-xs text-muted-foreground font-normal">Payslips &amp; overtime</p>
+                    <p className="text-xs text-muted-foreground font-normal truncate">Payslips &amp; breakdown</p>
                   </div>
                 </Link>
               </Button>
@@ -182,7 +183,23 @@ function EmployeeDashboard() {
               <Button
                 asChild
                 variant="outline"
-                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all"
+                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all shadow-2xs"
+              >
+                <Link to="/employee/ess" search={{ category: "Performance" }}>
+                  <div className="rounded-md bg-purple-500/10 p-2 text-purple-600">
+                    <TrendingUp className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm">Performance</p>
+                    <p className="text-xs text-muted-foreground font-normal truncate">LMS courses &amp; scores</p>
+                  </div>
+                </Link>
+              </Button>
+
+              <Button
+                asChild
+                variant="outline"
+                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all shadow-2xs"
               >
                 <Link to="/employee/ess" search={{ category: "Documents" }}>
                   <div className="rounded-md bg-blue-500/10 p-2 text-blue-600">
@@ -190,7 +207,23 @@ function EmployeeDashboard() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-sm">Document</p>
-                    <p className="text-xs text-muted-foreground font-normal">COE, BIR 2316, clearances</p>
+                    <p className="text-xs text-muted-foreground font-normal truncate">COE &amp; HR clearances</p>
+                  </div>
+                </Link>
+              </Button>
+
+              <Button
+                asChild
+                variant="outline"
+                className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all shadow-2xs"
+              >
+                <Link to="/employee/ess" search={{ category: "Recognition" }}>
+                  <div className="rounded-md bg-amber-500/10 p-2 text-amber-600">
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm">Recognition</p>
+                    <p className="text-xs text-muted-foreground font-normal truncate">Kudos &amp; Wall of Fame</p>
                   </div>
                 </Link>
               </Button>
