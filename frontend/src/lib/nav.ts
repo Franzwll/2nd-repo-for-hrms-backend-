@@ -10,6 +10,7 @@ import {
   ScrollText,
   Settings,
   ClipboardCheck,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 
@@ -63,6 +64,7 @@ export function navForRole(role: Role): NavItem[] {
     return [
       { label: "Dashboard", to: base, icon: LayoutDashboard },
       { label: "ESS", to: `${base}/ess`, icon: Headset, children: essChildren(base) },
+      { label: "HR AI Concierge", to: `${base}/ai`, icon: Sparkles },
       { label: "Onboarding", to: `${base}/onboarding`, icon: ClipboardCheck },
       { label: "Settings", to: `${base}/settings`, icon: Settings },
     ];

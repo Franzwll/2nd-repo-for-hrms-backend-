@@ -22,6 +22,7 @@ import { Route as LoginOtpRouteImport } from './routes/_login/otp'
 import { Route as LoginResetPasswordRouteImport } from './routes/_login/reset-password'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as EmployeeIndexRouteImport } from './routes/employee/index'
+import { Route as EmployeeAiRouteImport } from './routes/employee/ai'
 import { Route as SuperadminIndexRouteImport } from './routes/superadmin/index'
 import { Route as LandingJobsIndexRouteImport } from './routes/_landing/jobs.index'
 import { Route as LandingJobsJobIdRouteImport } from './routes/_landing/jobs.$jobId'
@@ -115,6 +116,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const EmployeeIndexRoute = EmployeeIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => EmployeeRoute,
+} as any)
+const EmployeeAiRoute = EmployeeAiRouteImport.update({
+  id: '/ai',
+  path: '/ai',
   getParentRoute: () => EmployeeRoute,
 } as any)
 const SuperadminIndexRoute = SuperadminIndexRouteImport.update({
@@ -293,6 +299,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginLoginRoute
   '/otp': typeof LoginOtpRoute
   '/reset-password': typeof LoginResetPasswordRoute
+  '/employee/ai': typeof EmployeeAiRoute
   '/': typeof LandingIndexRoute
   '/admin/': typeof AdminIndexRoute
   '/employee/': typeof EmployeeIndexRoute
@@ -334,6 +341,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginLoginRoute
   '/otp': typeof LoginOtpRoute
   '/reset-password': typeof LoginResetPasswordRoute
+  '/employee/ai': typeof EmployeeAiRoute
   '/': typeof LandingIndexRoute
   '/admin': typeof AdminIndexRoute
   '/employee': typeof EmployeeIndexRoute
@@ -379,6 +387,7 @@ export interface FileRoutesById {
   '/_login/login': typeof LoginLoginRoute
   '/_login/otp': typeof LoginOtpRoute
   '/_login/reset-password': typeof LoginResetPasswordRoute
+  '/employee/ai': typeof EmployeeAiRoute
   '/_landing/': typeof LandingIndexRoute
   '/admin/': typeof AdminIndexRoute
   '/employee/': typeof EmployeeIndexRoute
@@ -425,6 +434,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/otp'
     | '/reset-password'
+    | '/employee/ai'
     | '/'
     | '/admin/'
     | '/employee/'
@@ -466,6 +476,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/otp'
     | '/reset-password'
+    | '/employee/ai'
     | '/'
     | '/admin'
     | '/employee'
@@ -510,6 +521,7 @@ export interface FileRouteTypes {
     | '/_login/login'
     | '/_login/otp'
     | '/_login/reset-password'
+    | '/employee/ai'
     | '/_landing/'
     | '/admin/'
     | '/employee/'
@@ -651,6 +663,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/employee/'
       preLoaderRoute: typeof EmployeeIndexRouteImport
+      parentRoute: typeof EmployeeRoute
+    }
+    '/employee/ai': {
+      id: '/employee/ai'
+      path: '/ai'
+      fullPath: '/employee/ai'
+      preLoaderRoute: typeof EmployeeAiRouteImport
       parentRoute: typeof EmployeeRoute
     }
     '/superadmin/': {
@@ -892,6 +911,7 @@ const AdminRouteChildren: AdminRouteChildren = {
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface EmployeeRouteChildren {
+  EmployeeAiRoute: typeof EmployeeAiRoute
   EmployeeIndexRoute: typeof EmployeeIndexRoute
   EmployeeEssmanagementEssRoute: typeof EmployeeEssmanagementEssRoute
   EmployeeNewhireonboardingOnboardingRoute: typeof EmployeeNewhireonboardingOnboardingRoute
@@ -900,6 +920,7 @@ interface EmployeeRouteChildren {
 }
 
 const EmployeeRouteChildren: EmployeeRouteChildren = {
+  EmployeeAiRoute: EmployeeAiRoute,
   EmployeeIndexRoute: EmployeeIndexRoute,
   EmployeeEssmanagementEssRoute: EmployeeEssmanagementEssRoute,
   EmployeeNewhireonboardingOnboardingRoute:

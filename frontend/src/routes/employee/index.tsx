@@ -232,20 +232,21 @@ function EmployeeDashboard() {
               </Button>
 
               <Button
-                type="button"
+                asChild
                 variant="outline"
-                onClick={() => setAiModalOpen(true)}
                 className="h-auto flex-row items-center gap-3 p-4 text-left hover:border-primary hover:bg-primary/5 transition-all shadow-2xs cursor-pointer border-primary/40 bg-gradient-to-br from-primary/10 via-background to-amber-500/10"
               >
-                <div className="rounded-md bg-rose-500/15 p-2 text-rose-600 shadow-2xs">
-                  <Bot className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="font-semibold text-sm flex items-center gap-1.5 text-foreground">
-                    <span>HR AI Concierge</span>
-                  </p>
-                  <p className="text-xs text-muted-foreground font-normal truncate">Ask questions &amp; help</p>
-                </div>
+                <Link to="/employee/ai">
+                  <div className="rounded-md bg-rose-500/15 p-2 text-rose-600 shadow-2xs">
+                    <Bot className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm flex items-center gap-1.5 text-foreground">
+                      <span>HR AI Concierge</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground font-normal truncate">Ask questions &amp; help</p>
+                  </div>
+                </Link>
               </Button>
             </div>
           </CardContent>
