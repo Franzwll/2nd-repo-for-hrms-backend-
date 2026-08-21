@@ -273,60 +273,6 @@ export function EmployeeOnboarding() {
       </div>
 
       <div className="grid gap-6">
-        {/* NEW HIRE ONBOARDING Header & Progress Card */}
-        <Card className="border-border/70 overflow-hidden shadow-xs">
-          <CardContent className="p-6 space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <p className="eyebrow text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                  NEW HIRE ONBOARDING
-                </p>
-                <h2 className="text-2xl font-bold font-display text-foreground mt-1">
-                  {profileName}
-                </h2>
-                <p className="text-sm font-medium text-muted-foreground mt-0.5">
-                  Employee ID: <span className="text-foreground font-mono font-semibold">{profileEmpCode}</span>
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {profilePosition} · {profileDepartment}
-                </p>
-              </div>
-
-              {/* Prominent Employment Status */}
-              <div className="flex flex-col sm:items-end gap-2">
-                <Badge
-                  variant="outline"
-                  className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40 text-base sm:text-lg px-4 py-1.5 font-bold uppercase tracking-widest self-start sm:self-auto shadow-xs"
-                >
-                  {employmentType.toUpperCase()}
-                </Badge>
-                <span className="text-xs text-muted-foreground font-medium">Employment Status</span>
-                {newHire?.stage && (
-                  <Badge
-                    variant="outline"
-                    className={
-                      newHire.stage === "Pre-onboarding"
-                        ? "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40 text-xs px-3 py-1 font-semibold uppercase tracking-widest self-start sm:self-auto"
-                        : "bg-gold/15 text-gold-foreground border-gold/40 text-xs px-3 py-1 font-semibold uppercase tracking-widest self-start sm:self-auto"
-                    }
-                  >
-                    {newHire.stage}
-                  </Badge>
-                )}
-              </div>
-            </div>
-
-            {/* Overall Progress */}
-            <div className="border-t border-border pt-4">
-              <div className="flex items-center justify-between text-sm font-medium mb-2">
-                <span className="text-muted-foreground">Overall Checklist Verification Progress</span>
-                <span className="text-primary font-bold">{pct}% Complete ({completedCount}/{totalCount} items)</span>
-              </div>
-              <Progress value={pct} className="h-3" />
-            </div>
-          </CardContent>
-        </Card>
-
         {/* PROBATIONARY JOURNEY & MILESTONE TIMELINE (Option B) */}
         <Card className="border-border/70 shadow-xs overflow-hidden">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 bg-muted/20 border-b border-border/60">
