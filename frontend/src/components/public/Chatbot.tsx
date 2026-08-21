@@ -333,6 +333,12 @@ export function Chatbot() {
   })
   const viewportRef = useRef<React.ElementRef<typeof ScrollAreaPrimitive.Viewport>>(null)
 
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     saveMessages(messages)
   }, [messages])
