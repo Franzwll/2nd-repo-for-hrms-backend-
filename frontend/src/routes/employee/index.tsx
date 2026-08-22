@@ -186,27 +186,27 @@ function EmployeeDashboard() {
         <StatCard label="Position" value={position} hint={employmentType} icon={ClipboardCheck} tone="gold" />
       </div>
 
-      {/* Quick Actions Grid (Box Type 3x3 Grid like reference design) */}
+      {/* Quick Actions Grid (Compact Box Type 3x3 Grid) */}
       <div className="mt-6">
         <Card className="border-border/70 shadow-xs">
-          <CardHeader className="pb-4">
-            <CardTitle className="font-display text-xl font-semibold">Quick Actions</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="font-display text-lg font-semibold">Quick Actions</CardTitle>
             <p className="text-xs text-muted-foreground">Access core employee self-service modules and automated HR tools.</p>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {/* Row 1, Col 1: Attendance */}
-              <div className="rounded-2xl border border-primary/20 bg-card p-6 min-h-[230px] flex flex-col items-center text-center justify-between gap-4 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-110">
-                  <Clock className="h-7 w-7" />
+              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-sm hover:-translate-y-0.5 group">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
+                  <Clock className="h-5 w-5" />
                 </div>
-                <div className="space-y-1.5 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-base sm:text-lg font-bold text-foreground">Attendance</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed max-w-[240px]">
+                <div className="space-y-1 flex-1 flex flex-col justify-center">
+                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Attendance</h3>
+                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
                     Apply and monitor daily time-in/out logs and shift schedules.
                   </p>
                 </div>
-                <Button asChild size="sm" className="px-6 h-8 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs shadow-xs">
+                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
                   <Link to="/employee/ess" search={{ category: "Attendance" }}>
                     View Details
                   </Link>
@@ -214,17 +214,17 @@ function EmployeeDashboard() {
               </div>
 
               {/* Row 1, Col 2: Payroll */}
-              <div className="rounded-2xl border border-primary/20 bg-card p-6 min-h-[230px] flex flex-col items-center text-center justify-between gap-4 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-110">
-                  <FileText className="h-7 w-7" />
+              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-sm hover:-translate-y-0.5 group">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
+                  <FileText className="h-5 w-5" />
                 </div>
-                <div className="space-y-1.5 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-base sm:text-lg font-bold text-foreground">Payroll</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed max-w-[240px]">
+                <div className="space-y-1 flex-1 flex flex-col justify-center">
+                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Payroll</h3>
+                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
                     Inspect itemized payslips, net pay, and statutory tax records.
                   </p>
                 </div>
-                <Button asChild size="sm" className="px-6 h-8 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs shadow-xs">
+                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
                   <Link to="/employee/ess" search={{ category: "Payroll" }}>
                     View Details
                   </Link>
@@ -232,17 +232,17 @@ function EmployeeDashboard() {
               </div>
 
               {/* Row 1, Col 3: Leave Filing */}
-              <div className="rounded-2xl border border-primary/20 bg-card p-6 min-h-[230px] flex flex-col items-center text-center justify-between gap-4 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-110">
-                  <Calendar className="h-7 w-7" />
+              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-sm hover:-translate-y-0.5 group">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
+                  <Calendar className="h-5 w-5" />
                 </div>
-                <div className="space-y-1.5 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-base sm:text-lg font-bold text-foreground">Leave Filing</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed max-w-[240px]">
+                <div className="space-y-1 flex-1 flex flex-col justify-center">
+                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Leave Filing</h3>
+                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
                     Submit vacation, sick, and emergency leave applications.
                   </p>
                 </div>
-                <Button asChild size="sm" className="px-6 h-8 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs shadow-xs">
+                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
                   <Link to="/employee/ess" search={{ category: "Attendance" }}>
                     View Details
                   </Link>
@@ -250,17 +250,17 @@ function EmployeeDashboard() {
               </div>
 
               {/* Row 2, Col 1: Performance */}
-              <div className="rounded-2xl border border-primary/20 bg-card p-6 min-h-[230px] flex flex-col items-center text-center justify-between gap-4 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-110">
-                  <TrendingUp className="h-7 w-7" />
+              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
+                  <TrendingUp className="h-5 w-5" />
                 </div>
-                <div className="space-y-1.5 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-base sm:text-lg font-bold text-foreground">Performance</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed max-w-[240px]">
+                <div className="space-y-1 flex-1 flex flex-col justify-center">
+                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Performance</h3>
+                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
                     Track LMS courses, competency modules, and performance reviews.
                   </p>
                 </div>
-                <Button asChild size="sm" className="px-6 h-8 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs shadow-xs">
+                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
                   <Link to="/employee/ess" search={{ category: "Performance" }}>
                     View Details
                   </Link>
@@ -268,17 +268,17 @@ function EmployeeDashboard() {
               </div>
 
               {/* Row 2, Col 2: Company Documents */}
-              <div className="rounded-2xl border border-primary/20 bg-card p-6 min-h-[230px] flex flex-col items-center text-center justify-between gap-4 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-110">
-                  <FileCheck className="h-7 w-7" />
+              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
+                  <FileCheck className="h-5 w-5" />
                 </div>
                 <div className="space-y-1.5 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-base sm:text-lg font-bold text-foreground">Company Documents</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed max-w-[240px]">
+                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Company Documents</h3>
+                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
                     Request official Certificate of Employment (COE) and clearances.
                   </p>
                 </div>
-                <Button asChild size="sm" className="px-6 h-8 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs shadow-xs">
+                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
                   <Link to="/employee/ess" search={{ category: "Documents" }}>
                     View Details
                   </Link>
@@ -286,17 +286,17 @@ function EmployeeDashboard() {
               </div>
 
               {/* Row 2, Col 3: Social Recognition */}
-              <div className="rounded-2xl border border-primary/20 bg-card p-6 min-h-[230px] flex flex-col items-center text-center justify-between gap-4 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-110">
-                  <Award className="h-7 w-7" />
+              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
+                  <Award className="h-5 w-5" />
                 </div>
-                <div className="space-y-1.5 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-base sm:text-lg font-bold text-foreground">Social Recognition</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed max-w-[240px]">
+                <div className="space-y-1 flex-1 flex flex-col justify-center">
+                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Social Recognition</h3>
+                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
                     Send peer kudos, celebrate hotel values, and browse the Wall of Fame.
                   </p>
                 </div>
-                <Button asChild size="sm" className="px-6 h-8 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs shadow-xs">
+                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
                   <Link to="/employee/ess" search={{ category: "Recognition" }}>
                     View Details
                   </Link>
@@ -304,17 +304,17 @@ function EmployeeDashboard() {
               </div>
 
               {/* Row 3, Col 1: Statutory Benefits */}
-              <div className="rounded-2xl border border-primary/20 bg-card p-6 min-h-[230px] flex flex-col items-center text-center justify-between gap-4 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-110">
-                  <ShieldCheck className="h-7 w-7" />
+              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
+                  <ShieldCheck className="h-5 w-5" />
                 </div>
-                <div className="space-y-1.5 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-base sm:text-lg font-bold text-foreground">Benefits &amp; HMO</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed max-w-[240px]">
+                <div className="space-y-1 flex-1 flex flex-col justify-center">
+                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Benefits &amp; HMO</h3>
+                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
                     Review SSS, PhilHealth, Pag-IBIG HDMF, and healthcare coverage.
                   </p>
                 </div>
-                <Button asChild size="sm" className="px-6 h-8 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs shadow-xs">
+                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
                   <Link to="/employee/ess" search={{ category: "Benefits" }}>
                     View Details
                   </Link>
@@ -322,17 +322,17 @@ function EmployeeDashboard() {
               </div>
 
               {/* Row 3, Col 2: Shift Scheduling */}
-              <div className="rounded-2xl border border-primary/20 bg-card p-6 min-h-[230px] flex flex-col items-center text-center justify-between gap-4 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-110">
-                  <CalendarDays className="h-7 w-7" />
+              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
+                  <CalendarDays className="h-5 w-5" />
                 </div>
-                <div className="space-y-1.5 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-base sm:text-lg font-bold text-foreground">Shift Scheduling</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed max-w-[240px]">
+                <div className="space-y-1 flex-1 flex flex-col justify-center">
+                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Shift Scheduling</h3>
+                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
                     Access weekly work rosters, duty schedules, and shift swaps.
                   </p>
                 </div>
-                <Button asChild size="sm" className="px-6 h-8 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs shadow-xs">
+                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
                   <Link to="/employee/ess" search={{ category: "Schedule" }}>
                     View Details
                   </Link>
@@ -340,19 +340,19 @@ function EmployeeDashboard() {
               </div>
 
               {/* Row 3, Col 3: HR AI Concierge */}
-              <div className="rounded-2xl border border-primary/40 bg-gradient-to-b from-primary/5 via-card to-card p-6 min-h-[230px] flex flex-col items-center text-center justify-between gap-4 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-2xs transition-transform group-hover:scale-110">
-                  <Bot className="h-7 w-7" />
+              <div className="rounded-xl border border-primary/40 bg-gradient-to-b from-primary/5 via-card to-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-2xs transition-transform group-hover:scale-105">
+                  <Bot className="h-5 w-5" />
                 </div>
-                <div className="space-y-1.5 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-base sm:text-lg font-bold text-foreground flex items-center justify-center gap-1.5">
+                <div className="space-y-1 flex-1 flex flex-col justify-center">
+                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground flex items-center justify-center gap-1.5">
                     HR AI Concierge
                   </h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed max-w-[240px]">
+                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
                     24/7 automated assistant for policy, leave &amp; payout questions.
                   </p>
                 </div>
-                <Button asChild size="sm" className="px-6 h-8 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs shadow-xs">
+                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
                   <Link to="/employee/ai">
                     View Details
                   </Link>
