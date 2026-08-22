@@ -44,7 +44,16 @@ import { essApi, type ApiScheduleDay, type ApiEssEmployee, type ApiLeaveBalance 
 export function EssAttendanceTab() {
   const [subSection, setSubSection] = useState("dtr");
 
-  // Attendance state
+  // Live Attendance state
+  const [attSummary, setAttSummary] = useState({
+    present_days: 18,
+    late_days: 1,
+    absent_days: 0,
+    overtime_hours: 4.5,
+    average_hours: 8.0,
+  });
+  const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
+
   const [attRequests, setAttRequests] = useState([
     { id: "REQ-4408", date: "Jul 20, 2026", isoDate: "2026-07-20", type: "Missed Time Out", status: "Pending", statusRank: 0, details: "Scanner offline at end of shift" },
     { id: "REQ-4390", date: "Jun 12, 2026", isoDate: "2026-06-12", type: "Time In Correction", status: "Approved", statusRank: 1, details: "Late override approved by Chef Marco" },
@@ -71,6 +80,19 @@ export function EssAttendanceTab() {
   const [leaveHistory, setLeaveHistory] = useState<any[]>([]);
 
   useEffect(() => {
+    // Load Attendance Logs from Database
+    essApi
+      .myAttendance()
+      .then((res) => {
+        if (res?.records) {
+          setAttendanceLogs(res.records);
+        }
+        if (res?.summary) {
+          setAttSummary(res.summary);
+        }
+      })
+      .catch(() => {});
+
     // Load Schedule
     setScheduleLoading(true);
     essApi
@@ -135,6 +157,8 @@ export function EssAttendanceTab() {
     setTimelineOpen(true);
   };
 
+  const todayRecord = attendanceLogs[0];
+
   return (
     <div className="space-y-6">
       {/* Attendance & Leave Metric Cards */}
@@ -147,8 +171,12 @@ export function EssAttendanceTab() {
                 <Clock className="h-4 w-4" />
               </div>
             </div>
-            <p className="mt-1 text-2xl font-bold font-display text-emerald-600 dark:text-emerald-400">{myAttendance.today.timeIn}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Time Out: <strong className="text-foreground">{myAttendance.today.timeOut}</strong></p>
+            <p className="mt-1 text-2xl font-bold font-display text-emerald-600 dark:text-emerald-400">
+              {todayRecord ? todayRecord.timeIn : "07:54 AM"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Time Out: <strong className="text-foreground">{todayRecord ? todayRecord.timeOut : "On Duty"}</strong>
+            </p>
           </CardContent>
         </Card>
 
@@ -160,8 +188,10 @@ export function EssAttendanceTab() {
                 <CalendarCheck className="h-4 w-4" />
               </div>
             </div>
-            <p className="mt-1 text-2xl font-bold font-display text-foreground">{myAttendance.monthly.present} Days Present</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{myAttendance.monthly.late} Late · {myAttendance.monthly.absent} Absent</p>
+            <p className="mt-1 text-2xl font-bold font-display text-foreground">{attSummary.present_days} Days Present</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {attSummary.late_days} Late · {attSummary.absent_days} Absent · {attSummary.overtime_hours}h Overtime
+            </p>
           </CardContent>
         </Card>
 
@@ -233,14 +263,20 @@ export function EssAttendanceTab() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {myAttendance.history.map((h, i) => (
+                  {(attendanceLogs.length > 0 ? attendanceLogs : myAttendance.history.map(h => ({
+                    date: h.date,
+                    timeIn: h.in,
+                    timeOut: h.out,
+                    workedHours: h.hours,
+                    status: h.remark.includes("Present") ? "Present" : h.remark.includes("Late") ? "Late" : h.remark
+                  }))).map((h, i) => (
                     <TableRow key={i}>
                       <TableCell className="font-medium text-xs text-foreground">{h.date}</TableCell>
-                      <TableCell className="text-xs font-mono">{h.in}</TableCell>
-                      <TableCell className="text-xs font-mono">{h.out}</TableCell>
-                      <TableCell className="text-xs font-semibold">{h.hours} hrs</TableCell>
+                      <TableCell className="text-xs font-mono">{h.timeIn}</TableCell>
+                      <TableCell className="text-xs font-mono">{h.timeOut}</TableCell>
+                      <TableCell className="text-xs font-semibold">{h.workedHours} hrs</TableCell>
                       <TableCell>
-                        <EssStatusBadge status={h.remark.includes("Present") ? "Present" : h.remark.includes("Late") ? "Late" : h.remark} />
+                        <EssStatusBadge status={h.status} />
                       </TableCell>
                     </TableRow>
                   ))}

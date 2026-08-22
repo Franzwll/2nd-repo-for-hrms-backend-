@@ -1280,6 +1280,86 @@ export const essApi = {
   // Employee Portal
   overview: () => request<ApiEssOverview>('/ess/my-overview'),
   schedule: () => request<{ employee: ApiEssEmployee; weekly_roster: ApiScheduleDay[] }>('/ess/my-schedule'),
+  myAttendance: () =>
+    request<{
+      summary: {
+        present_days: number;
+        late_days: number;
+        absent_days: number;
+        overtime_hours: number;
+        average_hours: number;
+      };
+      records: {
+        id: number;
+        date: string;
+        day: string;
+        rawDate: string;
+        timeIn: string;
+        timeOut: string;
+        workedHours: number;
+        overtimeHours: number;
+        status: string;
+        device: string;
+        remarks: string;
+      }[];
+    }>('/ess/my-attendance'),
+  myDocuments: () =>
+    request<{
+      documents: {
+        id: number;
+        code: string;
+        title: string;
+        category: string;
+        status: string;
+        verified: boolean;
+        issuedDate: string;
+        expiryDate: string;
+        fileSize: string;
+        fileType: string;
+        downloadUrl: string | null;
+      }[];
+    }>('/ess/my-documents'),
+  uploadDocument: (data: { title: string; category: string; file_path?: string }) =>
+    request<{ message: string; document: any }>('/ess/my-documents/upload', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  myPerformance: () =>
+    request<{
+      employee: {
+        name: string;
+        role: string;
+        department: string;
+        overall_rating: number;
+        competency_level: string;
+      };
+      stats: {
+        completed_courses: number;
+        in_progress_courses: number;
+        average_score: number;
+        total_training_hours: number;
+      };
+      courses: {
+        id: string;
+        title: string;
+        category: string;
+        progress: number;
+        status: string;
+        score: number | null;
+        duration: string;
+        completedDate: string | null;
+      }[];
+    }>('/ess/my-performance'),
+  getCategories: () =>
+    request<{
+      categories: {
+        id: number;
+        name: string;
+        code: string;
+        description: string | null;
+        is_open: boolean;
+      }[];
+    }>('/ess/categories'),
   leaves: () => request<{ balances: ApiLeaveBalance[]; history: any[] }>('/ess/my-leaves'),
   benefits: () => request<{ benefits: ApiEssBenefit[] }>('/ess/my-benefits'),
   myPayroll: () => request<ApiPayrollData>('/ess/my-payroll'),
@@ -1290,7 +1370,7 @@ export const essApi = {
       body: JSON.stringify(data),
     }),
   reactKudos: (id: string, reaction: 'clap' | 'heart' | 'fire' | 'star') =>
-    request<{ message: string; recognitions: ApiRecognitionItem[] }>(`/ess/recognitions/${id}/react`, {
+    request<{ message: string; reactions: Record<string, number> }>(`/ess/recognitions/${id}/react`, {
       method: 'POST',
       body: JSON.stringify({ reaction }),
     }),

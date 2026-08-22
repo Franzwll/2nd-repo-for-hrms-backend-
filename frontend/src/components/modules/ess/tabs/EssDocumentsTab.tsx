@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { FileCheck, Download, Upload, Plus, Search, ArrowUpDown, Send, AlertCircle, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,14 +20,58 @@ import { myEmployeeDocuments } from "@/data/ess";
 import { DocumentRequestModal } from "@/components/modules/ess/modals/DocumentRequestModal";
 import { DocumentUploadModal } from "@/components/modules/ess/modals/DocumentUploadModal";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
+import { essApi } from "@/lib/api";
 import { toast } from "sonner";
 
 export function EssDocumentsTab() {
   const [documents, setDocuments] = useState(myEmployeeDocuments);
-  const [docRequests, setDocRequests] = useState([
-    { id: "REQ-4409", date: "Jul 01, 2026", isoDate: "2026-07-01", type: "Certificate of Employment (with Salary)", status: "Released", statusRank: 1, purpose: "Bank loan application" },
-    { id: "REQ-4360", date: "Feb 03, 2026", isoDate: "2026-02-03", type: "HMO Certification", status: "Released", statusRank: 1, purpose: "Dependent medical enrollment" },
-  ]);
+  const [docRequests, setDocRequests] = useState<any[]>([]);
+
+  // Live Database Fetch
+  useEffect(() => {
+    essApi
+      .myDocuments()
+      .then((res) => {
+        if (res?.documents?.length) {
+          setDocuments(
+            res.documents.map((d) => ({
+              title: d.title,
+              category: d.category,
+              status: d.status,
+              verified: d.verified,
+              lastUpdated: d.issuedDate,
+              expiryDate: d.expiryDate,
+              size: d.fileSize,
+              type: d.fileType,
+              downloadUrl: d.downloadUrl || "#",
+            }))
+          );
+        }
+      })
+      .catch(() => {});
+
+    essApi
+      .myRequests()
+      .then((res) => {
+        if (res?.requests?.length) {
+          const docItems = res.requests
+            .filter((r) => r.category.toLowerCase().includes("doc") || r.type.toLowerCase().includes("coe") || r.type.toLowerCase().includes("cert"))
+            .map((r) => ({
+              id: r.id,
+              date: r.filed,
+              isoDate: r.date_from || r.filed,
+              type: r.type,
+              status: r.status,
+              statusRank: r.status === "Approved" || r.status === "Completed" ? 1 : 2,
+              purpose: r.details,
+            }));
+          if (docItems.length > 0) {
+            setDocRequests(docItems);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const [docSearch, setDocSearch] = useState("");
   const [docSort, setDocSort] = useState("date-desc");

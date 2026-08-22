@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Award, BookOpen, Building, CheckCircle2, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,12 +14,51 @@ import {
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { myPerformance, myLearningCourses, myProfile } from "@/data/ess";
 import { LmsCertificateModal } from "@/components/modules/ess/modals/LmsCertificateModal";
+import { essApi } from "@/lib/api";
 import { toast } from "sonner";
 
 export function EssPerformanceTab() {
   const [courses, setCourses] = useState(myLearningCourses);
+  const [perfData, setPerfData] = useState({
+    rating: 4.8,
+    competencyLevel: "Proficient (Exceeding Expectations)",
+    averageScore: "95 / 100",
+    completedCount: 3,
+    totalCount: 4,
+  });
   const [selectedCourse, setSelectedCourse] = useState<any | null>(null);
   const [certModalOpen, setCertModalOpen] = useState(false);
+
+  useEffect(() => {
+    essApi
+      .myPerformance()
+      .then((res) => {
+        if (res?.courses?.length) {
+          setCourses(
+            res.courses.map((c) => ({
+              id: c.id,
+              title: c.title,
+              category: c.category,
+              progress: c.progress,
+              status: c.status as any,
+              score: c.score ? `${c.score} / 100` : "—",
+              duration: c.duration,
+              completedDate: c.completedDate || "In progress",
+            }))
+          );
+        }
+        if (res?.stats && res?.employee) {
+          setPerfData({
+            rating: res.employee.overall_rating || 4.8,
+            competencyLevel: res.employee.competency_level || "Proficient",
+            averageScore: `${res.stats.average_score} / 100`,
+            completedCount: res.stats.completed_courses,
+            totalCount: res.stats.completed_courses + res.stats.in_progress_courses,
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleOpenCert = (course: any) => {
     setSelectedCourse(course);
@@ -35,8 +74,8 @@ export function EssPerformanceTab() {
             <div className="text-xs uppercase font-semibold text-muted-foreground tracking-wider flex items-center gap-1.5">
               <TrendingUp className="h-3.5 w-3.5 text-primary" /> Last Performance Review
             </div>
-            <p className="mt-1 text-sm font-bold text-foreground">{myPerformance.lastReview}</p>
-            <p className="text-xs text-muted-foreground mt-1">Next scheduled review: <strong className="text-foreground">{myPerformance.nextReview}</strong></p>
+            <p className="mt-1 text-sm font-bold text-foreground">Annual Review 2026</p>
+            <p className="text-xs text-muted-foreground mt-1">Next scheduled review: <strong className="text-foreground">Dec 15, 2026</strong></p>
           </CardContent>
         </Card>
 
@@ -45,8 +84,8 @@ export function EssPerformanceTab() {
             <div className="text-xs uppercase font-semibold text-muted-foreground tracking-wider flex items-center gap-1.5">
               <Award className="h-3.5 w-3.5 text-primary" /> Competency Rating
             </div>
-            <p className="mt-1 text-sm font-bold text-foreground">{myPerformance.competencyLevel}</p>
-            <p className="text-xs text-muted-foreground mt-1">Average Evaluation Score: <strong className="text-emerald-600 dark:text-emerald-400">{myPerformance.averageScore}</strong></p>
+            <p className="mt-1 text-sm font-bold text-foreground">{perfData.competencyLevel}</p>
+            <p className="text-xs text-muted-foreground mt-1">Average Evaluation Score: <strong className="text-emerald-600 dark:text-emerald-400">{perfData.averageScore}</strong></p>
           </CardContent>
         </Card>
 
@@ -56,9 +95,9 @@ export function EssPerformanceTab() {
               <BookOpen className="h-3.5 w-3.5 text-primary" /> LMS Training Progress
             </div>
             <p className="mt-1 text-sm font-bold text-foreground">
-              {myPerformance.lmsCoursesCompleted} of {myPerformance.lmsCoursesAssigned} Completed
+              {perfData.completedCount} of {perfData.totalCount} Completed
             </p>
-            <Progress value={(myPerformance.lmsCoursesCompleted / myPerformance.lmsCoursesAssigned) * 100} className="mt-2 h-1.5" />
+            <Progress value={(perfData.completedCount / Math.max(1, perfData.totalCount)) * 100} className="mt-2 h-1.5" />
           </CardContent>
         </Card>
 

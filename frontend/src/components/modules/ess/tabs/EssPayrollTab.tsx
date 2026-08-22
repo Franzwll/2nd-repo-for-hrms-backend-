@@ -57,19 +57,37 @@ export function EssPayrollTab() {
         if (res.net) setSelectedPayslipNet(res.net);
       })
       .catch(() => {});
+
+    essApi
+      .myRequests()
+      .then((res) => {
+        if (res?.requests?.length) {
+          const payItems = res.requests
+            .filter((r) => r.category.toLowerCase().includes("pay") || r.type.toLowerCase().includes("overtime") || r.type.toLowerCase().includes("payslip"))
+            .map((r) => ({
+              id: r.id,
+              date: r.filed,
+              isoDate: r.date_from || r.filed,
+              type: r.type,
+              status: r.status,
+              statusRank: r.status === "Approved" || r.status === "Completed" ? 1 : 0,
+              details: r.details,
+            }));
+          if (payItems.length > 0) {
+            setPayRequests(payItems);
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
 
-  const currentNet = payrollData?.net ?? myPayroll.net;
-  const currentGross = payrollData?.gross ?? myPayroll.gross;
-  const currentDeductions = payrollData?.deductions?.total ?? (myPayroll.gross - myPayroll.net);
-  const nextPayout = payrollData?.nextPayout ?? myPayroll.nextPayout;
-  const payslipsList = payrollData?.payslips?.length ? payrollData.payslips : myPayroll.payslips;
+  const currentNet = payrollData?.net ?? 28080;
+  const currentGross = payrollData?.gross ?? 32500;
+  const currentDeductions = payrollData?.deductions?.total ?? 4420;
+  const nextPayout = payrollData?.nextPayout ?? "August 31, 2026";
+  const payslipsList = payrollData?.payslips?.length ? payrollData.payslips : [];
 
-  const [payRequests, setPayRequests] = useState([
-    { id: "REQ-4407", date: "Jul 28, 2026", isoDate: "2026-07-28", type: "Overtime Request (4 hrs)", status: "Pending", statusRank: 0, details: "Kitchen prep for banquet event." },
-    { id: "REQ-4388", date: "Jun 18, 2026", isoDate: "2026-06-18", type: "Overtime Request (2 hrs)", status: "Approved", statusRank: 1, details: "Dinner service rush." },
-    { id: "REQ-4350", date: "Jun 01, 2026", isoDate: "2026-06-01", type: "Payslip Copy Request", status: "Released", statusRank: 1, details: "Certified copy for loan processing." },
-  ]);
+  const [payRequests, setPayRequests] = useState<any[]>([]);
 
   const [paySearch, setPaySearch] = useState("");
   const [payFilterType, setPayFilterType] = useState("all");

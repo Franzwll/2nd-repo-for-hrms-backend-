@@ -226,7 +226,7 @@ export function EssRecognitionTab() {
             timestamp: r.timeAgo || "Today",
             isoDate: r.createdAt || new Date().toISOString(),
             reactions: r.reactions || { clap: 1, heart: 0, star: 0, fire: 0 },
-            userReactions: [],
+            userReactions: (r as any).userReactions || [],
           }));
           setPosts(apiMapped);
         }
