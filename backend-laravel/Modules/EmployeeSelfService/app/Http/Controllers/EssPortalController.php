@@ -23,11 +23,15 @@ class EssPortalController extends Controller
      * Resolve the current authenticated employee.
      * Fallback to first active employee if logged-in user is an admin without explicit employee_id.
      */
-    protected function resolveEmployee(Request $request): ?Employee
+    private function resolveEmployee(Request $request): ?Employee
     {
         $user = $request->user();
+
         if ($user?->employee_id) {
-            return Employee::with(['department', 'position', 'supervisor'])->find($user->employee_id);
+            $emp = Employee::with(['department', 'position', 'supervisor'])->find($user->employee_id);
+            if ($emp) {
+                return $emp;
+            }
         }
 
         if ($user?->email) {
@@ -36,6 +40,10 @@ class EssPortalController extends Controller
                 ->orWhere('personal_email', $user->email)
                 ->first();
             if ($emp) {
+                if ($user && ! $user->employee_id) {
+                    $user->employee_id = $emp->employee_id;
+                    $user->save();
+                }
                 return $emp;
             }
         }
@@ -50,8 +58,90 @@ class EssPortalController extends Controller
             }
             $emp = $query->first();
             if ($emp) {
+                if ($user && ! $user->employee_id) {
+                    $user->employee_id = $emp->employee_id;
+                    $user->save();
+                }
                 return $emp;
             }
+        }
+
+        // Check if there is a NewHire record for this user to auto-create / link Employee record
+        $newHire = \Modules\NewHireOnboarding\Models\NewHire::where('email', $user?->email)
+            ->orWhere('name', $user?->full_name)
+            ->first();
+
+        if ($newHire) {
+            if ($newHire->employee_id) {
+                $emp = Employee::with(['department', 'position', 'supervisor'])->find($newHire->employee_id);
+                if ($emp) {
+                    if ($user && ! $user->employee_id) {
+                        $user->employee_id = $emp->employee_id;
+                        $user->save();
+                    }
+                    return $emp;
+                }
+            }
+
+            // Auto-provision Employee record from NewHire
+            $names = explode(' ', trim($newHire->name));
+            $firstName = $names[0] ?? 'Employee';
+            $middleName = count($names) > 2 ? $names[1] : null;
+            $lastName = count($names) > 1 ? end($names) : 'Staff';
+
+            $nextCodeNumber = (Employee::max('employee_id') ?? 0) + 1;
+            $code = 'EMP-' . str_pad((string) $nextCodeNumber, 4, '0', STR_PAD_LEFT);
+
+            $emp = Employee::create([
+                'employee_code'   => $code,
+                'first_name'      => $firstName,
+                'middle_name'     => $middleName,
+                'last_name'       => $lastName,
+                'email'           => $newHire->email ?? $user?->email,
+                'department_id'   => $newHire->department_id ?? 1,
+                'position_id'     => $newHire->position_id ?? 1,
+                'employment_type' => 'Probationary',
+                'date_hired'      => $newHire->start_date ?? now(),
+                'status'          => 'Active',
+                'onboarding_complete' => true,
+            ]);
+
+            $newHire->employee_id = $emp->employee_id;
+            $newHire->save();
+
+            if ($user) {
+                $user->employee_id = $emp->employee_id;
+                $user->save();
+            }
+
+            return $emp->load(['department', 'position', 'supervisor']);
+        }
+
+        // For user with role_id 3 (Employee) without existing records, auto-provision
+        if ($user && $user->role_id == 3 && $user->email) {
+            $names = explode(' ', trim($user->full_name ?? $user->username));
+            $firstName = $names[0] ?? 'Employee';
+            $lastName = count($names) > 1 ? end($names) : 'Staff';
+            $nextCodeNumber = (Employee::max('employee_id') ?? 0) + 1;
+            $code = 'EMP-' . str_pad((string) $nextCodeNumber, 4, '0', STR_PAD_LEFT);
+
+            $emp = Employee::create([
+                'employee_code'   => $code,
+                'first_name'      => $firstName,
+                'last_name'       => $lastName,
+                'email'           => $user->email,
+                'department_id'   => 1,
+                'position_id'     => 1,
+                'employment_type' => 'Probationary',
+                'date_hired'      => now(),
+                'status'          => 'Active',
+                'onboarding_complete' => true,
+            ]);
+
+            $user->employee_id = $emp->employee_id;
+            $user->save();
+
+            return $emp->load(['department', 'position', 'supervisor']);
         }
 
         // For demo superadmin/admin accounts (roles 1, 2) fallback to first employee
@@ -167,6 +257,18 @@ class EssPortalController extends Controller
         $pendingCount = EssRequest::where('employee_id', $employee->employee_id)
             ->whereIn('status', ['Pending', 'Under Review'])
             ->count();
+
+        $recentRequests = EssRequest::where('employee_id', $employee->employee_id)
+            ->orderByDesc('filed_at')
+            ->limit(5)
+            ->get()
+            ->map(fn ($r) => [
+                'id' => $r->request_id,
+                'type' => $r->request_type,
+                'category' => $r->category,
+                'status' => $r->status,
+                'filed' => $r->filed_at?->format('M d, Y') ?? 'Recently',
+            ]);
 
         // Monthly Attendance Calculation
         $startOfMonth = $today->copy()->startOfMonth();

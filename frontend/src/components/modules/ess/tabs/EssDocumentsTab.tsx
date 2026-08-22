@@ -135,7 +135,7 @@ export function EssDocumentsTab() {
           <div>
             <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
               <FileCheck className="h-5 w-5 text-primary" />
-              My Employment Documents Repository
+              My Employment Documents
             </CardTitle>
             <p className="text-xs text-muted-foreground">Compliance documents, statutory IDs, and official company clearances.</p>
           </div>
