@@ -162,16 +162,6 @@ export function EmployeeEss() {
         </div>
       )}
 
-      {/* Floating AI Concierge Trigger Button */}
-      <button
-        type="button"
-        onClick={() => setAiModalOpen(true)}
-        aria-label="Open Oxford HR AI Assistant"
-        className="fixed bottom-6 right-6 z-40 flex h-13 w-13 items-center justify-center rounded-full bg-gradient-to-tr from-primary via-primary to-amber-600 text-white shadow-xl hover:scale-105 active:scale-95 transition-all focus:outline-none focus:ring-4 focus:ring-primary/20 cursor-pointer group"
-      >
-        <Bot className="h-6 w-6 group-hover:rotate-12 transition-transform" />
-      </button>
-
       {/* Global Modals */}
       <QuickClockModal open={clockModalOpen} onOpenChange={setClockModalOpen} />
       <LeaveApplicationModal open={leaveModalOpen} onOpenChange={setLeaveModalOpen} />
