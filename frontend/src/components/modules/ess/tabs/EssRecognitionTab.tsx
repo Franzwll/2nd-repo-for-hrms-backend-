@@ -16,6 +16,8 @@ import {
   Smile,
   ShieldCheck,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -191,10 +193,19 @@ export function EssRecognitionTab() {
   const [selectedValueFilter, setSelectedValueFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(3);
+
   // Form State
   const [recipient, setRecipient] = useState<string>("");
   const [selectedCoreValue, setSelectedCoreValue] = useState<RecognitionPost["coreValue"]>("Guest Delight");
   const [message, setMessage] = useState("");
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeFilter, selectedValueFilter, searchTerm]);
 
   // Fetch from backend
   useEffect(() => {
@@ -287,6 +298,13 @@ export function EssRecognitionTab() {
       return true;
     });
   }, [posts, activeFilter, selectedValueFilter, searchTerm, currentUserName]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredPosts.length / pageSize));
+
+  const paginatedPosts = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredPosts.slice(start, start + pageSize);
+  }, [filteredPosts, currentPage, pageSize]);
 
   // Personal Stats
   const myReceivedCount = posts.filter((p) =>
@@ -516,110 +534,194 @@ export function EssRecognitionTab() {
                   </Button>
                 </div>
               ) : (
-                filteredPosts.map((post) => {
-                  const coreValueMeta = CORE_VALUES.find((v) => v.id === post.coreValue) || CORE_VALUES[0];
-                  const Icon = coreValueMeta.icon;
+                <>
+                  <div className="space-y-3.5">
+                    {paginatedPosts.map((post) => {
+                      const coreValueMeta = CORE_VALUES.find((v) => v.id === post.coreValue) || CORE_VALUES[0];
+                      const Icon = coreValueMeta.icon;
 
-                  return (
-                    <div
-                      key={post.id}
-                      className="rounded-xl border border-border/70 p-4 space-y-3 bg-card hover:border-primary/40 transition-all shadow-2xs"
-                    >
-                      {/* Sender & Recipient Header */}
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="relative flex items-center">
-                            <Avatar className="h-9 w-9 border border-border/80 bg-muted">
-                              <AvatarFallback className="bg-muted text-foreground font-semibold text-xs">
-                                {post.senderInitials}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="mx-1.5 text-xs text-primary font-bold">→</span>
-                            <Avatar className="h-9 w-9 border border-primary/40 ring-2 ring-primary/20 bg-primary/10">
-                              <AvatarFallback className="bg-primary/10 text-primary font-bold text-xs">
-                                {post.recipientInitials}
-                              </AvatarFallback>
-                            </Avatar>
+                      return (
+                        <div
+                          key={post.id}
+                          className="rounded-xl border border-border/70 p-4 space-y-3 bg-card hover:border-primary/40 transition-all shadow-2xs"
+                        >
+                          {/* Sender & Recipient Header */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <div className="relative flex items-center">
+                                <Avatar className="h-9 w-9 border border-border/80 bg-muted">
+                                  <AvatarFallback className="bg-muted text-foreground font-semibold text-xs">
+                                    {post.senderInitials}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="mx-1.5 text-xs text-primary font-bold">→</span>
+                                <Avatar className="h-9 w-9 border border-primary/40 ring-2 ring-primary/20 bg-primary/10">
+                                  <AvatarFallback className="bg-primary/10 text-primary font-bold text-xs">
+                                    {post.recipientInitials}
+                                  </AvatarFallback>
+                                </Avatar>
+                              </div>
+
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">
+                                  <span className="text-foreground font-bold">{post.senderName}</span> recognized{" "}
+                                  <span className="text-primary font-bold">{post.recipientName}</span>
+                                </p>
+                                <p className="text-[11px] text-muted-foreground">{post.recipientRole} · {post.timestamp}</p>
+                              </div>
+                            </div>
+
+                            {/* Core Value Badge */}
+                            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[11px] font-semibold flex items-center gap-1 shrink-0">
+                              <Icon className="h-3 w-3" />
+                              <span>{post.coreValue}</span>
+                            </Badge>
                           </div>
 
-                          <div>
-                            <p className="text-sm font-semibold text-foreground">
-                              <span className="text-foreground font-bold">{post.senderName}</span> recognized{" "}
-                              <span className="text-primary font-bold">{post.recipientName}</span>
-                            </p>
-                            <p className="text-[11px] text-muted-foreground">{post.recipientRole} · {post.timestamp}</p>
+                          {/* Recognition Message Box */}
+                          <div className="rounded-xl bg-muted/20 border border-border/60 p-3.5 text-xs sm:text-sm text-foreground leading-relaxed">
+                            "{post.message}"
+                          </div>
+
+                          {/* Emoji Reactions Bar */}
+                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleReaction(post.id, "clap")}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                                post.userReactions.includes("clap")
+                                  ? "bg-primary/15 border-primary/50 text-primary shadow-2xs"
+                                  : "bg-background border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                              }`}
+                            >
+                              <span>👏</span>
+                              <span>{post.reactions.clap}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleReaction(post.id, "heart")}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                                post.userReactions.includes("heart")
+                                  ? "bg-primary/15 border-primary/50 text-primary shadow-2xs"
+                                  : "bg-background border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                              }`}
+                            >
+                              <span>❤️</span>
+                              <span>{post.reactions.heart}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleReaction(post.id, "star")}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                                post.userReactions.includes("star")
+                                  ? "bg-primary/15 border-primary/50 text-primary shadow-2xs"
+                                  : "bg-background border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                              }`}
+                            >
+                              <span>⭐</span>
+                              <span>{post.reactions.star}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleReaction(post.id, "fire")}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                                post.userReactions.includes("fire")
+                                  ? "bg-primary/15 border-primary/50 text-primary shadow-2xs"
+                                  : "bg-background border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                              }`}
+                            >
+                              <span>🔥</span>
+                              <span>{post.reactions.fire}</span>
+                            </button>
                           </div>
                         </div>
+                      );
+                    })}
+                  </div>
 
-                        {/* Core Value Badge */}
-                        <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[11px] font-semibold flex items-center gap-1 shrink-0">
-                          <Icon className="h-3 w-3" />
-                          <span>{post.coreValue}</span>
-                        </Badge>
-                      </div>
-
-                      {/* Recognition Message Box */}
-                      <div className="rounded-xl bg-muted/20 border border-border/60 p-3.5 text-xs sm:text-sm text-foreground leading-relaxed">
-                        "{post.message}"
-                      </div>
-
-                      {/* Emoji Reactions Bar */}
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleReaction(post.id, "clap")}
-                          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
-                            post.userReactions.includes("clap")
-                              ? "bg-primary/15 border-primary/50 text-primary shadow-2xs"
-                              : "bg-background border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                          }`}
-                        >
-                          <span>👏</span>
-                          <span>{post.reactions.clap}</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleToggleReaction(post.id, "heart")}
-                          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
-                            post.userReactions.includes("heart")
-                              ? "bg-primary/15 border-primary/50 text-primary shadow-2xs"
-                              : "bg-background border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                          }`}
-                        >
-                          <span>❤️</span>
-                          <span>{post.reactions.heart}</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleToggleReaction(post.id, "star")}
-                          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
-                            post.userReactions.includes("star")
-                              ? "bg-primary/15 border-primary/50 text-primary shadow-2xs"
-                              : "bg-background border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                          }`}
-                        >
-                          <span>⭐</span>
-                          <span>{post.reactions.star}</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleToggleReaction(post.id, "fire")}
-                          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
-                            post.userReactions.includes("fire")
-                              ? "bg-primary/15 border-primary/50 text-primary shadow-2xs"
-                              : "bg-background border-border/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                          }`}
-                        >
-                          <span>🔥</span>
-                          <span>{post.reactions.fire}</span>
-                        </button>
-                      </div>
+                  {/* Pagination Toolbar */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-border/70 mt-2">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>
+                        Showing{" "}
+                        <span className="font-semibold text-foreground">
+                          {(currentPage - 1) * pageSize + 1}
+                        </span>{" "}
+                        to{" "}
+                        <span className="font-semibold text-foreground">
+                          {Math.min(currentPage * pageSize, filteredPosts.length)}
+                        </span>{" "}
+                        of{" "}
+                        <span className="font-semibold text-foreground">
+                          {filteredPosts.length}
+                        </span>{" "}
+                        recognitions
+                      </span>
                     </div>
-                  );
-                })
+
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 text-xs border-border/70 hover:border-primary hover:text-primary disabled:opacity-40"
+                          disabled={currentPage <= 1}
+                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                          title="Previous page"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                          <Button
+                            key={page}
+                            variant={page === currentPage ? "default" : "outline"}
+                            size="sm"
+                            className={`h-8 w-8 p-0 text-xs font-semibold ${
+                              page === currentPage
+                                ? "bg-primary text-primary-foreground shadow-2xs hover:bg-primary/90"
+                                : "border-border/70 hover:border-primary hover:text-primary"
+                            }`}
+                            onClick={() => setCurrentPage(page)}
+                          >
+                            {page}
+                          </Button>
+                        ))}
+
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 text-xs border-border/70 hover:border-primary hover:text-primary disabled:opacity-40"
+                          disabled={currentPage >= totalPages}
+                          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                          title="Next page"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      <Select
+                        value={String(pageSize)}
+                        onValueChange={(val) => {
+                          setPageSize(Number(val));
+                          setCurrentPage(1);
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-[95px] text-xs border-border/70 focus:border-primary">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="3" className="text-xs">3 / page</SelectItem>
+                          <SelectItem value="5" className="text-xs">5 / page</SelectItem>
+                          <SelectItem value="10" className="text-xs">10 / page</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
