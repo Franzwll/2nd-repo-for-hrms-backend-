@@ -429,14 +429,14 @@ function EmployeeDashboard() {
         </Card>
 
         {/* Social Recognition & Wall of Fame Card */}
-        <Card className="border-border/70 flex flex-col justify-between">
+        <Card className="border-border/70 flex flex-col justify-between shadow-xs">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 font-display text-xl font-semibold">
-                <Award className="h-5 w-5 text-amber-500" />
+                <Award className="h-5 w-5 text-primary" />
                 Social Recognition
               </div>
-              <Button asChild variant="ghost" size="sm" className="text-amber-600 font-semibold">
+              <Button asChild variant="ghost" size="sm" className="text-primary hover:text-primary/90 hover:bg-primary/5 font-semibold text-xs">
                 <Link to="/employee/ess" search={{ category: "Recognition" }}>
                   Wall of Fame <ArrowRight className="ml-1 h-3.5 w-3.5" />
                 </Link>
@@ -452,10 +452,10 @@ function EmployeeDashboard() {
                     sender: "Chef Antonio",
                     recipient: "Aldrex M. Cordon",
                     senderAvatar: "CA",
+                    recipientAvatar: "AC",
                     badge: "Teamwork & Malasakit",
-                    badgeColor: "emerald",
                     message: "Maintained peak efficiency and spotless kitchen line standards during the Saturday banquet rush.",
-                    reactions: { clap: 15, heart: 8, fire: 4, star: 6 },
+                    reactions: { clap: 15, heart: 8, star: 6, fire: 4 },
                     timeAgo: "Today",
                   },
                   {
@@ -463,10 +463,10 @@ function EmployeeDashboard() {
                     sender: "Bullseur Santiago",
                     recipient: "Maria Santos",
                     senderAvatar: "BS",
+                    recipientAvatar: "MS",
                     badge: "Guest Delight",
-                    badgeColor: "amber",
-                    message: "Exceeded guest expectations with proactive check-in care and warm hospitality.",
-                    reactions: { clap: 9, heart: 5, fire: 3, star: 12 },
+                    message: "Exceeded guest expectations with proactive check-in care and warm Filipino hospitality.",
+                    reactions: { clap: 9, heart: 5, star: 12, fire: 3 },
                     timeAgo: "Yesterday",
                   },
                   {
@@ -474,43 +474,49 @@ function EmployeeDashboard() {
                     sender: "Ricardo Villanueva",
                     recipient: "Ana Ramos",
                     senderAvatar: "RV",
+                    recipientAvatar: "AR",
                     badge: "Going the Extra Mile",
-                    badgeColor: "purple",
                     message: "Stepped up to assist guest concierge services seamlessly during peak afternoon check-outs.",
-                    reactions: { clap: 11, heart: 6, fire: 5, star: 7 },
+                    reactions: { clap: 11, heart: 6, star: 7, fire: 5 },
                     timeAgo: "2 days ago",
                   },
                 ]).map((rec) => (
-                  <div key={rec.id} className="rounded-xl border border-border/70 bg-muted/20 p-3 text-xs space-y-1.5 transition-colors hover:border-amber-500/40 hover:bg-amber-500/5">
+                  <div
+                    key={rec.id}
+                    className="rounded-xl border border-border/80 bg-card p-3 text-xs space-y-2 transition-all hover:border-primary/40 hover:shadow-xs"
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 overflow-hidden">
-                        <div className="h-6 w-6 rounded-full bg-primary/20 text-primary font-bold text-[10px] grid place-items-center shrink-0">
+                        <div className="h-6 w-6 rounded-full bg-muted text-foreground border border-border/80 font-bold text-[10px] grid place-items-center shrink-0">
                           {rec.senderAvatar || rec.sender.slice(0, 2).toUpperCase()}
                         </div>
                         <span className="font-semibold text-foreground truncate">{rec.sender}</span>
-                        <span className="text-muted-foreground text-[11px]">→</span>
+                        <span className="text-muted-foreground text-[10px]">recognized</span>
                         <span className="font-semibold text-primary truncate">{rec.recipient}</span>
                       </div>
                       <Badge
                         variant="outline"
-                        className={`text-[10px] px-1.5 py-0 shrink-0 ${
-                          rec.badgeColor === "emerald"
-                            ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
-                            : rec.badgeColor === "purple"
-                            ? "bg-purple-500/10 text-purple-600 border-purple-500/30"
-                            : "bg-amber-500/10 text-amber-600 border-amber-500/30"
-                        }`}
+                        className="text-[10px] px-2 py-0.5 shrink-0 bg-primary/10 text-primary border-primary/30 font-medium"
                       >
                         {rec.badge}
                       </Badge>
                     </div>
-                    <p className="text-muted-foreground text-[11px] line-clamp-2 leading-relaxed">
+                    <p className="text-muted-foreground text-[11px] line-clamp-2 leading-relaxed bg-muted/20 p-2 rounded-lg border border-border/40">
                       "{rec.message}"
                     </p>
-                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-0.5">
-                      <span>👏 {rec.reactions?.clap ?? 0}</span>
-                      <span>❤️ {rec.reactions?.heart ?? 0}</span>
-                      <span>🔥 {rec.reactions?.fire ?? 0}</span>
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground pt-0.5">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5">
+                        👏 {rec.reactions?.clap ?? 0}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5">
+                        ❤️ {rec.reactions?.heart ?? 0}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5">
+                        ⭐ {rec.reactions?.star ?? 0}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5">
+                        🔥 {rec.reactions?.fire ?? 0}
+                      </span>
                       <span className="ml-auto text-[10px] text-muted-foreground">{rec.timeAgo}</span>
                     </div>
                   </div>
@@ -518,9 +524,9 @@ function EmployeeDashboard() {
               </div>
             </div>
 
-            <Button asChild variant="outline" size="sm" className="mt-4 w-full sm:w-auto border-amber-500/30 hover:bg-amber-500/10 text-foreground font-semibold">
+            <Button asChild size="sm" className="mt-4 w-full sm:w-auto bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs shadow-xs">
               <Link to="/employee/ess" search={{ category: "Recognition" }}>
-                Give Kudos &amp; View Wall <Award className="ml-2 h-4 w-4 text-amber-500" />
+                Give Kudos &amp; View Wall <Award className="ml-1.5 h-3.5 w-3.5" />
               </Link>
             </Button>
           </CardContent>
