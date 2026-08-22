@@ -35,15 +35,12 @@ export function EssDocumentsTab() {
         if (res?.documents?.length) {
           setDocuments(
             res.documents.map((d) => ({
+              id: d.code || `DOC-${d.id}`,
               title: d.title,
               category: d.category,
               status: d.status,
-              verified: d.verified,
-              lastUpdated: d.issuedDate,
-              expiryDate: d.expiryDate,
+              date: d.issuedDate,
               size: d.fileSize,
-              type: d.fileType,
-              downloadUrl: d.downloadUrl || "#",
             }))
           );
         }
