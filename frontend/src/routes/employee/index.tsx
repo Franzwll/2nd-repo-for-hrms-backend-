@@ -65,7 +65,7 @@ function EmployeeDashboard() {
     essApi
       .overview()
       .then(setOverview)
-      .catch(() => {});
+      .catch(() => { });
 
     // 2. Fetch ESS Requests
     essApi
@@ -75,7 +75,7 @@ function EmployeeDashboard() {
           setRequests(res.requests);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     // 3. Fetch Social Recognitions
     essApi
@@ -85,7 +85,7 @@ function EmployeeDashboard() {
           setRecognitions(res.recognitions);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     // 4. Fetch Onboarding Tasks
     newHiresApi
@@ -203,7 +203,7 @@ function EmployeeDashboard() {
                 <div className="space-y-1 flex-1 flex flex-col justify-center">
                   <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Attendance</h3>
                   <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
-                    Apply and monitor daily time-in/out logs and shift schedules.
+                    Monitor daily time-in/out records, weekly shift rosters, and DTR corrections.
                   </p>
                 </div>
                 <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
@@ -221,7 +221,7 @@ function EmployeeDashboard() {
                 <div className="space-y-1 flex-1 flex flex-col justify-center">
                   <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Payroll</h3>
                   <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
-                    Inspect itemized payslips, net pay, and statutory tax records.
+                    Inspect itemized payslips, net pay, loan schedule, and statutory benefits.
                   </p>
                 </div>
                 <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
@@ -231,25 +231,7 @@ function EmployeeDashboard() {
                 </Button>
               </div>
 
-              {/* Row 1, Col 3: Leave Filing */}
-              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-sm hover:-translate-y-0.5 group">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
-                  <Calendar className="h-5 w-5" />
-                </div>
-                <div className="space-y-1 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Leave Filing</h3>
-                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
-                    Submit vacation, sick, and emergency leave applications.
-                  </p>
-                </div>
-                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
-                  <Link to="/employee/ess" search={{ category: "Attendance" }}>
-                    View Details
-                  </Link>
-                </Button>
-              </div>
-
-              {/* Row 2, Col 1: Performance */}
+              {/* Row 1, Col 3: Performance */}
               <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
                   <TrendingUp className="h-5 w-5" />
@@ -267,13 +249,13 @@ function EmployeeDashboard() {
                 </Button>
               </div>
 
-              {/* Row 2, Col 2: Company Documents */}
+              {/* Row 2, Col 1: Company Documents */}
               <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
                   <FileCheck className="h-5 w-5" />
                 </div>
                 <div className="space-y-1.5 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Company Documents</h3>
+                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Documents</h3>
                   <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
                     Request official Certificate of Employment (COE) and clearances.
                   </p>
@@ -285,7 +267,7 @@ function EmployeeDashboard() {
                 </Button>
               </div>
 
-              {/* Row 2, Col 3: Social Recognition */}
+              {/* Row 2, Col 2: Social Recognition */}
               <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
                   <Award className="h-5 w-5" />
@@ -303,43 +285,7 @@ function EmployeeDashboard() {
                 </Button>
               </div>
 
-              {/* Row 3, Col 1: Statutory Benefits */}
-              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
-                  <ShieldCheck className="h-5 w-5" />
-                </div>
-                <div className="space-y-1 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Benefits &amp; HMO</h3>
-                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
-                    Review SSS, PhilHealth, Pag-IBIG HDMF, and healthcare coverage.
-                  </p>
-                </div>
-                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
-                  <Link to="/employee/ess" search={{ category: "Benefits" }}>
-                    View Details
-                  </Link>
-                </Button>
-              </div>
-
-              {/* Row 3, Col 2: Shift Scheduling */}
-              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
-                  <CalendarDays className="h-5 w-5" />
-                </div>
-                <div className="space-y-1 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Shift Scheduling</h3>
-                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
-                    Access weekly work rosters, duty schedules, and shift swaps.
-                  </p>
-                </div>
-                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
-                  <Link to="/employee/ess" search={{ category: "Schedule" }}>
-                    View Details
-                  </Link>
-                </Button>
-              </div>
-
-              {/* Row 3, Col 3: HR AI Concierge */}
+              {/* Row 2, Col 3: HR AI Concierge */}
               <div className="rounded-xl border border-primary/40 bg-gradient-to-b from-primary/5 via-card to-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-2xs transition-transform group-hover:scale-105">
                   <Bot className="h-5 w-5" />

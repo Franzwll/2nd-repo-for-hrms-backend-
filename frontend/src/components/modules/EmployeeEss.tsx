@@ -6,19 +6,23 @@ import {
   FileText,
   FileCheck,
   Calendar,
+  Layers,
   ArrowLeft,
-  Sparkles,
-  Bot,
+  HeartHandshake,
+  Send,
 } from "lucide-react";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EssHeroBanner } from "@/components/modules/ess/EssHeroBanner";
 import { EssOverviewTab } from "@/components/modules/ess/tabs/EssOverviewTab";
+import { EssScheduleTab } from "@/components/modules/ess/tabs/EssScheduleTab";
 import { EssAttendanceTab } from "@/components/modules/ess/tabs/EssAttendanceTab";
 import { EssLeaveTab } from "@/components/modules/ess/tabs/EssLeaveTab";
 import { EssPayrollTab } from "@/components/modules/ess/tabs/EssPayrollTab";
+import { EssLatestPayslipTab } from "@/components/modules/ess/tabs/EssLatestPayslipTab";
 import { EssDocumentsTab } from "@/components/modules/ess/tabs/EssDocumentsTab";
+import { EssAllRequestsTab } from "@/components/modules/ess/tabs/EssAllRequestsTab";
 import { EssPerformanceTab } from "@/components/modules/ess/tabs/EssPerformanceTab";
 import { EssRecognitionTab } from "@/components/modules/ess/tabs/EssRecognitionTab";
 import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
@@ -43,14 +47,27 @@ export function EmployeeEss() {
   const params = new URLSearchParams(searchStr || "");
   const categoryParam = params.get("category");
 
-  const isDedicatedModule = ["Attendance", "Payroll", "Performance", "Documents", "Recognition"].includes(
-    categoryParam || ""
-  );
+  const isDedicatedModule = [
+    "Schedule",
+    "Clocking",
+    "Attendance",
+    "Leave",
+    "Payroll",
+    "Performance",
+    "Documents",
+    "Recognition",
+    "Benefits",
+  ].includes(categoryParam || "");
 
   const getPageTitle = () => {
     switch (categoryParam) {
+      case "Schedule":
+      case "Clocking":
+        return "Employee Self-Service · Daily Web Clocking";
       case "Attendance":
-        return "Employee Self-Service · Attendance";
+        return "Employee Self-Service · Attendance, Schedule & Balances";
+      case "Leave":
+        return "Employee Self-Service · Apply for Leave";
       case "Payroll":
         return "Employee Self-Service · Payroll";
       case "Performance":
@@ -59,6 +76,11 @@ export function EmployeeEss() {
         return "Employee Self-Service · Company Documents";
       case "Recognition":
         return "Employee Self-Service · Social Recognition & Kudos";
+      case "Requests":
+      case "COE":
+        return "Employee Self-Service · All Requests Tracker";
+      case "Benefits":
+        return "Employee Self-Service · Statutory Benefits & HMO";
       default:
         return "EMPLOYEE SELF-SERVICE";
     }
@@ -66,8 +88,13 @@ export function EmployeeEss() {
 
   const getPageDescription = () => {
     switch (categoryParam) {
+      case "Schedule":
+      case "Clocking":
+        return "Live web clocking terminal, real-time punch records, and station geolocation verification.";
       case "Attendance":
-        return "View attendance logs, daily time-in/out records, and file correction requests.";
+        return "View weekly shift schedule, daily time records, leave balances, and filing history.";
+      case "Leave":
+        return "Submit formal paid and statutory leave applications for supervisor approval.";
       case "Payroll":
         return "View net pay information, payslips history, breakdown details, and submit inquiries.";
       case "Performance":
@@ -76,6 +103,8 @@ export function EmployeeEss() {
         return "View submitted, missing, and available employee documents and request official HR records.";
       case "Recognition":
         return "Praise colleagues, give kudos, and celebrate hotel service values on the public Wall of Fame.";
+      case "Benefits":
+        return "Review SSS, PhilHealth, Pag-IBIG HDMF, and healthcare coverage.";
       default:
         return "View your employee information, activities, and HR services.";
     }
@@ -101,11 +130,16 @@ export function EmployeeEss() {
       {/* DEDICATED MODULE SECTIONS (Activated via Sidebar or Card View buttons) */}
       {isDedicatedModule ? (
         <div className="mt-6">
+          {(categoryParam === "Schedule" || categoryParam === "Clocking") && <EssScheduleTab />}
           {categoryParam === "Attendance" && <EssAttendanceTab />}
+          {categoryParam === "Leave" && <EssLeaveTab />}
           {categoryParam === "Payroll" && <EssPayrollTab />}
+          {categoryParam === "Payslip" && <EssLatestPayslipTab />}
           {categoryParam === "Performance" && <EssPerformanceTab />}
           {categoryParam === "Documents" && <EssDocumentsTab />}
+          {(categoryParam === "Requests" || categoryParam === "COE" || categoryParam === "RequestDoc") && <EssAllRequestsTab />}
           {categoryParam === "Recognition" && <EssRecognitionTab />}
+          {(categoryParam === "Benefits" || categoryParam === "Statutory") && <EssPayrollTab />}
         </div>
       ) : (
         /* MAIN ESS SECTION (Portal Hub) */
@@ -119,17 +153,17 @@ export function EmployeeEss() {
               <TabsTrigger className="flex items-center gap-1.5" value="overview">
                 <LayoutDashboard className="h-3.5 w-3.5" /> Overview
               </TabsTrigger>
-              <TabsTrigger className="flex items-center gap-1.5" value="clocking">
-                <Clock className="h-3.5 w-3.5" /> Web Clocking
+              <TabsTrigger className="flex items-center gap-1.5" value="schedule">
+                <Clock className="h-3.5 w-3.5" /> Daily Web Clocking
               </TabsTrigger>
               <TabsTrigger className="flex items-center gap-1.5" value="leave">
-                <Calendar className="h-3.5 w-3.5" /> Applying Leave
+                <Calendar className="h-3.5 w-3.5" /> Apply for Leave
               </TabsTrigger>
               <TabsTrigger className="flex items-center gap-1.5" value="payslip">
                 <FileText className="h-3.5 w-3.5" /> Latest Payslip
               </TabsTrigger>
-              <TabsTrigger className="flex items-center gap-1.5" value="coe">
-                <FileCheck className="h-3.5 w-3.5" /> Request COE
+              <TabsTrigger className="flex items-center gap-1.5" value="requests">
+                <Send className="h-3.5 w-3.5" /> All Requests
               </TabsTrigger>
             </TabsList>
 
@@ -143,8 +177,8 @@ export function EmployeeEss() {
               />
             </TabsContent>
 
-            <TabsContent value="clocking" className="mt-6">
-              <EssAttendanceTab />
+            <TabsContent value="schedule" className="mt-6">
+              <EssScheduleTab />
             </TabsContent>
 
             <TabsContent value="leave" className="mt-6">
@@ -152,11 +186,11 @@ export function EmployeeEss() {
             </TabsContent>
 
             <TabsContent value="payslip" className="mt-6">
-              <EssPayrollTab />
+              <EssLatestPayslipTab />
             </TabsContent>
 
-            <TabsContent value="coe" className="mt-6">
-              <EssDocumentsTab />
+            <TabsContent value="requests" className="mt-6">
+              <EssAllRequestsTab />
             </TabsContent>
           </Tabs>
         </div>
@@ -179,7 +213,8 @@ export function EmployeeEss() {
         open={aiModalOpen}
         onOpenChange={setAiModalOpen}
         onNavigateCategory={(cat) => {
-          if (cat === "Attendance") setActiveTab("clocking");
+          if (cat === "Schedule" || cat === "Clocking" || cat === "Attendance") setActiveTab("schedule");
+          else if (cat === "Leave") setActiveTab("leave");
           else if (cat === "Payroll") setActiveTab("payslip");
           else if (cat === "Documents") setActiveTab("coe");
           else if (cat === "Recognition") {

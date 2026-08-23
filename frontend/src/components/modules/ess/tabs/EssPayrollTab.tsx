@@ -297,16 +297,26 @@ export function EssPayrollTab() {
 
       {/* Statutory Benefits & Company Loans Section */}
       <Card className="border-border/70 shadow-xs">
-        <CardHeader className="pb-3">
-          <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-primary" />
-            Statutory Benefits &amp; Active Loans
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Official government identification numbers, healthcare coverage, and active salary loan deduction schedules.
-          </p>
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3">
+          <div>
+            <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-primary" />
+              Statutory Benefits &amp; Active Loans
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Official government identification numbers, healthcare coverage, and active salary loan deduction schedules.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs shadow-xs gap-1.5"
+            onClick={() => toast.info("Quarterly company salary loan application window opens next month.")}
+          >
+            <Landmark className="h-3.5 w-3.5 text-emerald-600" /> Apply for Salary Loan
+          </Button>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl border border-border/70 p-4 space-y-1.5 shadow-xs bg-muted/10">
               <div className="flex items-center justify-between">
@@ -353,20 +363,33 @@ export function EssPayrollTab() {
             </div>
           </div>
 
-          {/* Active Loans Sub-card */}
-          <div className="mt-4 rounded-xl border border-border/70 p-4 bg-muted/20">
+          {/* Active Loans & Amortization Sub-card */}
+          <div className="rounded-xl border border-border/70 p-4 bg-muted/20 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
                   <Landmark className="h-4 w-4 text-emerald-600" /> Active Company / SSS Salary Loan
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Remaining Balance: <strong className="text-foreground">₱8,400.00</strong> · Deduction: <strong className="text-rose-600">-₱700.00 / cut-off</strong> (12 of 24 terms completed)
+                  Outstanding Balance: <strong className="text-foreground">₱5,400.00</strong> · Deduction: <strong className="text-rose-600">-₱450.00 / cut-off</strong> (12 of 24 terms completed)
                 </p>
               </div>
               <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-background border border-border/80 self-start sm:self-auto">
-                Next Deduction: {myPayroll.nextPayout}
+                Next Deduction: {nextPayout}
               </span>
+            </div>
+
+            <div className="space-y-1.5 pt-1 border-t border-border/60">
+              <div className="flex justify-between text-xs font-semibold">
+                <span className="text-muted-foreground">Amortization Payoff Completion</span>
+                <span className="text-primary font-mono">12 / 24 terms (50%)</span>
+              </div>
+              <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                <div className="bg-primary h-2 rounded-full transition-all" style={{ width: "50%" }} />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Projected final amortization payoff date: December 15, 2026.
+              </p>
             </div>
           </div>
         </CardContent>

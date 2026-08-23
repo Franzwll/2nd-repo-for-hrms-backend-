@@ -1,26 +1,29 @@
 import { useState, useMemo, useEffect } from "react";
 import {
+  Calendar,
   Clock,
   Plus,
   Search,
   ArrowUpDown,
-  Calendar,
   CalendarCheck,
+  TrendingUp,
+  FileEdit,
   Palmtree,
+  Stethoscope,
+  AlertCircle,
+  CalendarDays,
+  Loader2,
+  FileText,
   Layers,
   ArrowLeftRight,
   MapPin,
-  Loader2,
-  FileEdit,
-  FileText,
-  CalendarDays,
+  CheckCircle2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
@@ -35,15 +38,11 @@ import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { myAttendance } from "@/data/ess";
 import { DtrCorrectionModal } from "@/components/modules/ess/modals/DtrCorrectionModal";
-import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
 import { ShiftSwapModal } from "@/components/modules/ess/modals/ShiftSwapModal";
-import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
 import { essApi, type ApiScheduleDay, type ApiEssEmployee, type ApiLeaveBalance } from "@/lib/api";
 
 export function EssAttendanceTab() {
-  const [subSection, setSubSection] = useState("dtr");
-
   // Live Attendance state
   const [attSummary, setAttSummary] = useState({
     present_days: 18,
@@ -62,25 +61,23 @@ export function EssAttendanceTab() {
 
   const [attSearch, setAttSearch] = useState("");
   const [attSort, setAttSort] = useState("date-desc");
-  const [clockModalOpen, setClockModalOpen] = useState(false);
   const [correctionModalOpen, setCorrectionModalOpen] = useState(false);
+  const [swapModalOpen, setSwapModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
 
   // Schedule state
-  const [swapModalOpen, setSwapModalOpen] = useState(false);
-  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleLoading, setScheduleLoading] = useState(true);
   const [employeeInfo, setEmployeeInfo] = useState<ApiEssEmployee | null>(null);
   const [roster, setRoster] = useState<ApiScheduleDay[]>([]);
 
-  // Leave state
-  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
-  const [leaveLoading, setLeaveLoading] = useState(false);
+  // Leave state (balances & filing history)
+  const [leaveLoading, setLeaveLoading] = useState(true);
   const [balances, setBalances] = useState<ApiLeaveBalance[]>([]);
   const [leaveHistory, setLeaveHistory] = useState<any[]>([]);
 
-  useEffect(() => {
-    // Load Attendance Logs from Database
+  const loadData = async () => {
+    // Load Attendance Logs
     essApi
       .myAttendance()
       .then((res) => {
@@ -94,26 +91,32 @@ export function EssAttendanceTab() {
       .catch(() => {});
 
     // Load Schedule
-    setScheduleLoading(true);
-    essApi
-      .schedule()
-      .then((res) => {
-        setEmployeeInfo(res.employee);
-        setRoster(res.weekly_roster || []);
-      })
-      .catch(() => {})
-      .finally(() => setScheduleLoading(false));
+    try {
+      setScheduleLoading(true);
+      const schedRes = await essApi.schedule();
+      setEmployeeInfo(schedRes.employee);
+      setRoster(schedRes.weekly_roster || []);
+    } catch {
+      // handled gracefully
+    } finally {
+      setScheduleLoading(false);
+    }
 
     // Load Leaves
-    setLeaveLoading(true);
-    essApi
-      .leaves()
-      .then((res) => {
-        setBalances(res.balances || []);
-        setLeaveHistory(res.history || []);
-      })
-      .catch(() => {})
-      .finally(() => setLeaveLoading(false));
+    try {
+      setLeaveLoading(true);
+      const leaveRes = await essApi.leaves();
+      setBalances(leaveRes.balances || []);
+      setLeaveHistory(leaveRes.history || []);
+    } catch {
+      // handled gracefully
+    } finally {
+      setLeaveLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
 
   const filteredAttRequests = useMemo(() => {
@@ -129,19 +132,31 @@ export function EssAttendanceTab() {
 
   const attPage = usePagination(filteredAttRequests);
 
-  const handleCorrectionSubmit = (newCorrection: any) => {
+  const handleCorrectionSubmit = async (newCorrection: any) => {
     const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
     const isoStr = new Date().toISOString().slice(0, 10);
     const req = {
       id: `REQ-${Date.now().toString().slice(-4)}`,
       date: todayStr,
       isoDate: isoStr,
-      type: newCorrection.type,
+      type: newCorrection.type || "DTR Correction",
       status: "Pending",
       statusRank: 0,
-      details: newCorrection.reason,
+      details: newCorrection.reason || "Time record adjustment requested",
     };
     setAttRequests([req, ...attRequests]);
+
+    try {
+      await essApi.createRequest({
+        category_code: "attendance",
+        category_name: "Attendance",
+        request_type: newCorrection.type || "DTR Correction",
+        date_from: newCorrection.date || isoStr,
+        details: newCorrection.reason || "Time record adjustment requested",
+      });
+    } catch {
+      // Handled gracefully with fallback
+    }
   };
 
   const handleRowClick = (req: any, category = "Attendance") => {
@@ -157,393 +172,396 @@ export function EssAttendanceTab() {
     setTimelineOpen(true);
   };
 
+  const getLeaveIcon = (type: string) => {
+    if (type.includes("Vacation")) return <Palmtree className="h-4 w-4 text-amber-600" />;
+    if (type.includes("Sick")) return <Stethoscope className="h-4 w-4 text-emerald-600" />;
+    if (type.includes("Emergency")) return <AlertCircle className="h-4 w-4 text-rose-600" />;
+    return <CalendarDays className="h-4 w-4 text-primary" />;
+  };
+
   const todayRecord = attendanceLogs[0];
 
   return (
-    <div className="space-y-6">
-      {/* Attendance & Leave Metric Cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Today Time In</p>
-              <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600 dark:text-emerald-400">
-                <Clock className="h-4 w-4" />
-              </div>
+    <div className="space-y-8">
+      {/* SECTION 1: WEEKLY SHIFT SCHEDULE & ROSTER */}
+      <div className="space-y-4">
+        <Card className="border-border/70 shadow-xs">
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3">
+            <div>
+              <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+                <Layers className="h-5 w-5 text-primary" />
+                Weekly Shift Schedule &amp; Roster
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Current work schedule assigned by {employeeInfo?.supervisor ?? "Supervisor"} for {employeeInfo?.department ?? "Department"}.
+              </p>
             </div>
-            <p className="mt-1 text-2xl font-bold font-display text-emerald-600 dark:text-emerald-400">
-              {todayRecord ? todayRecord.timeIn : "07:54 AM"}
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Time Out: <strong className="text-foreground">{todayRecord ? todayRecord.timeOut : "On Duty"}</strong>
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Monthly Attendance</p>
-              <div className="rounded-lg bg-primary/10 p-2 text-primary">
-                <CalendarCheck className="h-4 w-4" />
+            <Button onClick={() => setSwapModalOpen(true)} variant="outline" size="sm" className="gap-1.5 shadow-xs text-xs">
+              <ArrowLeftRight className="h-4 w-4 text-purple-600" /> Request Shift Swap
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {scheduleLoading ? (
+              <div className="flex items-center justify-center p-12 text-muted-foreground text-sm gap-2">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading weekly roster...
               </div>
-            </div>
-            <p className="mt-1 text-2xl font-bold font-display text-foreground">{attSummary.present_days} Days Present</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {attSummary.late_days} Late · {attSummary.absent_days} Absent · {attSummary.overtime_hours}h Overtime
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Vacation Leave Balance</p>
-              <div className="rounded-lg bg-amber-500/10 p-2 text-amber-600 dark:text-amber-400">
-                <Palmtree className="h-4 w-4" />
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {roster.map((s) => {
+                  const isRestDay = s.shift === "Rest Day" || s.shift.includes("Rest");
+                  return (
+                    <div
+                      key={s.day}
+                      className={`rounded-xl border p-4 transition-all shadow-xs ${
+                        isRestDay
+                          ? "border-border/60 bg-muted/20 opacity-80"
+                          : "border-primary/30 bg-primary/5 hover:border-primary/60"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{s.day}</span>
+                        <Badge
+                          variant="outline"
+                          className={
+                            isRestDay
+                              ? "bg-muted text-muted-foreground border-border text-[10px]"
+                              : "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px]"
+                          }
+                        >
+                          {s.shift}
+                        </Badge>
+                      </div>
+                      <div className="mt-3 space-y-1.5">
+                        <div className="flex items-center gap-1.5 text-xs text-foreground font-semibold">
+                          <Clock className="h-3.5 w-3.5 text-primary shrink-0" /> {s.time}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" /> {s.location}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
-            <p className="mt-1 text-2xl font-bold font-display text-primary">
-              {balances.find((b) => b.type.includes("Vacation"))?.available ?? 13} Days
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">Available for rest &amp; travel</p>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Sub-Navigation Tabs inside Attendance */}
-      <Tabs value={subSection} onValueChange={setSubSection} className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <TabsList className="bg-muted/60 p-1">
-            <TabsTrigger value="dtr" className="text-xs gap-1.5">
-              <Clock className="h-3.5 w-3.5" /> Attendance Logs &amp; DTR
-            </TabsTrigger>
-            <TabsTrigger value="schedule" className="text-xs gap-1.5">
-              <Layers className="h-3.5 w-3.5" /> Weekly Shift Schedule
-            </TabsTrigger>
-            <TabsTrigger value="leave" className="text-xs gap-1.5">
-              <Calendar className="h-3.5 w-3.5" /> Leave Balances &amp; Filing
-            </TabsTrigger>
-          </TabsList>
-
-          <Button
-            size="sm"
-            onClick={() => setClockModalOpen(true)}
-            className="gap-1.5 shadow-xs bg-primary text-primary-foreground font-medium text-xs shrink-0 self-start sm:self-auto"
-          >
-            <Clock className="h-3.5 w-3.5" /> Daily Web Clocking
+      {/* SECTION 2: ATTENDANCE LOGS & DAILY TIME RECORD (DTR) */}
+      <div className="space-y-6 pt-2 border-t border-border">
+        {/* Attendance Top Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h3 className="text-xl font-bold font-display text-foreground flex items-center gap-2">
+              <Clock className="h-5 w-5 text-primary" />
+              Attendance Logs &amp; Daily Time Record (DTR)
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Official biometric timecard logs, daily time-in/out records, and attendance correction requests.
+            </p>
+          </div>
+          <Button size="sm" onClick={() => setCorrectionModalOpen(true)} className="gap-1.5 text-xs shadow-xs">
+            <Plus className="h-4 w-4" /> File DTR Correction
           </Button>
         </div>
 
-        {/* 1. DTR Logs & Correction Sub-tab */}
-        <TabsContent value="dtr" className="space-y-6">
-          {/* DTR Daily History */}
-          <Card className="border-border/70 shadow-xs">
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3">
-              <div>
-                <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-primary" />
-                  Daily Time Record (DTR) History
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">Official biometric timecard logs for current cut-off.</p>
+        {/* Attendance Metric Cards */}
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Today Time In</p>
+                <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600 dark:text-emerald-400">
+                  <Clock className="h-4 w-4" />
+                </div>
               </div>
-              <Button size="sm" onClick={() => setCorrectionModalOpen(true)} className="gap-1.5 text-xs">
-                <Plus className="h-4 w-4" /> File DTR Correction
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Time In</TableHead>
-                    <TableHead>Time Out</TableHead>
-                    <TableHead>Hours Worked</TableHead>
-                    <TableHead>Status &amp; Remark</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(attendanceLogs.length > 0 ? attendanceLogs : myAttendance.history.map(h => ({
-                    date: h.date,
-                    timeIn: h.in,
-                    timeOut: h.out,
-                    workedHours: h.hours,
-                    status: h.remark.includes("Present") ? "Present" : h.remark.includes("Late") ? "Late" : h.remark
-                  }))).map((h, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="font-medium text-xs text-foreground">{h.date}</TableCell>
-                      <TableCell className="text-xs font-mono">{h.timeIn}</TableCell>
-                      <TableCell className="text-xs font-mono">{h.timeOut}</TableCell>
-                      <TableCell className="text-xs font-semibold">{h.workedHours} hrs</TableCell>
-                      <TableCell>
-                        <EssStatusBadge status={h.status} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <p className="mt-1 text-2xl font-bold font-display text-emerald-600 dark:text-emerald-400">
+                {todayRecord ? todayRecord.timeIn : "07:54 AM"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Time Out: <strong className="text-foreground">{todayRecord ? todayRecord.timeOut : "On Duty"}</strong>
+              </p>
             </CardContent>
           </Card>
 
-          {/* Attendance Adjustment Requests */}
-          <Card className="border-border/70 shadow-xs">
-            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
-              <div>
-                <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
-                  <FileEdit className="h-5 w-5 text-primary" />
-                  My Attendance Correction Requests
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">Click row to track approval progress &amp; reviewer comments.</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Search request..."
-                  value={attSearch}
-                  onChange={(e) => setAttSearch(e.target.value)}
-                  className="h-8 w-[140px]"
-                />
-                <Select value={attSort} onValueChange={setAttSort}>
-                  <SelectTrigger className="h-8 w-[130px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="date-desc">Newest first</SelectItem>
-                    <SelectItem value="date-asc">Oldest first</SelectItem>
-                    <SelectItem value="status">Status</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Request ID</TableHead>
-                    <TableHead>Date Filed</TableHead>
-                    <TableHead>Correction Type</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {attPage.pageItems.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
-                        No attendance requests filed yet.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    attPage.pageItems.map((r, idx) => (
-                      <TableRow
-                        key={idx}
-                        className="cursor-pointer hover:bg-muted/50 transition-colors"
-                        onClick={() => handleRowClick(r, "Attendance")}
-                      >
-                        <TableCell className="text-xs font-mono font-medium text-foreground">{r.id}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{r.date}</TableCell>
-                        <TableCell className="text-sm font-medium">{r.type}</TableCell>
-                        <TableCell>
-                          <EssStatusBadge status={r.status} />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" className="h-7 text-xs text-primary">
-                            Timeline →
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-              <TablePagination
-                page={attPage.page}
-                pageCount={attPage.pageCount}
-                from={attPage.from}
-                to={attPage.to}
-                total={attPage.total}
-                label="requests"
-                onPageChange={attPage.setPage}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* 2. Weekly Shift Schedule Sub-tab */}
-        <TabsContent value="schedule" className="space-y-6">
-          <Card className="border-border/70 shadow-xs">
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3">
-              <div>
-                <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
-                  <Layers className="h-5 w-5 text-primary" />
-                  Weekly Shift Roster
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Current roster assigned by {employeeInfo?.supervisor ?? "Supervisor"} for {employeeInfo?.department ?? "Department"}.
-                </p>
-              </div>
-              <Button onClick={() => setSwapModalOpen(true)} variant="outline" className="gap-1.5 shadow-xs text-xs">
-                <ArrowLeftRight className="h-4 w-4 text-purple-600" /> Request Shift Swap
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {scheduleLoading ? (
-                <div className="flex items-center justify-center p-12 text-muted-foreground text-sm gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading roster...
+          <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Monthly Attendance</p>
+                <div className="rounded-lg bg-primary/10 p-2 text-primary">
+                  <CalendarCheck className="h-4 w-4" />
                 </div>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {roster.map((s) => {
-                    const isRestDay = s.shift === "Rest Day" || s.shift.includes("Rest");
-                    return (
-                      <div
-                        key={s.day}
-                        className={`rounded-xl border p-4 transition-all shadow-xs ${
-                          isRestDay
-                            ? "border-border/60 bg-muted/20 opacity-80"
-                            : "border-primary/30 bg-primary/5 hover:border-primary/60"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{s.day}</span>
-                          <Badge
-                            variant="outline"
-                            className={
-                              isRestDay
-                                ? "bg-muted text-muted-foreground border-border text-[10px]"
-                                : "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px]"
-                            }
-                          >
-                            {s.shift}
-                          </Badge>
-                        </div>
-                        <div className="mt-3 space-y-1.5">
-                          <div className="flex items-center gap-1.5 text-xs text-foreground font-semibold">
-                            <Clock className="h-3.5 w-3.5 text-primary" /> {s.time}
-                          </div>
-                          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                            <MapPin className="h-3.5 w-3.5 text-muted-foreground" /> {s.location}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* 3. Leave Balances & Filing Sub-tab */}
-        <TabsContent value="leave" className="space-y-6">
-          <Card className="border-border/70 shadow-xs">
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3">
-              <div>
-                <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-primary" />
-                  Leave Balances ({new Date().getFullYear()})
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">Annual leave entitlement, utilized credits, and remaining balance.</p>
               </div>
-              <Button onClick={() => setLeaveModalOpen(true)} className="gap-1.5 text-xs">
-                <Plus className="h-4 w-4" /> Apply for Leave
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {leaveLoading ? (
-                <div className="flex items-center justify-center p-8 text-muted-foreground text-sm gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading balances...
-                </div>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-3">
-                  {balances.map((b) => {
-                    const pct = b.total > 0 ? Math.round((b.used / b.total) * 100) : 0;
-                    return (
-                      <div key={b.type} className="rounded-xl border border-border/70 p-4 space-y-3 shadow-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider">{b.type}</span>
-                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px]">
-                            {b.available} Days Left
-                          </Badge>
-                        </div>
-                        <div>
-                          <p className="text-2xl font-bold font-display text-foreground">{b.available} / {b.total}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{b.used} days used this year</p>
-                        </div>
-                        <Progress value={pct} className="h-2" />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              <p className="mt-1 text-2xl font-bold font-display text-foreground">{attSummary.present_days} Days Present</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {attSummary.late_days} Late · {attSummary.absent_days} Absent · {attSummary.overtime_hours}h Overtime
+              </p>
             </CardContent>
           </Card>
 
-          {/* Leave History Table */}
-          <Card className="border-border/70 shadow-xs">
-            <CardHeader className="pb-3">
+          <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Average Hours</p>
+                <div className="rounded-lg bg-blue-500/10 p-2 text-blue-600 dark:text-blue-400">
+                  <TrendingUp className="h-4 w-4" />
+                </div>
+              </div>
+              <p className="mt-1 text-2xl font-bold font-display text-primary">
+                {attSummary.average_hours} Hours / Day
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">Standard 8-hour shift compliance</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* DTR Daily History Table */}
+        <Card className="border-border/70 shadow-xs">
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3">
+            <div>
               <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
-                <FileText className="h-5 w-5 text-primary" />
-                Leave Application History
+                <Calendar className="h-5 w-5 text-primary" />
+                Daily Time Record (DTR) History
               </CardTitle>
-              <p className="text-xs text-muted-foreground">Filed leave requests and approval progress.</p>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Request ID</TableHead>
-                    <TableHead>Leave Type</TableHead>
-                    <TableHead>Period</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
+              <p className="text-xs text-muted-foreground">Official biometric timecard logs for current cut-off.</p>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Time In</TableHead>
+                  <TableHead>Time Out</TableHead>
+                  <TableHead>Hours Worked</TableHead>
+                  <TableHead>Status &amp; Remark</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(attendanceLogs.length > 0 ? attendanceLogs : myAttendance.history.map(h => ({
+                  date: h.date,
+                  timeIn: h.in,
+                  timeOut: h.out,
+                  workedHours: h.hours,
+                  status: h.remark.includes("Present") ? "Present" : h.remark.includes("Late") ? "Late" : h.remark
+                }))).map((h, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="font-medium text-xs text-foreground">{h.date}</TableCell>
+                    <TableCell className="text-xs font-mono">{h.timeIn}</TableCell>
+                    <TableCell className="text-xs font-mono">{h.timeOut}</TableCell>
+                    <TableCell className="text-xs font-semibold">{h.workedHours} hrs</TableCell>
+                    <TableCell>
+                      <EssStatusBadge status={h.status} />
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {leaveHistory.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
-                        No leave history records found.
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* Attendance Adjustment Requests Table */}
+        <Card className="border-border/70 shadow-xs">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
+            <div>
+              <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+                <FileEdit className="h-5 w-5 text-primary" />
+                My Attendance Correction Requests
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Click row to track approval progress &amp; reviewer comments.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Search request..."
+                value={attSearch}
+                onChange={(e) => setAttSearch(e.target.value)}
+                className="h-8 w-[140px]"
+              />
+              <Select value={attSort} onValueChange={setAttSort}>
+                <SelectTrigger className="h-8 w-[130px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="date-desc">Newest first</SelectItem>
+                  <SelectItem value="date-asc">Oldest first</SelectItem>
+                  <SelectItem value="status">Status</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Request ID</TableHead>
+                  <TableHead>Date Filed</TableHead>
+                  <TableHead>Correction Type</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {attPage.pageItems.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-20 text-center text-muted-foreground">
+                      No attendance requests filed yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  attPage.pageItems.map((r, idx) => (
+                    <TableRow
+                      key={idx}
+                      className="cursor-pointer hover:bg-muted/50 transition-colors"
+                      onClick={() => handleRowClick(r, "Attendance")}
+                    >
+                      <TableCell className="text-xs font-mono font-medium text-foreground">{r.id}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{r.date}</TableCell>
+                      <TableCell className="text-sm font-medium">{r.type}</TableCell>
+                      <TableCell>
+                        <EssStatusBadge status={r.status} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" className="h-7 text-xs text-primary">
+                          Timeline →
+                        </Button>
                       </TableCell>
                     </TableRow>
-                  ) : (
-                    leaveHistory.map((item, idx) => (
-                      <TableRow
-                        key={idx}
-                        className="cursor-pointer hover:bg-muted/50 transition-colors"
-                        onClick={() => handleRowClick(item, "Leave")}
-                      >
-                        <TableCell className="text-xs font-mono font-medium text-foreground">{item.request_code || item.id || `REQ-${idx + 1}`}</TableCell>
-                        <TableCell className="text-sm font-medium">{item.request_type || item.type}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {item.date_from ? `${item.date_from} – ${item.date_to || item.date_from}` : item.period || "—"}
-                        </TableCell>
-                        <TableCell>
-                          <EssStatusBadge status={item.status} />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" className="h-7 text-xs text-primary">
-                            Timeline →
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+            <TablePagination
+              page={attPage.page}
+              pageCount={attPage.pageCount}
+              from={attPage.from}
+              to={attPage.to}
+              total={attPage.total}
+              label="requests"
+              onPageChange={attPage.setPage}
+            />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* SECTION 3: LEAVE BALANCES & ACCRUAL */}
+      <div className="space-y-6 pt-2 border-t border-border">
+        <div>
+          <h3 className="text-xl font-bold font-display text-foreground flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-primary" />
+            Leave Balances &amp; Accrual ({new Date().getFullYear()})
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Track statutory and company-granted paid leave allocations, utilized credits, and remaining balance.
+          </p>
+        </div>
+
+        {leaveLoading ? (
+          <div className="flex items-center justify-center p-12 text-muted-foreground text-sm gap-2">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading leave balances...
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {balances.map((l) => {
+              const remaining = Math.max(0, l.total - l.used);
+              const percent = l.total > 0 ? Math.round((remaining / l.total) * 100) : 0;
+              return (
+                <Card key={l.type} className="border-border/70 shadow-xs hover:border-primary/50 transition-all">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                          {getLeaveIcon(l.type)} {l.type}
+                        </p>
+                        <p className="text-2xl font-bold font-display text-foreground mt-1">
+                          {remaining} <span className="text-xs font-normal text-muted-foreground">/ {l.total} days</span>
+                        </p>
+                      </div>
+                      <span className="text-xs font-bold text-primary font-mono">{percent}%</span>
+                    </div>
+                    <Progress value={percent} className="h-2" />
+                    <div className="flex justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/60">
+                      <span>Used: {l.used} days</span>
+                      <span>Available: {remaining} days</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* SECTION 4: LEAVE FILING HISTORY & APPROVALS */}
+        <Card className="border-border/70 shadow-xs">
+          <CardHeader className="pb-3">
+            <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              Leave Filing History &amp; Approvals
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Click any record to inspect the approval chain and reviewer notes.</p>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Request ID</TableHead>
+                  <TableHead>Leave Type</TableHead>
+                  <TableHead>Effective Dates</TableHead>
+                  <TableHead>Reason / Details</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {leaveHistory.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                      No filed leave requests yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  leaveHistory.map((item, idx) => (
+                    <TableRow
+                      key={idx}
+                      className="cursor-pointer hover:bg-muted/50 transition-colors"
+                      onClick={() => handleRowClick(item, "Leave")}
+                    >
+                      <TableCell className="text-xs font-mono font-medium text-foreground">
+                        {item.request_code || item.id}
+                      </TableCell>
+                      <TableCell className="text-sm font-semibold">{item.request_type || item.type}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {item.date_from || item.dateFrom} {item.date_to && item.date_to !== item.date_from ? `to ${item.date_to}` : ""}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{item.details || item.reason}</TableCell>
+                      <TableCell>
+                        <EssStatusBadge status={item.status} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" className="h-7 text-xs text-primary">
+                          Timeline →
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Modals */}
-      <QuickClockModal open={clockModalOpen} onOpenChange={setClockModalOpen} />
       <DtrCorrectionModal
         open={correctionModalOpen}
         onOpenChange={setCorrectionModalOpen}
         onSubmitCorrection={handleCorrectionSubmit}
       />
-      <ShiftSwapModal open={swapModalOpen} onOpenChange={setSwapModalOpen} />
-      <LeaveApplicationModal open={leaveModalOpen} onOpenChange={setLeaveModalOpen} />
+      <ShiftSwapModal
+        open={swapModalOpen}
+        onOpenChange={setSwapModalOpen}
+        onSubmitSwap={() => loadData()}
+      />
       <RequestTimelineModal
         open={timelineOpen}
         onOpenChange={setTimelineOpen}

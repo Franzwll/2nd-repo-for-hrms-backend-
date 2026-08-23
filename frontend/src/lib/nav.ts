@@ -45,7 +45,7 @@ const recruitmentChildren = (base: string) => [
 
 const essChildren = (base: string) => [
   { label: "Overview", to: `${base}/ess` },
-  { label: "Attendance", to: `${base}/ess?category=Attendance` },
+  { label: "Attendance & Schedule", to: `${base}/ess?category=Attendance` },
   { label: "Payroll", to: `${base}/ess?category=Payroll` },
   { label: "Performance", to: `${base}/ess?category=Performance` },
   { label: "Company Documents", to: `${base}/ess?category=Documents` },
