@@ -36,7 +36,31 @@ import { cn } from "@/lib/utils";
 import { navForRole, roleMeta, type Role } from "@/lib/nav";
 import { authApi } from "@/lib/api";
 import { clearSession, getUser } from "@/lib/auth";
+import type { Notification } from "@/components/portal/portal-state";
 
+/** Map a notification's target to an in-app route for the current role. */
+function notificationTarget(targetType: string | null | undefined, role: Role): string | null {
+  if (!targetType) return null;
+  const base = roleMeta[role].base;
+  switch (targetType) {
+    case "employees":
+      return role === "employee" ? null : `${base}/employees`;
+    case "departments":
+    case "positions":
+    case "salary_grades":
+      return role === "employee" ? null : `${base}/dept-pos`;
+    case "system_users":
+      return role === "superadmin" ? `${base}/users` : `${base}/settings`;
+    case "system_roles":
+      return `${base}/settings`;
+    case "hr3_recommendations":
+      return `${base}/ess`;
+    case "chatbot_faqs":
+      return role === "employee" ? null : `${base}/chatbot`;
+    default:
+      return null;
+  }
+}
 
 export function PortalShell({ role, children }: { role: Role; children: ReactNode }) {
   const [open, setOpen] = useState(true);
@@ -62,20 +86,12 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
     clearSession();
     navigate({ to: "/login" });
   };
-  const {
-    notifications,
-    unreadCount,
-    markAllRead,
-    markRead,
-    announcements,
-    removeAnnouncement,
-  } = usePortalState();
+  const { notifications, unreadCount, markAllRead, markRead, announcements, removeAnnouncement } =
+    usePortalState();
   const visibleAnnouncements = announcements.filter((a) => isVisibleTo(a.audience, role));
   const canAnnounce = role === "superadmin";
 
-
-  const isActive = (to: string) =>
-    to === meta.base ? pathname === to : pathname.startsWith(to);
+  const isActive = (to: string) => (to === meta.base ? pathname === to : pathname.startsWith(to));
 
   const isChildActive = (childTo: string) => {
     const [childPath, childQuery] = childTo.split("?");
@@ -189,7 +205,6 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
           </nav>
         </ScrollArea>
 
-
         <div className="space-y-1 border-t border-sidebar-border p-2">
           <Link
             to={`${meta.base}/profile` as "/admin/profile"}
@@ -213,7 +228,6 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
             {open && <span>Logout</span>}
           </button>
         </div>
-
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -240,12 +254,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
           <div className="flex items-center gap-2">
             <Popover>
               <PopoverTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Announcements"
-                  className="relative"
-                >
+                <Button variant="ghost" size="icon" aria-label="Announcements" className="relative">
                   <Megaphone className="h-5 w-5" />
                   {visibleAnnouncements.length > 0 && (
                     <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-gold px-1 text-[0.6rem] font-semibold text-primary-foreground">
@@ -358,36 +367,46 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                         <BellOff className="h-4 w-4" /> No notifications
                       </p>
                     )}
-                    {notifications.map((n) => (
-                      <button
-                        key={n.id}
-                        type="button"
-                        onClick={() => markRead(n.id)}
-                        className={cn(
-                          "flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60",
-                          !n.read && "bg-primary/5",
-                        )}
-                      >
-                        <span
+                    {notifications.map((n) => {
+                      const target = notificationTarget(n.targetType, role);
+                      return (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => {
+                            markRead(n.id);
+                            if (target) navigate({ to: target });
+                          }}
                           className={cn(
-                            "mt-1.5 h-2 w-2 shrink-0 rounded-full",
-                            n.tone === "success"
-                              ? "bg-success"
-                              : n.tone === "warning"
-                                ? "bg-gold"
-                                : "bg-primary",
-                            n.read && "opacity-30",
+                            "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60",
+                            !n.read && "bg-primary/5",
+                            target && "cursor-pointer",
                           )}
-                        />
-                        <span className="min-w-0">
-                          <span className="block text-sm font-medium">{n.title}</span>
-                          <span className="block text-xs text-muted-foreground">{n.detail}</span>
-                          <span className="mt-1 block text-[0.7rem] text-muted-foreground">
-                            {n.time}
+                        >
+                          <span
+                            className={cn(
+                              "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+                              n.tone === "success"
+                                ? "bg-success"
+                                : n.tone === "warning"
+                                  ? "bg-gold"
+                                  : "bg-primary",
+                              n.read && "opacity-30",
+                            )}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-medium">{n.title}</span>
+                            <span className="block text-xs text-muted-foreground">{n.detail}</span>
+                            <span className="mt-1 block text-[0.7rem] text-muted-foreground">
+                              {n.time}
+                            </span>
                           </span>
-                        </span>
-                      </button>
-                    ))}
+                          {target && (
+                            <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </ScrollArea>
               </PopoverContent>
@@ -433,7 +452,6 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-
         </header>
 
         {/* Mobile nav */}
@@ -457,12 +475,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
         <main className="flex-1 px-4 py-6 md:px-8 md:py-8">{children}</main>
       </div>
 
-      <AnnouncementDialog
-        open={announceOpen}
-        onOpenChange={setAnnounceOpen}
-        author={meta.user}
-      />
+      <AnnouncementDialog open={announceOpen} onOpenChange={setAnnounceOpen} author={meta.user} />
     </div>
-
   );
 }

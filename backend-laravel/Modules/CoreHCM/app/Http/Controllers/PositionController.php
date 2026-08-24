@@ -4,7 +4,6 @@ namespace Modules\CoreHCM\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Position;
-use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -55,15 +54,6 @@ class PositionController extends Controller
             'filled_count' => 0,
         ]);
 
-        AuditLogger::log(
-            'Position created',
-            'Core HCM',
-            'Info',
-            'position',
-            $position->title,
-            'Created position ' . $position->position_code,
-        );
-
         return response()->json([
             'message' => 'Position created successfully.',
             'data' => new PositionResource($position->load('department', 'salaryGrade')),
@@ -73,15 +63,6 @@ class PositionController extends Controller
     public function update(UpdatePositionRequest $request, Position $position): JsonResponse
     {
         $position->update($request->validated());
-
-        AuditLogger::log(
-            'Position updated',
-            'Core HCM',
-            'Info',
-            'position',
-            $position->title,
-            'Updated position ' . $position->position_code,
-        );
 
         return response()->json([
             'message' => 'Position updated successfully.',
@@ -97,15 +78,6 @@ class PositionController extends Controller
 
         $title = $position->title;
         $position->delete();
-
-        AuditLogger::log(
-            'Position deleted',
-            'Core HCM',
-            'Warning',
-            'position',
-            $title,
-            'Deleted position ' . $title,
-        );
 
         return response()->json(['message' => 'Position deleted successfully.']);
     }

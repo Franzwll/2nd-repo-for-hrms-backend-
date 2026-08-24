@@ -5,7 +5,9 @@ import {
   Building2,
   CheckCircle2,
   DollarSign,
+  Download,
   Eye,
+  FileText,
   GitBranch,
   History,
   Info,
@@ -78,6 +80,7 @@ import {
   type SalaryGrade,
 } from "@/data/hr";
 import { cn } from "@/lib/utils";
+import { exportToCsv, type CsvColumn } from "@/lib/csv-export";
 import { onHcmChanged, notifyHcmChanged } from "@/lib/hcm-sync";
 import { loadRecordDetail } from "@/lib/employeerecords";
 import { requisitionStore, useRequisitions, type Requisition } from "@/data/requisitions";
@@ -1163,6 +1166,29 @@ function EmployeeListManager({
                 <SelectItem value="Promotion">Promotion</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 text-xs"
+              onClick={() => {
+                const timestamp = new Date().toISOString().slice(0, 10);
+                const columns: CsvColumn<HR3Recommendation>[] = [
+                  { header: "Evaluation ID", accessor: (r) => r.id },
+                  { header: "Employee", accessor: (r) => r.employeeName },
+                  { header: "Department", accessor: (r) => r.department },
+                  { header: "Type", accessor: (r) => r.recommendationType },
+                  { header: "Score (%)", accessor: (r) => r.evaluationScore },
+                  { header: "Evaluator", accessor: (r) => r.evaluator },
+                  { header: "Date Submitted", accessor: (r) => r.dateSubmitted },
+                  { header: "Status", accessor: (r) => r.status },
+                  { header: "Comments", accessor: (r) => r.comments },
+                ];
+                exportToCsv(`hr3-recommendations-${timestamp}`, columns, filteredRecs);
+                toast.success(`HR3 recommendations report (${filteredRecs.length} records) downloaded.`);
+              }}
+            >
+              <Download className="h-3.5 w-3.5" /> Generate Report
+            </Button>
           </div>
           <div className="min-w-0">
             <Table>
@@ -1296,6 +1322,31 @@ function EmployeeListManager({
                   <SelectItem value="Terminated">Terminated</SelectItem>
                 </SelectContent>
               </Select>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 gap-1.5 text-xs"
+                onClick={() => {
+                  const timestamp = new Date().toISOString().slice(0, 10);
+                  const columns: CsvColumn<Employee>[] = [
+                    { header: "Employee ID", accessor: (r) => r.id },
+                    { header: "Name", accessor: (r) => r.name },
+                    { header: "Department", accessor: (r) => r.department },
+                    { header: "Position", accessor: (r) => r.position },
+                    { header: "Salary Grade", accessor: (r) => r.salaryGrade },
+                    { header: "Employment Type", accessor: (r) => r.employmentType },
+                    { header: "Date Hired", accessor: (r) => r.dateHired },
+                    { header: "Status", accessor: (r) => r.status },
+                    { header: "Email", accessor: (r) => r.email },
+                    { header: "Phone", accessor: (r) => r.phone },
+                    { header: "Supervisor", accessor: (r) => r.supervisor },
+                  ];
+                  exportToCsv(`employee-roster-${timestamp}`, columns, filteredEmployees);
+                  toast.success(`Employee roster report (${filteredEmployees.length} records) downloaded.`);
+                }}
+              >
+                <Download className="h-4 w-4" /> Generate Report
+              </Button>
             </div>
           </div>
 
@@ -2280,6 +2331,30 @@ function LifecycleLogsViewer() {
                 <SelectItem value="Retirement">Retirement</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-9 gap-1.5 text-xs"
+              onClick={() => {
+                const timestamp = new Date().toISOString().slice(0, 10);
+                const columns: CsvColumn<LifecycleLog>[] = [
+                  { header: "Log ID", accessor: (r) => r.id },
+                  { header: "Timestamp", accessor: (r) => r.timestamp },
+                  { header: "Action Category", accessor: (r) => r.category },
+                  { header: "Employee Name", accessor: (r) => r.employeeName },
+                  { header: "Employee ID", accessor: (r) => r.employeeId },
+                  { header: "Position", accessor: (r) => r.position },
+                  { header: "Department", accessor: (r) => r.department },
+                  { header: "Actor", accessor: (r) => r.actor },
+                  { header: "Actor Role", accessor: (r) => r.actorRole },
+                  { header: "Details", accessor: (r) => r.details },
+                ];
+                exportToCsv(`lifecycle-logs-${timestamp}`, columns, filteredLogs);
+                toast.success(`Lifecycle logs report (${filteredLogs.length} records) downloaded.`);
+              }}
+            >
+              <Download className="h-4 w-4" /> Generate Report
+            </Button>
           </div>
         </div>
 
@@ -2698,6 +2773,25 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                   onChange={(e) => setDeptTableSearch(e.target.value)}
                 />
               </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 gap-1.5 text-xs"
+                onClick={() => {
+                  const timestamp = new Date().toISOString().slice(0, 10);
+                  const columns: CsvColumn<Department>[] = [
+                    { header: "Dept Code", accessor: (r) => r.code },
+                    { header: "Department Name", accessor: (r) => r.name },
+                    { header: "Department Head", accessor: (r) => r.head },
+                    { header: "Positions Count", accessor: (r) => posList.filter((p) => p.department === r.name).length },
+                    { header: "Staff Count", accessor: (r) => getDerivedStaffCount(r.name) },
+                  ];
+                  exportToCsv(`departments-${timestamp}`, columns, filteredDepts);
+                  toast.success(`Departments report (${filteredDepts.length} records) downloaded.`);
+                }}
+              >
+                <Download className="h-4 w-4" /> Generate Report
+              </Button>
               {role === "superadmin" && (
                 <Button
                   size="sm"
@@ -2838,6 +2932,28 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                   ))}
                 </SelectContent>
               </Select>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 gap-1.5 text-xs"
+                onClick={() => {
+                  const timestamp = new Date().toISOString().slice(0, 10);
+                  const columns: CsvColumn<Position>[] = [
+                    { header: "POS ID", accessor: (r) => r.id },
+                    { header: "Job Position Title", accessor: (r) => r.title },
+                    { header: "Department", accessor: (r) => r.department },
+                    { header: "Level", accessor: (r) => r.level },
+                    { header: "Target Headcount", accessor: (r) => r.headcount },
+                    { header: "Filled Staff", accessor: (r) => r.filled },
+                    { header: "Vacancies", accessor: (r) => r.vacancies ?? 0 },
+                    { header: "Salary Grade / Band", accessor: (r) => r.salaryBand },
+                  ];
+                  exportToCsv(`positions-${timestamp}`, columns, filteredPositions);
+                  toast.success(`Positions report (${filteredPositions.length} records) downloaded.`);
+                }}
+              >
+                <Download className="h-4 w-4" /> Generate Report
+              </Button>
               {role === "superadmin" && (
                 <Button
                   size="sm"
@@ -3487,9 +3603,6 @@ function SalaryGradeManager() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" className="h-9 gap-1.5 text-xs" onClick={openAddSg}>
-              <Plus className="h-4 w-4" /> Add Grade
-            </Button>
             <div className="relative min-w-[14rem]">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -3511,6 +3624,30 @@ function SalaryGradeManager() {
                 <SelectItem value="Executive">Executive</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-9 gap-1.5 text-xs"
+              onClick={() => {
+                const timestamp = new Date().toISOString().slice(0, 10);
+                const columns: CsvColumn<SalaryGrade>[] = [
+                  { header: "Grade Code", accessor: (r) => r.code },
+                  { header: "Band Title", accessor: (r) => r.title },
+                  { header: "Job Level", accessor: (r) => r.level },
+                  { header: "Min Salary", accessor: (r) => r.minSalary },
+                  { header: "Max Salary", accessor: (r) => r.maxSalary },
+                  { header: "Currency", accessor: (r) => r.currency },
+                  { header: "Notes", accessor: (r) => r.notes },
+                ];
+                exportToCsv(`salary-grades-${timestamp}`, columns, filteredGrades);
+                toast.success(`Salary grades report (${filteredGrades.length} records) downloaded.`);
+              }}
+            >
+              <Download className="h-4 w-4" /> Generate Report
+            </Button>
+            <Button size="sm" className="h-9 gap-1.5 text-xs" onClick={openAddSg}>
+              <Plus className="h-4 w-4" /> Add Grade
+            </Button>
           </div>
         </div>
       </CardHeader>
@@ -3755,6 +3892,28 @@ function RequisitionManager() {
                 <SelectItem value="Low">Low</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-9 gap-1.5 text-xs"
+              onClick={() => {
+                const timestamp = new Date().toISOString().slice(0, 10);
+                const columns: CsvColumn<Requisition>[] = [
+                  { header: "Req Code", accessor: (r) => r.id },
+                  { header: "Position Title", accessor: (r) => r.position },
+                  { header: "Department", accessor: (r) => r.department },
+                  { header: "Slots Requested", accessor: (r) => r.count },
+                  { header: "Urgency", accessor: (r) => r.urgency },
+                  { header: "Status", accessor: (r) => r.status },
+                  { header: "Date Requested", accessor: (r) => r.requestedAt },
+                  { header: "Justification", accessor: (r) => r.justification },
+                ];
+                exportToCsv(`requisitions-${timestamp}`, columns, filteredReqs);
+                toast.success(`Requisitions report (${filteredReqs.length} records) downloaded.`);
+              }}
+            >
+              <Download className="h-4 w-4" /> Generate Report
+            </Button>
           </div>
         </div>
       </CardHeader>

@@ -24,7 +24,15 @@ class UpdateRolePermissionsRequest extends FormRequest
         return [
             'permissions' => ['required', 'array'],
             'permissions.*.module_name' => ['required', 'string', 'max:100', Rule::in($knownModules)],
-            'permissions.*.permission_level' => ['required', Rule::in(['None', 'Read', 'Write', 'Full', 'View'])],
+            'permissions.*.permission_level' => ['required', Rule::in([
+                'None',
+                'Read',
+                'View',
+                'Write',
+                'Edit',
+                'Approve / Reject Only',
+                'Full',
+            ])],
         ];
     }
 }

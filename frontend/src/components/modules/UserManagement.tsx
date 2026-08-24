@@ -141,6 +141,8 @@ const roleLabels: Record<SystemUser["role"], string> = {
 
 export type PermissionGroup =
   | "Dashboard Analytics"
+  | "Applicant Management"
+  | "Recruitment Management"
   | "Employee Records"
   | "Lifecycle Actions"
   | "Request Queue & ESS"
@@ -151,6 +153,8 @@ export type PermissionLevel = "Full" | "Edit" | "View" | "Delete" | "Approve / R
 
 export const permissionGroups: PermissionGroup[] = [
   "Dashboard Analytics",
+  "Applicant Management",
+  "Recruitment Management",
   "Employee Records",
   "Lifecycle Actions",
   "Request Queue & ESS",
@@ -161,6 +165,8 @@ export const permissionGroups: PermissionGroup[] = [
 export const roleGroupMatrix: Record<SystemUser["role"], Record<PermissionGroup, PermissionLevel>> = {
   "Super Admin": {
     "Dashboard Analytics": "Full",
+    "Applicant Management": "Full",
+    "Recruitment Management": "Full",
     "Employee Records": "Full",
     "Lifecycle Actions": "Full",
     "Request Queue & ESS": "Full",
@@ -169,6 +175,8 @@ export const roleGroupMatrix: Record<SystemUser["role"], Record<PermissionGroup,
   },
   Admin: {
     "Dashboard Analytics": "View",
+    "Applicant Management": "Edit",
+    "Recruitment Management": "Edit",
     "Employee Records": "Edit",
     "Lifecycle Actions": "Edit",
     "Request Queue & ESS": "Approve / Reject Only",
@@ -177,6 +185,8 @@ export const roleGroupMatrix: Record<SystemUser["role"], Record<PermissionGroup,
   },
   Employee: {
     "Dashboard Analytics": "None",
+    "Applicant Management": "None",
+    "Recruitment Management": "None",
     "Employee Records": "View",
     "Lifecycle Actions": "None",
     "Request Queue & ESS": "Edit",
@@ -268,6 +278,8 @@ const permissionLevelTone: Record<PermissionLevel, string> = {
 
 const GROUP_MODULE_MAP: Record<PermissionGroup, string[]> = {
   "Dashboard Analytics": ["Dashboard"],
+  "Applicant Management": ["Applicant Management"],
+  "Recruitment Management": ["Recruitment Management"],
   "Employee Records": ["Employee Records", "Core HCM"],
   "Lifecycle Actions": ["New Hire Onboarding", "Core HCM"],
   "Request Queue & ESS": ["ESS Management", "Employee Records"],
@@ -283,7 +295,12 @@ const groupToBackendLevel = (level: PermissionLevel): string => {
 };
 
 const buildMatrixFromBackend = (
-  roles: { role_id: number; role_name: string; permissions: { module_name: string; permission_level: string }[] }[]
+  roles: {
+    role_id: number;
+    role_name: string;
+    is_protected?: boolean;
+    permissions: { module_name: string; permission_level: string }[];
+  }[]
 ): Record<SystemUserRole, Record<PermissionGroup, PermissionLevel>> => {
   const next: Record<SystemUserRole, Record<PermissionGroup, PermissionLevel>> = JSON.parse(
     JSON.stringify(roleGroupMatrix)
@@ -321,6 +338,7 @@ export function UserManagement() {
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [deptOptions, setDeptOptions] = useState<string[]>(FALLBACK_DEPARTMENTS);
   const [roleIdByName, setRoleIdByName] = useState<Record<string, number>>({});
+  const [roleProtectedByName, setRoleProtectedByName] = useState<Record<string, boolean>>({});
   const [existingPerms, setExistingPerms] = useState<
     Record<number, { module_name: string; permission_level: string }[]>
   >({});
@@ -387,11 +405,14 @@ export function UserManagement() {
       .then(async (rolesRes) => {
         const byName: Record<string, number> = {};
         const perms: Record<number, { module_name: string; permission_level: string }[]> = {};
+        const protectedByName: Record<string, boolean> = {};
         for (const r of rolesRes.data) {
           byName[r.role_name] = r.role_id;
           perms[r.role_id] = r.permissions;
+          protectedByName[r.role_name] = !!r.is_protected;
         }
         setRoleIdByName(byName);
+        setRoleProtectedByName(protectedByName);
         setExistingPerms(perms);
         const built = buildMatrixFromBackend(rolesRes.data);
         setMatrix(built);
@@ -498,6 +519,9 @@ export function UserManagement() {
       for (const roleName of ["Super Admin", "Admin", "Employee"] as const) {
         const roleId = roleIdByName[roleName];
         if (!roleId) continue;
+        // System roles (e.g. Super Admin) have a protected permission matrix
+        // and must not be sent to the backend for update.
+        if (roleProtectedByName[roleName]) continue;
         const merged = new Map<string, string>();
         (existingPerms[roleId] ?? []).forEach((p) => merged.set(p.module_name, p.permission_level));
         for (const group of permissionGroups) {
@@ -878,7 +902,7 @@ export function UserManagement() {
                 <div>
                   <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><ShieldCheck className="h-5 w-5 text-primary" /> Permission Matrix</h2>
                   <p className="text-xs text-muted-foreground">
-                    Role-based access matrix вЂ” click Edit to modify checkbox permissions.
+                    Role-based access matrix — click Edit to modify checkbox permissions.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -951,10 +975,17 @@ export function UserManagement() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(["Super Admin", "Admin", "Employee"] as const).map((role) => (
+                    {(["Super Admin", "Admin", "Employee"] as const).map((role) => {
+                      const isProtected = roleProtectedByName[role] ?? false;
+                      return (
                       <TableRow key={role}>
                         <TableCell className="text-sm font-medium align-top pt-4">
                           {roleLabels[role]}
+                          {isProtected && (
+                            <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                              System
+                            </span>
+                          )}
                         </TableCell>
                         {permissionGroups.map((g) => {
                           const active = isEditingMatrix ? matrixDraft : matrix;
@@ -988,14 +1019,14 @@ export function UserManagement() {
                               <div
                                 className={cn(
                                   "space-y-1.5 rounded-md border border-border bg-card p-2.5 transition-opacity",
-                                  !isEditingMatrix && "opacity-85 pointer-events-none bg-muted/30",
+                                  (!isEditingMatrix || isProtected) && "opacity-85 pointer-events-none bg-muted/30",
                                 )}
                               >
                                 <div className="flex items-center gap-2 text-xs font-normal select-none">
                                   <Checkbox
                                     id={`view-${role}-${g}`}
                                     checked={isView}
-                                    disabled={!isEditingMatrix}
+                                    disabled={!isEditingMatrix || isProtected}
                                     onCheckedChange={(c) => handleToggle("View", !!c)}
                                   />
                                   <Label className="cursor-pointer" htmlFor={`view-${role}-${g}`}>View access</Label>
@@ -1004,7 +1035,7 @@ export function UserManagement() {
                                   <Checkbox
                                     id={`edit-${role}-${g}`}
                                     checked={isEdit}
-                                    disabled={!isEditingMatrix}
+                                    disabled={!isEditingMatrix || isProtected}
                                     onCheckedChange={(c) => handleToggle("Edit", !!c)}
                                   />
                                   <Label className="cursor-pointer" htmlFor={`edit-${role}-${g}`}>Edit access</Label>
@@ -1013,7 +1044,7 @@ export function UserManagement() {
                                   <Checkbox
                                     id={`full-${role}-${g}`}
                                     checked={isFull}
-                                    disabled={!isEditingMatrix}
+                                    disabled={!isEditingMatrix || isProtected}
                                     onCheckedChange={(c) => handleToggle("Full", !!c)}
                                   />
                                   <Label className="cursor-pointer" htmlFor={`full-${role}-${g}`}>Full control</Label>
@@ -1023,13 +1054,14 @@ export function UserManagement() {
                           );
                         })}
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
                 {isEditingMatrix
-                  ? "Checkboxes active вЂ” click Save when finished editing permissions."
+                  ? "Checkboxes active — click Save when finished editing permissions."
                   : "Click the 'Edit matrix' button above to unlock and modify role permission checkboxes."}
               </p>
             </CardContent>

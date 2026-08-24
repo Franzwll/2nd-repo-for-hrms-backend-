@@ -107,9 +107,45 @@ class AccessControlTest extends TestCase
             ->assertJsonPath('map.default_password.password', 'Secret@123');
     }
 
-    public function test_super_admin_role_permissions_cannot_be_modified(): void
+    public function test_super_admin_can_modify_editable_role_permissions(): void
     {
         $token = $this->loginViaOtp();
+
+        // Super Admin can edit an editable role (Employee = role 3), including
+        // turning off edit permission for lifecycle actions (Core HCM).
+        $this->putJson('/api/v1/roles/3/permissions', [
+            'permissions' => [
+                ['module_name' => 'Core HCM', 'permission_level' => 'None'],
+            ],
+        ], $this->authHeaders($token))->assertOk();
+    }
+
+    public function test_protected_role_permissions_cannot_be_modified_by_anyone(): void
+    {
+        $token = $this->loginViaOtp();
+
+        $this->putJson('/api/v1/roles/1/permissions', [
+            'permissions' => [
+                ['module_name' => 'Core HCM', 'permission_level' => 'None'],
+            ],
+        ], $this->authHeaders($token))->assertStatus(403);
+    }
+
+    public function test_non_standard_permission_levels_are_accepted(): void
+    {
+        $token = $this->loginViaOtp();
+
+        $this->putJson('/api/v1/roles/3/permissions', [
+            'permissions' => [
+                ['module_name' => 'Applicant Management', 'permission_level' => 'Edit'],
+                ['module_name' => 'ESS Management', 'permission_level' => 'Approve / Reject Only'],
+            ],
+        ], $this->authHeaders($token))->assertOk();
+    }
+
+    public function test_non_super_admin_cannot_modify_super_admin_role_permissions(): void
+    {
+        $token = $this->roleToken(2);
 
         $this->putJson('/api/v1/roles/1/permissions', [
             'permissions' => [

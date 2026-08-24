@@ -10,6 +10,7 @@ use App\Models\EmployeePositionHistory;
 use App\Models\Hr3Recommendation;
 use App\Models\Position;
 use App\Services\AuditLogger;
+use App\Observers\ActivityObserver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -90,15 +91,6 @@ class EmployeeController extends Controller
             return $employee;
         });
 
-        AuditLogger::log(
-            'Employee created',
-            'Core HCM',
-            'Info',
-            'employee',
-            $employee->employee_code,
-            'Hired ' . $employee->full_name,
-        );
-
         return response()->json([
             'message' => 'Employee created successfully.',
             'data' => new EmployeeResource($employee->load('department', 'position', 'emergencyContacts')),
@@ -137,15 +129,6 @@ class EmployeeController extends Controller
             }
         });
 
-        AuditLogger::log(
-            'Employee updated',
-            'Core HCM',
-            'Info',
-            'employee',
-            $employee->employee_code,
-            'Updated record for ' . $employee->full_name,
-        );
-
         return response()->json([
             'message' => 'Employee updated successfully.',
             'data' => new EmployeeResource($employee->load('department', 'position', 'emergencyContacts')),
@@ -166,15 +149,6 @@ class EmployeeController extends Controller
             $employee->delete();
         });
 
-        AuditLogger::log(
-            'Employee deleted',
-            'Core HCM',
-            'Warning',
-            'employee',
-            $employee->employee_code,
-            'Deleted record for ' . $employee->full_name,
-        );
-
         return response()->json(['message' => 'Employee deleted successfully.']);
     }
 
@@ -189,7 +163,7 @@ class EmployeeController extends Controller
             return $recommendation;
         }
 
-        $employee->update(['employment_type' => 'Regular']);
+        ActivityObserver::withoutLogging(fn () => $employee->update(['employment_type' => 'Regular']));
 
         $this->markRecommendationProcessed($recommendation);
 
@@ -248,11 +222,11 @@ class EmployeeController extends Controller
                 Position::where('position_id', $newPositionId)->increment('filled_count');
             }
 
-            $employee->forceFill([
+            ActivityObserver::withoutLogging(fn () => $employee->forceFill([
                 'position_id' => $newPositionId,
                 'department_id' => $newDepartmentId,
                 'salary_grade_id' => $newSalaryGradeId ?: $employee->salary_grade_id,
-            ])->save();
+            ])->save());
         });
 
         $this->markRecommendationProcessed($recommendation);
@@ -301,10 +275,10 @@ class EmployeeController extends Controller
 
             Position::where('position_id', $employee->position_id)->decrement('filled_count');
 
-            $employee->forceFill([
+            ActivityObserver::withoutLogging(fn () => $employee->forceFill([
                 'status' => $request->string('exit_type'),
                 'supervisor_employee_id' => null,
-            ])->save();
+            ])->save());
         });
 
         AuditLogger::log(

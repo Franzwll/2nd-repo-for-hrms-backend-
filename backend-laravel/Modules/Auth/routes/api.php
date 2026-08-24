@@ -18,6 +18,7 @@ Route::prefix('v1')->group(function () {
 
         // Notifications
         Route::get('notifications', [NotificationController::class, 'index']);
+        Route::post('notifications', [NotificationController::class, 'store']);
         Route::post('notifications/mark-all-read', [NotificationController::class, 'markAllRead']);
         Route::patch('notifications/{id}/read', [NotificationController::class, 'markRead']);
     });

@@ -30,6 +30,8 @@ class NotificationController extends Controller
                     'tone' => $this->mapTone($n->type),
                     'type' => $n->type,
                     'module' => $n->module_name,
+                    'target_type' => $n->target_type,
+                    'target_id' => $n->target_id,
                     'created_at' => $n->created_at,
                 ];
             });
