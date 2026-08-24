@@ -3,26 +3,18 @@ import {
   Clock,
   MapPin,
   CheckCircle2,
-  Coffee,
-  LogOut,
-  LogIn,
   ShieldCheck,
   Building2,
   UserCheck,
-  Calendar,
   AlertCircle,
-  Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
 import { myAttendance } from "@/data/ess";
 import { essApi, type ApiEssEmployee } from "@/lib/api";
 
 export function EssScheduleTab() {
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
-  const [currentStatus, setCurrentStatus] = useState<"clocked_in" | "on_break" | "clocked_out">("clocked_in");
   const [employeeInfo, setEmployeeInfo] = useState<ApiEssEmployee | null>(null);
   const [punchLog, setPunchLog] = useState({
     timeIn: myAttendance.today.timeIn || "07:52 AM",
@@ -75,41 +67,7 @@ export function EssScheduleTab() {
     day: "numeric",
   });
 
-  const handlePunch = async (type: "in" | "break_out" | "break_in" | "out") => {
-    const nowStr = currentTime.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-
-    if (type === "in") {
-      setPunchLog((prev) => ({ ...prev, timeIn: nowStr }));
-      setCurrentStatus("clocked_in");
-      toast.success(`Time In successfully recorded at ${nowStr}`);
-      try {
-        await essApi.clock("clock_in");
-      } catch {
-        // Handled gracefully with fallback
-      }
-    } else if (type === "break_out") {
-      setPunchLog((prev) => ({ ...prev, breakIn: nowStr }));
-      setCurrentStatus("on_break");
-      toast.info(`Break Out (Meal/Rest) recorded at ${nowStr}`);
-    } else if (type === "break_in") {
-      setPunchLog((prev) => ({ ...prev, breakOut: nowStr }));
-      setCurrentStatus("clocked_in");
-      toast.success(`Break In (Resumed Duty) recorded at ${nowStr}`);
-    } else if (type === "out") {
-      setPunchLog((prev) => ({ ...prev, timeOut: nowStr }));
-      setCurrentStatus("clocked_out");
-      toast.success(`Time Out successfully recorded at ${nowStr}. Shift completed.`);
-      try {
-        await essApi.clock("clock_out");
-      } catch {
-        // Handled gracefully with fallback
-      }
-    }
-  };
+  const currentStatus = punchLog.timeOut !== "—" ? "clocked_out" : "clocked_in";
 
   return (
     <div className="space-y-6">
@@ -171,44 +129,7 @@ export function EssScheduleTab() {
                 </div>
               </div>
 
-              {/* Action Buttons: Time In, Break Out, Break In, Time Out */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <Button
-                  onClick={() => handlePunch("in")}
-                  variant={currentStatus === "clocked_in" ? "default" : "outline"}
-                  className="h-16 flex flex-col items-center justify-center gap-1 text-xs shadow-xs"
-                >
-                  <LogIn className="h-5 w-5 text-emerald-500" />
-                  <span className="font-semibold">Time In</span>
-                </Button>
 
-                <Button
-                  onClick={() => handlePunch("break_out")}
-                  variant={currentStatus === "on_break" ? "default" : "outline"}
-                  className="h-16 flex flex-col items-center justify-center gap-1 text-xs shadow-xs"
-                >
-                  <Coffee className="h-5 w-5 text-amber-500" />
-                  <span className="font-semibold">Break Out</span>
-                </Button>
-
-                <Button
-                  onClick={() => handlePunch("break_in")}
-                  variant="outline"
-                  className="h-16 flex flex-col items-center justify-center gap-1 text-xs shadow-xs"
-                >
-                  <Sparkles className="h-5 w-5 text-blue-500" />
-                  <span className="font-semibold">Break In</span>
-                </Button>
-
-                <Button
-                  onClick={() => handlePunch("out")}
-                  variant={currentStatus === "clocked_out" ? "secondary" : "outline"}
-                  className="h-16 flex flex-col items-center justify-center gap-1 text-xs shadow-xs hover:border-rose-500 hover:text-rose-600"
-                >
-                  <LogOut className="h-5 w-5 text-rose-500" />
-                  <span className="font-semibold">Time Out</span>
-                </Button>
-              </div>
 
               {/* Today's Punch Summary Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
