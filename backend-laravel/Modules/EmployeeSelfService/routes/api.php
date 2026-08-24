@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\EmployeeSelfService\Http\Controllers\EssAdminController;
 use Modules\EmployeeSelfService\Http\Controllers\EssPortalController;
 
-Route::middleware(['auth:sanctum'])->prefix('v1/ess')->group(function () {
+Route::middleware(['auth:sanctum', 'permission:ESS Management'])->prefix('v1/ess')->group(function () {
     // Employee Self-Service (Portal) Endpoints
     Route::get('my-overview', [EssPortalController::class, 'getOverview']);
     Route::get('my-schedule', [EssPortalController::class, 'getSchedule']);
@@ -23,11 +23,13 @@ Route::middleware(['auth:sanctum'])->prefix('v1/ess')->group(function () {
     Route::post('requests', [EssPortalController::class, 'createRequest']);
     Route::post('clock', [EssPortalController::class, 'clock']);
 
-    // Admin & Super Admin Management Endpoints
-    Route::get('admin/requests', [EssAdminController::class, 'getRequests']);
-    Route::patch('admin/requests/{id}/status', [EssAdminController::class, 'updateStatus']);
-    Route::post('admin/requests/behalf', [EssAdminController::class, 'fileOnBehalf']);
-    Route::get('admin/categories', [EssAdminController::class, 'getCategories']);
-    Route::put('admin/categories/{id}/toggle', [EssAdminController::class, 'toggleCategory']);
-    Route::get('admin/audit-logs', [EssAdminController::class, 'getAuditLogs']);
+    // Admin & Super Admin Management Endpoints (requires write-level access)
+    Route::middleware('permission:ESS Management:Edit')->group(function () {
+        Route::get('admin/requests', [EssAdminController::class, 'getRequests']);
+        Route::patch('admin/requests/{id}/status', [EssAdminController::class, 'updateStatus']);
+        Route::post('admin/requests/behalf', [EssAdminController::class, 'fileOnBehalf']);
+        Route::get('admin/categories', [EssAdminController::class, 'getCategories']);
+        Route::put('admin/categories/{id}/toggle', [EssAdminController::class, 'toggleCategory']);
+        Route::get('admin/audit-logs', [EssAdminController::class, 'getAuditLogs']);
+    });
 });

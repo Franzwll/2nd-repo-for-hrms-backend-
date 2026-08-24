@@ -39,15 +39,6 @@ class RoleController extends Controller
     {
         $role = SystemRole::create($request->validated());
 
-        AuditLogger::log(
-            'Role created',
-            'User Management',
-            'Info',
-            'role',
-            $role->role_name,
-            'Created role ' . $role->role_name,
-        );
-
         return response()->json([
             'message' => 'Role created successfully.',
             'data' => new RoleResource($role->load('permissions')),
@@ -68,15 +59,6 @@ class RoleController extends Controller
     {
         $role->update($request->validated());
 
-        AuditLogger::log(
-            'Role updated',
-            'User Management',
-            'Info',
-            'role',
-            $role->role_name,
-            'Updated role ' . $role->role_name,
-        );
-
         return response()->json([
             'message' => 'Role updated successfully.',
             'data' => new RoleResource($role->load('permissions')),
@@ -92,15 +74,6 @@ class RoleController extends Controller
         $name = $role->role_name;
         $role->permissions()->delete();
         $role->delete();
-
-        AuditLogger::log(
-            'Role deleted',
-            'User Management',
-            'Warning',
-            'role',
-            $name,
-            'Deleted role ' . $name,
-        );
 
         return response()->json(['message' => 'Role deleted successfully.']);
     }
@@ -125,6 +98,21 @@ class RoleController extends Controller
 
     public function updatePermissions(UpdateRolePermissionsRequest $request, SystemRole $role): JsonResponse
     {
+        $isSuperAdmin = $request->user()->isSuperAdmin();
+
+        // System roles (e.g. Super Admin) have a protected permission matrix so
+        // they cannot be accidentally locked out, even by a Super Admin.
+        if ($role->is_protected) {
+            return response()->json([
+                'message' => "The {$role->role_name} role is a system role and its permissions are protected.",
+            ], 403);
+        }
+
+        // Non-super-admins cannot modify their own role's permissions
+        if (! $isSuperAdmin && $role->role_id === $request->user()->role_id) {
+            return response()->json(['message' => 'You cannot change the permissions of your own role.'], 403);
+        }
+
         $permissions = $request->input('permissions');
 
         DB::transaction(function () use ($role, $permissions) {

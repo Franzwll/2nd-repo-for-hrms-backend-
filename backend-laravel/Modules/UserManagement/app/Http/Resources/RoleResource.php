@@ -15,6 +15,8 @@ class RoleResource extends JsonResource
             'role_id' => $this->role_id,
             'role_name' => $this->role_name,
             'description' => $this->description,
+            'is_super_admin' => $this->is_super_admin,
+            'is_protected' => $this->is_protected,
             'user_count' => $this->whenCounted('users'),
             'permissions' => $this->permissions->map(fn ($p) => [
                 'module_name' => $p->module_name,

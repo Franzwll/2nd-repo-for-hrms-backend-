@@ -6,6 +6,7 @@ import { AnnouncementsModal } from "@/components/portal/AnnouncementsModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { isVisibleTo, usePortalState } from "@/components/portal/portal-state";
 import { getUser } from "@/lib/auth";
 import type { Role } from "@/lib/nav";

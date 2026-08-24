@@ -4,7 +4,6 @@ namespace Modules\Landing\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Announcement;
-use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Landing\Http\Requests\StoreAnnouncementRequest;
@@ -40,15 +39,6 @@ class AnnouncementController extends Controller
             'status' => $request->string('status', 'published'),
         ]);
 
-        AuditLogger::log(
-            'Announcement created',
-            'Announcements',
-            'Info',
-            'announcement',
-            $announcement->announcement_id,
-            "Published: {$announcement->title}",
-        );
-
         return response()->json([
             'message' => 'Announcement posted.',
             'data' => new AnnouncementResource($announcement->load('createdBy')),
@@ -62,15 +52,6 @@ class AnnouncementController extends Controller
             'published_date' => $request->date('published_date', 'Y-m-d') ?? $announcement->published_date,
         ]);
 
-        AuditLogger::log(
-            'Announcement updated',
-            'Announcements',
-            'Info',
-            'announcement',
-            $announcement->announcement_id,
-            "Updated: {$announcement->title}",
-        );
-
         return response()->json([
             'message' => 'Announcement updated.',
             'data' => new AnnouncementResource($announcement->load('createdBy')),
@@ -80,15 +61,6 @@ class AnnouncementController extends Controller
     public function destroy(Announcement $announcement): JsonResponse
     {
         $announcement->delete();
-
-        AuditLogger::log(
-            'Announcement deleted',
-            'Announcements',
-            'Warning',
-            'announcement',
-            $announcement->announcement_id,
-            "Deleted: {$announcement->title}",
-        );
 
         return response()->json(['message' => 'Announcement deleted.']);
     }

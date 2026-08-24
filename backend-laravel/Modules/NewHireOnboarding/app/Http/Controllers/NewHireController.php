@@ -3,9 +3,12 @@
 namespace Modules\NewHireOnboarding\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Mail\SendPortalCredentialsMail;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Modules\NewHireOnboarding\Http\Requests\StoreNewHireRequest;
 use Modules\NewHireOnboarding\Http\Requests\UpdateNewHireRequest;
 use Modules\NewHireOnboarding\Http\Resources\NewHireResource;
@@ -22,9 +25,9 @@ class NewHireController extends Controller
 
     /**
      * Creates (or reuses) a system_users portal account for the new hire so
-     * they can log into the Employee portal. The account starts with the
-     * default password stored in system_settings.default_password (falls back
-     * to the shipped default) and is linked to the hire's employee record.
+     * they can log into the Employee portal. When an administrator has not
+     * configured a shared default password, a random one-time password is
+     * generated and emailed to the hire.
      */
     private function ensurePortalAccount(NewHire $newHire): ?SystemUser
     {
@@ -41,7 +44,7 @@ class NewHireController extends Controller
         $defaultPassword = SystemSetting::getValue('default_password', []);
         $password = is_array($defaultPassword) && isset($defaultPassword['password'])
             ? (string) $defaultPassword['password']
-            : 'Oxford@2026';
+            : Str::password(12, symbols: false);
 
         // Unique username derived from the email's local part
         $base = strtolower(preg_replace('/[^a-z0-9._-]/i', '', explode('@', $email)[0] ?? 'user'));
@@ -51,7 +54,7 @@ class NewHireController extends Controller
             $username = $base . $suffix++;
         }
 
-        return SystemUser::create([
+        $user = SystemUser::create([
             'username'        => $username,
             'email'           => $email,
             'password_hash'   => Hash::make($password),
@@ -61,6 +64,17 @@ class NewHireController extends Controller
             'role_id'         => 3, // Employee portal role
             'status'          => 'Active',
         ]);
+
+        try {
+            Mail::to($email)->send(new SendPortalCredentialsMail(
+                $password,
+                $user->full_name ?: $user->username,
+            ));
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $user;
     }
 
     /* ------------------------------------------------------------------ */

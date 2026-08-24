@@ -651,10 +651,10 @@ INSERT INTO `hr3_recommendations` (`recommendation_id`, `employee_id`, `recommen
 -- ---------------------------------------------------------------------------
 
 -- system_roles (ids 1-3)
-INSERT INTO `system_roles` (`role_id`, `role_name`, `description`) VALUES
-(1, 'Super Admin', 'Full system access across all modules and settings'),
-(2, 'Admin', 'HR admin: recruitment, onboarding, employee records, ESS approval'),
-(3, 'Employee', 'Self-service portal access for employees');
+INSERT INTO `system_roles` (`role_id`, `role_name`, `description`, `is_super_admin`, `is_protected`) VALUES
+(1, 'Super Admin', 'Full system access across all modules and settings', 1, 1),
+(2, 'Admin', 'HR admin: recruitment, onboarding, employee records, ESS approval', 0, 0),
+(3, 'Employee', 'Self-service portal access for employees', 0, 0);
 
 -- role_permissions (30 rows = 3 roles x 10 modules, from users.ts defaultMatrix)
 INSERT INTO `role_permissions` (`role_id`, `module_name`, `permission_level`) VALUES
