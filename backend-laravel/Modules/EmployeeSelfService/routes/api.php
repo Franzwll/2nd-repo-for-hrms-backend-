@@ -23,13 +23,15 @@ Route::middleware(['auth:sanctum', 'permission:ESS Management'])->prefix('v1/ess
     Route::post('requests', [EssPortalController::class, 'createRequest']);
     Route::post('clock', [EssPortalController::class, 'clock']);
 
-    // Admin & Super Admin Management Endpoints (requires write-level access)
+    // Admin & Super Admin Read Endpoints (View access)
+    Route::get('admin/requests', [EssAdminController::class, 'getRequests']);
+    Route::get('admin/categories', [EssAdminController::class, 'getCategories']);
+    Route::get('admin/audit-logs', [EssAdminController::class, 'getAuditLogs']);
+
+    // Admin & Super Admin Action Endpoints (requires edit-level access)
     Route::middleware('permission:ESS Management:Edit')->group(function () {
-        Route::get('admin/requests', [EssAdminController::class, 'getRequests']);
         Route::patch('admin/requests/{id}/status', [EssAdminController::class, 'updateStatus']);
         Route::post('admin/requests/behalf', [EssAdminController::class, 'fileOnBehalf']);
-        Route::get('admin/categories', [EssAdminController::class, 'getCategories']);
         Route::put('admin/categories/{id}/toggle', [EssAdminController::class, 'toggleCategory']);
-        Route::get('admin/audit-logs', [EssAdminController::class, 'getAuditLogs']);
     });
 });

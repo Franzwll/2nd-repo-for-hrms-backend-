@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +35,7 @@ import type { Role } from "@/lib/nav";
 interface AnnouncementsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialSelectedId?: string | null;
   role: Role;
 }
 
@@ -43,6 +44,7 @@ const ITEMS_PER_PAGE = 4;
 export function AnnouncementsModal({
   open,
   onOpenChange,
+  initialSelectedId,
   role,
 }: AnnouncementsModalProps) {
   const { announcements, removeAnnouncement } = usePortalState();
@@ -52,6 +54,7 @@ export function AnnouncementsModal({
   const [selectedAudience, setSelectedAudience] = useState<string>("All");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [currentPage, setCurrentPage] = useState(1);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   // 1. Role visibility filter
   const visibleToRole = useMemo(() => {
@@ -62,12 +65,16 @@ export function AnnouncementsModal({
   const filtered = useMemo(() => {
     return visibleToRole.filter((a) => {
       const matchSearch =
+        !search.trim() ||
         a.title.toLowerCase().includes(search.toLowerCase()) ||
         a.body.toLowerCase().includes(search.toLowerCase()) ||
         a.author.toLowerCase().includes(search.toLowerCase());
 
+      // "All" audience announcements are visible to every audience filter
       const matchAudience =
-        selectedAudience === "All" || a.audience === selectedAudience;
+        selectedAudience === "All" ||
+        a.audience === "All" ||
+        a.audience.toLowerCase() === selectedAudience.toLowerCase();
 
       return matchSearch && matchAudience;
     }).sort((a, b) => {
@@ -77,6 +84,20 @@ export function AnnouncementsModal({
       return (a.id > b.id ? 1 : -1);
     });
   }, [visibleToRole, search, selectedAudience, sortOrder]);
+
+  // Navigate to the page containing the selected announcement on open
+  useEffect(() => {
+    if (open && initialSelectedId) {
+      setHighlightedId(initialSelectedId);
+      const index = filtered.findIndex((item) => item.id === initialSelectedId);
+      if (index !== -1) {
+        const targetPage = Math.floor(index / ITEMS_PER_PAGE) + 1;
+        setCurrentPage(targetPage);
+      }
+    } else if (!open) {
+      setHighlightedId(null);
+    }
+  }, [open, initialSelectedId, filtered]);
 
   // 3. Pagination calculations
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
@@ -196,59 +217,73 @@ export function AnnouncementsModal({
               )}
             </div>
           ) : (
-            paginatedItems.map((a) => (
-              <div
-                key={a.id}
-                className="rounded-2xl border border-border/80 bg-card p-4 sm:p-5 shadow-xs hover:border-primary/40 hover:bg-muted/10 transition-all space-y-2.5 group"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1 min-w-0">
-                    <h3 className="font-display text-base font-bold text-foreground leading-snug group-hover:text-primary transition-colors">
-                      {a.title}
-                    </h3>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1 font-medium text-foreground">
-                        <User className="h-3.5 w-3.5 text-primary" /> {a.author}
-                      </span>
-                      <span>·</span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3.5 w-3.5" /> {a.createdAt}
-                      </span>
+            paginatedItems.map((a) => {
+              const isHighlighted = highlightedId === a.id;
+              return (
+                <div
+                  key={a.id}
+                  className={`rounded-2xl border p-4 sm:p-5 shadow-xs transition-all space-y-2.5 group ${
+                    isHighlighted
+                      ? "border-primary ring-2 ring-primary/30 bg-primary/5 shadow-md"
+                      : "border-border/80 bg-card hover:border-primary/40 hover:bg-muted/10"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-display text-base font-bold text-foreground leading-snug group-hover:text-primary transition-colors">
+                          {a.title}
+                        </h3>
+                        {isHighlighted && (
+                          <Badge variant="outline" className="bg-primary text-primary-foreground text-[10px] px-1.5 py-0">
+                            Selected
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1 font-medium text-foreground">
+                          <User className="h-3.5 w-3.5 text-primary" /> {a.author}
+                        </span>
+                        <span>·</span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3.5 w-3.5" /> {a.createdAt}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] font-semibold px-2 py-0.5 ${
+                          a.audience === "All"
+                            ? "bg-primary/10 text-primary border-primary/20"
+                            : a.audience === "Employee"
+                            ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                            : "bg-purple-500/10 text-purple-600 border-purple-500/30"
+                        }`}
+                      >
+                        {a.audience}
+                      </Badge>
+                      {canManage && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          aria-label={`Remove announcement ${a.title}`}
+                          onClick={() => removeAnnouncement(a.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] font-semibold px-2 py-0.5 ${
-                        a.audience === "All"
-                          ? "bg-primary/10 text-primary border-primary/20"
-                          : a.audience === "Employee"
-                          ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
-                          : "bg-purple-500/10 text-purple-600 border-purple-500/30"
-                      }`}
-                    >
-                      {a.audience}
-                    </Badge>
-                    {canManage && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                        aria-label={`Remove announcement ${a.title}`}
-                        onClick={() => removeAnnouncement(a.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
+                  <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed whitespace-pre-line border-t border-border/40 pt-2.5">
+                    {a.body}
+                  </p>
                 </div>
-
-                <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed whitespace-pre-line border-t border-border/40 pt-2.5">
-                  {a.body}
-                </p>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 

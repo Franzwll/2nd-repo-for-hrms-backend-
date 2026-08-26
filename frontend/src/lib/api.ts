@@ -284,6 +284,21 @@ export const applicantsApi = {
   delete: (id: number | string) => request<{ message: string }>(`/applicants/${id}`, { method: 'DELETE' }),
   hire: (id: number | string) => request<ApiApplicant>(`/applicants/${id}/hire`, { method: 'POST' }),
   stats: () => request<any>('/applicants/stats'),
+  extractResume: (formData: FormData) =>
+    request<{
+      success: boolean;
+      processing_status?: string | null;
+      personal_information?: {
+        name?: string | null;
+        email?: string | null;
+        phone?: string | null;
+        address?: string | null;
+      };
+      error_message?: string;
+    }>('/applicants/extract-resume', {
+      method: 'POST',
+      body: formData,
+    }),
   createAssessment: (applicantId: number | string, data: Record<string, any>) =>
     request<ApiAssessment>(`/applicants/${applicantId}/assessments`, {
       method: 'POST',

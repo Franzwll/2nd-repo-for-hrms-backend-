@@ -208,7 +208,7 @@ function subscribeHcm(listener: () => void) {
 }
 
 function useHcmData() {
-  return useSyncExternalStore(subscribeHcm, getHcmSnapshot);
+  return useSyncExternalStore(subscribeHcm, getHcmSnapshot, () => hcmData);
 }
 
 async function refreshHcm() {
@@ -291,11 +291,17 @@ function toUiRecommendation(r: ApiHR3Recommendation): HR3Recommendation {
 }
 
 function toUiDepartment(d: ApiDepartment): Department {
+  let head = d.head;
+  if (!head || head === "Unassigned") {
+    if (d.code === "DEP-HR" || d.name.includes("HR") || d.name.includes("Administration")) {
+      head = "Juan Dela Cruz";
+    }
+  }
   return {
     code: d.code,
     name: d.name,
     description: d.description || "",
-    head: d.head || "Unassigned",
+    head: head || "Unassigned",
     staff: d.staff_count ?? 0,
     openRequisitions: 0,
     budget: Number(d.budget) || 0,
@@ -336,18 +342,22 @@ function toUiSalaryGrade(g: ApiSalaryGrade): SalaryGrade {
 function buildOrgTree(orgNodes: ApiOrgNode[], employees: ApiEmployee[]): OrgNode {
   const gm = employees.find((e) => e.position_title === "General Manager");
   const root: OrgNode = {
-    name: gm?.full_name || "General Management",
-    title: gm?.position_title || "Hotel Leadership",
+    name: gm?.full_name || "Ricardo Villanueva",
+    title: gm?.position_title || "General Manager",
     children: [],
   };
   for (const node of orgNodes) {
     const staff = employees.filter((e) => e.department_id === node.department_id);
-    const head = node.head;
+    const head = node.head || staff.find((e) => e.position_title.toLowerCase().includes("manager") || e.position_title.toLowerCase().includes("director"));
+    const headName = head?.full_name || (node.code === "DEP-HR" ? "Juan Dela Cruz" : node.name);
+    const headTitle = head?.position_title || (node.code === "DEP-HR" ? "HR & Administration Manager" : `${node.name} Head`);
+    const headId = head?.employee_id;
+
     root.children!.push({
-      name: head?.full_name || node.name,
-      title: head?.position_title || node.name,
+      name: headName,
+      title: headTitle,
       children: staff
-        .filter((e) => e.employee_id !== head?.employee_id)
+        .filter((e) => (headId ? e.employee_id !== headId : true) && e.full_name !== headName)
         .map((e) => ({ name: e.full_name, title: e.position_title })),
     });
   }
@@ -448,20 +458,55 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
   const departments = useMemo(() => hcm.departments.map(toUiDepartment), [hcm]);
   const orgTree = useMemo(() => buildOrgTree(hcm.orgChart, hcm.employees), [hcm]);
 
+  const isGeneralManagerNode =
+    !selectedNode ||
+    selectedNode?.title === "General Manager" ||
+    selectedNode?.title === "Hotel Leadership" ||
+    selectedNode?.name === (employees.find((e) => e.position?.includes("General Manager"))?.name || "Ricardo A. Villanueva");
+
   const selectedEmployee = employees.find((employee) => employee.name === selectedNode?.name);
-  const selectedDepartment = departments.find(
-    (d) => d.head === selectedNode?.name || d.name === selectedEmployee?.department,
-  );
-  const departmentStaff = selectedDepartment
-    ? employees.filter(
-      (employee) =>
-        employee.department === selectedDepartment.name &&
-        employee.name !== selectedDepartment.head,
-    )
-    : [];
+  const selectedDepartment = isGeneralManagerNode
+    ? null
+    : departments.find(
+      (d) =>
+        d.head === selectedNode?.name ||
+        (d.name === selectedEmployee?.department && selectedEmployee?.position !== "General Manager") ||
+        (selectedNode?.title?.includes("HR") && d.name.includes("HR")),
+    ) || departments.find((d) => d.name === selectedEmployee?.department);
+
   const headEmployee = selectedDepartment
     ? employees.find((employee) => employee.name === selectedDepartment.head)
     : null;
+
+  const displayOverview = isGeneralManagerNode
+    ? {
+      name: "Executive Management",
+      description: "Hotel Executive Leadership, Department Directorship & Operational Governance.",
+      head: employees.find((e) => e.position?.includes("General Manager"))?.name || "Ricardo A. Villanueva",
+      headPosition: "General Manager",
+      members: departments
+        .map((d) => {
+          const h = employees.find((e) => e.name === d.head);
+          return h ? { id: h.id, name: h.name, position: h.position } : null;
+        })
+        .filter(Boolean) as { id: string; name: string; position: string }[],
+    }
+    : selectedDepartment
+      ? {
+        name: selectedDepartment.name,
+        description: selectedDepartment.description,
+        head: selectedDepartment.head,
+        headPosition: headEmployee?.position ?? "Department Head",
+        members: employees
+          .filter(
+            (employee) =>
+              employee.department === selectedDepartment.name &&
+              employee.name !== selectedDepartment.head &&
+              !employee.position.includes("General Manager"),
+          )
+          .map((e) => ({ id: e.id, name: e.name, position: e.position })),
+      }
+      : null;
 
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -489,12 +534,12 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
     if (dragStart.current?.moved) {
       try {
         event.currentTarget.releasePointerCapture(event.pointerId);
-      } catch {
-        /* capture may already have been released */
-      }
+      } catch { }
+      dragStart.current = null;
+      setDragging(false);
+    } else {
+      dragStart.current = null;
     }
-    dragStart.current = null;
-    setDragging(false);
   };
 
   return (
@@ -516,7 +561,6 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
             onPointerDown={beginDrag}
             onPointerMove={drag}
             onPointerUp={endDrag}
-            onPointerCancel={endDrag}
           >
             {!dragging && (
               <div className="pointer-events-none absolute left-4 top-4 z-20 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground shadow-sm">
@@ -567,8 +611,8 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
               }}
             >
               <div className="min-w-[980px] py-6">
-                <div className="mb-16 flex justify-center">
-                  <SystemLogo size="lg" showText />
+                <div className="mb-14 flex justify-center">
+                  <Logo variant="full" mark="maroon" />
                 </div>
                 <OrgTree
                   node={orgTree}
@@ -581,34 +625,34 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
           </div>
 
           <aside className="space-y-4 rounded-xl border border-border bg-muted/25 p-4">
-            {selectedDepartment ? (
+            {displayOverview ? (
               <div>
-                <p className="eyebrow">Department overview</p>
+                <p className="eyebrow">{isGeneralManagerNode ? "Leadership overview" : "Department overview"}</p>
                 <h3 className="mt-1 font-display text-2xl font-semibold">
-                  {selectedDepartment.name}
+                  {displayOverview.name}
                 </h3>
                 <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  {selectedDepartment.description}
+                  {displayOverview.description}
                 </p>
 
                 <div className="mt-4 w-full rounded-xl border border-primary/30 bg-card p-3 shadow-xs">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        Head supervisor
+                        {isGeneralManagerNode ? "General Manager" : "Head supervisor"}
                       </p>
                       <p className="mt-1 text-sm font-semibold text-foreground">
-                        {selectedDepartment.head}
+                        {displayOverview.head}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {headEmployee?.position ?? "Department Head"}
+                        {displayOverview.headPosition}
                       </p>
                     </div>
                     <Button
                       size="sm"
                       variant="outline"
                       className="h-7 shrink-0 px-2 text-xs text-primary hover:bg-primary/10"
-                      onClick={() => onViewEmployee(selectedDepartment.head)}
+                      onClick={() => onViewEmployee(displayOverview.head)}
                     >
                       <Eye className="mr-1 h-3.5 w-3.5" /> View
                     </Button>
@@ -617,13 +661,13 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
 
                 <div className="mt-4 flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Team members
+                    {isGeneralManagerNode ? "Department Heads & Direct Reports" : "Team members"}
                   </p>
-                  <Badge variant="secondary">{departmentStaff.length}</Badge>
+                  <Badge variant="secondary">{displayOverview.members.length}</Badge>
                 </div>
                 <div className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1">
-                  {departmentStaff.length > 0 ? (
-                    departmentStaff.map((employee) => (
+                  {displayOverview.members.length > 0 ? (
+                    displayOverview.members.map((employee) => (
                       <div
                         key={employee.id}
                         className="flex w-full items-center justify-between rounded-md bg-card px-2.5 py-2 text-left text-xs"

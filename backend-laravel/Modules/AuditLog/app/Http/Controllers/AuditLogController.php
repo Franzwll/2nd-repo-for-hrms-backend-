@@ -22,14 +22,22 @@ class AuditLogController extends Controller
                 ], 403);
             }
         } else {
-            if (! $user || ! $user->hasModuleAccess('Audit Logs')) {
-                return response()->json([
-                    'message' => 'Access denied: you do not have permission to access the Audit Logs module.',
-                ], 403);
+            if (! $user || (! $user->hasModuleAccess('Audit Logs') && $user->role?->role_name !== 'Super Admin')) {
+                $accessibleModules = $user->role ? $user->role->permissions()->pluck('module_name')->toArray() : [];
+                if (empty($accessibleModules)) {
+                    return response()->json([
+                        'message' => 'Access denied: you do not have permission to access the Audit Logs module.',
+                    ], 403);
+                }
             }
         }
 
         $query = AuditLog::query()->with('user');
+
+        if (! $user->hasModuleAccess('Audit Logs') && $user->role?->role_name !== 'Super Admin' && ! $request->filled('module')) {
+            $accessibleModules = $user->role ? $user->role->permissions()->pluck('module_name')->toArray() : [];
+            $query->whereIn('module_name', $accessibleModules);
+        }
 
         if ($request->filled('module')) {
             $rawModule = $request->string('module')->value();

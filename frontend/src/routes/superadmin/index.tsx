@@ -100,7 +100,7 @@ const formatDateTime = (iso: string | null) => {
   });
 };
 
-export function SuperAdminDashboard() {
+function SuperAdminDashboard() {
   const [stats, setStats] = useState<ApiDashboardStats | null>(null);
   const [period, setPeriod] = useState<"6M" | "YTD">("6M");
 

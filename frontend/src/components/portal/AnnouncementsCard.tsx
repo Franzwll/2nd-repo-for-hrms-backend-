@@ -16,9 +16,15 @@ export function AnnouncementsCard({ role }: { role: Role }) {
   const canManage = role === "superadmin";
   const [publishOpen, setPublishOpen] = useState(false);
   const [viewAllOpen, setViewAllOpen] = useState(false);
+  const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<string | null>(null);
 
   const visible = announcements.filter((a) => isVisibleTo(a.audience, role));
   const previewItems = visible.slice(0, 3);
+
+  const handleOpenAnnouncement = (id: string) => {
+    setSelectedAnnouncementId(id);
+    setViewAllOpen(true);
+  };
 
   return (
     <Card className="border-border/70">
@@ -42,18 +48,6 @@ export function AnnouncementsCard({ role }: { role: Role }) {
           </div>
 
           <div className="flex items-center gap-2">
-            {visible.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0 gap-1 font-semibold text-xs h-8 border-primary/30 hover:bg-primary/5 text-primary"
-                onClick={() => setViewAllOpen(true)}
-              >
-                <span>View All</span>
-                <ArrowUpRight className="h-3.5 w-3.5" />
-              </Button>
-            )}
-
             {canManage && (
               <Button
                 size="sm"
@@ -77,7 +71,7 @@ export function AnnouncementsCard({ role }: { role: Role }) {
           {previewItems.map((a) => (
             <div
               key={a.id}
-              onClick={() => setViewAllOpen(true)}
+              onClick={() => handleOpenAnnouncement(a.id)}
               className="rounded-xl border border-border/70 bg-muted/20 p-4 hover:border-primary/40 hover:bg-muted/40 transition-all cursor-pointer group shadow-2xs"
             >
               <div className="flex items-start gap-2">
@@ -118,8 +112,11 @@ export function AnnouncementsCard({ role }: { role: Role }) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setViewAllOpen(true)}
-              className="w-full text-xs text-primary font-semibold hover:bg-primary/5 mt-2"
+              onClick={() => {
+                setSelectedAnnouncementId(null);
+                setViewAllOpen(true);
+              }}
+              className="w-full text-xs text-primary font-semibold hover:bg-primary/5 mt-2 cursor-pointer"
             >
               View all {visible.length} announcements →
             </Button>
@@ -138,7 +135,11 @@ export function AnnouncementsCard({ role }: { role: Role }) {
       {/* View All & Details Modal with Search, Filter & Pagination */}
       <AnnouncementsModal
         open={viewAllOpen}
-        onOpenChange={setViewAllOpen}
+        onOpenChange={(isOpen) => {
+          setViewAllOpen(isOpen);
+          if (!isOpen) setSelectedAnnouncementId(null);
+        }}
+        initialSelectedId={selectedAnnouncementId}
         role={role}
       />
     </Card>

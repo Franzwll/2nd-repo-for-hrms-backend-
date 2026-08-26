@@ -467,11 +467,14 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                   className="flex items-center gap-2 rounded-full border border-border bg-background py-1 pl-1 pr-3 transition-colors hover:bg-muted"
                 >
                   <Avatar className="h-7 w-7">
-                    <AvatarFallback className="bg-primary text-[0.7rem] text-primary-foreground font-semibold">
+                    <AvatarFallback
+                      suppressHydrationWarning
+                      className="bg-primary text-[0.7rem] text-primary-foreground font-semibold"
+                    >
                       {getInitials(displayName) || meta.initials}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="hidden text-sm sm:inline">
+                  <span suppressHydrationWarning className="hidden text-sm sm:inline">
                     Welcome, <span className="font-medium">{displayName.split(" ")[0]}</span>
                   </span>
                   <ChevronDown className="hidden h-4 w-4 text-muted-foreground sm:inline" />

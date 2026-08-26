@@ -298,7 +298,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   useEffect(() => {
     let cancelled = false;
     auditLogApi
-      .list({ per_page: 200 })
+      .list({ per_page: 200, module: "Employee Records" })
       .then((res) => {
         if (!cancelled) setRecordLogs((res.data ?? []).map(mapAuditToRecordLog));
       })
@@ -351,6 +351,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   } | null>(null);
 
   const profile = list.find((e) => e.id === profileId) ?? null;
+  useRecordDetail(profileId);
 
   const filtered = list.filter((e) => {
     const archived = archivedIds.includes(e.id);

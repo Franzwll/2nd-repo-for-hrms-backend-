@@ -197,13 +197,8 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   const loadRequests = async () => {
     try {
       setLoading(true);
-      const res = await essApi.adminRequests({
-        department: dept !== "all" ? dept : undefined,
-        status: status !== "all" ? status : undefined,
-        category: category !== "all" ? category : undefined,
-        search: search || undefined,
-      });
-      if (res?.requests) {
+      const res = await essApi.adminRequests();
+      if (res?.requests && res.requests.length > 0) {
         setRows(
           res.requests.map((r: ApiEssRequestItem) => ({
             id: r.id,
@@ -245,13 +240,20 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   useEffect(() => {
     loadRequests();
     loadAuditLogs();
-  }, [dept, status, category]);
+  }, []);
 
   const filtered = rows.filter((r) => {
-    if (dept !== "all" && r.department !== dept) return false;
+    if (dept !== "all" && r.department?.toLowerCase() !== dept.toLowerCase()) return false;
     if (status !== "all" && r.status !== status) return false;
-    if (category !== "all" && r.category !== category) return false;
-    if (search && !`${r.employee} ${r.type} ${r.id}`.toLowerCase().includes(search.toLowerCase()))
+    if (category !== "all") {
+      const rowCat = (r.category || "").toLowerCase();
+      const selCat = category.toLowerCase();
+      if (!rowCat.includes(selCat) && !selCat.includes(rowCat)) return false;
+    }
+    if (
+      search &&
+      !`${r.employee} ${r.type} ${r.id} ${r.details || ""}`.toLowerCase().includes(search.toLowerCase())
+    )
       return false;
     return true;
   });

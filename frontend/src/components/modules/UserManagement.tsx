@@ -340,6 +340,7 @@ const buildMatrixFromBackend = (
 export function UserManagement() {
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [activeTab, setActiveTab] = useState<string>("users");
   const [deptOptions, setDeptOptions] = useState<string[]>(FALLBACK_DEPARTMENTS);
   const [roleIdByName, setRoleIdByName] = useState<Record<string, number>>({});
   const [roleProtectedByName, setRoleProtectedByName] = useState<Record<string, boolean>>({});
@@ -450,14 +451,14 @@ export function UserManagement() {
         username: editDraft.username,
         email: editDraft.email,
         full_name: editDraft.name,
-        department_name:
-          editDraft.role === "Super Admin" ? "Administration / HR" : editDraft.department,
-        role_id: ROLE_ID_BY_NAME[editDraft.role],
+        role_id: ROLE_ID_BY_NAME[editDraft.role] ?? 3,
+        department_name: editDraft.department || null,
         status: editDraft.status === "Disabled" ? "Inactive" : editDraft.status,
       });
-      toast.success(`${editDraft.username} updated`);
-      setEditUser(null);
       await loadUsers();
+      setEditUser(null);
+      setEditDraft(null);
+      toast.success("User updated successfully");
     } catch (e: any) {
       toast.error(e?.message || "Failed to update user.");
     }
@@ -465,15 +466,13 @@ export function UserManagement() {
 
   const openReset = (u: SystemUser) => {
     setResetUser(u);
-    setResetPassword("");
+    setResetPassword(DEFAULT_PASSWORD);
   };
-  const submitReset = async () => {
+  const saveReset = async () => {
     if (!resetUser) return;
     try {
-      await userManagementApi.users.update(Number(resetUser.id), {
-        password: resetPassword || DEFAULT_PASSWORD,
-      });
-      toast.success(`Password reset for ${resetUser.username}`);
+      await userManagementApi.users.resetPassword(Number(resetUser.id), resetPassword);
+      toast.success(`Password for ${resetUser.username} was reset.`);
       setResetUser(null);
     } catch (e: any) {
       toast.error(e?.message || "Failed to reset password.");
@@ -481,12 +480,8 @@ export function UserManagement() {
   };
 
   const createUser = async () => {
-    if (!newUser.name || !newUser.username) {
-      toast.error("Full name and username are required");
-      return;
-    }
-    if (!newUser.email) {
-      toast.error("Email is required");
+    if (!newUser.name.trim() || !newUser.username.trim() || !newUser.email.trim()) {
+      toast.error("Name, username, and email are required.");
       return;
     }
     try {
@@ -495,12 +490,10 @@ export function UserManagement() {
         email: newUser.email,
         password: newUser.password || DEFAULT_PASSWORD,
         full_name: newUser.name,
-        department_name:
-          newUser.role === "Super Admin" ? "Administration / HR" : newUser.department || undefined,
-        role_id: ROLE_ID_BY_NAME[newUser.role],
-        status: "Active",
+        role_id: ROLE_ID_BY_NAME[newUser.role] ?? 3,
+        department_name: newUser.department || null,
       });
-      toast.success(`${newUser.name} created`);
+      await loadUsers();
       setCreateOpen(false);
       setNewUser({
         name: "",
@@ -511,7 +504,7 @@ export function UserManagement() {
         department: "",
         password: "",
       });
-      await loadUsers();
+      toast.success(`User ${newUser.username} created successfully`);
     } catch (e: any) {
       toast.error(e?.message || "Failed to create user.");
     }
@@ -577,6 +570,7 @@ export function UserManagement() {
           onClick={() => {
             setRoleFilter("all");
             setStatusFilter("all");
+            setActiveTab("users");
           }}
           hint="Click to view all"
         />
@@ -588,6 +582,7 @@ export function UserManagement() {
           onClick={() => {
             setStatusFilter("Active");
             setRoleFilter("all");
+            setActiveTab("users");
           }}
           hint="Click to filter active"
         />
@@ -599,6 +594,7 @@ export function UserManagement() {
           onClick={() => {
             setStatusFilter("Suspended");
             setRoleFilter("all");
+            setActiveTab("users");
           }}
           hint="Click to filter suspended"
         />
@@ -609,12 +605,14 @@ export function UserManagement() {
           icon={ShieldCheck}
           onClick={() => {
             setRoleFilter("Admin");
+            setStatusFilter("all");
+            setActiveTab("users");
           }}
           hint="Click to filter admins"
         />
       </div>
 
-      <Tabs defaultValue="users" className="mt-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
         <TabsList className="flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm">
           <TabsTrigger
             className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
@@ -803,6 +801,7 @@ export function UserManagement() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>User ID</TableHead>
                       <TableHead>User</TableHead>
                       <TableHead>Role</TableHead>
                       <TableHead>Department</TableHead>
@@ -815,6 +814,9 @@ export function UserManagement() {
                   <TableBody>
                     {usersPage.pageItems.map((u) => (
                       <TableRow key={u.id}>
+                        <TableCell className="text-xs font-mono font-semibold text-primary">
+                          USR-{String(u.dbId || u.id).padStart(3, "0")}
+                        </TableCell>
                         <TableCell>
                           <p className="text-sm font-medium">{u.name}</p>
                           <p className="text-xs text-muted-foreground">{u.email}</p>
@@ -914,7 +916,7 @@ export function UserManagement() {
                     {loadingUsers && (
                       <TableRow>
                         <TableCell
-                          colSpan={7}
+                          colSpan={8}
                           className="py-8 text-center text-sm text-muted-foreground"
                         >
                           Loading users…
@@ -924,7 +926,7 @@ export function UserManagement() {
                     {!loadingUsers && filteredUsers.length === 0 && (
                       <TableRow>
                         <TableCell
-                          colSpan={7}
+                          colSpan={8}
                           className="py-8 text-center text-sm text-muted-foreground"
                         >
                           No users match your filters.
