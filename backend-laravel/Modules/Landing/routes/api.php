@@ -11,6 +11,7 @@ Route::prefix('v1')->group(function () {
     Route::get('landing/jobs', [LandingController::class, 'jobs']);
     Route::get('landing/jobs/{job_post}', [LandingController::class, 'job']);
     Route::get('landing/announcements', [LandingController::class, 'announcements']);
+    Route::post('landing/extract-resume', [LandingController::class, 'extractResume']);
     Route::post('landing/apply', [LandingController::class, 'apply']);
     Route::post('landing/chat', [ChatbotController::class, 'chat']);
 

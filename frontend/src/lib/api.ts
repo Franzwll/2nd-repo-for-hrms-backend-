@@ -1384,6 +1384,18 @@ export const landingApi = {
       `/landing/announcements${qs ? `?${qs}` : ""}`,
     );
   },
+  /** Public lightweight extraction — only name/email/phone/address for auto-fill */
+  extractResume: (formData: FormData) =>
+    request<{
+      success: boolean;
+      personal_information: {
+        name?: string | null;
+        email?: string | null;
+        phone?: string | null;
+        address?: string | null;
+      };
+      error_message?: string;
+    }>("/landing/extract-resume", { method: "POST", body: formData }),
   apply: (data: Record<string, any>) =>
     request<{
       message: string;

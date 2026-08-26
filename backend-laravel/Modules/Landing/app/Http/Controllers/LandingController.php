@@ -7,15 +7,20 @@ use App\Models\Announcement;
 use App\Models\Applicant;
 use App\Models\JobPost;
 use App\Models\SystemSetting;
+use App\Services\NlpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Modules\Landing\Http\Requests\JobApplicationRequest;
 use Modules\Landing\Http\Resources\AnnouncementResource;
 use Modules\Landing\Http\Resources\JobPostResource;
 
 class LandingController extends Controller
 {
+    public function __construct(protected NlpService $nlp)
+    {
+    }
     public function company(): JsonResponse
     {
         $keys = [
@@ -120,6 +125,49 @@ class LandingController extends Controller
                 'last_page' => $announcements->lastPage(),
                 'per_page' => $announcements->perPage(),
                 'total' => $announcements->total(),
+            ],
+        ]);
+    }
+
+    /**
+     * Lightweight public resume extraction for the landing apply form.
+     * Only returns full name, email, phone, location (address) for auto-fill.
+     */
+    public function extractResume(Request $request): JsonResponse
+    {
+        $request->validate([
+            'resume' => ['required', 'file', 'max:10240'],
+        ]);
+
+        $originalName = $request->file('resume')->getClientOriginalName() ?: 'resume';
+        $storedPath = $request->file('resume')->store('resumes-tmp', 'local');
+        try {
+            $fullPath = Storage::disk('local')->path($storedPath);
+            $result = $this->nlp->extractResume($fullPath, $originalName);
+        } finally {
+            if (Storage::disk('local')->exists($storedPath)) {
+                Storage::disk('local')->delete($storedPath);
+            }
+        }
+
+        if (! ($result['ok'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'error_message' => $result['error'] ?? 'Resume extraction failed.',
+            ], 502);
+        }
+
+        $data = $result['data'] ?? [];
+        $personal = $data['profile']['personal_information'] ?? [];
+
+        // Only expose the 4 fields required for auto-fill
+        return response()->json([
+            'success' => true,
+            'personal_information' => [
+                'name' => $personal['name'] ?? null,
+                'email' => $personal['email'] ?? null,
+                'phone' => $personal['phone'] ?? null,
+                'address' => $personal['address'] ?? null,
             ],
         ]);
     }
