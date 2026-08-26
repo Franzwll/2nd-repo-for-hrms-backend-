@@ -120,6 +120,7 @@ import {
   resolveStorageUrl,
   screeningApi,
   settingsApi,
+  userManagementApi,
   type ApiApplicant,
   type ApiInterview,
   type ApiScreeningPreview,
@@ -134,6 +135,15 @@ import {
   sanitizeName,
   sanitizePhone,
 } from "@/lib/validation";
+
+const VALID_STATUSES: ApplicantStatus[] = ["fit", "other-role", "credential", "not-fit"];
+
+function normalizeApplicantStatus(status: any): ApplicantStatus {
+  if (status && VALID_STATUSES.includes(status)) {
+    return status as ApplicantStatus;
+  }
+  return "not-fit";
+}
 
 function transformApiApplicant(a: ApiApplicant): Applicant {
   return {
