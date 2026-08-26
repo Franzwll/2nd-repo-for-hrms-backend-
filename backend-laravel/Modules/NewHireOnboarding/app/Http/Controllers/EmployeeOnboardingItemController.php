@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Modules\NewHireOnboarding\Models\EmployeeOnboardingItem;
 use Modules\NewHireOnboarding\Models\NewHire;
+use App\Services\AuditLogger;
 
 class EmployeeOnboardingItemController extends Controller
 {
@@ -63,6 +64,16 @@ class EmployeeOnboardingItemController extends Controller
                 }
             }
         });
+
+        AuditLogger::log(
+            action: 'Onboarding Item Toggled',
+            module: 'New Hire Onboarding',
+            targetType: 'Onboarding Item',
+            targetId: (string) $model->getKey(),
+            details: ($model->done ? 'Completed' : 'Reopened')
+                . " onboarding item '{$model->item_text}'"
+                . ($model->new_hire_id ? " (new hire #{$model->new_hire_id})" : '') . '.',
+        );
 
         return response()->json([
             'employee_onboarding_item_id' => $model->employee_onboarding_item_id,
@@ -213,6 +224,16 @@ class EmployeeOnboardingItemController extends Controller
                 'submitted_at' => now(),
             ]);
         });
+
+        AuditLogger::log(
+            action: 'Onboarding Item Document Submitted',
+            module: 'New Hire Onboarding',
+            targetType: 'Onboarding Item',
+            targetId: (string) $model->getKey(),
+            details: ($fileName ? "Submitted document '{$fileName}'" : 'Submitted notes')
+                . " for onboarding item '{$model->item_text}'"
+                . ($model->new_hire_id ? " (new hire #{$model->new_hire_id})" : '') . '.',
+        );
 
         return response()->json([
             'employee_onboarding_item_id' => $model->employee_onboarding_item_id,

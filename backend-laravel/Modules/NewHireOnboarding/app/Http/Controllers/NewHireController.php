@@ -15,6 +15,7 @@ use Modules\NewHireOnboarding\Http\Requests\UpdateNewHireRequest;
 use Modules\NewHireOnboarding\Http\Resources\NewHireResource;
 use Modules\NewHireOnboarding\Models\NewHire;
 use Modules\NewHireOnboarding\Models\OnboardingChecklistTemplate;
+use App\Services\AuditLogger;
 use Modules\Settings\Models\SystemSetting;
 use Modules\Settings\Models\SystemUser;
 
@@ -169,6 +170,14 @@ class NewHireController extends Controller
 
         $newHire = NewHire::create($data);
 
+        AuditLogger::log(
+            action: 'New Hire Created',
+            module: 'New Hire Onboarding',
+            targetType: 'New Hire',
+            targetId: (string) $newHire->getKey(),
+            details: "Created new hire record (code: {$newHire->new_hire_code}).",
+        );
+
         // Auto-apply matching Active checklist templates to the new hire
         OnboardingChecklistTemplate::applyAllFor($newHire);
 
@@ -205,6 +214,14 @@ class NewHireController extends Controller
         $model = NewHire::findOrFail($new_hire);
         $model->update($request->validated());
 
+        AuditLogger::log(
+            action: 'New Hire Updated',
+            module: 'New Hire Onboarding',
+            targetType: 'New Hire',
+            targetId: (string) $model->getKey(),
+            details: "Updated new hire record (code: {$model->new_hire_code}, stage: {$model->stage}).",
+        );
+
         return response()->json(
             new NewHireResource($model->load(['department', 'position', 'onboardingItems.templateItem.template']))
         );
@@ -217,6 +234,16 @@ class NewHireController extends Controller
     public function destroy(int $new_hire): JsonResponse
     {
         NewHire::findOrFail($new_hire)->delete();
+
+        AuditLogger::log(
+            action: 'New Hire Removed',
+            module: 'New Hire Onboarding',
+            severity: 'Warning',
+            targetType: 'New Hire',
+            targetId: (string) $new_hire,
+            details: "Removed new hire record (ID: {$new_hire}).",
+        );
+
         return response()->json(['message' => 'New hire record removed.']);
     }
 
@@ -242,6 +269,14 @@ class NewHireController extends Controller
         }
 
         $model->update(['stage' => $nextStage]);
+
+        AuditLogger::log(
+            action: 'New Hire Stage Promoted',
+            module: 'New Hire Onboarding',
+            targetType: 'New Hire',
+            targetId: (string) $model->getKey(),
+            details: "Promoted new hire (code: {$model->new_hire_code}) to {$nextStage} stage.",
+        );
 
         // Auto-apply matching Active checklist templates for the new stage
         OnboardingChecklistTemplate::applyAllFor($model);

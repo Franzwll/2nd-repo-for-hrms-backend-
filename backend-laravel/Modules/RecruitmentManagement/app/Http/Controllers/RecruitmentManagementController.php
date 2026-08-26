@@ -11,6 +11,7 @@ use Modules\RecruitmentManagement\Http\Requests\UpdateJobPostRequest;
 use Modules\RecruitmentManagement\Http\Resources\JobPostResource;
 use Modules\RecruitmentManagement\Models\JobPost;
 use Modules\RecruitmentManagement\Models\JobPostPlatform;
+use App\Services\AuditLogger;
 
 class RecruitmentManagementController extends Controller
 {
@@ -89,6 +90,14 @@ class RecruitmentManagementController extends Controller
 
         $jobPost = JobPost::create($data);
 
+        AuditLogger::log(
+            action: 'Job Post Created',
+            module: 'Recruitment Management',
+            targetType: 'Job Post',
+            targetId: (string) $jobPost->job_post_id,
+            details: "Created job post '{$jobPost->title}'.",
+        );
+
         // Write platform rows
         $this->syncPlatforms($jobPost, $platforms);
 
@@ -153,6 +162,14 @@ class RecruitmentManagementController extends Controller
             $this->syncPlatforms($model, $platforms);
         }
 
+        AuditLogger::log(
+            action: 'Job Post Updated',
+            module: 'Recruitment Management',
+            targetType: 'Job Post',
+            targetId: (string) $model->job_post_id,
+            details: "Updated job post '{$model->title}' (status: {$model->status}).",
+        );
+
         return response()->json(new JobPostResource($model->load(['department', 'platforms'])));
     }
 
@@ -170,6 +187,15 @@ class RecruitmentManagementController extends Controller
         }
 
         $model->delete();
+
+        AuditLogger::log(
+            action: 'Job Post Deleted',
+            module: 'Recruitment Management',
+            severity: 'Warning',
+            targetType: 'Job Post',
+            targetId: (string) $job_post,
+            details: "Deleted job post '{$model->title}'.",
+        );
 
         return response()->json(['message' => 'Job post deleted.']);
     }
