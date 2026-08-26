@@ -1,6 +1,6 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, CheckCircle2, Eye, FileText, Upload } from "lucide-react";
+import { ArrowLeft, CheckCircle2, FileText, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { PublicShell } from "@/components/public/PublicShell";
@@ -376,44 +376,30 @@ function JobDetail() {
                           className="sr-only"
                           onChange={(e) => handleResumeExtract(e.target.files?.[0] ?? null)}
                         />
-                        {/* File preview — allows user to see the uploaded file */}
+                        {/* File name as clickable link — opens in new tab / downloads */}
                         {resumeFile && resumePreviewUrl && (
-                          <div className="mt-2 rounded-md border border-border bg-card p-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2 overflow-hidden">
-                                <FileText className="h-4 w-4 shrink-0 text-gold" />
-                                <span className="truncate text-xs font-medium">{resumeFile.name}</span>
-                                <span className="shrink-0 text-[11px] text-muted-foreground">
-                                  {(resumeFile.size / 1024).toFixed(0)} KB
-                                </span>
-                              </div>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-7 shrink-0 text-xs"
-                                onClick={() => {
-                                  if (resumePreviewUrl) window.open(resumePreviewUrl, "_blank");
-                                }}
+                          <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2">
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <FileText className="h-4 w-4 shrink-0 text-gold" />
+                              <a
+                                href={resumePreviewUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                download={resumeFile.name}
+                                className="truncate text-xs font-medium text-primary underline underline-offset-2 hover:text-primary/80"
+                                title="Click to open in new tab or download"
                               >
-                                <Eye className="mr-1 h-3.5 w-3.5" /> View
-                              </Button>
+                                {resumeFile.name}
+                              </a>
+                              <span className="shrink-0 text-[11px] text-muted-foreground">
+                                {(resumeFile.size / 1024).toFixed(0)} KB
+                              </span>
                             </div>
-                            {/* Inline preview for PDF/image */}
-                            {resumeFile.type === "application/pdf" || resumeFile.name.toLowerCase().endsWith(".pdf") ? (
-                              <div className="mt-3 overflow-hidden rounded border border-border">
-                                <iframe src={resumePreviewUrl} title="Resume preview" className="h-[320px] w-full" ref={previewRef as any} />
-                              </div>
-                            ) : resumeFile.type.startsWith("image/") ? (
-                              <div className="mt-3 overflow-hidden rounded border border-border">
-                                <img src={resumePreviewUrl} alt="Resume preview" className="max-h-[320px] w-full object-contain" />
-                              </div>
-                            ) : null}
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
-                              className="mt-2 h-7 text-xs text-muted-foreground"
+                              className="h-7 shrink-0 text-xs text-muted-foreground"
                               onClick={() => {
                                 setResumeFile(null);
                                 setFileName("");
@@ -422,7 +408,7 @@ function JobDetail() {
                                 if (el) el.value = "";
                               }}
                             >
-                              Remove file
+                              Remove
                             </Button>
                           </div>
                         )}
