@@ -1,6 +1,6 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { useState } from "react";
-import { ArrowLeft, CheckCircle2, FileText, Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, CheckCircle2, Eye, FileText, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { PublicShell } from "@/components/public/PublicShell";
@@ -12,6 +12,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { landingApi } from "@/lib/api";
 import { mapJob, peso } from "@/lib/landing";
+import { cn } from "@/lib/utils";
+import {
+  isValidEmail,
+  isValidName,
+  isValidPhone,
+  sanitizeName,
+  sanitizePhone,
+} from "@/lib/validation";
 
 export const Route = createFileRoute("/_landing/jobs/$jobId")({
   loader: async ({ params }) => {
@@ -56,6 +64,10 @@ function JobDetail() {
   const [phone, setPhone] = useState("");
   const [location, setLocation] = useState("");
   const [extracting, setExtracting] = useState(false);
+  const [resumeDragActive, setResumeDragActive] = useState(false);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [resumePreviewUrl, setResumePreviewUrl] = useState<string | null>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   // Normalize PH phone (+63 → 0) for auto-fill
   const normalizePHPhone = (raw?: string | null) => {
@@ -69,6 +81,7 @@ function JobDetail() {
   const handleResumeExtract = async (file: File | null) => {
     if (!file) return;
     setFileName(file.name);
+    setResumeFile(file);
     // Validate type/size before extraction
     const okType = /\.(pdf|docx?)$/i.test(file.name);
     if (!okType) {
@@ -88,16 +101,25 @@ function JobDetail() {
       const pi = res.personal_information ?? {};
       const filled: string[] = [];
       // Only auto-fill the 4 fields: full name, email, phone, location(address)
-      if (pi.name?.trim()) {
-        setName(pi.name.trim());
+      // Apply same sanitization/validation as ApplicantManagement add applicant step 2
+      if (pi.name?.trim() && isValidName(sanitizeName(pi.name.trim()))) {
+        setName(sanitizeName(pi.name.trim()));
+        filled.push("Full Name");
+      } else if (pi.name?.trim()) {
+        setName(sanitizeName(pi.name.trim()));
         filled.push("Full Name");
       }
-      if (pi.email?.trim()) {
+      if (pi.email?.trim() && isValidEmail(pi.email.trim())) {
+        setEmail(pi.email.trim());
+        filled.push("Email");
+      } else if (pi.email?.trim()) {
+        // still fill but will be flagged on submit
         setEmail(pi.email.trim());
         filled.push("Email");
       }
       if (pi.phone?.trim()) {
-        setPhone(normalizePHPhone(pi.phone));
+        const normalized = normalizePHPhone(pi.phone);
+        setPhone(sanitizePhone(normalized));
         filled.push("Phone");
       }
       if (pi.address?.trim()) {
@@ -112,6 +134,17 @@ function JobDetail() {
       setExtracting(false);
     }
   };
+
+  // Preview URL for the uploaded resume (so user can see the file)
+  useEffect(() => {
+    if (!resumeFile) {
+      setResumePreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(resumeFile);
+    setResumePreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [resumeFile]);
 
   return (
     <PublicShell>
@@ -211,8 +244,38 @@ function JobDetail() {
                       const n = name.trim();
                       const em = email.trim();
                       const ph = phone.trim();
-                      if (!n || !em || !ph) {
-                        toast.error("Please fill in the required fields.");
+                      const loc = location.trim();
+                      // Same validation as ApplicantManagement add applicant step 2
+                      if (!n) {
+                        toast.error("Full name is required.");
+                        return;
+                      }
+                      if (!isValidName(n)) {
+                        toast.error("Enter a valid full name (letters, spaces, hyphen, apostrophe, ≥2 chars).");
+                        return;
+                      }
+                      if (!em) {
+                        toast.error("Email address is required.");
+                        return;
+                      }
+                      if (!isValidEmail(em)) {
+                        toast.error("Enter a valid email address.");
+                        return;
+                      }
+                      if (!ph) {
+                        toast.error("Phone number is required.");
+                        return;
+                      }
+                      if (!isValidPhone(ph)) {
+                        toast.error("Enter a valid phone number (7–15 digits).");
+                        return;
+                      }
+                      if (!loc) {
+                        toast.error("Location is required.");
+                        return;
+                      }
+                      if (loc.length < 2) {
+                        toast.error("Enter a valid location (≥2 chars).");
                         return;
                       }
                       setApplying(true);
@@ -246,7 +309,8 @@ function JobDetail() {
                     <div className="mt-5 space-y-4">
                       <div className="space-y-1.5">
                         <Label htmlFor="name">Full Name *</Label>
-                        <Input id="name" name="name" required placeholder="Juan Dela Cruz" value={name} onChange={(e) => setName(e.target.value)} />
+                        <Input id="name" name="name" required placeholder="Juan Dela Cruz" value={name} onChange={(e) => setName(sanitizeName(e.target.value))} />
+                        <p className="text-[11px] text-muted-foreground">Letters, spaces, hyphen, apostrophe only (≥2 chars).</p>
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="email">Email Address *</Label>
@@ -254,7 +318,8 @@ function JobDetail() {
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="phone">Phone Number *</Label>
-                        <Input id="phone" name="phone" required placeholder="+63 917 000 0000" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                        <Input id="phone" name="phone" required placeholder="+63 917 000 0000" value={phone} onChange={(e) => setPhone(sanitizePhone(e.target.value))} />
+                        <p className="text-[11px] text-muted-foreground">Digits 7–15, + allowed.</p>
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="location">Location *</Label>
@@ -264,19 +329,41 @@ function JobDetail() {
                         <Label htmlFor="resume">Resume / CV (optional) {extracting && <span className="text-xs text-gold">Extracting…</span>}</Label>
                         <label
                           htmlFor="resume"
-                          className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/40 px-4 py-6 text-center"
+                          className={cn(
+                            "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed p-6 text-center transition-colors",
+                            resumeDragActive ? "border-primary bg-primary/10" : "border-border bg-muted/40 hover:bg-muted/60",
+                          )}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setResumeDragActive(true);
+                          }}
+                          onDragEnter={(e) => {
+                            e.preventDefault();
+                            setResumeDragActive(true);
+                          }}
+                          onDragLeave={(e) => {
+                            e.preventDefault();
+                            setResumeDragActive(false);
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setResumeDragActive(false);
+                            handleResumeExtract(e.dataTransfer.files?.[0] ?? null);
+                          }}
                         >
                           {fileName ? (
                             <>
-                              <FileText className="h-5 w-5 text-gold" />
-                              <span className="text-sm text-foreground">{fileName}</span>
-                              {extracting && <span className="text-xs text-muted-foreground">Extracting name, email, phone, location…</span>}
+                              <FileText className={cn("h-9 w-9", resumeDragActive ? "text-primary" : "text-gold")} />
+                              <span className="text-sm font-medium text-foreground">{fileName}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {extracting ? "Extracting name, email, phone, location…" : "Drag a new file to replace or click to browse"}
+                              </span>
                             </>
                           ) : (
                             <>
-                              <Upload className="h-5 w-5 text-muted-foreground" />
+                              <Upload className={cn("h-9 w-9", resumeDragActive ? "text-primary" : "text-muted-foreground")} />
                               <span className="text-sm text-muted-foreground">
-                                Click to upload — PDF, DOC, DOCX (max 5MB) — auto-fills name, email, phone, location
+                                Drag a file here or click to upload — PDF, DOC, DOCX (max 5MB) — auto-fills name, email, phone, location
                               </span>
                             </>
                           )}
@@ -289,6 +376,56 @@ function JobDetail() {
                           className="sr-only"
                           onChange={(e) => handleResumeExtract(e.target.files?.[0] ?? null)}
                         />
+                        {/* File preview — allows user to see the uploaded file */}
+                        {resumeFile && resumePreviewUrl && (
+                          <div className="mt-2 rounded-md border border-border bg-card p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                <FileText className="h-4 w-4 shrink-0 text-gold" />
+                                <span className="truncate text-xs font-medium">{resumeFile.name}</span>
+                                <span className="shrink-0 text-[11px] text-muted-foreground">
+                                  {(resumeFile.size / 1024).toFixed(0)} KB
+                                </span>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 shrink-0 text-xs"
+                                onClick={() => {
+                                  if (resumePreviewUrl) window.open(resumePreviewUrl, "_blank");
+                                }}
+                              >
+                                <Eye className="mr-1 h-3.5 w-3.5" /> View
+                              </Button>
+                            </div>
+                            {/* Inline preview for PDF/image */}
+                            {resumeFile.type === "application/pdf" || resumeFile.name.toLowerCase().endsWith(".pdf") ? (
+                              <div className="mt-3 overflow-hidden rounded border border-border">
+                                <iframe src={resumePreviewUrl} title="Resume preview" className="h-[320px] w-full" ref={previewRef as any} />
+                              </div>
+                            ) : resumeFile.type.startsWith("image/") ? (
+                              <div className="mt-3 overflow-hidden rounded border border-border">
+                                <img src={resumePreviewUrl} alt="Resume preview" className="max-h-[320px] w-full object-contain" />
+                              </div>
+                            ) : null}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="mt-2 h-7 text-xs text-muted-foreground"
+                              onClick={() => {
+                                setResumeFile(null);
+                                setFileName("");
+                                setResumePreviewUrl(null);
+                                const el = document.getElementById("resume") as HTMLInputElement | null;
+                                if (el) el.value = "";
+                              }}
+                            >
+                              Remove file
+                            </Button>
+                          </div>
+                        )}
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="cover">Cover Letter (optional)</Label>
