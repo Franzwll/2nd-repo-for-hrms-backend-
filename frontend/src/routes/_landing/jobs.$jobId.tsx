@@ -86,7 +86,7 @@ function JobDetail() {
             <section className="mt-8">
               <h2 className="font-display text-2xl font-semibold">Responsibilities</h2>
               <ul className="mt-3 space-y-2">
-                {job.responsibilities.map((r: string) => (
+                {(job.responsibilities ?? []).map((r: string) => (
                   <li key={r} className="flex gap-2 text-sm text-muted-foreground">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
                     {r}
@@ -98,7 +98,7 @@ function JobDetail() {
             <section className="mt-8">
               <h2 className="font-display text-2xl font-semibold">Qualifications</h2>
               <ul className="mt-3 space-y-2">
-                {job.qualifications.map((r: string) => (
+                {(job.qualifications ?? []).map((r: string) => (
                   <li key={r} className="flex gap-2 text-sm text-muted-foreground">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
                     {r}
@@ -110,7 +110,7 @@ function JobDetail() {
             <section className="mt-8">
               <h2 className="font-display text-2xl font-semibold">Benefits</h2>
               <div className="mt-3 flex flex-wrap gap-2">
-                {job.benefits.map((b: string) => (
+                {(job.benefits ?? []).map((b: string) => (
                   <span
                     key={b}
                     className="rounded border border-border bg-muted px-2.5 py-1 text-xs text-muted-foreground"
