@@ -508,7 +508,15 @@ export type Employee = {
   email: string;
   phone: string;
   supervisor: string;
-  status: "Active" | "Probationary" | "Regular" | "Promoted" | "Resigned" | "Retired" | "Terminated" | "Inactive";
+  status:
+    | "Active"
+    | "Probationary"
+    | "Regular"
+    | "Promoted"
+    | "Resigned"
+    | "Retired"
+    | "Terminated"
+    | "Inactive";
   salaryGrade?: string;
   promotionHistory?: Array<{
     date: string;
@@ -740,7 +748,8 @@ export const hr3Recommendations: HR3Recommendation[] = [
     status: "Pending HR Action",
     suggestedPosition: "Guest Relations Officer",
     suggestedSalaryGrade: "SG-10 (₱26,000 – ₱32,000)",
-    comments: "Exceeded guest satisfaction metrics during 6-month evaluation window. Highly recommended for full regularization.",
+    comments:
+      "Exceeded guest satisfaction metrics during 6-month evaluation window. Highly recommended for full regularization.",
   },
   {
     id: "HR3-REC-02",
@@ -755,7 +764,8 @@ export const hr3Recommendations: HR3Recommendation[] = [
     status: "Pending HR Action",
     suggestedPosition: "Line Cook",
     suggestedSalaryGrade: "SG-05 (₱18,000 – ₱22,000)",
-    comments: "Punctual, excellent culinary prep speed and kitchen hygiene compliance. Recommended for regularization.",
+    comments:
+      "Punctual, excellent culinary prep speed and kitchen hygiene compliance. Recommended for regularization.",
   },
   {
     id: "HR3-REC-03",
@@ -770,7 +780,7 @@ export const hr3Recommendations: HR3Recommendation[] = [
     status: "Pending HR Action",
     suggestedPosition: "F&B Captain / Service Supervisor",
     suggestedSalaryGrade: "SG-10 (₱26,000 – ₱32,000)",
-    comments: "Demonstrated strong leadership during banquet events. Passed succession planning assessment with distinction.",
+    comments:
+      "Demonstrated strong leadership during banquet events. Passed succession planning assessment with distinction.",
   },
 ];
-

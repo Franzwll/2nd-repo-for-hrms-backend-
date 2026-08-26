@@ -148,7 +148,10 @@ export const permissionGroups = [
 
 export type PermissionGroup = (typeof permissionGroups)[number];
 
-export const roleGroupMatrix: Record<SystemUser["role"], Record<PermissionGroup, PermissionLevel>> = {
+export const roleGroupMatrix: Record<
+  SystemUser["role"],
+  Record<PermissionGroup, PermissionLevel>
+> = {
   "Super Admin": {
     "Recruitment & Onboarding": "Full",
     "Core HCM & Records": "Full",
@@ -368,7 +371,11 @@ export function createProbationaryUserAccount(emp: {
   email: string;
   department: string;
 }): SystemUser {
-  const existing = systemUsers.find((u) => u.email.toLowerCase() === emp.email.toLowerCase() || u.name.toLowerCase() === emp.name.toLowerCase());
+  const existing = systemUsers.find(
+    (u) =>
+      u.email.toLowerCase() === emp.email.toLowerCase() ||
+      u.name.toLowerCase() === emp.name.toLowerCase(),
+  );
   if (existing) {
     existing.status = "Active";
     return existing;
@@ -403,7 +410,7 @@ export function deactivateUserAccount(empEmailOrName: string, reason: string) {
   const user = systemUsers.find(
     (u) =>
       u.email.toLowerCase() === empEmailOrName.toLowerCase() ||
-      u.name.toLowerCase() === empEmailOrName.toLowerCase()
+      u.name.toLowerCase() === empEmailOrName.toLowerCase(),
   );
   if (user) {
     user.status = "Disabled";

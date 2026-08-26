@@ -67,10 +67,12 @@ function FindJobs() {
   );
 
   // Reset page when filters change
-  const handleFilterChange = <T,>(setter: (v: T) => void) => (v: T) => {
-    setter(v);
-    setPage(1);
-  };
+  const handleFilterChange =
+    <T,>(setter: (v: T) => void) =>
+    (v: T) => {
+      setter(v);
+      setPage(1);
+    };
 
   const pageCount = Math.max(1, Math.ceil(results.length / JOBS_PER_PAGE));
   const safePage = Math.min(page, pageCount);

@@ -1,0 +1,346 @@
+{
+  "resume_file": "Julian Rivera — Guest Services Professional.pdf",
+  "requirements_applied": false,
+  "result": {
+    "success": true,
+    "profile": {
+      "personal_information": {
+        "name": "Julian Rivera",
+        "email": "julian.rivera@email.com",
+        "phone": "1 (655) 342-8891",
+        "address": null
+      },
+      "education": [
+        "Bachelor of Science in Hospitality Management"
+      ],
+      "work_experience": [
+        {
+          "job_title": "Front Desk Associate",
+          "company": null,
+          "location": null,
+          "period": "May 2025 — August 2025",
+          "recognized_role": true
+        },
+        {
+          "job_title": "Concierge",
+          "company": "reservations, and local event recommendations",
+          "location": null,
+          "period": null,
+          "recognized_role": true
+        }
+      ],
+      "skills": [
+        "Cash Handling",
+        "Check-in / Check-out",
+        "Complaint Handling",
+        "Concierge Services",
+        "Customer Service",
+        "Front Office Operations",
+        "Guest Relations",
+        "Housekeeping Operations",
+        "MS Office",
+        "Night Audit Procedures",
+        "Property Management Systems",
+        "Reservations",
+        "Upselling"
+      ],
+      "certifications": [],
+      "unrecognized_certifications": [],
+      "estimated_years_experience": 0.9,
+      "job_roles": {
+        "recognized": [
+          "Concierge",
+          "Front Desk Associate"
+        ],
+        "unrecognized": []
+      },
+      "unrecognized_skills": [
+        "CPR Certified",
+        "Conflict Deescalation",
+        "First Aid",
+        "Manager",
+        "OpenTable",
+        "Oracle Hosp",
+        "Oracle Hospitality",
+        "Salesforce CRM",
+        "ServSafe Food Protection",
+        "VIP Arrival Protocol"
+      ]
+    },
+    "entities": [
+      {
+        "label": "PERSON",
+        "value": "Julian Rivera",
+        "source": "rule"
+      },
+      {
+        "label": "EDUCATION",
+        "value": "Bachelor of Science in Hospitality Management",
+        "source": "section_rule"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Front Desk Associate",
+        "source": "section_rule"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Concierge",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Property Management Systems",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Oracle Hosp",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Oracle Hospitality",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Salesforce CRM",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "MS Office",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Upselling",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Conflict Deescalation",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Complaint Handling",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "ServSafe Food Protection",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "OpenTable",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "VIP Arrival Protocol",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Manager",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "First Aid",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "CPR Certified",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Customer Service",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Guest Relations",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Front Office Operations",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Check-in / Check-out",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Reservations",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Night Audit Procedures",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Cash Handling",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Housekeeping Operations",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Concierge Services",
+        "source": "reference_scan"
+      },
+      {
+        "label": "EMAIL",
+        "value": "julian.rivera@email.com",
+        "source": "regex"
+      },
+      {
+        "label": "PHONE",
+        "value": "1 (655) 342-8891",
+        "source": "regex"
+      }
+    ],
+    "sections_detected": [
+      "education",
+      "experience",
+      "skills"
+    ],
+    "estimated_years_experience": 0.9,
+    "validation": {
+      "missing_information": [],
+      "invalid_format": [],
+      "skill_analysis": {
+        "recognized": [
+          "Cash Handling",
+          "Check-in / Check-out",
+          "Complaint Handling",
+          "Concierge Services",
+          "Customer Service",
+          "Front Office Operations",
+          "Guest Relations",
+          "Housekeeping Operations",
+          "MS Office",
+          "Night Audit Procedures",
+          "Property Management Systems",
+          "Reservations",
+          "Upselling"
+        ],
+        "unrecognized": [
+          "CPR Certified",
+          "Conflict Deescalation",
+          "First Aid",
+          "Manager",
+          "OpenTable",
+          "Oracle Hosp",
+          "Oracle Hospitality",
+          "Salesforce CRM",
+          "ServSafe Food Protection",
+          "VIP Arrival Protocol"
+        ]
+      },
+      "job_role_analysis": {
+        "recognized": [
+          "Concierge",
+          "Front Desk Associate"
+        ],
+        "unrecognized": []
+      },
+      "credential_analysis": [],
+      "credential_issues": [],
+      "review_flags": []
+    },
+    "requirements_applied": {
+      "job_post_id": null,
+      "title": "Unspecified Position",
+      "required_skills": [],
+      "preferred_skills": [],
+      "education_level": null,
+      "experience_level": null,
+      "min_years_experience": 0.0,
+      "required_certifications": [],
+      "required_information": [
+        "name",
+        "email",
+        "phone"
+      ]
+    },
+    "match_score": 100.0,
+    "score_breakdown": {
+      "skills": {
+        "weight": 0.4,
+        "earned": 40.0,
+        "max": 40.0,
+        "matched_required": [],
+        "missing_required": [],
+        "matched_preferred": [],
+        "missing_preferred": [],
+        "required_coverage": 1.0,
+        "preferred_coverage": 1.0
+      },
+      "experience": {
+        "weight": 0.3,
+        "earned": 30.0,
+        "max": 30.0,
+        "estimated_years": 0.9,
+        "min_years_required": 0.0,
+        "requirement_met": true
+      },
+      "education": {
+        "weight": 0.2,
+        "earned": 20.0,
+        "max": 20.0,
+        "applicant_highest_level": [
+          "Bachelor of Science in Hospitality Management"
+        ],
+        "required_level": null,
+        "requirement_met": true
+      },
+      "certifications": {
+        "weight": 0.1,
+        "earned": 10.0,
+        "max": 10.0,
+        "matched": [],
+        "missing": [],
+        "no_requirements": true
+      }
+    },
+    "screening_status": "PERFECT_FOR_THE_JOB",
+    "screening_reasons": [
+      "Overall match score 100.0% reached the required threshold of 75.0% for Unspecified Position.",
+      "Education requirement met: True; experience requirement met: True (0.9 yrs vs 0.0 yrs minimum)."
+    ],
+    "matched_summary": "Education requirement satisfied; Experience requirement satisfied (0.9 yrs vs 0.0 yrs required); No certification requirements defined for this role — meets Unspecified Position requirements.",
+    "alternative_job": null,
+    "mandatory_requirements_met": true,
+    "model_info": {
+      "base_model": "en_core_web_sm",
+      "custom_ner_loaded": true,
+      "custom_ner_path": "C:\\Users\\Windows 10 Lite\\Downloads\\MUNJOR\\4TH YR\\DEV\\LATEST CLONE\\v5\\2nd-repo-for-hrms-backend-\\nlp-service\\models_spacy\\role_specific_ner"
+    },
+    "_timing_seconds": 772.6318,
+    "processing_status": "PARTIALLY_PROCESSED",
+    "text_extraction": {
+      "method": "pdf-ocr (pypdfium2+tesseract)",
+      "pages": 2,
+      "extension": ".pdf",
+      "original_length": null,
+      "character_count": 3211,
+      "warnings": []
+    },
+    "parsed_successfully": true
+  }
+}

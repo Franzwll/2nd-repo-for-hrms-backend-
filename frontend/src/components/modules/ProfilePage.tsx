@@ -117,8 +117,7 @@ export function ProfilePage({ role }: { role: Role }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const value = editing ? draft : profile;
-  const settingsPath =
-    role === "employee" ? "/employee/settings" : "/admin/settings";
+  const settingsPath = role === "employee" ? "/employee/settings" : "/admin/settings";
 
   function set<K extends keyof ProfileState>(key: K, v: ProfileState[K]) {
     setDraft((d) => ({ ...d, [key]: v }));
@@ -152,9 +151,7 @@ export function ProfilePage({ role }: { role: Role }) {
           <CardContent className="-mt-16 flex flex-col items-center px-6 pb-6 text-center">
             <div className="relative">
               <Avatar className="h-28 w-28 border-4 border-card shadow-sm">
-                {photo ? (
-                  <AvatarImage src={photo} alt={value.fullName} />
-                ) : null}
+                {photo ? <AvatarImage src={photo} alt={value.fullName} /> : null}
                 <AvatarFallback className="bg-muted font-display text-3xl text-primary">
                   {initialsOf(value.fullName)}
                 </AvatarFallback>
@@ -169,14 +166,9 @@ export function ProfilePage({ role }: { role: Role }) {
               </button>
             </div>
 
-            <h2 className="mt-4 font-display text-xl font-semibold">
-              {value.fullName}
-            </h2>
+            <h2 className="mt-4 font-display text-xl font-semibold">{value.fullName}</h2>
             <p className="text-sm text-primary">{value.position}</p>
-            <Badge
-              variant="outline"
-              className="mt-2 border-success/30 bg-success/15 text-success"
-            >
+            <Badge variant="outline" className="mt-2 border-success/30 bg-success/15 text-success">
               {value.status}
             </Badge>
 
@@ -187,16 +179,11 @@ export function ProfilePage({ role }: { role: Role }) {
               className="hidden"
               onChange={onPickPhoto}
             />
-            <Button
-              className="mt-4 w-full cursor-pointer"
-              onClick={() => fileRef.current?.click()}
-            >
+            <Button className="mt-4 w-full cursor-pointer" onClick={() => fileRef.current?.click()}>
               <Camera className="mr-2 h-4 w-4" />
               Change Photo
             </Button>
-            <p className="mt-2 text-xs text-muted-foreground">
-              JPG, PNG (Max. 2MB)
-            </p>
+            <p className="mt-2 text-xs text-muted-foreground">JPG, PNG (Max. 2MB)</p>
 
             <div className="mt-5 w-full space-y-3 border-t border-border/60 pt-5 text-left">
               {[
@@ -226,11 +213,7 @@ export function ProfilePage({ role }: { role: Role }) {
             </div>
 
             {role !== "superadmin" ? (
-              <Button
-                variant="outline"
-                className="mt-5 w-full cursor-pointer"
-                asChild
-              >
+              <Button variant="outline" className="mt-5 w-full cursor-pointer" asChild>
                 <Link to={settingsPath as never} hash="change-password">
                   <KeyRound className="mr-2 h-4 w-4" />
                   Change Password
@@ -259,9 +242,7 @@ export function ProfilePage({ role }: { role: Role }) {
                     <span className="grid h-9 w-9 place-items-center text-primary">
                       <User className="h-4 w-4" />
                     </span>
-                    <h3 className="font-display text-xl font-semibold">
-                      Profile Information
-                    </h3>
+                    <h3 className="font-display text-xl font-semibold">Profile Information</h3>
                   </div>
 
                   <p className="mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -386,9 +367,7 @@ export function ProfilePage({ role }: { role: Role }) {
                     <span className="grid h-9 w-9 place-items-center text-primary">
                       <Lock className="h-4 w-4" />
                     </span>
-                    <h3 className="font-display text-xl font-semibold">
-                      Account Details
-                    </h3>
+                    <h3 className="font-display text-xl font-semibold">Account Details</h3>
                   </div>
 
                   <div className="mt-6 grid gap-5 sm:grid-cols-2">
@@ -402,11 +381,7 @@ export function ProfilePage({ role }: { role: Role }) {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="p-created">Date Created</Label>
-                      <Input
-                        id="p-created"
-                        value={value.dateCreated}
-                        disabled
-                      />
+                      <Input id="p-created" value={value.dateCreated} disabled />
                     </div>
                     <div className="space-y-2">
                       <Label>Account Status</Label>
@@ -425,19 +400,12 @@ export function ProfilePage({ role }: { role: Role }) {
                   {role !== "superadmin" ? (
                     <div className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/40 p-4">
                       <div>
-                        <p className="text-sm font-medium">
-                          Password &amp; Security
-                        </p>
+                        <p className="text-sm font-medium">Password &amp; Security</p>
                         <p className="text-xs text-muted-foreground">
-                          Update your password regularly to keep your account
-                          secure.
+                          Update your password regularly to keep your account secure.
                         </p>
                       </div>
-                      <Button
-                        variant="outline"
-                        className="cursor-pointer"
-                        asChild
-                      >
+                      <Button variant="outline" className="cursor-pointer" asChild>
                         <Link to={settingsPath as never} hash="change-password">
                           <KeyRound className="mr-2 h-4 w-4" />
                           Change Password

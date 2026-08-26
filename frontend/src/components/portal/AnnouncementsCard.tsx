@@ -25,9 +25,7 @@ export function AnnouncementsCard({ role }: { role: Role }) {
           </span>
           <div>
             <h2 className="font-display text-2xl font-semibold">Announcements</h2>
-            <p className="text-xs text-muted-foreground">
-              Company-wide updates posted by HR.
-            </p>
+            <p className="text-xs text-muted-foreground">Company-wide updates posted by HR.</p>
           </div>
           <Badge variant="outline" className="ml-auto">
             {visible.length}

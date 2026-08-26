@@ -1,0 +1,271 @@
+{
+  "resume_file": "alternative_resume_template_3_clarisse_joy_domingo.docx",
+  "requirements_applied": false,
+  "result": {
+    "success": true,
+    "profile": {
+      "personal_information": {
+        "name": "CLARISSE JOY DOMINGO",
+        "email": "clarisse.domingo@example.com",
+        "phone": "+63 916 220 9417",
+        "address": "Pasig City, Philippines"
+      },
+      "education": [
+        "TESDA Accredited Training Center\n\nCERTIFICATIONS\n\nBread"
+      ],
+      "work_experience": [
+        {
+          "job_title": "Pastry and Bakery Assistant",
+          "company": "Sweet Harbor Café",
+          "location": null,
+          "period": null,
+          "recognized_role": true
+        }
+      ],
+      "skills": [
+        "Attention to Detail",
+        "Cake Decoration",
+        "Food Safety",
+        "Hot Kitchen",
+        "Inventory Control",
+        "Pastry and Baking",
+        "Teamwork",
+        "Time Management"
+      ],
+      "certifications": [
+        "TESDA Bread and Pastry Production NC II",
+        "Food Safety Awareness",
+        "Tesda Accredited Training"
+      ],
+      "unrecognized_certifications": [
+        "Food Safety Awareness",
+        "Tesda Accredited Training"
+      ],
+      "estimated_years_experience": 4.6,
+      "job_roles": {
+        "recognized": [
+          "Pastry and Bakery Assistant"
+        ],
+        "unrecognized": []
+      },
+      "unrecognized_skills": [
+        "Kitchen Hygiene"
+      ]
+    },
+    "entities": [
+      {
+        "label": "PERSON",
+        "value": "CLARISSE JOY DOMINGO",
+        "source": "rule"
+      },
+      {
+        "label": "EDUCATION",
+        "value": "TESDA Accredited Training Center\n\nCERTIFICATIONS\n\nBread",
+        "source": "section_rule"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Pastry and Bakery Assistant",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Pastry and Baking",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Food Safety",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Inventory Control",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Cake Decoration",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Kitchen Hygiene",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Time Management",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Teamwork",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Hot Kitchen",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Attention to Detail",
+        "source": "reference_scan"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "Tesda Accredited Training",
+        "source": "hint_pattern"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "TESDA Bread and Pastry Production NC II",
+        "source": "section_rule"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "Food Safety Awareness",
+        "source": "section_rule"
+      },
+      {
+        "label": "EMAIL",
+        "value": "clarisse.domingo@example.com",
+        "source": "regex"
+      },
+      {
+        "label": "PHONE",
+        "value": "+63 916 220 9417",
+        "source": "regex"
+      }
+    ],
+    "sections_detected": [
+      "certifications",
+      "education",
+      "experience",
+      "skills",
+      "summary"
+    ],
+    "estimated_years_experience": 4.6,
+    "validation": {
+      "missing_information": [],
+      "invalid_format": [],
+      "skill_analysis": {
+        "recognized": [
+          "Attention to Detail",
+          "Cake Decoration",
+          "Food Safety",
+          "Hot Kitchen",
+          "Inventory Control",
+          "Pastry and Baking",
+          "Teamwork",
+          "Time Management"
+        ],
+        "unrecognized": [
+          "Kitchen Hygiene"
+        ]
+      },
+      "job_role_analysis": {
+        "recognized": [
+          "Pastry and Bakery Assistant"
+        ],
+        "unrecognized": []
+      },
+      "credential_analysis": [
+        {
+          "required": null,
+          "extracted": "Food Safety Awareness",
+          "status": "UNRECOGNIZED",
+          "note": "Invalid or requires verification based on system validation rules."
+        },
+        {
+          "required": null,
+          "extracted": "Tesda Accredited Training",
+          "status": "UNRECOGNIZED",
+          "note": "Invalid or requires verification based on system validation rules."
+        }
+      ],
+      "credential_issues": [],
+      "review_flags": []
+    },
+    "requirements_applied": {
+      "job_post_id": null,
+      "title": "Unspecified Position",
+      "required_skills": [],
+      "preferred_skills": [],
+      "education_level": null,
+      "experience_level": null,
+      "min_years_experience": 0.0,
+      "required_certifications": [],
+      "required_information": [
+        "name",
+        "email",
+        "phone"
+      ]
+    },
+    "match_score": 100.0,
+    "score_breakdown": {
+      "skills": {
+        "weight": 0.4,
+        "earned": 40.0,
+        "max": 40.0,
+        "matched_required": [],
+        "missing_required": [],
+        "matched_preferred": [],
+        "missing_preferred": [],
+        "required_coverage": 1.0,
+        "preferred_coverage": 1.0
+      },
+      "experience": {
+        "weight": 0.3,
+        "earned": 30.0,
+        "max": 30.0,
+        "estimated_years": 4.6,
+        "min_years_required": 0.0,
+        "requirement_met": true
+      },
+      "education": {
+        "weight": 0.2,
+        "earned": 20.0,
+        "max": 20.0,
+        "applicant_highest_level": [
+          "TESDA Accredited Training Center\n\nCERTIFICATIONS\n\nBread"
+        ],
+        "required_level": null,
+        "requirement_met": true
+      },
+      "certifications": {
+        "weight": 0.1,
+        "earned": 10.0,
+        "max": 10.0,
+        "matched": [],
+        "missing": [],
+        "no_requirements": true
+      }
+    },
+    "screening_status": "PERFECT_FOR_THE_JOB",
+    "screening_reasons": [
+      "Overall match score 100.0% reached the required threshold of 75.0% for Unspecified Position.",
+      "Education requirement met: True; experience requirement met: True (4.6 yrs vs 0.0 yrs minimum)."
+    ],
+    "matched_summary": "Education requirement satisfied; Experience requirement satisfied (4.6 yrs vs 0.0 yrs required); No certification requirements defined for this role — meets Unspecified Position requirements.",
+    "alternative_job": null,
+    "mandatory_requirements_met": true,
+    "model_info": {
+      "base_model": "en_core_web_sm",
+      "custom_ner_loaded": true,
+      "custom_ner_path": "C:\\Users\\Windows 10 Lite\\Downloads\\MUNJOR\\4TH YR\\DEV\\LATEST CLONE\\v5\\2nd-repo-for-hrms-backend-\\nlp-service\\models_spacy\\role_specific_ner"
+    },
+    "_timing_seconds": 766.1162,
+    "processing_status": "PARTIALLY_PROCESSED",
+    "text_extraction": {
+      "method": "python-docx",
+      "pages": 1,
+      "extension": ".docx",
+      "original_length": null,
+      "character_count": 951,
+      "warnings": []
+    },
+    "parsed_successfully": true
+  }
+}

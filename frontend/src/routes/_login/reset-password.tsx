@@ -12,7 +12,7 @@ import { authApi } from "@/lib/api";
 
 export const Route = createFileRoute("/_login/reset-password")({
   validateSearch: (search: Record<string, unknown>) => ({
-    token: typeof search.token === "string" ? search.token : "",
+    token: typeof search["token"] === "string" ? search["token"] : "",
   }),
   head: () => ({
     meta: [

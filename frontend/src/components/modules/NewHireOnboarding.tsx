@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   CheckCircle2,
@@ -7,6 +7,9 @@ import {
   ClipboardCheck,
   ClipboardList,
   Eye,
+  ExternalLink,
+  FileCheck2,
+  FileText,
   Hourglass,
   Info,
   Loader2,
@@ -17,6 +20,7 @@ import {
   Send,
   ShieldCheck,
   Trash2,
+  Upload,
   UserPlus,
   Users,
   X,
@@ -62,10 +66,10 @@ import {
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { usePagination } from "@/hooks/usePagination";
-import {
-  type NewHire,
-} from "@/data/hr";
+import { type NewHire } from "@/data/hr";
+import { myProfile } from "@/data/ess";
 import {
   DEFAULT_ACCOUNT_PASSWORD,
   hireStore,
@@ -79,10 +83,21 @@ import {
   applicantsApi,
   checklistRequestsApi,
   coreHcmApi,
+  newHiresApi,
+  onboardingItemsApi,
+  resolveStorageUrl,
   settingsApi,
   type ApiChecklistRequest,
+  type ApiNewHire,
 } from "@/lib/api";
-import { EmployeeOnboarding } from "@/components/modules/EmployeeOnboarding";
+import { getUser } from "@/lib/auth";
+import {
+  isValidEmail,
+  isValidName,
+  isValidPhone,
+  sanitizeName,
+  sanitizePhone,
+} from "@/lib/validation";
 
 /** Today's date in yyyy-mm-dd, used as the default start date for new hires. */
 const todayIso = new Date().toISOString().slice(0, 10);
@@ -141,6 +156,174 @@ const initialsOf = (name: string) =>
     .join("")
     .toUpperCase();
 
+/** What an employee submitted for one onboarding checklist item
+ *  (document upload + notes), read from employee_onboarding_items. */
+type EmployeeSubmission = {
+  itemText: string;
+  done: boolean;
+  submittedAt?: string;
+  fileName?: string;
+  fileUrl?: string;
+  notes?: string;
+  completedAt?: string;
+};
+
+/** Checklist items from the mock store and the API share the same text. */
+const normalizeChecklistKey = (text: string) => text.trim().toLowerCase();
+
+/** Renders the employee's submission (uploaded document + note) for admins. */
+function EmployeeSubmissionDetails({ submission }: { submission: EmployeeSubmission }) {
+  return (
+    <div className="mb-1 mt-1 space-y-1 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+      <p
+        className={cn(
+          "flex items-center gap-1.5 text-xs font-medium",
+          submission.done ? "text-success" : "text-caution-foreground",
+        )}
+      >
+        {submission.done ? (
+          <>
+            <ShieldCheck className="h-3.5 w-3.5" /> Verified by HR
+            {submission.completedAt &&
+              ` · ${new Date(submission.completedAt).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}`}
+          </>
+        ) : (
+          <>
+            <Hourglass className="h-3.5 w-3.5" /> Awaiting HR verification
+          </>
+        )}
+      </p>
+      {submission.submittedAt && !submission.done && (
+        <p className="text-[11px] text-muted-foreground">
+          Submitted{" "}
+          {new Date(submission.submittedAt).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}{" "}
+          by the employee — tick the checklist item during Edit Checklist to verify and count it
+          toward progress.
+        </p>
+      )}
+      {submission.fileName && (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2 py-1.5">
+          <span className="flex min-w-0 items-center gap-1.5 text-xs text-foreground">
+            <FileCheck2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+            <span className="truncate" title={submission.fileName}>
+              {submission.fileName}
+            </span>
+          </span>
+          {submission.fileUrl && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 shrink-0 cursor-pointer px-2 text-[11px]"
+              onClick={() => window.open(submission.fileUrl, "_blank")}
+            >
+              <ExternalLink className="mr-1 h-3 w-3" /> View
+            </Button>
+          )}
+        </div>
+      )}
+      {submission.notes && (
+        <p className="rounded-md bg-card px-2 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
+          <span className="font-semibold text-foreground">Employee note: </span>
+          {submission.notes}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** One admin/superadmin checklist row — a single bordered pill that contains
+ *  the toggle, the "Submitted · pending review" badge and the collapsible
+ *  "View employee submission" trigger. Pending items render in red; verified
+ *  items get a green background with default text color. */
+function AdminChecklistRow({
+  done,
+  submitted,
+  label,
+  disabled,
+  onClick,
+  submission,
+}: {
+  done: boolean;
+  submitted: boolean;
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  submission?: EmployeeSubmission;
+}) {
+  const hasSubmission = Boolean(
+    submission && (submission.submittedAt || submission.fileName || submission.notes),
+  );
+
+  return (
+    <Collapsible className="group w-full">
+      <div
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-md border px-3 py-2 text-left text-sm transition-colors",
+          done
+            ? "border-success/30 bg-success/10"
+            : "border-border bg-card hover:border-primary/40",
+        )}
+      >
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onClick}
+          aria-label={label}
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2.5 bg-transparent text-left",
+            disabled ? "cursor-not-allowed opacity-80" : "cursor-pointer",
+          )}
+        >
+          {done ? (
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+          ) : submitted ? (
+            <Hourglass className="h-4 w-4 shrink-0 text-destructive" />
+          ) : (
+            <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />
+          )}
+          <span
+            className={cn("min-w-0", !done && submitted ? "text-destructive" : "text-foreground")}
+          >
+            {label}
+          </span>
+        </button>
+        {!done && submitted && (
+          <Badge
+            variant="outline"
+            className="shrink-0 border-destructive/40 bg-destructive/10 text-[10px] text-destructive"
+          >
+            Submitted · pending review
+          </Badge>
+        )}
+        {hasSubmission && (
+          <CollapsibleTrigger
+            title="View employee submission"
+            className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            View employee submission
+            <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
+        )}
+      </div>
+      {hasSubmission && submission && (
+        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+          <div className="pb-1 pt-1">
+            <EmployeeSubmissionDetails submission={submission} />
+          </div>
+        </CollapsibleContent>
+      )}
+    </Collapsible>
+  );
+}
+
 export function NewHireOnboarding({ role }: { role: "superadmin" | "admin" | "employee" }) {
   if (role === "employee") {
     return <EmployeeOnboarding />;
@@ -149,7 +332,7 @@ export function NewHireOnboarding({ role }: { role: "superadmin" | "admin" | "em
 }
 
 function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
-
+  const isSuperAdmin = role === "superadmin";
   const hires = useHires();
   const setHires = (updater: (prev: NewHire[]) => NewHire[]) => hireStore.setHires(updater);
   const pending = usePendingHire();
@@ -171,18 +354,23 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const [autoRegDraft, setAutoRegDraft] = useState({ months: 0, days: 14 });
   const autoRegularizeDays = autoRegMonths * 30 + autoRegDays;
   /** Reference-only checklist items requested by Performance, scoped to a position. */
-  const [requestedItems, setRequestedItems] =
-    useState<RequestedChecklistItem[]>([]);
+  const [requestedItems, setRequestedItems] = useState<RequestedChecklistItem[]>([]);
 
   /** Default password for new portal accounts, read from the database
    *  (system_settings.default_password); falls back to the shipped default. */
   const [defaultPassword, setDefaultPassword] = useState(DEFAULT_ACCOUNT_PASSWORD);
 
   /** Departments & positions from the Core HCM database. */
-  const [knownDepartments, setKnownDepartments] = useState<{ dbId: number; code: string; name: string }[]>([]);
-  const [knownPositions, setKnownPositions] = useState<{ dbId: number; id: string; title: string; department: string }[]>([]);
+  const [knownDepartments, setKnownDepartments] = useState<
+    { dbId: number; code: string; name: string }[]
+  >([]);
+  const [knownPositions, setKnownPositions] = useState<
+    { dbId: number; id: string; title: string; department: string }[]
+  >([]);
   /** Hired/accepted applicants from the live database, for the add-hire form. */
-  const [candidateApplicants, setCandidateApplicants] = useState<{ id: string; name: string; position: string; email: string; phone: string }[]>([]);
+  const [candidateApplicants, setCandidateApplicants] = useState<
+    { id: string; name: string; position: string; email: string; phone: string }[]
+  >([]);
 
   useEffect(() => {
     checklistRequestsApi
@@ -190,59 +378,60 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       .then((res) => {
         setRequestedItems((res?.data ?? []).map(transformApiRequest));
       })
-      .catch((err) =>
-        console.warn("Could not fetch checklist requests from API:", err),
-      );
+      .catch((err) => console.warn("Could not fetch checklist requests from API:", err));
     settingsApi
       .get("default_password")
       .then((res) => {
         const pw = res?.setting_value?.password;
-        if (typeof pw === "string" && pw.length >= 8) setDefaultPassword(pw);
+        if (pw) setDefaultPassword(pw);
       })
-      .catch(() => {
-        console.warn("Could not fetch default password from database, using built-in default.");
-      });
-  }, []);
-
-  useEffect(() => {
-    Promise.allSettled([
-      coreHcmApi.departments({ per_page: 100 }),
-      coreHcmApi.positions({ per_page: 100 }),
-      applicantsApi.list({ per_page: 100 }),
-    ]).then(([deptRes, posRes, appRes]) => {
-      if (deptRes.status === "fulfilled") {
-        setKnownDepartments(
-          (deptRes.value?.data ?? []).map((d) => ({
-            dbId: d.department_id,
-            code: d.code,
-            name: d.name,
-          })),
-        );
-      }
-      if (posRes.status === "fulfilled") {
-        setKnownPositions(
-          (posRes.value?.data ?? []).map((p) => ({
-            dbId: p.position_id,
-            id: p.position_code || `POS-${p.position_id}`,
-            title: p.title,
-            department: p.department || "",
-          })),
-        );
-      }
-      if (appRes.status === "fulfilled") {
-        setCandidateApplicants(
-          (appRes.value?.data ?? []).map((a) => ({
-            id: a.applicant_code || `APP-${a.applicant_id}`,
-            name: a.name,
-            position: a.job_post?.title ?? "",
-            email: a.email,
-            phone: a.phone || "",
-          })),
-        );
-      }
-    }).catch((err) => {
-      console.warn("Could not fetch departments/positions/applicants from API:", err);
-    });
+      .catch((err) => console.warn("Could not fetch default password from database:", err));
+    coreHcmApi
+      .departments({ per_page: 100 })
+      .then((res) => {
+        if (res?.data) {
+          setKnownDepartments(
+            res.data.map((d) => ({
+              dbId: d.department_id,
+              code: d.code,
+              name: d.name,
+            })),
+          );
+        }
+      })
+      .catch((err) => console.warn("Could not fetch departments from API:", err));
+    coreHcmApi
+      .positions({ per_page: 100 })
+      .then((res) => {
+        if (res?.data) {
+          setKnownPositions(
+            res.data.map((p) => ({
+              dbId: p.position_id,
+              id: p.position_code || String(p.position_id),
+              title: p.title,
+              department: p.department || "General",
+            })),
+          );
+        }
+      })
+      .catch((err) => console.warn("Could not fetch positions from API:", err));
+    applicantsApi
+      .list({ per_page: 100 })
+      .then((res) => {
+        if (res?.data) {
+          const hired = res.data
+            .filter((a) => a.stage === "Accepted" || a.stage === "Hired")
+            .map((a) => ({
+              id: String(a.applicant_id),
+              name: a.name,
+              position: a.job_post?.title || "Staff",
+              email: a.email || "",
+              phone: a.phone || "",
+            }));
+          setCandidateApplicants(hired);
+        }
+      })
+      .catch((err) => console.warn("Could not fetch applicants from API:", err));
   }, []);
 
   const [reqItemDraft, setReqItemDraft] = useState("");
@@ -258,15 +447,38 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const [newChecklistAllPositions, setNewChecklistAllPositions] = useState(true);
   const [newChecklistPositions, setNewChecklistPositions] = useState<string[]>([]);
   const [newItem, setNewItem] = useState("");
+  const [newItemInstructions, setNewItemInstructions] = useState("");
+  const [newItemRequiresUpload, setNewItemRequiresUpload] = useState(true);
+  const [newItemUploadPlaceholder, setNewItemUploadPlaceholder] = useState("");
+  const [showItemDetails, setShowItemDetails] = useState(false);
   const [tab, setTab] = useState("pipeline");
-  const [draftItems, setDraftItems] = useState<string[]>([]);
+  const [draftItems, setDraftItems] = useState<
+    {
+      item_text: string;
+      instructions?: string;
+      requires_upload?: boolean;
+      upload_placeholder?: string;
+    }[]
+  >([]);
   /** Collapsible create-checklist form in the Checklist Builder. */
   const [showCreateChecklist, setShowCreateChecklist] = useState(false);
   /** Master checklist currently being edited inline (title + items + stage + positions). */
   const [editingChecklistId, setEditingChecklistId] = useState<string | null>(null);
   const [editChecklistTitle, setEditChecklistTitle] = useState("");
   const [editChecklistItems, setEditChecklistItems] = useState<string[]>([]);
+  const [editChecklistRichItems, setEditChecklistRichItems] = useState<
+    {
+      item_text: string;
+      instructions?: string;
+      requires_upload?: boolean;
+      upload_placeholder?: string;
+    }[]
+  >([]);
   const [editChecklistNewItem, setEditChecklistNewItem] = useState("");
+  const [editItemInstructions, setEditItemInstructions] = useState("");
+  const [editItemRequiresUpload, setEditItemRequiresUpload] = useState(true);
+  const [editItemUploadPlaceholder, setEditItemUploadPlaceholder] = useState("");
+  const [showEditItemDetails, setShowEditItemDetails] = useState(false);
   const [editChecklistPhase, setEditChecklistPhase] = useState<"Pre-onboarding" | "Probationary">(
     "Probationary",
   );
@@ -317,22 +529,25 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     if (!intake) return;
     if (hireStore.exists(intake.name, intake.position)) return;
     const id = `NH-${String(hireStore.getHires().length + 1).padStart(2, "0")}`;
-    hireStore.add({
-      id,
-      name: intake.name,
-      position: intake.position,
-      department: intake.department,
-      stage: "Pre-onboarding",
-      startDate: todayIso,
-      initials: initialsOf(intake.name),
-      email: intake.email,
-      phone: intake.phone,
-      checklist: defaultChecklist.map((item) => ({
-        item,
-        done: false,
-        phase: "Pre-onboarding",
-      })),
-    }, intake.applicantId);
+    hireStore.add(
+      {
+        id,
+        name: intake.name,
+        position: intake.position,
+        department: intake.department,
+        stage: "Pre-onboarding",
+        startDate: todayIso,
+        initials: initialsOf(intake.name),
+        email: intake.email,
+        phone: intake.phone,
+        checklist: defaultChecklist.map((item) => ({
+          item,
+          done: false,
+          phase: "Pre-onboarding",
+        })),
+      },
+      intake.applicantId,
+    );
     setSelectedId(id);
     setStage("Pre-onboarding");
     setShowAllStages(false);
@@ -340,6 +555,53 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   }, [pending]);
 
   const selected = hires.find((h) => h.id === selectedId) ?? null;
+
+  /** Employee submissions (uploads / notes / completion dates) per hire id,
+   *  fetched live from employee_onboarding_items via the backend API so
+   *  admins see exactly what each new hire submitted per checklist item. */
+  const [submissionsByHire, setSubmissionsByHire] = useState<Record<string, EmployeeSubmission[]>>(
+    {},
+  );
+
+  useEffect(() => {
+    const dbId = selected?.dbId;
+    if (!selected || !dbId) return;
+    let cancelled = false;
+    onboardingItemsApi
+      .listForNewHire(dbId)
+      .then((items) => {
+        if (cancelled) return;
+        setSubmissionsByHire((prev) => ({
+          ...prev,
+          [selected.id]: items.map((i) => ({
+            itemText: i.item_text,
+            done: Boolean(i.done),
+            submittedAt: i.submitted_at ?? undefined,
+            fileName: i.file_name ?? undefined,
+            fileUrl:
+              i.employee_onboarding_item_id != null
+                ? onboardingItemsApi.documentUrl(i.employee_onboarding_item_id)
+                : (i.file_url ?? (i.file_path ? resolveStorageUrl(i.file_path) : undefined)),
+            notes: i.notes ?? undefined,
+            completedAt: i.completed_at ?? undefined,
+          })),
+        }));
+      })
+      .catch((err) => console.warn("Could not load employee submissions:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
+
+  /** Quick lookup: normalized checklist item text → employee submission. */
+  const selectedSubmissions = useMemo(() => {
+    if (!selected) return {} as Record<string, EmployeeSubmission>;
+    const list = submissionsByHire[selected.id] ?? [];
+    return Object.fromEntries(list.map((s) => [normalizeChecklistKey(s.itemText), s])) as Record<
+      string,
+      EmployeeSubmission
+    >;
+  }, [selected, submissionsByHire]);
 
   const toggleItem = (hireId: string, item: string) => {
     if (editingId !== hireId) return;
@@ -404,8 +666,22 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const addDraftItem = () => {
     const item = newItem.trim();
     if (!item) return;
-    setDraftItems((prev) => [...prev, item]);
+    setDraftItems((prev) => [
+      ...prev,
+      {
+        item_text: item,
+        requires_upload: newItemRequiresUpload,
+        ...(newItemInstructions.trim() ? { instructions: newItemInstructions.trim() } : {}),
+        ...(newItemUploadPlaceholder.trim()
+          ? { upload_placeholder: newItemUploadPlaceholder.trim() }
+          : {}),
+      },
+    ]);
     setNewItem("");
+    setNewItemInstructions("");
+    setNewItemRequiresUpload(true);
+    setNewItemUploadPlaceholder("");
+    setShowItemDetails(false);
   };
 
   /** Requested checklist items — reference rows managed by HR. */
@@ -482,11 +758,16 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       toast.error("Select at least one position");
       return;
     }
-    hireStore.addMasterChecklist(title, draftItems, {
-      phase: newChecklistPhase,
-      positions: newChecklistAllPositions ? "all" : newChecklistPositions,
-      status: "Active",
-    });
+    hireStore.addMasterChecklist(
+      title,
+      draftItems.map((d) => d.item_text),
+      {
+        phase: newChecklistPhase,
+        positions: newChecklistAllPositions ? "all" : newChecklistPositions,
+        status: "Active",
+        richItems: draftItems,
+      },
+    );
     setNewChecklistTitle("");
     setDraftItems([]);
     setNewChecklistPositions([]);
@@ -501,7 +782,16 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     setEditingChecklistId(id);
     setEditChecklistTitle(c.title);
     setEditChecklistItems([...c.items]);
+    const rich =
+      c.richItems && c.richItems.length > 0
+        ? c.richItems.map((r) => ({ ...r }))
+        : c.items.map((text) => ({ item_text: text, requires_upload: true }));
+    setEditChecklistRichItems(rich);
     setEditChecklistNewItem("");
+    setEditItemInstructions("");
+    setEditItemRequiresUpload(true);
+    setEditItemUploadPlaceholder("");
+    setShowEditItemDetails(false);
     setEditChecklistPhase(c.phase ?? "Probationary");
     const all = c.positions === "all" || !c.positions;
     setEditChecklistAllPositions(all);
@@ -512,7 +802,12 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     setEditingChecklistId(null);
     setEditChecklistTitle("");
     setEditChecklistItems([]);
+    setEditChecklistRichItems([]);
     setEditChecklistNewItem("");
+    setEditItemInstructions("");
+    setEditItemRequiresUpload(true);
+    setEditItemUploadPlaceholder("");
+    setShowEditItemDetails(false);
     setEditChecklistPhase("Probationary");
     setEditChecklistAllPositions(true);
     setEditChecklistPositions([]);
@@ -520,7 +815,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
 
   const saveEditMasterChecklist = () => {
     if (!editingChecklistId) return;
-    if (!editChecklistTitle.trim() || editChecklistItems.length === 0) {
+    if (!editChecklistTitle.trim() || editChecklistRichItems.length === 0) {
       toast.error("A checklist needs a title and at least one item");
       return;
     }
@@ -530,11 +825,12 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     }
     hireStore.updateMasterChecklist(editingChecklistId, {
       title: editChecklistTitle.trim(),
-      items: editChecklistItems,
+      items: editChecklistRichItems.map((r) => r.item_text),
+      richItems: editChecklistRichItems,
       phase: editChecklistPhase,
       positions: editChecklistAllPositions ? "all" : editChecklistPositions,
     });
-    toast.success("Master checklist updated");
+    toast.success("Master checklist configuration updated");
     cancelEditMasterChecklist();
   };
 
@@ -667,11 +963,19 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       return;
     }
 
+    if (!isValidEmail(form.email)) {
+      toast.error("Please enter a valid email address.");
+      return;
+    }
+
+    if (form.phone && !isValidPhone(form.phone)) {
+      toast.error("Please enter a valid phone number (e.g. 09171234567 or +639171234567).");
+      return;
+    }
+
     // Resolve the selected position title / department name to their Core HCM ids
-    const positionId =
-      knownPositions.find((p) => p.title === form.position)?.dbId ?? null;
-    const departmentId =
-      knownDepartments.find((d) => d.name === form.department)?.dbId ?? null;
+    const positionId = knownPositions.find((p) => p.title === form.position)?.dbId ?? null;
+    const departmentId = knownDepartments.find((d) => d.name === form.department)?.dbId ?? null;
 
     // Completing an existing hire's record as they enter probation:
     // saving here is what promotes them and creates their portal account.
@@ -705,9 +1009,10 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       setShowAllStages(false);
       setSelectedId(id);
       const name = form.name;
+      const targetEmail = form.email;
       resetHireForm();
       toast.success(
-        `${name} moved to Probationary — portal account created (default password ${defaultPassword})`,
+        `${name} moved to Probationary — portal account created & login credentials sent to ${targetEmail} (default password: ${defaultPassword})`,
       );
       hireStore.updateHire(id, {
         name: form.name,
@@ -722,6 +1027,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     }
 
     const id = `NH-${String(hires.length + 1).padStart(2, "0")}`;
+    const targetEmail = form.email;
     const saved = await hireStore.add({
       id,
       name: form.name,
@@ -748,7 +1054,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     resetHireForm();
     if (saved) {
       toast.success(
-        `${name} added to pre-onboarding — database record and portal account created`,
+        `${name} added — portal account created and login credentials (email & default password) sent to ${targetEmail}`,
       );
     }
   };
@@ -799,15 +1105,21 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
         <TabsList className="flex h-auto flex-wrap justify-start">
-          <TabsTrigger className="flex items-center gap-1.5" value="pipeline"><ClipboardList className="h-3.5 w-3.5" /> Onboarding Pipeline</TabsTrigger>
-          <TabsTrigger className="flex items-center gap-1.5" value="checklists"><Send className="h-3.5 w-3.5" /> Requested Checklists</TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5" value="pipeline">
+            <ClipboardList className="h-3.5 w-3.5" /> Onboarding Pipeline
+          </TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5" value="checklists">
+            <Send className="h-3.5 w-3.5" /> Requested Checklists
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="pipeline" className="mt-4 space-y-6">
           {/* HORIZONTAL TRACKER */}
           <Card className="border-border/70">
             <CardContent className="p-6">
-              <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><ClipboardList className="h-5 w-5 text-primary" /> Onboarding Status Tracker</h2>
+              <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                <ClipboardList className="h-5 w-5 text-primary" /> Onboarding Status Tracker
+              </h2>
               <p className="text-xs text-muted-foreground">
                 Applicant and candidate stages are handled in Applicant Management — onboarding
                 starts once a candidate is hired.
@@ -1241,36 +1553,26 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   .sort((a, b) => Number(a.done) - Number(b.done) || a.i - b.i)
                                   .map((c) => {
                                     const isEditingThis = editingId === selected.id && !isWaiting;
+                                    const submission =
+                                      selectedSubmissions[normalizeChecklistKey(c.item)];
                                     return (
                                       <li
                                         key={c.item}
-                                        className="transition-all duration-300 ease-in-out"
+                                        className="rounded-md transition-all duration-300 ease-in-out"
                                       >
-                                        <button
-                                          type="button"
+                                        <AdminChecklistRow
+                                          done={Boolean(c.done)}
+                                          submitted={Boolean(
+                                            submission &&
+                                            (submission.submittedAt ||
+                                              submission.fileName ||
+                                              submission.notes),
+                                          )}
+                                          label={c.item}
                                           disabled={!isEditingThis}
                                           onClick={() => toggleItem(selected.id, c.item)}
-                                          className={cn(
-                                            "flex w-full items-center gap-2.5 rounded-md border px-3 py-2 text-left text-sm transition-colors",
-                                            isEditingThis
-                                              ? "cursor-pointer"
-                                              : "cursor-not-allowed opacity-80",
-                                            c.done
-                                              ? selected.stage === "Pre-onboarding"
-                                                ? "border-gold/30 bg-gold/10 text-gold-foreground"
-                                                : "border-success/30 bg-success/10 text-success"
-                                              : "border-border hover:border-primary/40",
-                                          )}
-                                        >
-                                          {c.done ? (
-                                            <CheckCircle2 className="h-4 w-4 shrink-0" />
-                                          ) : (
-                                            <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                          )}
-                                          <span className={cn(c.done && "line-through opacity-80")}>
-                                            {c.item}
-                                          </span>
-                                        </button>
+                                          submission={submission}
+                                        />
                                       </li>
                                     );
                                   })}
@@ -1282,9 +1584,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   (selected.stage === "Pre-onboarding"),
                               ) && (
                                 <Collapsible className="mt-3">
-                                  <CollapsibleTrigger
-                                    className="flex w-full items-center justify-between rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium transition-colors hover:bg-muted/50"
-                                  >
+                                  <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium transition-colors hover:bg-muted/50">
                                     <span className="flex items-center gap-1.5">
                                       <ChevronDown className="h-3.5 w-3.5" />
                                       {selected.stage === "Pre-onboarding"
@@ -1292,17 +1592,22 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                         : "Finished pre-onboarding checklist"}
                                     </span>
                                     <span className="text-muted-foreground">
-                                      {selected.checklist.filter(
-                                        (c) =>
-                                          ((c.phase ?? "Probationary") === "Pre-onboarding") !==
-                                            (selected.stage === "Pre-onboarding") &&
-                                          c.done,
-                                      ).length}
-                                      /{selected.checklist.filter(
-                                        (c) =>
-                                          ((c.phase ?? "Probationary") === "Pre-onboarding") !==
-                                          (selected.stage === "Pre-onboarding"),
-                                      ).length} done
+                                      {
+                                        selected.checklist.filter(
+                                          (c) =>
+                                            ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                              (selected.stage === "Pre-onboarding") && c.done,
+                                        ).length
+                                      }
+                                      /
+                                      {
+                                        selected.checklist.filter(
+                                          (c) =>
+                                            ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                            (selected.stage === "Pre-onboarding"),
+                                        ).length
+                                      }{" "}
+                                      done
                                     </span>
                                   </CollapsibleTrigger>
                                   <CollapsibleContent className="overflow-hidden transition-all data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
@@ -1314,34 +1619,32 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                             (selected.stage === "Pre-onboarding"),
                                         )
                                         .map((c, i) => ({ ...c, i }))
-                                        .sort((a, b) => Number(a.done) - Number(b.done) || a.i - b.i)
+                                        .sort(
+                                          (a, b) => Number(a.done) - Number(b.done) || a.i - b.i,
+                                        )
                                         .map((c) => {
-                                          const isEditingThis = editingId === selected.id && !isWaiting;
+                                          const isEditingThis =
+                                            editingId === selected.id && !isWaiting;
+                                          const submission =
+                                            selectedSubmissions[normalizeChecklistKey(c.item)];
                                           return (
-                                            <li key={c.item}>
-                                              <button
-                                                type="button"
+                                            <li
+                                              key={c.item}
+                                              className="rounded-md transition-all duration-300 ease-in-out"
+                                            >
+                                              <AdminChecklistRow
+                                                done={Boolean(c.done)}
+                                                submitted={Boolean(
+                                                  submission &&
+                                                  (submission.submittedAt ||
+                                                    submission.fileName ||
+                                                    submission.notes),
+                                                )}
+                                                label={c.item}
                                                 disabled={!isEditingThis}
                                                 onClick={() => toggleItem(selected.id, c.item)}
-                                                className={cn(
-                                                  "flex w-full items-center gap-2.5 rounded-md border px-3 py-2 text-left text-sm transition-colors",
-                                                  isEditingThis
-                                                    ? "cursor-pointer"
-                                                    : "cursor-not-allowed opacity-80",
-                                                  c.done
-                                                    ? "border-success/30 bg-success/10 text-success"
-                                                    : "border-border hover:border-primary/40",
-                                                )}
-                                              >
-                                                {c.done ? (
-                                                  <CheckCircle2 className="h-4 w-4 shrink-0" />
-                                                ) : (
-                                                  <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                                )}
-                                                <span className={cn(c.done && "line-through opacity-80")}>
-                                                  {c.item}
-                                                </span>
-                                              </button>
+                                                submission={submission}
+                                              />
                                             </li>
                                           );
                                         })}
@@ -1364,9 +1667,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                     <Button
                                       variant="outline"
                                       className="h-10 cursor-pointer"
-                                      onClick={() =>
-                                        hireStore.setAllItemsDone(selected.id, true)
-                                      }
+                                      onClick={() => hireStore.setAllItemsDone(selected.id, true)}
                                     >
                                       Mark all done
                                     </Button>
@@ -1555,7 +1856,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               <CardContent className="flex min-h-0 flex-1 flex-col p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><ClipboardCheck className="h-5 w-5 text-primary" /> Checklist Builder</h2>
+                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                      <ClipboardCheck className="h-5 w-5 text-primary" /> Checklist Builder
+                    </h2>
                     <p className="text-xs text-muted-foreground">
                       Create the checklists shown in Pre-onboarding or Probationary. Active
                       Probationary checklists become the starting requirements of every new
@@ -1627,52 +1930,140 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                 </div>
                               )}
                             </div>
-                            <div className="mt-3 flex gap-2">
-                              <Input
-                                value={editChecklistNewItem}
-                                onChange={(e) => setEditChecklistNewItem(e.target.value)}
-                                placeholder="Add an item…"
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
+                            <div className="mt-3 space-y-2 rounded-lg border border-border/70 bg-muted/20 p-2.5">
+                              <div className="flex gap-2">
+                                <Input
+                                  value={editChecklistNewItem}
+                                  onChange={(e) => setEditChecklistNewItem(e.target.value)}
+                                  placeholder="Requirement name…"
+                                  className="h-8 text-xs"
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" && !showEditItemDetails) {
+                                      e.preventDefault();
+                                      const v = editChecklistNewItem.trim();
+                                      if (!v) return;
+                                      setEditChecklistRichItems((prev) => [
+                                        ...prev,
+                                        {
+                                          item_text: v,
+                                          requires_upload: editItemRequiresUpload,
+                                          ...(editItemInstructions.trim()
+                                            ? { instructions: editItemInstructions.trim() }
+                                            : {}),
+                                          ...(editItemUploadPlaceholder.trim()
+                                            ? {
+                                                upload_placeholder:
+                                                  editItemUploadPlaceholder.trim(),
+                                              }
+                                            : {}),
+                                        },
+                                      ]);
+                                      setEditChecklistNewItem("");
+                                      setEditItemInstructions("");
+                                      setEditItemUploadPlaceholder("");
+                                    }
+                                  }}
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 text-xs cursor-pointer"
+                                  onClick={() => setShowEditItemDetails(!showEditItemDetails)}
+                                >
+                                  {showEditItemDetails ? "Simple" : "Configure"}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="h-8 cursor-pointer"
+                                  onClick={() => {
                                     const v = editChecklistNewItem.trim();
                                     if (!v) return;
-                                    setEditChecklistItems((prev) => [...prev, v]);
+                                    setEditChecklistRichItems((prev) => [
+                                      ...prev,
+                                      {
+                                        item_text: v,
+                                        requires_upload: editItemRequiresUpload,
+                                        ...(editItemInstructions.trim()
+                                          ? { instructions: editItemInstructions.trim() }
+                                          : {}),
+                                        ...(editItemUploadPlaceholder.trim()
+                                          ? { upload_placeholder: editItemUploadPlaceholder.trim() }
+                                          : {}),
+                                      },
+                                    ]);
                                     setEditChecklistNewItem("");
-                                  }
-                                }}
-                              />
-                              <Button
-                                variant="outline"
-                                className="cursor-pointer"
-                                onClick={() => {
-                                  const v = editChecklistNewItem.trim();
-                                  if (!v) return;
-                                  setEditChecklistItems((prev) => [...prev, v]);
-                                  setEditChecklistNewItem("");
-                                }}
-                              >
-                                <Plus className="h-4 w-4" />
-                              </Button>
-                            </div>
-                            <ul className="mt-3 space-y-1.5">
-                              {editChecklistItems.map((item, i) => (
-                                <li
-                                  key={`${item}-${i}`}
-                                  className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                                    setEditItemInstructions("");
+                                    setEditItemUploadPlaceholder("");
+                                  }}
                                 >
-                                  <span>{item}</span>
+                                  <Plus className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+
+                              {showEditItemDetails && (
+                                <div className="space-y-2 pt-2 border-t border-border/60 text-xs">
+                                  <div className="space-y-1">
+                                    <Label className="text-[10px] text-muted-foreground">
+                                      Instructions
+                                    </Label>
+                                    <Input
+                                      value={editItemInstructions}
+                                      onChange={(e) => setEditItemInstructions(e.target.value)}
+                                      placeholder="e.g. Upload scanned original document..."
+                                      className="h-7 text-xs"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-[10px] text-muted-foreground">
+                                      Upload Placeholder / Hint
+                                    </Label>
+                                    <Input
+                                      value={editItemUploadPlaceholder}
+                                      onChange={(e) => setEditItemUploadPlaceholder(e.target.value)}
+                                      placeholder="e.g. Upload PDF or clear scan..."
+                                      className="h-7 text-xs"
+                                    />
+                                  </div>
+                                  <label className="flex items-center gap-2 cursor-pointer pt-0.5">
+                                    <Checkbox
+                                      checked={editItemRequiresUpload}
+                                      onCheckedChange={(v) => setEditItemRequiresUpload(v === true)}
+                                    />
+                                    <span className="font-medium text-[11px]">
+                                      Require document upload
+                                    </span>
+                                  </label>
+                                </div>
+                              )}
+                            </div>
+
+                            <ul className="mt-3 space-y-1.5">
+                              {editChecklistRichItems.map((item, i) => (
+                                <li
+                                  key={`${item.item_text}-${i}`}
+                                  className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-xs"
+                                >
+                                  <div className="min-w-0">
+                                    <span className="font-medium">{item.item_text}</span>
+                                    {item.instructions && (
+                                      <p className="text-[10px] text-muted-foreground truncate">
+                                        {item.instructions}
+                                      </p>
+                                    )}
+                                  </div>
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="h-7 w-7 cursor-pointer"
+                                    className="h-6 w-6 cursor-pointer shrink-0"
                                     onClick={() =>
-                                      setEditChecklistItems((prev) =>
+                                      setEditChecklistRichItems((prev) =>
                                         prev.filter((_, x) => x !== i),
                                       )
                                     }
                                   >
-                                    <Trash2 className="h-3.5 w-3.5" />
+                                    <Trash2 className="h-3 w-3" />
                                   </Button>
                                 </li>
                               ))}
@@ -1680,13 +2071,16 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             <div className="mt-3 flex justify-end gap-2">
                               <Button
                                 variant="outline"
-                                className="cursor-pointer"
+                                className="cursor-pointer text-xs h-8"
                                 onClick={cancelEditMasterChecklist}
                               >
-                                <X className="mr-1.5 h-4 w-4" /> Cancel
+                                <X className="mr-1.5 h-3.5 w-3.5" /> Cancel
                               </Button>
-                              <Button className="cursor-pointer" onClick={saveEditMasterChecklist}>
-                                <Save className="mr-1.5 h-4 w-4" /> Save checklist
+                              <Button
+                                className="cursor-pointer text-xs h-8"
+                                onClick={saveEditMasterChecklist}
+                              >
+                                <Save className="mr-1.5 h-3.5 w-3.5" /> Save Configuration
                               </Button>
                             </div>
                           </>
@@ -1737,8 +2131,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                 <Button
                                   size="icon"
                                   variant="ghost"
-                                  className="h-8 w-8 cursor-pointer"
-                                  aria-label={`Edit ${c.title}`}
+                                  className="h-8 w-8 cursor-pointer text-primary hover:bg-primary/10"
+                                  aria-label={`Edit configuration for ${c.title}`}
+                                  title="Edit configuration"
                                   onClick={() => startEditMasterChecklist(c.id)}
                                 >
                                   <Pencil className="h-4 w-4" />
@@ -1746,8 +2141,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                 <Button
                                   size="icon"
                                   variant="ghost"
-                                  className="h-8 w-8 cursor-pointer"
+                                  className="h-8 w-8 cursor-pointer hover:text-destructive"
                                   aria-label={`Delete ${c.title}`}
+                                  title="Delete checklist"
                                   onClick={() => deleteMasterChecklist(c.id)}
                                 >
                                   <Trash2 className="h-4 w-4" />
@@ -1851,37 +2247,87 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             </div>
                           )}
                         </div>
-                        <div className="mt-3 flex gap-2">
-                          <Input
-                            value={newItem}
-                            onChange={(e) => setNewItem(e.target.value)}
-                            placeholder="Add a checklist item…"
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                addDraftItem();
-                              }
-                            }}
-                          />
-                          <Button
-                            variant="outline"
-                            className="cursor-pointer"
-                            onClick={addDraftItem}
-                          >
-                            <Plus className="h-4 w-4" />
-                          </Button>
+                        <div className="mt-3 space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3">
+                          <div className="flex gap-2">
+                            <Input
+                              value={newItem}
+                              onChange={(e) => setNewItem(e.target.value)}
+                              placeholder="Requirement name (e.g. NBI Clearance)…"
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && !showItemDetails) {
+                                  e.preventDefault();
+                                  addDraftItem();
+                                }
+                              }}
+                            />
+                            <Button
+                              variant="outline"
+                              className="cursor-pointer"
+                              onClick={() => setShowItemDetails(!showItemDetails)}
+                              title="Configure instructions and upload requirements"
+                            >
+                              {showItemDetails ? "Simple" : "Configure"}
+                            </Button>
+                            <Button className="cursor-pointer" onClick={addDraftItem}>
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
+
+                          {showItemDetails && (
+                            <div className="space-y-2.5 pt-2 border-t border-border/60 text-xs">
+                              <div className="space-y-1">
+                                <Label className="text-[11px] text-muted-foreground">
+                                  Instructions for New Hire
+                                </Label>
+                                <Input
+                                  value={newItemInstructions}
+                                  onChange={(e) => setNewItemInstructions(e.target.value)}
+                                  placeholder="e.g. Submit original clearance issued within the last 6 months."
+                                  className="h-8 text-xs"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[11px] text-muted-foreground">
+                                  Upload Placeholder / File Hint
+                                </Label>
+                                <Input
+                                  value={newItemUploadPlaceholder}
+                                  onChange={(e) => setNewItemUploadPlaceholder(e.target.value)}
+                                  placeholder="e.g. Upload scanned PDF or clear photo..."
+                                  className="h-8 text-xs"
+                                />
+                              </div>
+                              <label className="flex items-center gap-2 cursor-pointer pt-1">
+                                <Checkbox
+                                  checked={newItemRequiresUpload}
+                                  onCheckedChange={(v) => setNewItemRequiresUpload(v === true)}
+                                />
+                                <span className="font-medium">
+                                  Require document attachment / upload
+                                </span>
+                              </label>
+                            </div>
+                          )}
                         </div>
+
                         <ul className="mt-3 space-y-1.5">
                           {draftItems.map((item, i) => (
                             <li
-                              key={`${item}-${i}`}
+                              key={`${item.item_text}-${i}`}
                               className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
                             >
-                              <span>{item}</span>
+                              <div className="min-w-0">
+                                <span className="font-medium">{item.item_text}</span>
+                                {item.instructions && (
+                                  <p className="text-[11px] text-muted-foreground truncate">
+                                    {item.instructions}
+                                  </p>
+                                )}
+                              </div>
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-7 w-7 cursor-pointer"
+                                className="h-7 w-7 cursor-pointer shrink-0"
                                 onClick={() =>
                                   setDraftItems((prev) => prev.filter((_, x) => x !== i))
                                 }
@@ -1892,7 +2338,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                           ))}
                           {draftItems.length === 0 && (
                             <li className="rounded-md border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
-                              No items yet.
+                              No items yet — add requirements above.
                             </li>
                           )}
                         </ul>
@@ -1926,7 +2372,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               <CardContent className="flex min-h-0 flex-1 flex-col p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Send className="h-5 w-5 text-primary" /> Requested Checklists</h2>
+                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                      <Send className="h-5 w-5 text-primary" /> Requested Checklists
+                    </h2>
                     <p className="text-xs text-muted-foreground">
                       Items requested by Performance. Use them as reference when building checklists
                       in the Checklist Builder — they are not attached to any single employee.
@@ -2211,8 +2659,8 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
 
           <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
             Account note: the employee portal account is created with the default password{" "}
-            <span className="font-medium text-foreground">{defaultPassword}</span> — the
-            hire is prompted to change it on first login.
+            <span className="font-medium text-foreground">{defaultPassword}</span> — the hire is
+            prompted to change it on first login.
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -2258,15 +2706,21 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Position</Label>
+              <Label className="flex items-center justify-between">
+                <span>Position</span>
+                {!isSuperAdmin && (
+                  <span className="text-[10px] text-muted-foreground">(Locked for Admin)</span>
+                )}
+              </Label>
               <Select
+                disabled={!isSuperAdmin}
                 value={form.position}
                 onValueChange={(v) => {
                   const p = knownPositions.find((x) => x.title === v);
                   setForm({ ...form, position: v, department: p?.department ?? form.department });
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger className={!isSuperAdmin ? "bg-muted/50 cursor-not-allowed" : ""}>
                   <SelectValue placeholder="Select position" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2279,12 +2733,18 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Department</Label>
+              <Label className="flex items-center justify-between">
+                <span>Department</span>
+                {!isSuperAdmin && (
+                  <span className="text-[10px] text-muted-foreground">(Locked for Admin)</span>
+                )}
+              </Label>
               <Select
+                disabled={!isSuperAdmin}
                 value={form.department}
                 onValueChange={(v) => setForm({ ...form, department: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger className={!isSuperAdmin ? "bg-muted/50 cursor-not-allowed" : ""}>
                   <SelectValue placeholder="Select department" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2297,24 +2757,46 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Email</Label>
+              <Label className="flex items-center justify-between">
+                <span>Email</span>
+                {!isSuperAdmin && (
+                  <span className="text-[10px] text-muted-foreground">(Locked for Admin)</span>
+                )}
+              </Label>
               <Input
                 type="email"
+                readOnly={!isSuperAdmin}
+                className={!isSuperAdmin ? "bg-muted/50 cursor-not-allowed" : ""}
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Phone number</Label>
+              <Label className="flex items-center justify-between">
+                <span>Phone number</span>
+                {!isSuperAdmin && (
+                  <span className="text-[10px] text-muted-foreground">(Locked for Admin)</span>
+                )}
+              </Label>
               <Input
+                placeholder="e.g. 0917 123 4567"
+                readOnly={!isSuperAdmin}
+                className={!isSuperAdmin ? "bg-muted/50 cursor-not-allowed" : ""}
                 value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                onChange={(e) => setForm({ ...form, phone: sanitizePhone(e.target.value) })}
               />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>Start date</Label>
+              <Label className="flex items-center justify-between">
+                <span>Start date</span>
+                {!isSuperAdmin && (
+                  <span className="text-[10px] text-muted-foreground">(Locked for Admin)</span>
+                )}
+              </Label>
               <Input
                 type="date"
+                readOnly={!isSuperAdmin}
+                className={!isSuperAdmin ? "bg-muted/50 cursor-not-allowed" : ""}
                 value={form.startDate}
                 onChange={(e) => setForm({ ...form, startDate: e.target.value })}
               />
@@ -2330,6 +2812,706 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/* =========================================================================== */
+/* EMPLOYEE PORTAL VIEW — probationary checklist for the signed-in new hire     */
+/* (merged from EmployeeOnboarding.tsx so this module stays a single file)      */
+/* =========================================================================== */
+
+type Phase = "Pre-onboarding" | "Probationary";
+
+type EmployeeChecklistItem = {
+  id: string;
+  title: string;
+  date: string;
+  isoDate: string;
+  done: boolean;
+  rank: number;
+  phase: Phase;
+  /** Employee has submitted this requirement (awaiting HR verification). */
+  submittedAt?: string;
+  /** Database onboarding item id — used to toggle completion / upload via the API. */
+  dbId?: number;
+  /** Template item id — virtual items are materialized on first interaction. */
+  templateItemId?: number | null;
+  instructions?: string;
+  requiresUpload?: boolean;
+  uploadPlaceholder?: string;
+  fileName?: string;
+  fileUrl?: string;
+  notes?: string;
+};
+
+function EmployeeChecklistRow({
+  item,
+  isSelected,
+  onView,
+}: {
+  item: EmployeeChecklistItem;
+  isSelected?: boolean;
+  onView: (i: EmployeeChecklistItem) => void;
+}) {
+  return (
+    <div
+      onClick={() => onView(item)}
+      role="button"
+      tabIndex={0}
+      className={cn(
+        "flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3.5 px-3 rounded-lg transition-all cursor-pointer",
+        isSelected
+          ? "bg-primary/10 border border-primary/40 shadow-xs"
+          : item.done
+            ? "border border-success/30 bg-success/10"
+            : "hover:bg-muted/30 border border-transparent",
+      )}
+    >
+      <div className="flex items-start gap-3">
+        {item.done ? (
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white mt-0.5 shadow-xs">
+            <Check className="h-4 w-4 stroke-[3]" />
+          </div>
+        ) : item.submittedAt ? (
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-destructive text-destructive mt-0.5">
+            <Hourglass className="h-3 w-3" />
+          </div>
+        ) : (
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-amber-500 text-amber-500 mt-0.5">
+            <Circle className="h-3 w-3 fill-amber-500" />
+          </div>
+        )}
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p
+              className={cn(
+                "text-sm font-semibold",
+                !item.done && item.submittedAt ? "text-destructive" : "text-foreground",
+              )}
+            >
+              {item.title}
+            </p>
+            <Badge
+              variant="outline"
+              className={
+                item.done
+                  ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[11px]"
+                  : item.submittedAt
+                    ? "bg-destructive/10 text-destructive border-destructive/30 text-[11px]"
+                    : "bg-amber-500/10 text-amber-600 border-amber-500/30 text-[11px]"
+              }
+            >
+              {item.done
+                ? "Verified by HR"
+                : item.submittedAt
+                  ? "Submitted · pending review"
+                  : "Pending"}
+            </Badge>
+            {item.fileName && (
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <FileCheck2 className="h-3 w-3 text-primary" /> Attachment uploaded
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">{item.date}</p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 sm:ml-auto" onClick={(e) => e.stopPropagation()}>
+        <Button
+          size="sm"
+          variant={isSelected ? "default" : "outline"}
+          className="cursor-pointer text-xs h-8"
+          onClick={() => onView(item)}
+        >
+          <Eye className="mr-1.5 h-3.5 w-3.5" /> {isSelected ? "Viewing" : "View"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function EmployeeOnboarding() {
+  // The current user's new hire record + checklist come from the database.
+  const [newHire, setNewHire] = useState<ApiNewHire | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<EmployeeChecklistItem[]>([]);
+
+  // Task viewing & upload modal state
+  const [viewingItem, setViewingItem] = useState<EmployeeChecklistItem | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadNotes, setUploadNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+
+  useEffect(() => {
+    // Resolve the signed-in portal user from the auth session (NOT the mock
+    // profile) so the checklist always reflects the logged-in employee's own
+    // new-hire record from the database.
+    const authUser = getUser();
+    const myName = authUser?.full_name?.trim().toLowerCase() ?? "";
+    const myEmployeeId = authUser?.employee_id ?? null;
+
+    newHiresApi
+      .list({ per_page: 100 })
+      .then((res) => {
+        const mine =
+          (myEmployeeId != null
+            ? res.data.find((h) => h.employee_id === myEmployeeId)
+            : undefined) ??
+          (myName ? res.data.find((h) => h.name.trim().toLowerCase() === myName) : undefined) ??
+          // Demo fallback: prefer a Probationary hire so the probationary
+          // checklist view stays populated straight from the database.
+          res.data.find((h) => h.stage === "Probationary") ??
+          res.data[0] ??
+          null;
+        setNewHire(mine);
+        return mine;
+      })
+      .then((mine) => {
+        if (!mine) return;
+        return onboardingItemsApi.listForNewHire(mine.new_hire_id).then((apiItems) => {
+          // Show ONLY the Probationary checklist — pre-onboarding / onboarding
+          // items are hidden from the employee portal entirely.
+          const probationaryOnly = apiItems.filter(
+            (i) => (i.phase ?? "Probationary") === "Probationary",
+          );
+          setItems(
+            probationaryOnly.map((i) => ({
+              id: i.employee_onboarding_item_id
+                ? `chk-${i.employee_onboarding_item_id}`
+                : `virt-${i.template_item_id}`,
+              dbId: i.employee_onboarding_item_id ?? undefined,
+              templateItemId: i.template_item_id ?? null,
+              title: i.item_text,
+              instructions:
+                i.instructions ??
+                "Please complete this requirement and upload the supporting document for HR verification.",
+              requiresUpload: i.requires_upload ?? true,
+              uploadPlaceholder:
+                i.upload_placeholder ?? "Upload scanned copy or document (PDF, PNG, JPG)...",
+              fileName: i.file_name ?? undefined,
+              fileUrl:
+                i.employee_onboarding_item_id != null
+                  ? onboardingItemsApi.documentUrl(i.employee_onboarding_item_id)
+                  : (i.file_url ?? (i.file_path ? resolveStorageUrl(i.file_path) : undefined)),
+              notes: i.notes ?? "",
+              submittedAt: i.submitted_at ?? undefined,
+              date: i.done
+                ? `Verified ${new Date(i.completed_at ?? Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                : i.submitted_at
+                  ? `Submitted ${new Date(i.submitted_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · awaiting HR verification`
+                  : "Pending your action",
+              isoDate:
+                i.done && i.completed_at
+                  ? i.completed_at.slice(0, 10)
+                  : (i.submitted_at?.slice(0, 10) ?? "2026-08-01"),
+              done: Boolean(i.done),
+              rank: i.done ? 0 : i.submitted_at ? 1 : 2,
+              phase: "Probationary" as Phase,
+            })),
+          );
+        });
+      })
+      .catch((err) => {
+        console.warn("Could not load onboarding checklist from API:", err);
+        toast.error("Could not load your onboarding checklist");
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("recent");
+
+  const completedCount = items.filter((i) => i.done).length;
+  const totalCount = items.length;
+  const pct = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
+
+  const openViewPanel = (item: EmployeeChecklistItem) => {
+    // If clicking the same item that's already open, toggle it or update selected file
+    if (viewingItem?.id === item.id) {
+      setViewingItem(null);
+      setUploadFile(null);
+      return;
+    }
+    setViewingItem(item);
+    setUploadFile(null);
+    setUploadNotes(item.notes ?? "");
+  };
+
+  const handleTaskSubmit = async () => {
+    if (!viewingItem) return;
+
+    // A submission needs at least a document or a note for HR to review.
+    if (
+      viewingItem.requiresUpload !== false &&
+      !uploadFile &&
+      !viewingItem.fileName &&
+      !uploadNotes.trim()
+    ) {
+      toast.error("Please upload the required document (or add a note) before submitting.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      let activeDbId = viewingItem.dbId;
+
+      // Materialize virtual item if needed
+      if (!activeDbId && viewingItem.templateItemId && newHire) {
+        const created = await onboardingItemsApi.materialize(
+          newHire.new_hire_id,
+          viewingItem.templateItemId,
+        );
+        activeDbId = created.employee_onboarding_item_id;
+      }
+
+      if (!activeDbId) {
+        toast.error("Could not link checklist item to database record.");
+        return;
+      }
+
+      const submittedIso = new Date().toISOString().slice(0, 10);
+      let uploadedFileName = viewingItem.fileName;
+      let uploadedFileUrl = viewingItem.fileUrl;
+
+      // Submit to HR: document (optional) + notes. This records submitted_at
+      // but does NOT complete the item — only HR verification moves progress.
+      const formData = new FormData();
+      if (uploadFile) formData.append("file", uploadFile);
+      if (uploadNotes.trim()) formData.append("notes", uploadNotes.trim());
+      const res = await onboardingItemsApi.upload(activeDbId, formData);
+      uploadedFileName = res.file_name ?? uploadedFileName;
+      uploadedFileUrl = onboardingItemsApi.documentUrl(activeDbId);
+      const submittedAt = res.submitted_at ?? new Date().toISOString();
+
+      const updatedItem: EmployeeChecklistItem = {
+        ...viewingItem,
+        dbId: activeDbId,
+        done: res.done,
+        rank: res.done ? 0 : 1,
+        date: `Submitted ${new Date(submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · awaiting HR verification`,
+        isoDate: submittedIso,
+        submittedAt,
+        ...(uploadedFileName ? { fileName: uploadedFileName } : {}),
+        ...(uploadedFileUrl ? { fileUrl: uploadedFileUrl } : {}),
+        ...(uploadNotes.trim() || viewingItem.notes
+          ? { notes: uploadNotes.trim() || viewingItem.notes }
+          : {}),
+      };
+
+      // Update local state
+      setItems((prev) =>
+        prev.map((i) => (i.id === viewingItem.id || i.dbId === activeDbId ? updatedItem : i)),
+      );
+
+      // Keep viewing the updated item in panel with fresh status
+      setViewingItem(updatedItem);
+      setUploadFile(null);
+
+      toast.success(res.message);
+    } catch (e) {
+      console.warn("Upload/submission error:", e);
+      toast.error("Could not save task submission — please retry.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const filteredItems = useMemo(() => {
+    return items
+      .filter((i) => {
+        if (search && !i.title.toLowerCase().includes(search.toLowerCase())) return false;
+        if (filter === "completed") return i.done;
+        if (filter === "pending") return !i.done;
+        return true;
+      })
+      .sort((a, b) => {
+        if (filter === "recent") return b.isoDate.localeCompare(a.isoDate);
+        if (filter === "pending") return a.rank - b.rank;
+        return 0;
+      });
+  }, [items, search, filter]);
+
+  /* Consistent card height: the checklist area is ALWAYS exactly 7 rows tall.
+     More than 7 items scroll inside the card; fewer show breathing room. The
+     height is measured from real row heights so wrapping never breaks it. */
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  /** Last seen single-row height — keeps the 7-row height stable even when
+      search/filter/loading leaves the list temporarily empty. */
+  const rowHeightFallbackRef = useRef(66);
+
+  const syncListHeight = useCallback(() => {
+    const el = listScrollRef.current;
+    if (!el) return;
+
+    const rows = Array.from(el.querySelectorAll<HTMLElement>("[data-checklist-row]"));
+    if (rows[0]) {
+      rowHeightFallbackRef.current = rows[0].offsetHeight;
+    }
+
+    // Bottom edge of the 7th row relative to the scroll container content.
+    const seventh = el.querySelector<HTMLElement>("[data-checklist-row]:nth-child(7)");
+    let target: number;
+    if (seventh) {
+      target =
+        seventh.getBoundingClientRect().bottom - el.getBoundingClientRect().top + el.scrollTop;
+    } else {
+      // Fewer than 7 rows (or none): estimate from the known row height
+      // plus the 6 divider lines between 7 rows.
+      target = Math.ceil(rowHeightFallbackRef.current * 7 + 6);
+    }
+
+    const cap = `${Math.ceil(target)}px`;
+    el.style.maxHeight = cap;
+    el.style.minHeight = cap;
+  }, []);
+
+  useEffect(() => {
+    syncListHeight();
+    // Re-measure after fonts/layout settle and on window resizes.
+    const timer = window.setTimeout(syncListHeight, 350);
+    window.addEventListener("resize", syncListHeight);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("resize", syncListHeight);
+    };
+  }, [syncListHeight, filteredItems, viewingItem]);
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Employee Portal"
+        title="New Hire Onboarding"
+        description="Complete these probationary requirements to finish your onboarding. This menu disappears once HR marks onboarding as complete."
+      />
+
+      {/* Yellow HR Notice Alert */}
+      <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-amber-800 dark:text-amber-300">
+        <Info className="h-5 w-5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+        <p className="text-sm">
+          Employee regularization and full activation is performed by HR Admin after all
+          probationary requirements below have been verified.
+        </p>
+      </div>
+
+      {/* NEW HIRE ONBOARDING Header & Progress Card */}
+      <Card className="border-border/70 overflow-hidden">
+        <CardContent className="p-6 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <p className="eyebrow text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                NEW HIRE ONBOARDING
+              </p>
+              <h2 className="text-2xl font-bold font-display text-foreground mt-1">
+                {newHire?.name ?? getUser()?.full_name ?? myProfile.name}
+              </h2>
+              <p className="text-sm font-medium text-muted-foreground mt-0.5">
+                Employee ID:{" "}
+                <span className="text-foreground font-mono font-semibold">
+                  {newHire?.employee_id
+                    ? `OSM-${String(newHire.employee_id).padStart(4, "0")}`
+                    : myProfile.employeeId}
+                </span>
+              </p>
+            </div>
+
+            {/* Prominent Employment Status — PROBATIONARY */}
+            <div className="flex flex-col sm:items-end gap-1.5">
+              <Badge
+                variant="outline"
+                className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40 text-base sm:text-lg px-4 py-1.5 font-bold uppercase tracking-widest self-start sm:self-auto shadow-xs"
+              >
+                PROBATIONARY
+              </Badge>
+              <span className="text-xs text-muted-foreground font-medium">Employment Status</span>
+            </div>
+          </div>
+
+          {/* Overall Progress */}
+          <div className="border-t border-border pt-4">
+            <div className="flex items-center justify-between text-sm font-medium mb-2">
+              <span className="text-muted-foreground">
+                Verified Progress{" "}
+                <span className="font-normal text-muted-foreground/70">
+                  (HR updates this when they verify your submissions)
+                </span>
+              </span>
+              <span className="text-primary font-bold">{pct}% Complete</span>
+            </div>
+            <Progress value={pct} className="h-3" />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* SPLIT VIEW CONTAINER: Checklist on Left, Task Detail Panel on Right.
+          The checklist card keeps a constant 7-row height and DEFINES the
+          height of the split area; on large screens the View panel is pinned
+          to that exact height (it scrolls internally when longer). */}
+      <div className="relative">
+        <div className={cn("transition-all duration-300", viewingItem && "lg:w-7/12 lg:pr-3")}>
+          <Card className="border-border/70 shadow-sm">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
+              <div>
+                <CardTitle className="font-display text-xl font-semibold">
+                  ONBOARDING CHECKLIST
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Probationary checklist requirements
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search checklist..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-8 h-9 w-[140px] sm:w-[170px]"
+                  />
+                </div>
+                <Select value={filter} onValueChange={setFilter}>
+                  <SelectTrigger className="h-9 w-[120px]">
+                    <ArrowUpDown className="mr-2 h-3.5 w-3.5" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="recent">Recent</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent className="flex min-h-0 flex-1 flex-col">
+              <div ref={listScrollRef} className="-mr-2 overflow-y-auto pr-2">
+                {loading ? (
+                  <div className="flex h-full items-center justify-center py-12 text-center text-sm text-muted-foreground">
+                    Loading your probationary onboarding checklist...
+                  </div>
+                ) : filteredItems.length === 0 ? (
+                  <div className="flex h-full items-center justify-center py-12 px-4 text-center text-sm text-muted-foreground">
+                    {totalCount === 0
+                      ? "No probationary onboarding checklist assigned yet — your HR admin will assign requirements once you start."
+                      : "No checklist items match the current filter."}
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border/60">
+                    {filteredItems.map((item) => (
+                      <div key={item.id} data-checklist-row>
+                        <EmployeeChecklistRow
+                          item={item}
+                          isSelected={viewingItem?.id === item.id}
+                          onView={openViewPanel}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right Side: Split View of the specific checklist requirement —
+            pinned to the checklist card's height on large screens */}
+        {viewingItem && (
+          <div className="mt-6 lg:absolute lg:inset-y-0 lg:left-[58.3333%] lg:right-0 lg:mt-0 lg:pl-3">
+            <Card className="flex h-full flex-col border-border/70 shadow-md overflow-hidden">
+              <CardHeader className="flex flex-row items-start justify-between pb-3 bg-muted/20 border-b border-border/60">
+                <div className="space-y-1.5 pr-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge
+                      variant="outline"
+                      className={
+                        viewingItem.done
+                          ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 font-semibold"
+                          : "bg-amber-500/10 text-amber-600 border-amber-500/30 font-semibold"
+                      }
+                    >
+                      {viewingItem.done ? "Completed" : "Pending Action"}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs">
+                      Probationary
+                    </Badge>
+                  </div>
+                  <CardTitle className="font-display text-lg font-bold leading-tight">
+                    {viewingItem.title}
+                  </CardTitle>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 rounded-full cursor-pointer hover:bg-muted shrink-0"
+                  onClick={() => {
+                    setViewingItem(null);
+                    setUploadFile(null);
+                  }}
+                  title="Close and expand checklist"
+                  aria-label="Close task view"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </CardHeader>
+
+              <CardContent className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
+                {/* Instructions */}
+                <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground leading-relaxed">
+                  {viewingItem.instructions ||
+                    "Please complete this requirement and upload the supporting document for HR verification."}
+                </div>
+
+                {/* Existing Uploaded Document */}
+                {viewingItem.fileName && (
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <FileCheck2 className="h-5 w-5 text-emerald-600 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-foreground truncate">
+                          {viewingItem.fileName}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">{viewingItem.date}</p>
+                      </div>
+                    </div>
+                    {viewingItem.fileUrl && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 text-xs cursor-pointer"
+                        onClick={() => window.open(viewingItem.fileUrl, "_blank")}
+                      >
+                        <ExternalLink className="mr-1 h-3.5 w-3.5" /> View
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {/* Upload Dropzone / Placeholder — only when the checklist
+                    item requires an upload; stretches to fill leftover
+                    vertical space in the card */}
+                {viewingItem.requiresUpload !== false && (
+                  <div className="flex flex-1 flex-col gap-2">
+                    <Label className="text-xs font-semibold">
+                      {viewingItem.fileName
+                        ? "Replace Attached Document"
+                        : "Upload Document Requirement"}
+                    </Label>
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragActive(true);
+                      }}
+                      onDragLeave={() => setDragActive(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setDragActive(false);
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) setUploadFile(file);
+                      }}
+                      className={cn(
+                        "relative flex min-h-[180px] flex-1 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 text-center transition-colors bg-card",
+                        dragActive
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50",
+                      )}
+                    >
+                      <Upload
+                        className={cn(
+                          "h-10 w-10 mb-2 transition-colors",
+                          dragActive ? "text-primary" : "text-muted-foreground",
+                        )}
+                      />
+                      <p className="text-xs font-medium text-foreground">
+                        {uploadFile
+                          ? uploadFile.name
+                          : viewingItem.uploadPlaceholder || "Choose a file or drag & drop here"}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {dragActive
+                          ? "Release to attach the file"
+                          : "Drag & drop a file here, or click to browse — PDF, DOCX, PNG, JPG (up to 10MB)"}
+                      </p>
+                      <input
+                        type="file"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) setUploadFile(file);
+                        }}
+                      />
+                    </div>
+                    {uploadFile && (
+                      <div className="flex items-center justify-between rounded-md bg-muted/40 p-2 text-xs">
+                        <span className="truncate max-w-[220px]">
+                          Selected: <strong>{uploadFile.name}</strong> (
+                          {(uploadFile.size / 1024).toFixed(0)} KB)
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 cursor-pointer"
+                          onClick={() => setUploadFile(null)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Optional Notes */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">
+                    Notes / Details{" "}
+                    <span className="font-normal text-muted-foreground">(Optional)</span>
+                  </Label>
+                  <Textarea
+                    value={uploadNotes}
+                    onChange={(e) => setUploadNotes(e.target.value)}
+                    placeholder="Provide any additional reference number or notes for HR..."
+                    rows={3}
+                    className="text-xs"
+                  />
+                </div>
+
+                {/* Action Buttons — pinned to the bottom of the card */}
+                <div className="mt-auto flex items-center justify-end gap-2 border-t border-border pt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="cursor-pointer text-xs h-9"
+                    onClick={() => {
+                      setViewingItem(null);
+                      setUploadFile(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleTaskSubmit}
+                    disabled={submitting}
+                    className="cursor-pointer text-xs h-9"
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="mr-1.5 h-3.5 w-3.5" />{" "}
+                        {uploadFile ? "Upload & Submit" : "Submit to HR"}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

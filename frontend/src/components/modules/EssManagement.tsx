@@ -154,8 +154,20 @@ export function EmployeeEss() {
   const [raSort, setRaSort] = useState("date-desc");
 
   const [attRequests, setAttRequests] = useState([
-    { date: "Jul 20, 2026", isoDate: "2026-07-20", type: "Missed Time Out", status: "Pending", statusRank: 0 },
-    { date: "Jun 12, 2026", isoDate: "2026-06-12", type: "Time In Correction", status: "Approved", statusRank: 1 },
+    {
+      date: "Jul 20, 2026",
+      isoDate: "2026-07-20",
+      type: "Missed Time Out",
+      status: "Pending",
+      statusRank: 0,
+    },
+    {
+      date: "Jun 12, 2026",
+      isoDate: "2026-06-12",
+      type: "Time In Correction",
+      status: "Approved",
+      statusRank: 1,
+    },
   ]);
   const [attSearch, setAttSearch] = useState("");
   const [attSort, setAttSort] = useState("date-desc");
@@ -164,9 +176,27 @@ export function EmployeeEss() {
   const [attDetails, setAttDetails] = useState("");
 
   const [payRequests, setPayRequests] = useState([
-    { date: "Jul 28, 2026", isoDate: "2026-07-28", type: "Overtime Request", status: "Pending", statusRank: 0 },
-    { date: "Jun 18, 2026", isoDate: "2026-06-18", type: "Overtime Request", status: "Approved", statusRank: 1 },
-    { date: "Jun 01, 2026", isoDate: "2026-06-01", type: "Payslip Request", status: "Released", statusRank: 1 },
+    {
+      date: "Jul 28, 2026",
+      isoDate: "2026-07-28",
+      type: "Overtime Request",
+      status: "Pending",
+      statusRank: 0,
+    },
+    {
+      date: "Jun 18, 2026",
+      isoDate: "2026-06-18",
+      type: "Overtime Request",
+      status: "Approved",
+      statusRank: 1,
+    },
+    {
+      date: "Jun 01, 2026",
+      isoDate: "2026-06-01",
+      type: "Payslip Request",
+      status: "Released",
+      statusRank: 1,
+    },
   ]);
   const [paySearch, setPaySearch] = useState("");
   const [paySort, setPaySort] = useState("date-desc");
@@ -175,8 +205,20 @@ export function EmployeeEss() {
   const [payDetails, setPayDetails] = useState("");
 
   const [docRequests, setDocRequests] = useState([
-    { date: "Jun 01, 2026", isoDate: "2026-06-01", type: "Certificate of Employment", status: "Released", statusRank: 1 },
-    { date: "Feb 03, 2026", isoDate: "2026-02-03", type: "HMO Certification", status: "Released", statusRank: 1 },
+    {
+      date: "Jun 01, 2026",
+      isoDate: "2026-06-01",
+      type: "Certificate of Employment",
+      status: "Released",
+      statusRank: 1,
+    },
+    {
+      date: "Feb 03, 2026",
+      isoDate: "2026-02-03",
+      type: "HMO Certification",
+      status: "Released",
+      statusRank: 1,
+    },
   ]);
   const [docSearch, setDocSearch] = useState("");
   const [docSort, setDocSort] = useState("date-desc");
@@ -211,7 +253,12 @@ export function EmployeeEss() {
 
   const filteredAttRequests = useMemo(() => {
     return attRequests
-      .filter((r) => !attSearch || r.type.toLowerCase().includes(attSearch.toLowerCase()) || r.status.toLowerCase().includes(attSearch.toLowerCase()))
+      .filter(
+        (r) =>
+          !attSearch ||
+          r.type.toLowerCase().includes(attSearch.toLowerCase()) ||
+          r.status.toLowerCase().includes(attSearch.toLowerCase()),
+      )
       .sort((a, b) => {
         if (attSort === "date-desc") return b.isoDate.localeCompare(a.isoDate);
         if (attSort === "date-asc") return a.isoDate.localeCompare(b.isoDate);
@@ -222,7 +269,12 @@ export function EmployeeEss() {
 
   const filteredPayRequests = useMemo(() => {
     return payRequests
-      .filter((r) => !paySearch || r.type.toLowerCase().includes(paySearch.toLowerCase()) || r.status.toLowerCase().includes(paySearch.toLowerCase()))
+      .filter(
+        (r) =>
+          !paySearch ||
+          r.type.toLowerCase().includes(paySearch.toLowerCase()) ||
+          r.status.toLowerCase().includes(paySearch.toLowerCase()),
+      )
       .sort((a, b) => {
         if (paySort === "date-desc") return b.isoDate.localeCompare(a.isoDate);
         if (paySort === "date-asc") return a.isoDate.localeCompare(b.isoDate);
@@ -233,7 +285,12 @@ export function EmployeeEss() {
 
   const filteredDocRequests = useMemo(() => {
     return docRequests
-      .filter((r) => !docSearch || r.type.toLowerCase().includes(docSearch.toLowerCase()) || r.status.toLowerCase().includes(docSearch.toLowerCase()))
+      .filter(
+        (r) =>
+          !docSearch ||
+          r.type.toLowerCase().includes(docSearch.toLowerCase()) ||
+          r.status.toLowerCase().includes(docSearch.toLowerCase()),
+      )
       .sort((a, b) => {
         if (docSort === "date-desc") return b.isoDate.localeCompare(a.isoDate);
         if (docSort === "date-asc") return a.isoDate.localeCompare(b.isoDate);
@@ -252,9 +309,19 @@ export function EmployeeEss() {
 
   const handleAttSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const todayStr = new Date().toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
     const isoStr = new Date().toISOString().slice(0, 10);
-    const newReq = { date: todayStr, isoDate: isoStr, type: attType, status: "Pending" as const, statusRank: 0 };
+    const newReq = {
+      date: todayStr,
+      isoDate: isoStr,
+      type: attType,
+      status: "Pending" as const,
+      statusRank: 0,
+    };
     setAttRequests([newReq, ...attRequests]);
     toast.success(`${attType} request submitted successfully.`);
     setAttDetails("");
@@ -262,9 +329,19 @@ export function EmployeeEss() {
 
   const handlePaySubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const todayStr = new Date().toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
     const isoStr = new Date().toISOString().slice(0, 10);
-    const newReq = { date: todayStr, isoDate: isoStr, type: payType, status: "Pending" as const, statusRank: 0 };
+    const newReq = {
+      date: todayStr,
+      isoDate: isoStr,
+      type: payType,
+      status: "Pending" as const,
+      statusRank: 0,
+    };
     setPayRequests([newReq, ...payRequests]);
     toast.success(`${payType} request submitted successfully.`);
     setPayPeriod("");
@@ -273,9 +350,19 @@ export function EmployeeEss() {
 
   const handleDocSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const todayStr = new Date().toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
     const isoStr = new Date().toISOString().slice(0, 10);
-    const newReq = { date: todayStr, isoDate: isoStr, type: docType, status: "Pending" as const, statusRank: 0 };
+    const newReq = {
+      date: todayStr,
+      isoDate: isoStr,
+      type: docType,
+      status: "Pending" as const,
+      statusRank: 0,
+    };
     setDocRequests([newReq, ...docRequests]);
     toast.success(`${docType} request submitted successfully.`);
     setDocPurpose("");
@@ -284,7 +371,11 @@ export function EmployeeEss() {
   const handlePromoSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!promoPosition) return;
-    const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const todayStr = new Date().toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
     setLastPromo({ position: promoPosition, status: "Pending", date: todayStr });
     toast.success("Promotion request submitted successfully.");
     setPromoPosition("");
@@ -294,26 +385,65 @@ export function EmployeeEss() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "Pending":
-        return <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30">Pending</Badge>;
+        return (
+          <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30">
+            Pending
+          </Badge>
+        );
       case "Approved":
-        return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">Approved</Badge>;
+        return (
+          <Badge
+            variant="outline"
+            className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+          >
+            Approved
+          </Badge>
+        );
       case "Completed":
-        return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">Completed</Badge>;
+        return (
+          <Badge
+            variant="outline"
+            className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+          >
+            Completed
+          </Badge>
+        );
       case "Available":
       case "Released":
-        return <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30">{status}</Badge>;
+        return (
+          <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30">
+            {status}
+          </Badge>
+        );
       case "Submitted":
-        return <Badge variant="outline" className="bg-purple-500/10 text-purple-600 border-purple-500/30">Submitted</Badge>;
+        return (
+          <Badge
+            variant="outline"
+            className="bg-purple-500/10 text-purple-600 border-purple-500/30"
+          >
+            Submitted
+          </Badge>
+        );
       case "Missing":
-        return <Badge variant="outline" className="bg-rose-500/10 text-rose-600 border-rose-500/30">Missing</Badge>;
+        return (
+          <Badge variant="outline" className="bg-rose-500/10 text-rose-600 border-rose-500/30">
+            Missing
+          </Badge>
+        );
       case "Rejected":
-        return <Badge variant="outline" className="bg-rose-500/10 text-rose-600 border-rose-500/30">Rejected</Badge>;
+        return (
+          <Badge variant="outline" className="bg-rose-500/10 text-rose-600 border-rose-500/30">
+            Rejected
+          </Badge>
+        );
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
   };
 
-  const isDedicatedModule = ["attendance", "payroll", "performance", "documents"].includes(activeTab);
+  const isDedicatedModule = ["attendance", "payroll", "performance", "documents"].includes(
+    activeTab,
+  );
 
   const getPageTitle = () => {
     switch (activeTab) {
@@ -356,12 +486,42 @@ export function EmployeeEss() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
         {!isDedicatedModule && (
           <TabsList className="flex h-auto flex-wrap justify-start border-b border-border bg-transparent p-0">
-            <TabsTrigger value="overview" className="data-[state=active]:border-primary data-[state=active]:bg-muted rounded-md px-4 py-2 text-sm font-medium">Overview</TabsTrigger>
-            <TabsTrigger value="schedule" className="data-[state=active]:border-primary data-[state=active]:bg-muted rounded-md px-4 py-2 text-sm font-medium">Schedule</TabsTrigger>
-            <TabsTrigger value="leave" className="data-[state=active]:border-primary data-[state=active]:bg-muted rounded-md px-4 py-2 text-sm font-medium">Leave Balances</TabsTrigger>
-            <TabsTrigger value="benefits" className="data-[state=active]:border-primary data-[state=active]:bg-muted rounded-md px-4 py-2 text-sm font-medium">Benefits &amp; Loans</TabsTrigger>
-            <TabsTrigger value="submit" className="data-[state=active]:border-primary data-[state=active]:bg-muted rounded-md px-4 py-2 text-sm font-medium">Submit Request</TabsTrigger>
-            <TabsTrigger value="tracking" className="data-[state=active]:border-primary data-[state=active]:bg-muted rounded-md px-4 py-2 text-sm font-medium">All Requests</TabsTrigger>
+            <TabsTrigger
+              value="overview"
+              className="data-[state=active]:border-primary data-[state=active]:bg-muted rounded-md px-4 py-2 text-sm font-medium"
+            >
+              Overview
+            </TabsTrigger>
+            <TabsTrigger
+              value="schedule"
+              className="data-[state=active]:border-primary data-[state=active]:bg-muted rounded-md px-4 py-2 text-sm font-medium"
+            >
+              Schedule
+            </TabsTrigger>
+            <TabsTrigger
+              value="leave"
+              className="data-[state=active]:border-primary data-[state=active]:bg-muted rounded-md px-4 py-2 text-sm font-medium"
+            >
+              Leave Balances
+            </TabsTrigger>
+            <TabsTrigger
+              value="benefits"
+              className="data-[state=active]:border-primary data-[state=active]:bg-muted rounded-md px-4 py-2 text-sm font-medium"
+            >
+              Benefits &amp; Loans
+            </TabsTrigger>
+            <TabsTrigger
+              value="submit"
+              className="data-[state=active]:border-primary data-[state=active]:bg-muted rounded-md px-4 py-2 text-sm font-medium"
+            >
+              Submit Request
+            </TabsTrigger>
+            <TabsTrigger
+              value="tracking"
+              className="data-[state=active]:border-primary data-[state=active]:bg-muted rounded-md px-4 py-2 text-sm font-medium"
+            >
+              All Requests
+            </TabsTrigger>
           </TabsList>
         )}
 
@@ -370,16 +530,23 @@ export function EmployeeEss() {
             <Card className="border-border/70 flex flex-col justify-between">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Attendance</span>
+                  <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">
+                    Attendance
+                  </span>
                   <div className="p-2 text-primary">
                     <Clock className="h-4 w-4" />
                   </div>
                 </div>
                 <div className="mt-3">
                   <p className="text-2xl font-bold font-display text-foreground">
-                    {myAttendance.monthly.present} Present <span className="text-sm font-normal text-muted-foreground">· {myAttendance.monthly.late} Late</span>
+                    {myAttendance.monthly.present} Present{" "}
+                    <span className="text-sm font-normal text-muted-foreground">
+                      · {myAttendance.monthly.late} Late
+                    </span>
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">Today Time In: {myAttendance.today.timeIn}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Today Time In: {myAttendance.today.timeIn}
+                  </p>
                 </div>
                 <Button
                   variant="ghost"
@@ -396,7 +563,9 @@ export function EmployeeEss() {
             <Card className="border-border/70 flex flex-col justify-between">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Payroll</span>
+                  <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">
+                    Payroll
+                  </span>
                   <div className="rounded-md bg-emerald-500/10 p-2 text-emerald-600">
                     <FileText className="h-4 w-4" />
                   </div>
@@ -405,7 +574,9 @@ export function EmployeeEss() {
                   <p className="text-2xl font-bold font-display text-foreground">
                     ₱{myPayroll.net.toLocaleString()}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">Next Payout: {myPayroll.nextPayout}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Next Payout: {myPayroll.nextPayout}
+                  </p>
                 </div>
                 <Button
                   variant="ghost"
@@ -422,7 +593,9 @@ export function EmployeeEss() {
             <Card className="border-border/70 flex flex-col justify-between">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Performance</span>
+                  <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">
+                    Performance
+                  </span>
                   <div className="rounded-md bg-purple-500/10 p-2 text-purple-600">
                     <TrendingUp className="h-4 w-4" />
                   </div>
@@ -431,7 +604,10 @@ export function EmployeeEss() {
                   <p className="text-2xl font-bold font-display text-foreground">
                     {myPerformance.lmsCoursesCompleted}/{myPerformance.lmsCoursesAssigned} Courses
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">Avg Score: {myPerformance.averageScore || "90%"} · {myPerformance.competencyLevel}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Avg Score: {myPerformance.averageScore || "90%"} ·{" "}
+                    {myPerformance.competencyLevel}
+                  </p>
                 </div>
                 <Button
                   variant="ghost"
@@ -448,17 +624,28 @@ export function EmployeeEss() {
             <Card className="border-border/70 flex flex-col justify-between">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Documents</span>
+                  <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">
+                    Documents
+                  </span>
                   <div className="rounded-md bg-blue-500/10 p-2 text-blue-600">
                     <FileCheck className="h-4 w-4" />
                   </div>
                 </div>
                 <div className="mt-3">
                   <p className="text-2xl font-bold font-display text-foreground">
-                    {myEmployeeDocuments.filter((d) => d.status === "Submitted" || d.status === "Available" || d.status === "Released").length} Submitted
+                    {
+                      myEmployeeDocuments.filter(
+                        (d) =>
+                          d.status === "Submitted" ||
+                          d.status === "Available" ||
+                          d.status === "Released",
+                      ).length
+                    }{" "}
+                    Submitted
                   </p>
                   <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium">
-                    {myEmployeeDocuments.filter((d) => d.status === "Missing").length} Missing requirement
+                    {myEmployeeDocuments.filter((d) => d.status === "Missing").length} Missing
+                    requirement
                   </p>
                 </div>
                 <Button
@@ -539,7 +726,9 @@ export function EmployeeEss() {
                     raPage.pageItems.map((item, idx) => (
                       <TableRow key={idx}>
                         <TableCell className="font-medium text-sm">{item.type}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{item.category}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {item.category}
+                        </TableCell>
                         <TableCell className="text-xs text-muted-foreground">{item.date}</TableCell>
                         <TableCell>{getStatusBadge(item.status)}</TableCell>
                       </TableRow>
@@ -565,23 +754,33 @@ export function EmployeeEss() {
             <Card className="border-border/70">
               <CardContent className="p-4">
                 <p className="eyebrow">Today Time In</p>
-                <p className="mt-1 text-2xl font-bold font-display text-emerald-600">{myAttendance.today.timeIn}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Time Out: {myAttendance.today.timeOut}</p>
+                <p className="mt-1 text-2xl font-bold font-display text-emerald-600">
+                  {myAttendance.today.timeIn}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Time Out: {myAttendance.today.timeOut}
+                </p>
               </CardContent>
             </Card>
 
             <Card className="border-border/70">
               <CardContent className="p-4">
                 <p className="eyebrow">Monthly Attendance</p>
-                <p className="mt-1 text-2xl font-bold font-display">{myAttendance.monthly.present} Days Present</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{myAttendance.monthly.late} Late · {myAttendance.monthly.absent} Absent</p>
+                <p className="mt-1 text-2xl font-bold font-display">
+                  {myAttendance.monthly.present} Days Present
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {myAttendance.monthly.late} Late · {myAttendance.monthly.absent} Absent
+                </p>
               </CardContent>
             </Card>
 
             <Card className="border-border/70">
               <CardContent className="p-4">
                 <p className="eyebrow">Overtime Hours</p>
-                <p className="mt-1 text-2xl font-bold font-display text-primary">{myAttendance.monthly.overtimeHours} hrs</p>
+                <p className="mt-1 text-2xl font-bold font-display text-primary">
+                  {myAttendance.monthly.overtimeHours} hrs
+                </p>
                 <p className="text-xs text-muted-foreground mt-0.5">Approved overtime this month</p>
               </CardContent>
             </Card>
@@ -589,7 +788,9 @@ export function EmployeeEss() {
             <Card className="border-border/70">
               <CardContent className="p-4">
                 <p className="eyebrow">Break Shift Status</p>
-                <p className="mt-1 text-sm font-semibold">{myAttendance.today.breakIn} – {myAttendance.today.breakOut}</p>
+                <p className="mt-1 text-sm font-semibold">
+                  {myAttendance.today.breakIn} – {myAttendance.today.breakOut}
+                </p>
                 <p className="text-xs text-muted-foreground mt-0.5">Lunch break completed</p>
               </CardContent>
             </Card>
@@ -597,7 +798,9 @@ export function EmployeeEss() {
 
           <Card className="border-border/70">
             <CardHeader>
-              <CardTitle className="font-display text-xl font-semibold">Attendance Log History</CardTitle>
+              <CardTitle className="font-display text-xl font-semibold">
+                Attendance Log History
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <Table>
@@ -624,8 +827,8 @@ export function EmployeeEss() {
                             h.remark.includes("Present")
                               ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs"
                               : h.remark.includes("Late")
-                              ? "bg-amber-500/10 text-amber-600 border-amber-500/30 text-xs"
-                              : "bg-purple-500/10 text-purple-600 border-purple-500/30 text-xs"
+                                ? "bg-amber-500/10 text-amber-600 border-amber-500/30 text-xs"
+                                : "bg-purple-500/10 text-purple-600 border-purple-500/30 text-xs"
                           }
                         >
                           {h.remark}
@@ -641,7 +844,9 @@ export function EmployeeEss() {
           <div className="grid gap-6 lg:grid-cols-2">
             <Card className="border-border/70">
               <CardHeader>
-                <CardTitle className="font-display text-xl font-semibold">Submit Attendance Correction</CardTitle>
+                <CardTitle className="font-display text-xl font-semibold">
+                  Submit Attendance Correction
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleAttSubmit} className="space-y-4">
@@ -660,7 +865,12 @@ export function EmployeeEss() {
                   </div>
                   <div className="space-y-2">
                     <Label>Date of Attendance</Label>
-                    <Input type="date" value={attDate} onChange={(e) => setAttDate(e.target.value)} required />
+                    <Input
+                      type="date"
+                      value={attDate}
+                      onChange={(e) => setAttDate(e.target.value)}
+                      required
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Details / Reason</Label>
@@ -681,7 +891,9 @@ export function EmployeeEss() {
 
             <Card className="border-border/70">
               <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
-                <CardTitle className="font-display text-xl font-semibold">My Attendance Requests</CardTitle>
+                <CardTitle className="font-display text-xl font-semibold">
+                  My Attendance Requests
+                </CardTitle>
                 <div className="flex items-center gap-2">
                   <Input
                     placeholder="Search..."
@@ -739,24 +951,36 @@ export function EmployeeEss() {
             <Card className="border-border/70">
               <CardContent className="p-4">
                 <p className="eyebrow">Net Pay (Latest Cut-off)</p>
-                <p className="mt-1 text-3xl font-bold font-display text-emerald-600">₱{myPayroll.net.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground mt-1">Next payout: {myPayroll.nextPayout}</p>
+                <p className="mt-1 text-3xl font-bold font-display text-emerald-600">
+                  ₱{myPayroll.net.toLocaleString()}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Next payout: {myPayroll.nextPayout}
+                </p>
               </CardContent>
             </Card>
 
             <Card className="border-border/70">
               <CardContent className="p-4">
                 <p className="eyebrow">Gross Salary</p>
-                <p className="mt-1 text-2xl font-bold font-display">₱{myPayroll.gross.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground mt-1">Includes basic pay, OT &amp; allowances</p>
+                <p className="mt-1 text-2xl font-bold font-display">
+                  ₱{myPayroll.gross.toLocaleString()}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Includes basic pay, OT &amp; allowances
+                </p>
               </CardContent>
             </Card>
 
             <Card className="border-border/70">
               <CardContent className="p-4">
                 <p className="eyebrow">Total Deductions</p>
-                <p className="mt-1 text-2xl font-bold font-display text-rose-600">₱{(myPayroll.gross - myPayroll.net).toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground mt-1">SSS, PhilHealth, Pag-IBIG &amp; Tax</p>
+                <p className="mt-1 text-2xl font-bold font-display text-rose-600">
+                  ₱{(myPayroll.gross - myPayroll.net).toLocaleString()}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  SSS, PhilHealth, Pag-IBIG &amp; Tax
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -764,26 +988,37 @@ export function EmployeeEss() {
           <div className="grid gap-6 lg:grid-cols-2">
             <Card className="border-border/70">
               <CardHeader>
-                <CardTitle className="font-display text-xl font-semibold">Pay Breakdown &amp; Deductions</CardTitle>
+                <CardTitle className="font-display text-xl font-semibold">
+                  Pay Breakdown &amp; Deductions
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Earnings</h4>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    Earnings
+                  </h4>
                   <div className="space-y-1.5 border-t border-border pt-2 text-sm">
                     {myPayroll.breakdown.map((item, i) => (
                       <div key={i} className="flex justify-between">
                         <span className="text-muted-foreground">{item.label}</span>
-                        <span className="font-medium text-foreground">₱{item.amount.toLocaleString()}</span>
+                        <span className="font-medium text-foreground">
+                          ₱{item.amount.toLocaleString()}
+                        </span>
                       </div>
                     ))}
                   </div>
                 </div>
 
                 <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Deductions</h4>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    Deductions
+                  </h4>
                   <div className="space-y-1.5 border-t border-border pt-2 text-sm">
                     {myPayroll.deductions.map((item, i) => (
-                      <div key={i} className="flex justify-between text-rose-600 dark:text-rose-400">
+                      <div
+                        key={i}
+                        className="flex justify-between text-rose-600 dark:text-rose-400"
+                      >
                         <span className="text-muted-foreground">{item.label}</span>
                         <span className="font-medium">-₱{item.amount.toLocaleString()}</span>
                       </div>
@@ -795,7 +1030,9 @@ export function EmployeeEss() {
 
             <Card className="border-border/70">
               <CardHeader>
-                <CardTitle className="font-display text-xl font-semibold">Released Payslips</CardTitle>
+                <CardTitle className="font-display text-xl font-semibold">
+                  Released Payslips
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -811,7 +1048,9 @@ export function EmployeeEss() {
                     {myPayroll.payslips.map((ps, idx) => (
                       <TableRow key={idx}>
                         <TableCell className="font-medium text-xs">{ps.period}</TableCell>
-                        <TableCell className="text-xs font-semibold">₱{ps.net.toLocaleString()}</TableCell>
+                        <TableCell className="text-xs font-semibold">
+                          ₱{ps.net.toLocaleString()}
+                        </TableCell>
                         <TableCell>{getStatusBadge(ps.status)}</TableCell>
                         <TableCell>
                           <Button
@@ -834,7 +1073,9 @@ export function EmployeeEss() {
           <div className="grid gap-6 lg:grid-cols-2">
             <Card className="border-border/70">
               <CardHeader>
-                <CardTitle className="font-display text-xl font-semibold">Submit Payroll Inquiry / Request</CardTitle>
+                <CardTitle className="font-display text-xl font-semibold">
+                  Submit Payroll Inquiry / Request
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handlePaySubmit} className="space-y-4">
@@ -879,7 +1120,9 @@ export function EmployeeEss() {
 
             <Card className="border-border/70">
               <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
-                <CardTitle className="font-display text-xl font-semibold">My Payroll Requests</CardTitle>
+                <CardTitle className="font-display text-xl font-semibold">
+                  My Payroll Requests
+                </CardTitle>
                 <div className="flex items-center gap-2">
                   <Input
                     placeholder="Search..."
@@ -936,32 +1179,54 @@ export function EmployeeEss() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card className="border-border/70">
               <CardContent className="p-4">
-                <div className="eyebrow flex items-center gap-1.5"><TrendingUp className="h-3.5 w-3.5 text-primary" /> Last Review</div>
+                <div className="eyebrow flex items-center gap-1.5">
+                  <TrendingUp className="h-3.5 w-3.5 text-primary" /> Last Review
+                </div>
                 <p className="mt-1 text-sm font-semibold">{myPerformance.lastReview}</p>
-                <p className="text-xs text-muted-foreground mt-1">Next review: {myPerformance.nextReview}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Next review: {myPerformance.nextReview}
+                </p>
               </CardContent>
             </Card>
 
             <Card className="border-border/70">
               <CardContent className="p-4">
-                <div className="eyebrow flex items-center gap-1.5"><Award className="h-3.5 w-3.5 text-primary" /> Competency Rating</div>
+                <div className="eyebrow flex items-center gap-1.5">
+                  <Award className="h-3.5 w-3.5 text-primary" /> Competency Rating
+                </div>
                 <p className="mt-1 text-sm font-semibold">{myPerformance.competencyLevel}</p>
-                <p className="text-xs text-muted-foreground mt-1">Average Score: {myPerformance.averageScore}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Average Score: {myPerformance.averageScore}
+                </p>
               </CardContent>
             </Card>
 
             <Card className="border-border/70">
               <CardContent className="p-4">
-                <div className="eyebrow flex items-center gap-1.5"><BookOpen className="h-3.5 w-3.5 text-primary" /> LMS Courses</div>
-                <p className="mt-1 text-sm font-semibold">{myPerformance.lmsCoursesCompleted} of {myPerformance.lmsCoursesAssigned} Completed</p>
-                <Progress value={(myPerformance.lmsCoursesCompleted / myPerformance.lmsCoursesAssigned) * 100} className="mt-2 h-1.5" />
+                <div className="eyebrow flex items-center gap-1.5">
+                  <BookOpen className="h-3.5 w-3.5 text-primary" /> LMS Courses
+                </div>
+                <p className="mt-1 text-sm font-semibold">
+                  {myPerformance.lmsCoursesCompleted} of {myPerformance.lmsCoursesAssigned}{" "}
+                  Completed
+                </p>
+                <Progress
+                  value={
+                    (myPerformance.lmsCoursesCompleted / myPerformance.lmsCoursesAssigned) * 100
+                  }
+                  className="mt-2 h-1.5"
+                />
               </CardContent>
             </Card>
 
             <Card className="border-border/70">
               <CardContent className="p-4">
-                <div className="eyebrow flex items-center gap-1.5"><Building className="h-3.5 w-3.5 text-primary" /> Salary Grade</div>
-                <p className="mt-1 text-sm font-semibold">{myPerformance.salaryGrade} · {myPerformance.salaryStep}</p>
+                <div className="eyebrow flex items-center gap-1.5">
+                  <Building className="h-3.5 w-3.5 text-primary" /> Salary Grade
+                </div>
+                <p className="mt-1 text-sm font-semibold">
+                  {myPerformance.salaryGrade} · {myPerformance.salaryStep}
+                </p>
                 <p className="text-xs text-muted-foreground mt-1">Position: {myProfile.position}</p>
               </CardContent>
             </Card>
@@ -993,7 +1258,9 @@ export function EmployeeEss() {
                       <TableCell className="text-xs text-muted-foreground">{c.category}</TableCell>
                       <TableCell>{getStatusBadge(c.status)}</TableCell>
                       <TableCell className="text-xs font-semibold">{c.score}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{c.completedDate}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {c.completedDate}
+                      </TableCell>
                       <TableCell>
                         {c.status === "Completed" ? (
                           <Button
@@ -1024,9 +1291,12 @@ export function EmployeeEss() {
 
           <Card className="border-border/70">
             <CardHeader>
-              <CardTitle className="font-display text-xl font-semibold">Promotion Request</CardTitle>
+              <CardTitle className="font-display text-xl font-semibold">
+                Promotion Request
+              </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Submit a request for promotion consideration to be reviewed by your department head and HR.
+                Submit a request for promotion consideration to be reviewed by your department head
+                and HR.
               </p>
             </CardHeader>
             <CardContent>
@@ -1062,7 +1332,9 @@ export function EmployeeEss() {
               </form>
 
               <div className="mt-6 border-t border-border pt-4 flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Last Promotion Request Status:</span>
+                <span className="text-sm text-muted-foreground">
+                  Last Promotion Request Status:
+                </span>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{lastPromo.position}</span>
                   {getStatusBadge(lastPromo.status)}
@@ -1079,7 +1351,15 @@ export function EmployeeEss() {
               <CardContent className="p-4">
                 <p className="eyebrow">Submitted Documents</p>
                 <p className="mt-1 text-2xl font-bold font-display text-emerald-600">
-                  {myEmployeeDocuments.filter((d) => d.status === "Submitted" || d.status === "Available" || d.status === "Released").length} File(s)
+                  {
+                    myEmployeeDocuments.filter(
+                      (d) =>
+                        d.status === "Submitted" ||
+                        d.status === "Available" ||
+                        d.status === "Released",
+                    ).length
+                  }{" "}
+                  File(s)
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">Verified by HR Administration</p>
               </CardContent>
@@ -1091,7 +1371,9 @@ export function EmployeeEss() {
                 <p className="mt-1 text-2xl font-bold font-display text-rose-600">
                   {myEmployeeDocuments.filter((d) => d.status === "Missing").length} Action Item
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">Please submit missing documents</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Please submit missing documents
+                </p>
               </CardContent>
             </Card>
 
@@ -1099,9 +1381,16 @@ export function EmployeeEss() {
               <CardContent className="p-4">
                 <p className="eyebrow">Available for Download</p>
                 <p className="mt-1 text-2xl font-bold font-display text-primary">
-                  {myEmployeeDocuments.filter((d) => d.status === "Available" || d.status === "Released").length} Documents
+                  {
+                    myEmployeeDocuments.filter(
+                      (d) => d.status === "Available" || d.status === "Released",
+                    ).length
+                  }{" "}
+                  Documents
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">COE, BIR 2316 &amp; Certifications</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  COE, BIR 2316 &amp; Certifications
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -1129,7 +1418,9 @@ export function EmployeeEss() {
                   {myEmployeeDocuments.map((doc) => (
                     <TableRow key={doc.id}>
                       <TableCell className="font-medium text-sm">{doc.title}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{doc.category}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {doc.category}
+                      </TableCell>
                       <TableCell>{getStatusBadge(doc.status)}</TableCell>
                       <TableCell className="text-xs text-muted-foreground">{doc.date}</TableCell>
                       <TableCell className="text-xs text-muted-foreground">{doc.size}</TableCell>
@@ -1166,7 +1457,9 @@ export function EmployeeEss() {
           <div className="grid gap-6 lg:grid-cols-2">
             <Card className="border-border/70">
               <CardHeader>
-                <CardTitle className="font-display text-xl font-semibold">Request a Document</CardTitle>
+                <CardTitle className="font-display text-xl font-semibold">
+                  Request a Document
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleDocSubmit} className="space-y-4">
@@ -1178,13 +1471,19 @@ export function EmployeeEss() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="BIR Form 2316">BIR Form 2316</SelectItem>
-                        <SelectItem value="Certificate of Employment">Certificate of Employment</SelectItem>
-                        <SelectItem value="Certificate of No Pending Case">Certificate of No Pending Case</SelectItem>
+                        <SelectItem value="Certificate of Employment">
+                          Certificate of Employment
+                        </SelectItem>
+                        <SelectItem value="Certificate of No Pending Case">
+                          Certificate of No Pending Case
+                        </SelectItem>
                         <SelectItem value="Service Record">Service Record</SelectItem>
                         <SelectItem value="Clearance Certificate">Clearance Certificate</SelectItem>
                         <SelectItem value="Back Pay Computation">Back Pay Computation</SelectItem>
                         <SelectItem value="HMO Certification">HMO Certification</SelectItem>
-                        <SelectItem value="Employment Contract Copy">Employment Contract Copy</SelectItem>
+                        <SelectItem value="Employment Contract Copy">
+                          Employment Contract Copy
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1206,7 +1505,9 @@ export function EmployeeEss() {
 
             <Card className="border-border/70">
               <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
-                <CardTitle className="font-display text-xl font-semibold">My Document Requests</CardTitle>
+                <CardTitle className="font-display text-xl font-semibold">
+                  My Document Requests
+                </CardTitle>
                 <div className="flex items-center gap-2">
                   <Input
                     placeholder="Search..."
@@ -1301,7 +1602,9 @@ export function EmployeeEss() {
         <TabsContent value="benefits" className="mt-6">
           <Card className="border-border/70">
             <CardContent className="p-6">
-              <h2 className="font-display text-2xl font-semibold">Government &amp; Company Benefits</h2>
+              <h2 className="font-display text-2xl font-semibold">
+                Government &amp; Company Benefits
+              </h2>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {myBenefits.map((b) => (
                   <div key={b.name} className="rounded-md border border-border p-4">
@@ -1349,11 +1652,13 @@ export function EmployeeEss() {
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {(requestCategories.find((c) => c.name === category)?.types ?? []).map((t) => (
-                        <SelectItem key={t} value={t}>
-                          {t}
-                        </SelectItem>
-                      ))}
+                      {(requestCategories.find((c) => c.name === category)?.types ?? []).map(
+                        (t) => (
+                          <SelectItem key={t} value={t}>
+                            {t}
+                          </SelectItem>
+                        ),
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1750,16 +2055,28 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
 
       <Tabs defaultValue="requests" className="mt-6">
         <TabsList className="flex h-auto flex-wrap justify-start">
-          <TabsTrigger className="flex items-center gap-1.5" value="requests"><ListChecks className="h-3.5 w-3.5" /> Request Queue</TabsTrigger>
-          {role === "superadmin" && <TabsTrigger className="flex items-center gap-1.5" value="config"><Settings2 className="h-3.5 w-3.5" /> ESS Administration</TabsTrigger>}
-          {role === "superadmin" && <TabsTrigger className="flex items-center gap-1.5" value="audit"><FileCheck className="h-3.5 w-3.5" /> Audit &amp; Compliance</TabsTrigger>}
+          <TabsTrigger className="flex items-center gap-1.5" value="requests">
+            <ListChecks className="h-3.5 w-3.5" /> Request Queue
+          </TabsTrigger>
+          {role === "superadmin" && (
+            <TabsTrigger className="flex items-center gap-1.5" value="config">
+              <Settings2 className="h-3.5 w-3.5" /> ESS Administration
+            </TabsTrigger>
+          )}
+          {role === "superadmin" && (
+            <TabsTrigger className="flex items-center gap-1.5" value="audit">
+              <FileCheck className="h-3.5 w-3.5" /> Audit &amp; Compliance
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="requests" className="mt-4">
           <Card className="border-border/70">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Send className="h-5 w-5 text-primary" /> Employee Requests</h2>
+                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                  <Send className="h-5 w-5 text-primary" /> Employee Requests
+                </h2>
                 <div className="flex flex-wrap gap-2">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -2070,7 +2387,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
               <Card className="border-border/70">
                 <CardContent className="p-6">
                   <div>
-                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Cog className="h-5 w-5 text-primary" /> Category Management</h2>
+                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                      <Cog className="h-5 w-5 text-primary" /> Category Management
+                    </h2>
                     <p className="text-xs text-muted-foreground">
                       Create, edit and remove ESS request categories. Description shows to employees
                       as the request-form placeholder.
@@ -2398,7 +2717,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
             <Card className="border-border/70">
               <CardContent className="p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Clock className="h-5 w-5 text-primary" /> ESS Activity Log</h2>
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                    <Clock className="h-5 w-5 text-primary" /> ESS Activity Log
+                  </h2>
                   <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

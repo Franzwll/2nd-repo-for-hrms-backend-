@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { announcementsApi } from "@/lib/api";
+import { announcementsApi, notificationsApi, type ApiNotification } from "@/lib/api";
 
 export type Audience = "All" | "Employee" | "Admin" | "Super Admin";
 
@@ -42,53 +42,6 @@ type State = {
   loading: boolean;
 };
 
-const seed: State = {
-  announcements: [],
-  notifications: [],
-};
-const seedNotifications: Notification[] = [
-  {
-    id: "NTF-005",
-    title: "3 new applicants for Front Desk Receptionist",
-    detail: "Resume screening finished — 2 ranked as Perfect for the job.",
-    time: "8 min ago",
-    read: false,
-    tone: "info",
-  },
-  {
-    id: "NTF-004",
-    title: "Leave request awaiting approval",
-    detail: "Rosa Aquino filed a 2-day vacation leave starting Aug 6.",
-    time: "1 hr ago",
-    read: false,
-    tone: "warning",
-  },
-  {
-    id: "NTF-003",
-    title: "Onboarding checklist completed",
-    detail: "Kevin Dela Cruz finished all pre-onboarding requirements.",
-    time: "3 hrs ago",
-    read: false,
-    tone: "success",
-  },
-  {
-    id: "NTF-002",
-    title: "Job post published",
-    detail: "'Line Cook' is now live on Indeed and Facebook.",
-    time: "Yesterday",
-    read: true,
-    tone: "info",
-  },
-  {
-    id: "NTF-001",
-    title: "Account suspended",
-    detail: "mdevera was suspended after 3 failed login attempts.",
-    time: "2 days ago",
-    read: true,
-    tone: "warning",
-  },
-];
-
 const READ_STORAGE_KEY = "hrms-notifications-read";
 
 function loadReadFlags(): Set<string> {
@@ -113,9 +66,7 @@ function persistReadFlags(notifications: Notification[]) {
 
 let state: State = {
   announcements: [],
-  notifications: seedNotifications.map((n) =>
-    loadReadFlags().has(n.id) ? { ...n, read: true } : n
-  ),
+  notifications: [],
   loading: true,
 };
 const listeners = new Set<() => void>();
@@ -127,18 +78,41 @@ function set(next: Partial<State>) {
 
 let loaded = false;
 
-async function loadAnnouncements() {
+async function loadData() {
   try {
-    const res = await announcementsApi.list();
+    const [annRes, notifRes] = await Promise.allSettled([
+      announcementsApi.list(),
+      notificationsApi.list(),
+    ]);
+
+    const announcements =
+      annRes.status === "fulfilled"
+        ? (annRes.value.data ?? []).map((a) => ({
+            id: a.id,
+            title: a.title,
+            body: a.body,
+            audience: a.audience as Audience,
+            author: a.author ?? "System",
+            createdAt: a.created_at ?? a.published_date ?? "",
+          }))
+        : [];
+
+    const readFlags = loadReadFlags();
+    const notifications: Notification[] =
+      notifRes.status === "fulfilled" && notifRes.value.data && notifRes.value.data.length > 0
+        ? notifRes.value.data.map((n: ApiNotification) => ({
+            id: String(n.id),
+            title: n.title,
+            detail: n.detail,
+            time: n.time || "Just now",
+            read: n.read || readFlags.has(String(n.id)),
+            tone: (n.tone as any) || "info",
+          }))
+        : [];
+
     set({
-      announcements: (res.data ?? []).map((a) => ({
-        id: a.id,
-        title: a.title,
-        body: a.body,
-        audience: a.audience as Audience,
-        author: a.author ?? "System",
-        createdAt: a.created_at ?? a.published_date ?? "",
-      })),
+      announcements,
+      notifications,
       loading: false,
     });
   } catch {
@@ -149,7 +123,7 @@ async function loadAnnouncements() {
 function ensureLoaded() {
   if (!loaded) {
     loaded = true;
-    loadAnnouncements();
+    loadData();
   }
 }
 
@@ -175,11 +149,13 @@ export function usePortalState() {
       const next = state.notifications.map((n) => ({ ...n, read: true }));
       set({ notifications: next });
       persistReadFlags(next);
+      notificationsApi.markAllRead().catch(() => {});
     },
     markRead: (id: string) => {
       const next = state.notifications.map((n) => (n.id === id ? { ...n, read: true } : n));
       set({ notifications: next });
       persistReadFlags(next);
+      notificationsApi.markRead(id).catch(() => {});
     },
     addAnnouncement: async (input: {
       title: string;
@@ -221,6 +197,7 @@ export function usePortalState() {
       await announcementsApi.remove(id);
       set({ announcements: state.announcements.filter((a) => a.id !== id) });
     },
-    refreshAnnouncements: loadAnnouncements,
+    refreshAnnouncements: loadData,
+    refreshNotifications: loadData,
   };
 }

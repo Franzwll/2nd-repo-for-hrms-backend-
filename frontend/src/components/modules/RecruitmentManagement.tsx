@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import {
   AlertTriangle,
   ArrowDown,
@@ -72,6 +79,7 @@ import { useSort } from "@/components/portal/sortable";
 import { cn } from "@/lib/utils";
 import hiringTemplate from "@/assets/hiring-template.png.asset.json";
 import { coreHcmApi, jobPostsApi, resolveStorageUrl, type ApiJobPost } from "@/lib/api";
+import { sanitizeDigitsOnly, sanitizeDecimalString, sanitizeInteger } from "@/lib/validation";
 
 function transformApiJob(j: ApiJobPost): Job {
   const job: Job = {
@@ -208,6 +216,20 @@ const blockLibrary: { id: BlockId; label: string; hint: string }[] = [
 
 const fullBlocks: BlockId[] = blockLibrary.map((b) => b.id);
 
+/**
+ * Enum of work schedule options for the job post builder — kept in sync with
+ * the backend WorkSchedule enum (Modules\RecruitmentManagement\Enums).
+ */
+const WORK_SCHEDULE_OPTIONS = [
+  "Shifting Schedule",
+  "Day Shift (8:00 AM - 5:00 PM)",
+  "Night Shift (10:00 PM - 6:00 AM)",
+  "Monday to Friday (9:00 AM - 6:00 PM)",
+  "Flexible Schedule",
+  "Weekend Shift",
+  "Rotating Shifts",
+] as const;
+
 type Draft = {
   title: string;
   department: string;
@@ -309,11 +331,14 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const [jobList, setJobList] = useState<Job[]>([]);
 
   useEffect(() => {
-    jobPostsApi.list({ per_page: 100 }).then((res) => {
-      setJobList((res?.data ?? []).map(transformApiJob));
-    }).catch((err) => {
-      console.warn("Could not fetch jobs from API:", err);
-    });
+    jobPostsApi
+      .list({ per_page: 100 })
+      .then((res) => {
+        setJobList((res?.data ?? []).map(transformApiJob));
+      })
+      .catch((err) => {
+        console.warn("Could not fetch jobs from API:", err);
+      });
   }, []);
 
   /** Departments & positions straight from the Core HCM database. */
@@ -324,38 +349,40 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     Promise.allSettled([
       coreHcmApi.departments({ per_page: 100 }),
       coreHcmApi.positions({ per_page: 100 }),
-    ]).then(([deptRes, posRes]) => {
-      if (deptRes.status === "fulfilled") {
-        setApiDepartments(
-          (deptRes.value?.data ?? []).map((d) => ({
-            code: d.code,
-            name: d.name,
-            description: d.description ?? "",
-            head: "—",
-            staff: 0,
-            openRequisitions: 0,
-            budget: 0,
-            dbId: d.department_id,
-          })),
-        );
-      }
-      if (posRes.status === "fulfilled") {
-        setApiPositions(
-          (posRes.value?.data ?? []).map((p) => ({
-            id: p.position_code || `POS-${p.position_id}`,
-            title: p.title,
-            department: p.department || "General",
-            level: (p.level as Position["level"]) || "Rank & File",
-            headcount: p.headcount,
-            filled: p.filled_count,
-            salaryBand: "",
-            dbId: p.position_id,
-          })),
-        );
-      }
-    }).catch((err) => {
-      console.warn("Could not fetch departments/positions from API:", err);
-    });
+    ])
+      .then(([deptRes, posRes]) => {
+        if (deptRes.status === "fulfilled") {
+          setApiDepartments(
+            (deptRes.value?.data ?? []).map((d) => ({
+              code: d.code,
+              name: d.name,
+              description: d.description ?? "",
+              head: "—",
+              staff: 0,
+              openRequisitions: 0,
+              budget: 0,
+              dbId: d.department_id,
+            })),
+          );
+        }
+        if (posRes.status === "fulfilled") {
+          setApiPositions(
+            (posRes.value?.data ?? []).map((p) => ({
+              id: p.position_code || `POS-${p.position_id}`,
+              title: p.title,
+              department: p.department || "General",
+              level: (p.level as Position["level"]) || "Rank & File",
+              headcount: p.headcount,
+              filled: p.filled_count,
+              salaryBand: "",
+              dbId: p.position_id,
+            })),
+          );
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not fetch departments/positions from API:", err);
+      });
   }, []);
 
   const knownDepartments = apiDepartments;
@@ -367,6 +394,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const [blocks, setBlocks] = useState<BlockId[]>([]);
   const [dragging, setDragging] = useState<BlockId | null>(null);
   const [activeBlock, setActiveBlock] = useState<BlockId>("title");
+  /** Canvas container — used to locate a block's editor control for auto-focus. */
+  const composerRef = useRef<HTMLDivElement | null>(null);
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
@@ -514,9 +543,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       } else {
         const created = await jobPostsApi.create(basePayload);
         setJobList((prev) =>
-          prev.map((j) =>
-            j.id === draftId ? { ...j, dbId: created.job_post_id } : j,
-          ),
+          prev.map((j) => (j.id === draftId ? { ...j, dbId: created.job_post_id } : j)),
         );
       }
       toast.success(`Draft saved — “${title}” is in your postings as a draft`);
@@ -568,6 +595,21 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     const chosen = Object.keys(platforms).filter((k) => platforms[k]);
     if (!draft.title.trim()) {
       toast.error("Job title is required");
+      return;
+    }
+    const vac = Number(draft.vacancies);
+    if (isNaN(vac) || vac < 1) {
+      toast.error("Vacancies must be a valid positive number (at least 1).");
+      return;
+    }
+    const sMin = Number(draft.salaryMin) || 0;
+    const sMax = Number(draft.salaryMax) || 0;
+    if (sMin < 0 || sMax < 0) {
+      toast.error("Salary amounts cannot be negative.");
+      return;
+    }
+    if (sMin > sMax && sMax > 0) {
+      toast.error("Minimum salary cannot be greater than maximum salary.");
       return;
     }
     const jobPayload: Job = {
@@ -681,9 +723,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       }
 
       let createdJobId: number | undefined;
-      const existing = editingJobId
-        ? jobList.find((j) => j.id === editingJobId)
-        : undefined;
+      const existing = editingJobId ? jobList.find((j) => j.id === editingJobId) : undefined;
       if (editingJobId && existing?.dbId) {
         await jobPostsApi.update(existing.dbId, payload);
       } else {
@@ -691,17 +731,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         const created = await jobPostsApi.create(payload);
         createdJobId = created.job_post_id;
         setJobList((prev) =>
-          prev.map((j) =>
-            j.id === jobPayload.id
-              ? { ...j, dbId: created.job_post_id }
-              : j,
-          ),
+          prev.map((j) => (j.id === jobPayload.id ? { ...j, dbId: created.job_post_id } : j)),
         );
       }
       if (sourceReqId) {
         const srcReq = requisitions.find((r) => r.id === sourceReqId);
-        const jobDbId =
-          createdJobId ?? jobList.find((j) => j.id === jobPayload.id)?.dbId;
+        const jobDbId = createdJobId ?? jobList.find((j) => j.id === jobPayload.id)?.dbId;
         if (jobDbId) {
           await requisitionStore.markConverted(srcReq?.id ?? sourceReqId, jobDbId);
         }
@@ -788,6 +823,47 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setActiveBlock(id);
   };
   const removeBlock = (id: BlockId) => setBlocks((b) => b.filter((x) => x !== id));
+
+  /**
+   * Focuses a block's first editor control (textarea or combobox trigger).
+   * Runs only when a DIFFERENT block becomes active — never steals focus
+   * from controls the user clicked directly inside the current block.
+   */
+  const focusBlockEditor = (id: BlockId) => {
+    requestAnimationFrame(() => {
+      const scope = composerRef.current;
+      if (!scope) return;
+      const blockEl = scope.querySelector<HTMLElement>(`[data-block-id="${id}"]`);
+      if (!blockEl) return;
+      const target =
+        blockEl.querySelector<HTMLElement>("textarea") ??
+        blockEl.querySelector<HTMLElement>('button[role="combobox"]') ??
+        blockEl.querySelector<HTMLElement>("input");
+      if (!target) return;
+      target.focus();
+      blockEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  };
+
+  /** Auto-select the first control once, whenever the active block changes. */
+  useEffect(() => {
+    if (!activeBlock) return;
+    focusBlockEditor(activeBlock);
+  }, [activeBlock]);
+
+  /**
+   * Clicking a component selects it and focuses its first combobox / textarea.
+   * Clicks on interactive elements inside an already-open block (textareas,
+   * inputs, comboboxes…) are left alone so users can move between fields and
+   * place their cursor anywhere without the selection snapping back.
+   */
+  const selectBlock = (id: BlockId, e: ReactMouseEvent<HTMLDivElement>) => {
+    if (activeBlock === id) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("textarea, input, button[role='combobox'], button, label")) return;
+    setActiveBlock(id);
+  };
+
   const dropOn = (target: BlockId) => {
     if (!dragging || dragging === target) return;
     setBlocks((b) => {
@@ -871,8 +947,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setReqPage(1);
   };
   // Requisitions use the same aligned-column treatment as the postings list view.
-  const reqGridCols =
-    "grid-cols-[minmax(130px,1.1fr)_106px_62px_88px_80px_86px_112px_96px_104px]";
+  const reqGridCols = "grid-cols-[minmax(130px,1.1fr)_106px_62px_88px_80px_86px_112px_96px_104px]";
 
   function ListSortHead({
     sortKey,
@@ -1396,9 +1471,22 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
       <Tabs value={tab} onValueChange={handleTabChange} className="mt-6">
         <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
-          <TabsTrigger className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer" value="postings"><Briefcase className="mr-1.5 h-4 w-4" /> Vacancies &amp; Postings</TabsTrigger>
-          <TabsTrigger className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer" value="builder"><FilePlus2 className="mr-1.5 h-4 w-4" /> Job Post Builder</TabsTrigger>
-          <TabsTrigger className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer" value="requisitions">
+          <TabsTrigger
+            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+            value="postings"
+          >
+            <Briefcase className="mr-1.5 h-4 w-4" /> Vacancies &amp; Postings
+          </TabsTrigger>
+          <TabsTrigger
+            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+            value="builder"
+          >
+            <FilePlus2 className="mr-1.5 h-4 w-4" /> Job Post Builder
+          </TabsTrigger>
+          <TabsTrigger
+            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+            value="requisitions"
+          >
             <Send className="mr-1.5 h-4 w-4" /> Requisitions from Core HCM
             {pendingRequisitions.length ? ` (${pendingRequisitions.length})` : ""}
           </TabsTrigger>
@@ -1406,7 +1494,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
         <TabsContent id="recruitment-postings" value="postings" className="mt-4 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="flex items-center gap-2 font-display text-lg font-semibold"><Briefcase className="h-4 w-4 text-primary" /> Vacancies &amp; Postings</h2>
+            <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
+              <Briefcase className="h-4 w-4 text-primary" /> Vacancies &amp; Postings
+            </h2>
             <div className="flex flex-wrap items-center justify-end gap-3">
               <div className="relative w-56">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1684,7 +1774,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             <CardContent className="p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Send className="h-5 w-5 text-primary" /> Vacancy Requisitions</h2>
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                    <Send className="h-5 w-5 text-primary" /> Vacancy Requisitions
+                  </h2>
                   <p className="text-xs text-muted-foreground">
                     Requests raised from Core HCM's job position list, pending conversion into a job
                     post.
@@ -1999,17 +2091,18 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                       </h2>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-2" ref={composerRef}>
                       {blocks.map((id) => {
                         const meta = blockLibrary.find((b) => b.id === id)!;
                         return (
                           <div
                             key={id}
+                            data-block-id={id}
                             draggable
                             onDragStart={() => setDragging(id)}
                             onDragOver={(e) => e.preventDefault()}
                             onDrop={() => dropOn(id)}
-                            onClick={() => setActiveBlock(id)}
+                            onClick={(e) => selectBlock(id, e)}
                             className={`rounded-md border px-3 py-2 transition ${
                               activeBlock === id
                                 ? "border-primary bg-secondary/40"
@@ -2112,41 +2205,64 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                     </div>
                                     <div className="space-y-1">
                                       <Label className="text-[0.7rem]">Schedule</Label>
-                                      <Input
-                                        className="h-8 text-xs"
-                                        value={draft.schedule}
-                                        onChange={(e) =>
-                                          setDraft({ ...draft, schedule: e.target.value })
-                                        }
-                                      />
+                                      <Select
+                                        value={draft.schedule || "Shifting Schedule"}
+                                        onValueChange={(v) => setDraft({ ...draft, schedule: v })}
+                                      >
+                                        <SelectTrigger className="h-8 text-xs">
+                                          <SelectValue placeholder="Select work schedule" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {WORK_SCHEDULE_OPTIONS.map((s) => (
+                                            <SelectItem key={s} value={s}>
+                                              {s}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
                                     </div>
                                     <div className="space-y-1">
                                       <Label className="text-[0.7rem]">Vacancies</Label>
                                       <Input
+                                        type="number"
+                                        min={1}
                                         className="h-8 text-xs"
                                         value={draft.vacancies}
                                         onChange={(e) =>
-                                          setDraft({ ...draft, vacancies: e.target.value })
+                                          setDraft({
+                                            ...draft,
+                                            vacancies: sanitizeDigitsOnly(e.target.value),
+                                          })
                                         }
                                       />
                                     </div>
                                     <div className="space-y-1">
                                       <Label className="text-[0.7rem]">Salary min (₱)</Label>
                                       <Input
+                                        type="number"
+                                        min={0}
                                         className="h-8 text-xs"
                                         value={draft.salaryMin}
                                         onChange={(e) =>
-                                          setDraft({ ...draft, salaryMin: e.target.value })
+                                          setDraft({
+                                            ...draft,
+                                            salaryMin: sanitizeDecimalString(e.target.value),
+                                          })
                                         }
                                       />
                                     </div>
                                     <div className="space-y-1">
                                       <Label className="text-[0.7rem]">Salary max (₱)</Label>
                                       <Input
+                                        type="number"
+                                        min={0}
                                         className="h-8 text-xs"
                                         value={draft.salaryMax}
                                         onChange={(e) =>
-                                          setDraft({ ...draft, salaryMax: e.target.value })
+                                          setDraft({
+                                            ...draft,
+                                            salaryMax: sanitizeDecimalString(e.target.value),
+                                          })
                                         }
                                       />
                                     </div>
@@ -2154,6 +2270,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                 )}
                                 {id === "description" && (
                                   <Textarea
+                                    autoFocus
                                     rows={2}
                                     className="text-xs"
                                     value={draft.description}
@@ -2165,6 +2282,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                 )}
                                 {id === "responsibilities" && (
                                   <Textarea
+                                    autoFocus
                                     rows={3}
                                     className="text-xs"
                                     value={draft.responsibilities}
@@ -2176,6 +2294,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                 )}
                                 {id === "qualifications" && (
                                   <Textarea
+                                    autoFocus
                                     rows={3}
                                     className="text-xs"
                                     value={draft.qualifications}
@@ -2187,6 +2306,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                 )}
                                 {id === "skills" && (
                                   <Textarea
+                                    autoFocus
                                     rows={2}
                                     className="text-xs"
                                     value={draft.skills}
@@ -2196,6 +2316,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                 )}
                                 {id === "benefits" && (
                                   <Textarea
+                                    autoFocus
                                     rows={2}
                                     className="text-xs"
                                     value={draft.benefits}
@@ -2207,6 +2328,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                 )}
                                 {id === "instructions" && (
                                   <Textarea
+                                    autoFocus
                                     rows={2}
                                     className="text-xs"
                                     value={draft.instructions}
@@ -2218,6 +2340,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                 )}
                                 {id === "about" && (
                                   <Textarea
+                                    autoFocus
                                     rows={2}
                                     className="text-xs"
                                     value={draft.about}
@@ -2228,6 +2351,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                 {id === "social" && (
                                   <div className="space-y-2">
                                     <Textarea
+                                      autoFocus
                                       rows={2}
                                       className="text-xs"
                                       value={draft.social}

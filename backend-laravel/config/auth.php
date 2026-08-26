@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\SystemUser;
-use App\Models\User;
 
 return [
 
@@ -67,20 +66,17 @@ return [
     */
 
     'providers' => [
+        // The stock Laravel `users` table was removed — every provider
+        // authenticates against system_users.
         'users' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', User::class),
+            'model' => SystemUser::class,
         ],
 
         'system_users' => [
             'driver' => 'eloquent',
             'model' => SystemUser::class,
         ],
-
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table' => 'users',
-        // ],
     ],
 
     /*

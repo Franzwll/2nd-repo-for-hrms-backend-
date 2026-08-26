@@ -1,0 +1,240 @@
+{
+  "resume_file": "alternative_resume_template_3_clarisse_joy_domingo.docx",
+  "requirements_applied": false,
+  "result": {
+    "success": true,
+    "profile": {
+      "personal_information": {
+        "name": "CLARISSE JOY DOMINGO",
+        "email": "clarisse.domingo@example.com",
+        "phone": "+63 916 220 9417"
+      },
+      "education": [],
+      "work_experience": [],
+      "skills": [
+        "Attention to Detail",
+        "Cake Decoration",
+        "Food Safety",
+        "Inventory Control",
+        "Kitchen Hygiene",
+        "Pastry and Baking",
+        "Teamwork",
+        "Time Management"
+      ],
+      "certifications": [
+        "TESDA Bread and Pastry Production NC II",
+        "Tesda Accredited Training Center"
+      ],
+      "unrecognized_certifications": [
+        "Tesda Accredited Training Center"
+      ],
+      "estimated_years_experience": 5.6,
+      "job_roles": {
+        "recognized": [
+          "Pastry and Bakery Assistant"
+        ],
+        "unrecognized": []
+      },
+      "unrecognized_skills": [
+        "Production NC"
+      ]
+    },
+    "entities": [
+      {
+        "label": "PERSON",
+        "value": "CLARISSE JOY DOMINGO",
+        "source": "rule"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Pastry and Bakery Assistant",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Production NC",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Food Safety",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Pastry and Baking",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Cake Decoration",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Inventory Control",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Teamwork",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Time Management",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Attention to Detail",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Kitchen Hygiene",
+        "source": "reference_scan"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "Tesda Accredited Training Center",
+        "source": "section_rule"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "TESDA Bread and Pastry Production NC II",
+        "source": "reference_scan"
+      },
+      {
+        "label": "EMAIL",
+        "value": "clarisse.domingo@example.com",
+        "source": "regex"
+      },
+      {
+        "label": "PHONE",
+        "value": "+63 916 220 9417",
+        "source": "regex"
+      }
+    ],
+    "sections_detected": [
+      "certifications",
+      "education",
+      "experience",
+      "skills",
+      "summary"
+    ],
+    "estimated_years_experience": 5.6,
+    "validation": {
+      "missing_information": [],
+      "invalid_format": [],
+      "skill_analysis": {
+        "recognized": [
+          "Attention to Detail",
+          "Cake Decoration",
+          "Food Safety",
+          "Inventory Control",
+          "Kitchen Hygiene",
+          "Pastry and Baking",
+          "Teamwork",
+          "Time Management"
+        ],
+        "unrecognized": [
+          "Production NC"
+        ]
+      },
+      "job_role_analysis": {
+        "recognized": [
+          "Pastry and Bakery Assistant"
+        ],
+        "unrecognized": []
+      },
+      "credential_analysis": [
+        {
+          "required": null,
+          "extracted": "Tesda Accredited Training Center",
+          "status": "UNRECOGNIZED",
+          "note": "Invalid or requires verification based on system validation rules."
+        }
+      ],
+      "credential_issues": [],
+      "review_flags": []
+    },
+    "requirements_applied": {
+      "job_post_id": null,
+      "title": "Unspecified Position",
+      "required_skills": [],
+      "preferred_skills": [],
+      "education_level": null,
+      "experience_level": null,
+      "min_years_experience": 0.0,
+      "required_certifications": [],
+      "required_information": [
+        "name",
+        "email",
+        "phone"
+      ]
+    },
+    "match_score": 100.0,
+    "score_breakdown": {
+      "skills": {
+        "weight": 0.4,
+        "earned": 40.0,
+        "max": 40.0,
+        "matched_required": [],
+        "missing_required": [],
+        "matched_preferred": [],
+        "missing_preferred": [],
+        "required_coverage": 1.0,
+        "preferred_coverage": 1.0
+      },
+      "experience": {
+        "weight": 0.3,
+        "earned": 30.0,
+        "max": 30.0,
+        "estimated_years": 5.6,
+        "min_years_required": 0.0,
+        "requirement_met": true
+      },
+      "education": {
+        "weight": 0.2,
+        "earned": 20.0,
+        "max": 20.0,
+        "applicant_highest_level": [],
+        "required_level": null,
+        "requirement_met": true
+      },
+      "certifications": {
+        "weight": 0.1,
+        "earned": 10.0,
+        "max": 10.0,
+        "matched": [],
+        "missing": [],
+        "no_requirements": true
+      }
+    },
+    "screening_status": "PERFECT_FOR_THE_JOB",
+    "screening_reasons": [
+      "Overall match score 100.0% reached the required threshold of 75.0% for Unspecified Position.",
+      "Education requirement met: True; experience requirement met: True (5.6 yrs vs 0.0 yrs minimum)."
+    ],
+    "matched_summary": "Education requirement satisfied; Experience requirement satisfied (5.6 yrs vs 0.0 yrs required); No certification requirements defined for this role — meets Unspecified Position requirements.",
+    "alternative_job": null,
+    "mandatory_requirements_met": true,
+    "model_info": {
+      "base_model": "en_core_web_sm",
+      "custom_ner_loaded": true,
+      "custom_ner_path": "C:\\Users\\PC\\Downloads\\Ferdi\\4TH_YR\\DEV\\v4\\2nd-repo-for-hrms-backend-LATEST\\2nd-repo-for-hrms-backend-\\nlp-service\\models_spacy\\role_specific_ner"
+    },
+    "_timing_seconds": 715.366,
+    "processing_status": "PARTIALLY_PROCESSED",
+    "text_extraction": {
+      "method": "python-docx",
+      "pages": 1,
+      "extension": ".docx",
+      "original_length": null,
+      "character_count": 944,
+      "warnings": []
+    },
+    "parsed_successfully": true
+  }
+}

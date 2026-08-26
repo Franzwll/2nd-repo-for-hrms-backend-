@@ -123,7 +123,9 @@ function About() {
                 </div>
                 <div>
                   <h3 className="font-display text-xl font-semibold text-primary">{value}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{VALUE_BODIES[value] ?? value}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {VALUE_BODIES[value] ?? value}
+                  </p>
                 </div>
               </div>
             );

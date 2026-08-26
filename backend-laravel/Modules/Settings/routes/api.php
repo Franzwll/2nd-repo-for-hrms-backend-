@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Settings\Http\Controllers\BackupController;
 use Modules\Settings\Http\Controllers\MySettingsController;
 use Modules\Settings\Http\Controllers\SettingsController;
 
@@ -13,6 +14,17 @@ Route::prefix('v1')->group(function () {
     // List all settings + flat map
     Route::get('settings', [SettingsController::class, 'index'])
          ->name('settings.index');
+
+    /* ------------------------------------------------------------------ */
+    /* Database backups (declared before the {key} wildcard)               */
+    /* ------------------------------------------------------------------ */
+
+    Route::prefix('settings/backups')->name('settings.backups.')->group(function () {
+        Route::get('/', [BackupController::class, 'index'])->name('index');
+        Route::post('/', [BackupController::class, 'store'])->name('store');
+        Route::get('/{id}/download', [BackupController::class, 'download'])->name('download');
+        Route::post('/{id}/restore', [BackupController::class, 'restore'])->name('restore');
+    });
 
     // Bulk upsert — must be declared BEFORE the {key} wildcard
     Route::patch('settings/bulk', [SettingsController::class, 'bulkUpsert'])
@@ -50,7 +62,21 @@ Route::prefix('v1')->group(function () {
     Route::put('my/settings/{scope}', [MySettingsController::class, 'save'])
          ->name('my-settings.save');
 
+    // Toggle the current user's own OTP-at-login requirement
+    Route::put('my/otp', [MySettingsController::class, 'toggleOtp'])
+         ->name('my.toggle-otp');
+
     // Change the current user's password (verified against system_users)
     Route::post('my/change-password', [MySettingsController::class, 'changePassword'])
          ->name('my.change-password');
+
+    /* ------------------------------------------------------------------ */
+    /* Notifications                                                      */
+    /* ------------------------------------------------------------------ */
+    Route::get('notifications', [\Modules\Settings\Http\Controllers\NotificationController::class, 'index'])
+         ->name('notifications.index');
+    Route::patch('notifications/{id}/read', [\Modules\Settings\Http\Controllers\NotificationController::class, 'markRead'])
+         ->name('notifications.read');
+    Route::post('notifications/mark-all-read', [\Modules\Settings\Http\Controllers\NotificationController::class, 'markAllRead'])
+         ->name('notifications.mark-all-read');
 });

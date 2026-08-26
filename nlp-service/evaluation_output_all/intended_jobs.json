@@ -1,0 +1,29 @@
+{
+  "alternative_resume_template_1_nathaniel_james_flores.docx": {
+    "title": "Guest Relations Officer",
+    "required_skills": ["Guest Relations", "Front Office Operations", "Reservations", "Complaint Handling"],
+    "preferred_skills": ["Property Management Systems", "Customer Service"],
+    "education_level": "Bachelor's Degree",
+    "experience_level": "1-2 Years",
+    "required_certifications": [],
+    "required_information": ["name", "email", "phone"]
+  },
+  "alternative_resume_template_2_bianca_louise_navarro (1).docx": {
+    "title": "Restaurant Supervisor",
+    "required_skills": ["Shift Supervision", "Cash Handling", "Food Safety", "Guest Recovery"],
+    "preferred_skills": ["Staff Training", "Scheduling", "Upselling", "POS Systems"],
+    "education_level": "Bachelor's Degree",
+    "experience_level": "2-3 Years",
+    "required_certifications": [],
+    "required_information": ["name", "email", "phone"]
+  },
+  "alternative_resume_template_3_clarisse_joy_domingo.docx": {
+    "title": "Pastry and Bakery Assistant",
+    "required_skills": ["Pastry and Baking", "Food Safety"],
+    "preferred_skills": ["Cake Decoration", "Kitchen Hygiene", "Inventory Control"],
+    "education_level": null,
+    "experience_level": "1-2 Years",
+    "required_certifications": ["TESDA Bread and Pastry Production NC II"],
+    "required_information": ["name", "email", "phone"]
+  }
+}

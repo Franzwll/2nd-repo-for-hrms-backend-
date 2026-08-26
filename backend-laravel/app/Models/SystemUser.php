@@ -26,6 +26,7 @@ class SystemUser extends Authenticatable
         'employee_id',
         'role_id',
         'status',
+        'otp_enabled',
         'last_login_at',
         'last_login_ip',
     ];
@@ -36,6 +37,7 @@ class SystemUser extends Authenticatable
 
     protected $casts = [
         'last_login_at' => 'datetime',
+        'otp_enabled' => 'boolean',
     ];
 
     public function getAuthPassword(): string

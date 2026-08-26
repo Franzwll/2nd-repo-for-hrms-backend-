@@ -1,6 +1,12 @@
 import { useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import { coreHcmApi, requisitionsApi, type ApiDepartment, type ApiPosition, type ApiRequisition } from "@/lib/api";
+import {
+  coreHcmApi,
+  requisitionsApi,
+  type ApiDepartment,
+  type ApiPosition,
+  type ApiRequisition,
+} from "@/lib/api";
 
 export type Requisition = {
   id: string;
@@ -120,7 +126,9 @@ export const requisitionStore = {
       });
       // Swap the optimistic row for the DB row so later edits carry a dbId
       requisitions = requisitions.map((x) =>
-        x.id === r.id ? { ...x, dbId: created.requisition_id, id: created.requisition_code || x.id } : x,
+        x.id === r.id
+          ? { ...x, dbId: created.requisition_id, id: created.requisition_code || x.id }
+          : x,
       );
       emit();
     } catch (e) {
@@ -172,7 +180,7 @@ export const requisitionStore = {
   refresh: () => {
     hasFetched = false;
     return fetchRequisitionsFromApi();
-  }
+  },
 };
 
 export function useRequisitions() {

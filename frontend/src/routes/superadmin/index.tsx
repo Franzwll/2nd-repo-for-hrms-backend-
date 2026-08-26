@@ -57,7 +57,13 @@ export const Route = createFileRoute("/superadmin/")({
   component: SuperAdminDashboard,
 });
 
-const CHART = ["var(--color-primary)", "var(--color-gold)", "var(--color-success)", "var(--color-caution)", "var(--color-muted-foreground)"];
+const CHART = [
+  "var(--color-primary)",
+  "var(--color-gold)",
+  "var(--color-success)",
+  "var(--color-caution)",
+  "var(--color-muted-foreground)",
+];
 
 const initials = (name: string) =>
   name
@@ -178,8 +184,12 @@ export function SuperAdminDashboard() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between border-b border-border/60 pb-4">
               <div>
-                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><TrendingUp className="h-5 w-5 text-primary" /> Headcount &amp; Movement</h2>
-                <p className="mt-1 text-xs text-muted-foreground">Rolling property headcount with hires and exits breakdown.</p>
+                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                  <TrendingUp className="h-5 w-5 text-primary" /> Headcount &amp; Movement
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Rolling property headcount with hires and exits breakdown.
+                </p>
               </div>
               <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
                 {(["6M", "YTD"] as const).map((p) => (
@@ -187,7 +197,9 @@ export function SuperAdminDashboard() {
                     key={p}
                     onClick={() => setPeriod(p)}
                     className={`rounded-md px-3 py-1 text-xs font-medium ${
-                      period === p ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                      period === p
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted"
                     }`}
                   >
                     {p}
@@ -204,11 +216,15 @@ export function SuperAdminDashboard() {
               </div>
               <div className="p-2">
                 <p className="eyebrow">New Hires</p>
-                <p className="font-display text-xl font-bold text-emerald-600 dark:text-emerald-400">{totalHires}</p>
+                <p className="font-display text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                  {totalHires}
+                </p>
               </div>
               <div className="p-2">
                 <p className="eyebrow">Turnover / Exits</p>
-                <p className="font-display text-xl font-bold text-amber-600 dark:text-amber-400">{totalExits}</p>
+                <p className="font-display text-xl font-bold text-amber-600 dark:text-amber-400">
+                  {totalExits}
+                </p>
               </div>
               <div className="p-2">
                 <p className="eyebrow">Retention Rate</p>
@@ -219,15 +235,28 @@ export function SuperAdminDashboard() {
             {/* Revamped Composed Chart with Area Fill & Rounded Bars */}
             <div className="mt-5 h-68">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={activeTrend ?? []} margin={{ top: 12, right: 12, left: -12, bottom: 0 }}>
+                <ComposedChart
+                  data={activeTrend ?? []}
+                  margin={{ top: 12, right: 12, left: -12, bottom: 0 }}
+                >
                   <defs>
                     <linearGradient id="headcountAreaGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.3} />
                       <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-                  <XAxis dataKey="month" fontSize={12} stroke="var(--color-muted-foreground)" tickLine={false} axisLine={false} />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="var(--color-border)"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="month"
+                    fontSize={12}
+                    stroke="var(--color-muted-foreground)"
+                    tickLine={false}
+                    axisLine={false}
+                  />
                   <YAxis
                     yAxisId="left"
                     fontSize={12}
@@ -251,18 +280,26 @@ export function SuperAdminDashboard() {
                       if (!active || !payload?.length) return null;
                       return (
                         <div className="rounded-xl border border-border bg-card p-3 shadow-xl text-xs space-y-1.5 min-w-36">
-                          <p className="font-display font-semibold text-foreground border-b border-border pb-1">{label} Summary</p>
+                          <p className="font-display font-semibold text-foreground border-b border-border pb-1">
+                            {label} Summary
+                          </p>
                           <div className="flex items-center justify-between text-primary font-medium">
                             <span>Headcount:</span>
-                            <span className="font-bold">{payload.find((p) => p.dataKey === "headcount")?.value}</span>
+                            <span className="font-bold">
+                              {payload.find((p) => p.dataKey === "headcount")?.value}
+                            </span>
                           </div>
                           <div className="flex items-center justify-between text-emerald-600 font-medium">
                             <span>New Hires:</span>
-                            <span className="font-bold">+{payload.find((p) => p.dataKey === "hires")?.value}</span>
+                            <span className="font-bold">
+                              +{payload.find((p) => p.dataKey === "hires")?.value}
+                            </span>
                           </div>
                           <div className="flex items-center justify-between text-amber-600 font-medium">
                             <span>Exits:</span>
-                            <span className="font-bold">-{payload.find((p) => p.dataKey === "exits")?.value}</span>
+                            <span className="font-bold">
+                              -{payload.find((p) => p.dataKey === "exits")?.value}
+                            </span>
                           </div>
                         </div>
                       );
@@ -312,8 +349,12 @@ export function SuperAdminDashboard() {
           <CardContent className="p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><KeyRound className="h-5 w-5 text-primary" /> Portal Accounts</h2>
-                <p className="text-xs text-muted-foreground">System access by role and account status.</p>
+                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                  <KeyRound className="h-5 w-5 text-primary" /> Portal Accounts
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  System access by role and account status.
+                </p>
               </div>
               <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
                 {stats?.system_users.total ?? 0} accounts
@@ -322,8 +363,14 @@ export function SuperAdminDashboard() {
 
             <div className="mt-4 grid grid-cols-3 gap-2">
               {roleData.map((r, i) => (
-                <div key={r.name} className="rounded-xl border border-border/80 bg-card p-3 text-center shadow-xs">
-                  <p className="font-display text-2xl font-semibold" style={{ color: CHART[i % CHART.length] }}>
+                <div
+                  key={r.name}
+                  className="rounded-xl border border-border/80 bg-card p-3 text-center shadow-xs"
+                >
+                  <p
+                    className="font-display text-2xl font-semibold"
+                    style={{ color: CHART[i % CHART.length] }}
+                  >
                     {r.value}
                   </p>
                   <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -335,7 +382,11 @@ export function SuperAdminDashboard() {
 
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               {statusData.map((s) => (
-                <Badge key={s.name} variant="outline" className={cn(accountStatusClass(s.name), "text-[10px]")}>
+                <Badge
+                  key={s.name}
+                  variant="outline"
+                  className={cn(accountStatusClass(s.name), "text-[10px]")}
+                >
                   {s.value} {s.name}
                 </Badge>
               ))}
@@ -364,7 +415,10 @@ export function SuperAdminDashboard() {
                         </p>
                       </div>
                     </div>
-                    <Badge variant="outline" className={cn("shrink-0 text-[10px]", accountStatusClass(u.status))}>
+                    <Badge
+                      variant="outline"
+                      className={cn("shrink-0 text-[10px]", accountStatusClass(u.status))}
+                    >
                       {u.status}
                     </Badge>
                   </div>
@@ -380,8 +434,12 @@ export function SuperAdminDashboard() {
           <CardContent className="p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Building2 className="h-5 w-5 text-primary" /> Staffing by Department</h2>
-                <p className="text-xs text-muted-foreground">Filled staff versus open roles across the property.</p>
+                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                  <Building2 className="h-5 w-5 text-primary" /> Staffing by Department
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Filled staff versus open roles across the property.
+                </p>
               </div>
               <Badge variant="outline" className="border-gold/40 bg-gold/10 text-gold-foreground">
                 {deptData.reduce((sum, item) => sum + item.open, 0)} open roles
@@ -410,8 +468,18 @@ export function SuperAdminDashboard() {
                       }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="staff" name="Filled staff" fill="var(--color-primary)" radius={[0, 4, 4, 0]} />
-                    <Bar dataKey="open" name="Open roles" fill="var(--color-gold)" radius={[0, 4, 4, 0]} />
+                    <Bar
+                      dataKey="staff"
+                      name="Filled staff"
+                      fill="var(--color-primary)"
+                      radius={[0, 4, 4, 0]}
+                    />
+                    <Bar
+                      dataKey="open"
+                      name="Open roles"
+                      fill="var(--color-gold)"
+                      radius={[0, 4, 4, 0]}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -429,8 +497,14 @@ export function SuperAdminDashboard() {
                         </span>
                       </div>
                       <div className="mt-1 flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                        <div className="h-full rounded-l-full bg-primary" style={{ width: `${pct}%` }} />
-                        <div className="h-full rounded-r-full bg-gold" style={{ width: `${100 - pct}%` }} />
+                        <div
+                          className="h-full rounded-l-full bg-primary"
+                          style={{ width: `${pct}%` }}
+                        />
+                        <div
+                          className="h-full rounded-r-full bg-gold"
+                          style={{ width: `${100 - pct}%` }}
+                        />
                       </div>
                     </div>
                   );
@@ -443,7 +517,9 @@ export function SuperAdminDashboard() {
         <Card className="border-border/70">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
-              <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Activity className="h-5 w-5 text-primary" /> Audit Activity</h2>
+              <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                <Activity className="h-5 w-5 text-primary" /> Audit Activity
+              </h2>
               <Button asChild size="sm" variant="outline">
                 <Link to="/superadmin/audit">View logs</Link>
               </Button>

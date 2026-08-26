@@ -13,7 +13,6 @@ import appCss from "../styles.css?url";
 import { Toaster } from "../components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
-
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -90,10 +89,26 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary_large_image" },
       { property: "og:title", content: "Oxford Suites Makati — Hotel, Dining & Careers" },
       { name: "twitter:title", content: "Oxford Suites Makati — Hotel, Dining & Careers" },
-      { property: "og:description", content: "Discover Oxford Suites Makati: elegant suites, distinctive dining, event venues, and hospitality careers with our HRMS recruitment portal." },
-      { name: "twitter:description", content: "Discover Oxford Suites Makati: elegant suites, distinctive dining, event venues, and hospitality careers with our HRMS recruitment portal." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b34748db-cf5e-4ce9-a617-b80368e68838/id-preview-f6ff7c7b--64872254-6f02-4d48-8e46-912da4b446e4.lovable.app-1785936729737.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b34748db-cf5e-4ce9-a617-b80368e68838/id-preview-f6ff7c7b--64872254-6f02-4d48-8e46-912da4b446e4.lovable.app-1785936729737.png" },
+      {
+        property: "og:description",
+        content:
+          "Discover Oxford Suites Makati: elegant suites, distinctive dining, event venues, and hospitality careers with our HRMS recruitment portal.",
+      },
+      {
+        name: "twitter:description",
+        content:
+          "Discover Oxford Suites Makati: elegant suites, distinctive dining, event venues, and hospitality careers with our HRMS recruitment portal.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b34748db-cf5e-4ce9-a617-b80368e68838/id-preview-f6ff7c7b--64872254-6f02-4d48-8e46-912da4b446e4.lovable.app-1785936729737.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b34748db-cf5e-4ce9-a617-b80368e68838/id-preview-f6ff7c7b--64872254-6f02-4d48-8e46-912da4b446e4.lovable.app-1785936729737.png",
+      },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -140,4 +155,3 @@ function RootComponent() {
     </QueryClientProvider>
   );
 }
-

@@ -1,12 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import {
-  Eye,
-  EyeOff,
-  Lock,
-  Mail,
-  ShieldCheck,
-} from "lucide-react";
+import { Eye, EyeOff, Lock, Mail, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import oxfordMarkWhite from "@/assets/oxford-mark-white.png";
@@ -25,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 import { authApi } from "@/lib/api";
+import { setToken, setUser } from "@/lib/auth";
 
 const LOGIN_CONTEXT_KEY = "oxford_hrms_login";
 
@@ -34,10 +29,7 @@ export function persistLoginContext(ctx: {
   expires_in: number;
 }) {
   try {
-    sessionStorage.setItem(
-      LOGIN_CONTEXT_KEY,
-      JSON.stringify({ ...ctx, issued_at: Date.now() })
-    );
+    sessionStorage.setItem(LOGIN_CONTEXT_KEY, JSON.stringify({ ...ctx, issued_at: Date.now() }));
   } catch {
     // storage unavailable
   }
@@ -96,7 +88,7 @@ const brigades = [
   "Housekeeping",
   "Food & Beverage Service",
   "Kitchen Brigade",
-  "Banquets & Events"
+  "Banquets & Events",
 ];
 
 const montageImages = [
@@ -177,6 +169,23 @@ function LoginPage() {
     setError("");
     try {
       const res = await authApi.login(email.trim(), password);
+
+      // OTP disabled for this role — the server signed us straight in.
+      if (res.otp_required === false && res.token && res.user) {
+        setToken(res.token);
+        setUser(res.user);
+        clearLoginContext();
+        toast.success("Welcome back! Signing you in…");
+        const target =
+          res.user.role === "Super Admin"
+            ? "/superadmin"
+            : res.user.role === "Admin"
+              ? "/admin"
+              : "/employee";
+        navigate({ to: target });
+        return;
+      }
+
       persistLoginContext({
         login_token: res.login_token,
         email: email.trim(),
@@ -243,7 +252,7 @@ function LoginPage() {
               className={cn(
                 "absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ease-in-out scale-110",
                 index === currentSlide ? "opacity-100" : "opacity-0",
-                img.animation
+                img.animation,
               )}
             />
           ))}
@@ -265,7 +274,9 @@ function LoginPage() {
         </div>
 
         <div className="relative z-20 max-w-lg">
-          <p className="eyebrow text-gold drop-shadow-md">Hotel &amp; Restaurant Human Resource System</p>
+          <p className="eyebrow text-gold drop-shadow-md">
+            Hotel &amp; Restaurant Human Resource System
+          </p>
           <div className="mt-4 h-px w-16 bg-gold/70" />
           <h1 className="mt-6 font-display text-5xl font-semibold leading-[1.08] drop-shadow-lg">
             The house is ready.
@@ -306,15 +317,10 @@ function LoginPage() {
 
           <p className="eyebrow">Staff Portal Access</p>
           <h2 className="mt-2 font-display text-4xl font-semibold">Sign in</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Sign in with your work credentials.
-          </p>
+          <p className="mt-2 text-sm text-muted-foreground">Sign in with your work credentials.</p>
           <div className="gold-rule my-7" />
 
-          <form
-            className="space-y-5"
-            onSubmit={handleSubmit}
-          >
+          <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="space-y-1.5">
               <Label htmlFor="email">Work email</Label>
               <div className="relative">

@@ -161,10 +161,14 @@ export function useLandingJobs(): { jobs: LandingJob[]; loading: boolean } {
 
 export const VALUE_BODIES: Record<string, string> = {
   Care: "We treat every guest and teammate with genuine warmth and empathy, anticipating needs before they are spoken.",
-  Integrity: "We act with honesty and accountability in every transaction, decision, and guest interaction.",
-  Excellence: "We take pride in the details, continually raising the standard of service across the property.",
-  Teamwork: "We succeed together — every department supports the other to deliver one seamless guest experience.",
-  Hospitality: "We welcome every guest as family, carrying the Filipino tradition of gracious service.",
+  Integrity:
+    "We act with honesty and accountability in every transaction, decision, and guest interaction.",
+  Excellence:
+    "We take pride in the details, continually raising the standard of service across the property.",
+  Teamwork:
+    "We succeed together — every department supports the other to deliver one seamless guest experience.",
+  Hospitality:
+    "We welcome every guest as family, carrying the Filipino tradition of gracious service.",
 };
 
 export const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;

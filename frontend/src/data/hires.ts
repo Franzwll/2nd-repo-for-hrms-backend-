@@ -1,7 +1,13 @@
 import { useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { type Employee, type NewHire } from "@/data/hr";
-import { newHiresApi, checklistTemplatesApi, onboardingItemsApi, type ApiNewHire, type ApiChecklistTemplate } from "@/lib/api";
+import {
+  newHiresApi,
+  checklistTemplatesApi,
+  onboardingItemsApi,
+  type ApiNewHire,
+  type ApiChecklistTemplate,
+} from "@/lib/api";
 
 /** Draft handed over from Applicant Management when an assessment is accepted. */
 export type PendingHire = {
@@ -14,6 +20,13 @@ export type PendingHire = {
   applicantId?: number;
 };
 
+export type MasterChecklistItem = {
+  item_text: string;
+  instructions?: string;
+  requires_upload?: boolean;
+  upload_placeholder?: string;
+};
+
 /**
  * A master checklist template built from Performance's checklist requests.
  */
@@ -22,6 +35,7 @@ export type MasterChecklistTemplate = {
   dbId?: number;
   title: string;
   items: string[];
+  richItems?: MasterChecklistItem[];
   /** Stage the checklist applies to. */
   phase?: "Pre-onboarding" | "Probationary";
   /** "all" positions, or the specific position titles it applies to. */
@@ -31,7 +45,11 @@ export type MasterChecklistTemplate = {
 
 function transformApiNewHire(h: ApiNewHire): NewHire {
   const parts = h.name.split(" ");
-  const initials = parts.map((p) => p[0]).slice(0, 3).join("").toUpperCase();
+  const initials = parts
+    .map((p) => p[0])
+    .slice(0, 3)
+    .join("")
+    .toUpperCase();
   return {
     id: h.new_hire_code || `NH-${h.new_hire_id}`,
     dbId: h.new_hire_id,
@@ -50,23 +68,28 @@ function transformApiNewHire(h: ApiNewHire): NewHire {
       done: i.done,
       ...(i.employee_onboarding_item_id != null ? { dbId: i.employee_onboarding_item_id } : {}),
       ...(i.template_item_id != null ? { templateItemId: i.template_item_id } : {}),
-      ...(i.phase === "Probationary" || i.phase === "Pre-onboarding"
-        ? { phase: i.phase }
-        : {}),
+      ...(i.phase === "Probationary" || i.phase === "Pre-onboarding" ? { phase: i.phase } : {}),
     })),
   };
 }
 
 function transformApiTemplate(t: ApiChecklistTemplate): MasterChecklistTemplate {
   const scope = t.position_scope ?? [];
+  const richItems: MasterChecklistItem[] = (t.items || []).map((i) => ({
+    item_text: i.item_text,
+    requires_upload: i.requires_upload ?? true,
+    ...(i.instructions ? { instructions: i.instructions } : {}),
+    ...(i.upload_placeholder ? { upload_placeholder: i.upload_placeholder } : {}),
+  }));
   return {
     id: t.template_code || `OCT-${t.template_id}`,
     dbId: t.template_id,
     title: t.title,
-    items: (t.items || []).map((i) => i.item_text),
-    phase: (t.phase === "Pre-onboarding" ? "Pre-onboarding" : "Probationary") as "Pre-onboarding" | "Probationary",
-    positions:
-      scope.length === 0 || scope.includes("all") ? "all" : scope,
+    items: richItems.map((i) => i.item_text),
+    richItems,
+    phase: (t.phase === "Pre-onboarding" ? "Pre-onboarding" : "Probationary") as
+      "Pre-onboarding" | "Probationary",
+    positions: scope.length === 0 || scope.includes("all") ? "all" : scope,
     status: t.status === "Active" ? "Active" : "Closed",
   };
 }
@@ -182,9 +205,7 @@ export const hireStore = {
       });
       // Replace the optimistic row with the DB row, which already carries
       // the checklists auto-applied from matching Active templates.
-      hires = hires.map((h) =>
-        h.id === hire.id ? transformApiNewHire(created) : h,
-      );
+      hires = hires.map((h) => (h.id === hire.id ? transformApiNewHire(created) : h));
       emit();
       return true;
     } catch (e) {
@@ -221,21 +242,29 @@ export const hireStore = {
    *  starting requirements checklist for a hire entering Probationary. */
   combinedProbationaryItems: (position?: string) =>
     masterChecklists
-      .filter((c) => (c.phase ?? "Probationary") === "Probationary" && (c.status ?? "Active") === "Active")
+      .filter(
+        (c) =>
+          (c.phase ?? "Probationary") === "Probationary" && (c.status ?? "Active") === "Active",
+      )
       .filter((c) => {
         if (!position) return true;
-        return c.positions === "all" || !c.positions || (c.positions as string[]).includes(position);
+        return (
+          c.positions === "all" || !c.positions || (c.positions as string[]).includes(position)
+        );
       })
       .flatMap((c) => c.items),
   addMasterChecklist: async (
     title: string,
     items: string[],
-    meta?: Pick<MasterChecklistTemplate, "phase" | "positions" | "status">,
+    meta?: Pick<MasterChecklistTemplate, "phase" | "positions" | "status" | "richItems">,
   ) => {
+    const richItems: MasterChecklistItem[] =
+      meta?.richItems ?? items.map((t) => ({ item_text: t, requires_upload: true }));
     const newTemplate: MasterChecklistTemplate = {
       id: `MC-${String(masterChecklists.length + 1).padStart(3, "0")}-${Date.now()}`,
       title,
-      items,
+      items: richItems.map((r) => r.item_text),
+      richItems,
       phase: meta?.phase ?? "Probationary",
       positions: meta?.positions ?? "all",
       status: meta?.status ?? "Active",
@@ -248,9 +277,14 @@ export const hireStore = {
         title,
         phase: meta?.phase ?? "Probationary",
         status: meta?.status ?? "Active",
-        position_scope_json:
-          meta?.positions === "all" || !meta?.positions ? [] : meta.positions,
-        items: items.map((item_text, sort_order) => ({ item_text, sort_order })),
+        position_scope_json: meta?.positions === "all" || !meta?.positions ? [] : meta.positions,
+        items: richItems.map((r, sort_order) => ({
+          item_text: r.item_text,
+          instructions: r.instructions ?? null,
+          requires_upload: r.requires_upload ?? true,
+          upload_placeholder: r.upload_placeholder ?? null,
+          sort_order,
+        })),
       });
       // Remember the database id so later edits persist too
       masterChecklists = masterChecklists.map((c) =>
@@ -273,10 +307,33 @@ export const hireStore = {
   },
   updateMasterChecklist: async (
     id: string,
-    patch: Partial<Pick<MasterChecklistTemplate, "title" | "items" | "phase" | "positions" | "status">>,
+    patch: Partial<
+      Pick<
+        MasterChecklistTemplate,
+        "title" | "items" | "richItems" | "phase" | "positions" | "status"
+      >
+    >,
   ) => {
     const target = masterChecklists.find((c) => c.id === id);
-    masterChecklists = masterChecklists.map((c) => (c.id === id ? { ...c, ...patch } : c));
+    const richItems: MasterChecklistItem[] =
+      patch.richItems ??
+      (patch.items
+        ? patch.items.map((text) => {
+            const existing = target?.richItems?.find((r) => r.item_text === text);
+            return existing ?? { item_text: text, requires_upload: true };
+          })
+        : (target?.richItems ?? []));
+
+    const updatedPatch: Partial<MasterChecklistTemplate> = {
+      ...patch,
+      items:
+        richItems.length > 0
+          ? richItems.map((r) => r.item_text)
+          : (patch.items ?? target?.items ?? []),
+      richItems,
+    };
+
+    masterChecklists = masterChecklists.map((c) => (c.id === id ? { ...c, ...updatedPatch } : c));
     emit();
 
     try {
@@ -285,10 +342,12 @@ export const hireStore = {
         title: patch.title ?? target?.title,
         phase: patch.phase ?? target?.phase,
         status: patch.status ?? target?.status,
-        position_scope_json:
-          resolvedPositions === "all" ? [] : (resolvedPositions as string[]),
-        items: (patch.items ?? target?.items ?? []).map((item_text, sort_order) => ({
-          item_text,
+        position_scope_json: resolvedPositions === "all" ? [] : (resolvedPositions as string[]),
+        items: richItems.map((r, sort_order) => ({
+          item_text: r.item_text,
+          instructions: r.instructions ?? null,
+          requires_upload: r.requires_upload ?? true,
+          upload_placeholder: r.upload_placeholder ?? null,
           sort_order,
         })),
       };
@@ -299,9 +358,7 @@ export const hireStore = {
         // now so the edit persists after a refresh.
         const created = await checklistTemplatesApi.create(payload);
         masterChecklists = masterChecklists.map((c) =>
-          c.id === id
-            ? { ...c, dbId: created.template_id, id: created.template_code || c.id }
-            : c,
+          c.id === id ? { ...c, dbId: created.template_id, id: created.template_code || c.id } : c,
         );
         emit();
       }
@@ -326,7 +383,12 @@ export const hireStore = {
     }
   },
   /** Updates a hire's details on the database API. */
-  updateHire: async (id: string, patch: Partial<Pick<NewHire, "name" | "email" | "phone" | "position" | "department" | "startDate">>) => {
+  updateHire: async (
+    id: string,
+    patch: Partial<
+      Pick<NewHire, "name" | "email" | "phone" | "position" | "department" | "startDate">
+    >,
+  ) => {
     const target = hires.find((h) => h.id === id);
     if (!target?.dbId) return;
     try {
@@ -359,7 +421,9 @@ export const hireStore = {
       emit();
     } catch (e) {
       console.warn("API new hire promote error:", e);
-      toast.error(`"${target.name}" could not be advanced in the database — latest state reloaded.`);
+      toast.error(
+        `"${target.name}" could not be advanced in the database — latest state reloaded.`,
+      );
       await syncFromApi();
     }
   },
@@ -373,9 +437,7 @@ export const hireStore = {
       h.id === hireId
         ? {
             ...h,
-            checklist: h.checklist.map((c, i) =>
-              i === itemIndex ? { ...c, done } : c,
-            ),
+            checklist: h.checklist.map((c, i) => (i === itemIndex ? { ...c, done } : c)),
           }
         : h,
     );
@@ -393,9 +455,7 @@ export const hireStore = {
             ? {
                 ...h,
                 checklist: h.checklist.map((c, i) =>
-                  i === itemIndex
-                    ? { ...c, ...(itemId ? { dbId: itemId } : {}) }
-                    : c,
+                  i === itemIndex ? { ...c, ...(itemId ? { dbId: itemId } : {}) } : c,
                 ),
               }
             : h,
@@ -412,9 +472,7 @@ export const hireStore = {
     const target = hires.find((h) => h.id === hireId);
     if (!target) return;
     hires = hires.map((h) =>
-      h.id === hireId
-        ? { ...h, checklist: h.checklist.map((c) => ({ ...c, done })) }
-        : h,
+      h.id === hireId ? { ...h, checklist: h.checklist.map((c) => ({ ...c, done })) } : h,
     );
     emit();
 
@@ -424,7 +482,10 @@ export const hireStore = {
         try {
           let itemId = c.dbId;
           if (!itemId && c.templateItemId) {
-            const created = await onboardingItemsApi.materialize(target.dbId as number, c.templateItemId);
+            const created = await onboardingItemsApi.materialize(
+              target.dbId as number,
+              c.templateItemId,
+            );
             itemId = created.employee_onboarding_item_id;
           }
           if (itemId) await onboardingItemsApi.toggle(itemId as number, { done });
@@ -437,7 +498,7 @@ export const hireStore = {
   refresh: () => {
     hasFetched = false;
     return syncFromApi();
-  }
+  },
 };
 
 export function useHires() {
@@ -453,5 +514,9 @@ export function usePendingHire() {
 }
 
 export function useMasterChecklists() {
-  return useSyncExternalStore(subscribe, hireStore.getMasterChecklists, hireStore.getMasterChecklists);
+  return useSyncExternalStore(
+    subscribe,
+    hireStore.getMasterChecklists,
+    hireStore.getMasterChecklists,
+  );
 }

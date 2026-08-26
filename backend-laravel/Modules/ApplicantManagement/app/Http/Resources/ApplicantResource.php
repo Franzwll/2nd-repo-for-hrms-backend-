@@ -26,6 +26,7 @@ class ApplicantResource extends JsonResource
             'resume_url'      => $this->resume_file_path
                                     ? 'storage/resumes/' . basename($this->resume_file_path)
                                     : null,
+            'resume_original_name' => $this->resume_original_name ?? ($this->resume_file_path ? basename($this->resume_file_path) : null),
             'created_at'      => $this->created_at?->toISOString(),
             'updated_at'      => $this->updated_at?->toISOString(),
 
@@ -37,6 +38,21 @@ class ApplicantResource extends JsonResource
             ]),
             'screening_entities'  => ScreeningEntityResource::collection($this->whenLoaded('screeningEntities')),
             'screening_scores'    => ScreeningScoreResource::collection($this->whenLoaded('screeningScores')),
+            'latest_screening'    => $this->when($this->relationLoaded('latestScreening') && $this->latestScreening, fn () => [
+                'screening_id'       => $this->latestScreening->screening_id,
+                'processing_status'  => $this->latestScreening->processing_status,
+                'screening_result'   => $this->latestScreening->screening_result,
+                'match_score'        => $this->latestScreening->match_score !== null ? (float) $this->latestScreening->match_score : null,
+                'score_breakdown'    => $this->latestScreening->score_breakdown_json,
+                'profile'            => $this->latestScreening->profile_json,
+                'missing_information'=> $this->latestScreening->missing_information_json ?? [],
+                'validation'         => $this->latestScreening->validation_json,
+                'alternative_job'    => $this->latestScreening->alternative_job_json,
+                'reasons'            => $this->latestScreening->reasons_json ?? [],
+                'model_info'         => $this->latestScreening->model_info_json,
+                'error_message'      => $this->latestScreening->error_message,
+                'processed_at'       => $this->latestScreening->processed_at?->toISOString(),
+            ]),
             'interviews'          => InterviewResource::collection($this->whenLoaded('interviews')),
             'assessment'          => new AssessmentResource($this->whenLoaded('assessment')),
         ];

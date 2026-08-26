@@ -4,9 +4,15 @@ export const Route = createFileRoute("/superadmin/_auditlogs/audit")({
   head: () => ({
     meta: [
       { title: "Audit Logs — Oxford Suites Makati HRMS" },
-      { name: "description", content: "Full system activity trail across all HRMS modules and users." },
+      {
+        name: "description",
+        content: "Full system activity trail across all HRMS modules and users.",
+      },
       { property: "og:title", content: "Audit Logs — Oxford Suites Makati HRMS" },
-      { property: "og:description", content: "Full system activity trail across all HRMS modules and users." },
+      {
+        property: "og:description",
+        content: "Full system activity trail across all HRMS modules and users.",
+      },
     ],
   }),
   component: () => <AuditLogs />,

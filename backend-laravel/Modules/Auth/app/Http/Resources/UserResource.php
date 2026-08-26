@@ -21,6 +21,7 @@ class UserResource extends JsonResource
             'status' => $this->status,
             'role_id' => $this->role_id,
             'role' => $this->role?->role_name,
+            'otp_enabled' => (bool) ($this->otp_enabled ?? true),
             'permissions' => $this->permissionMap(),
             'last_login_at' => $this->last_login_at?->toIso8601String(),
         ];

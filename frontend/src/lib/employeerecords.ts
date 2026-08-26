@@ -28,9 +28,9 @@ async function loadRoster() {
       hcmApi.departments.list({ per_page: 500 }),
       hcmApi.positions.list({ per_page: 500 }),
     ]);
-    const employees = empRes.status === "fulfilled" ? empRes.value.data ?? [] : [];
-    const departments = depRes.status === "fulfilled" ? depRes.value.data ?? [] : [];
-    const positions = posRes.status === "fulfilled" ? posRes.value.data ?? [] : [];
+    const employees = empRes.status === "fulfilled" ? (empRes.value.data ?? []) : [];
+    const departments = depRes.status === "fulfilled" ? (depRes.value.data ?? []) : [];
+    const positions = posRes.status === "fulfilled" ? (posRes.value.data ?? []) : [];
     state = { employees, departments, positions, loaded: true };
   } catch (err) {
     console.warn("Could not load employee records from API.", err);

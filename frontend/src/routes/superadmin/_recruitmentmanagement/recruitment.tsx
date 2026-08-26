@@ -4,9 +4,15 @@ export const Route = createFileRoute("/superadmin/_recruitmentmanagement/recruit
   head: () => ({
     meta: [
       { title: "Recruitment Management — Oxford Suites Makati HRMS" },
-      { name: "description", content: "Job post builder with multi-platform previews, vacancy status and posting list." },
+      {
+        name: "description",
+        content: "Job post builder with multi-platform previews, vacancy status and posting list.",
+      },
       { property: "og:title", content: "Recruitment Management — Oxford Suites Makati HRMS" },
-      { property: "og:description", content: "Job post builder with multi-platform previews, vacancy status and posting list." },
+      {
+        property: "og:description",
+        content: "Job post builder with multi-platform previews, vacancy status and posting list.",
+      },
     ],
   }),
   component: () => <RecruitmentManagement role="superadmin" />,

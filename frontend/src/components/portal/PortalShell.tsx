@@ -37,7 +37,6 @@ import { navForRole, roleMeta, type Role } from "@/lib/nav";
 import { authApi } from "@/lib/api";
 import { clearSession, getUser } from "@/lib/auth";
 
-
 export function PortalShell({ role, children }: { role: Role; children: ReactNode }) {
   const [open, setOpen] = useState(true);
   const navigate = useNavigate();
@@ -62,20 +61,12 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
     clearSession();
     navigate({ to: "/login" });
   };
-  const {
-    notifications,
-    unreadCount,
-    markAllRead,
-    markRead,
-    announcements,
-    removeAnnouncement,
-  } = usePortalState();
+  const { notifications, unreadCount, markAllRead, markRead, announcements, removeAnnouncement } =
+    usePortalState();
   const visibleAnnouncements = announcements.filter((a) => isVisibleTo(a.audience, role));
   const canAnnounce = role === "superadmin";
 
-
-  const isActive = (to: string) =>
-    to === meta.base ? pathname === to : pathname.startsWith(to);
+  const isActive = (to: string) => (to === meta.base ? pathname === to : pathname.startsWith(to));
 
   const isChildActive = (childTo: string) => {
     const [childPath, childQuery] = childTo.split("?");
@@ -189,7 +180,6 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
           </nav>
         </ScrollArea>
 
-
         <div className="space-y-1 border-t border-sidebar-border p-2">
           <Link
             to={`${meta.base}/profile` as "/admin/profile"}
@@ -213,7 +203,6 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
             {open && <span>Logout</span>}
           </button>
         </div>
-
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -240,12 +229,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
           <div className="flex items-center gap-2">
             <Popover>
               <PopoverTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Announcements"
-                  className="relative"
-                >
+                <Button variant="ghost" size="icon" aria-label="Announcements" className="relative">
                   <Megaphone className="h-5 w-5" />
                   {visibleAnnouncements.length > 0 && (
                     <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-gold px-1 text-[0.6rem] font-semibold text-primary-foreground">
@@ -433,7 +417,6 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-
         </header>
 
         {/* Mobile nav */}
@@ -457,12 +440,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
         <main className="flex-1 px-4 py-6 md:px-8 md:py-8">{children}</main>
       </div>
 
-      <AnnouncementDialog
-        open={announceOpen}
-        onOpenChange={setAnnounceOpen}
-        author={meta.user}
-      />
+      <AnnouncementDialog open={announceOpen} onOpenChange={setAnnounceOpen} author={meta.user} />
     </div>
-
   );
 }

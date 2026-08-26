@@ -85,7 +85,6 @@ export function navForRole(role: Role): NavItem[] {
     { label: "ESS Management", to: `${base}/ess`, icon: Headset },
   ];
 
-
   if (role === "superadmin") {
     return [
       ...shared,

@@ -19,9 +19,12 @@ class ChecklistTemplateResource extends JsonResource
             'items_count'         => $this->whenLoaded('items', fn () => $this->items->count()),
             'items'               => $this->whenLoaded('items', function () {
                 return $this->items->map(fn ($item) => [
-                    'template_item_id' => $item->template_item_id,
-                    'item_text'        => $item->item_text,
-                    'sort_order'       => $item->sort_order,
+                    'template_item_id'   => $item->template_item_id,
+                    'item_text'          => $item->item_text,
+                    'instructions'       => $item->instructions,
+                    'requires_upload'    => (bool) $item->requires_upload,
+                    'upload_placeholder' => $item->upload_placeholder,
+                    'sort_order'         => $item->sort_order,
                 ]);
             }),
             'created_at'          => $this->created_at?->toISOString(),

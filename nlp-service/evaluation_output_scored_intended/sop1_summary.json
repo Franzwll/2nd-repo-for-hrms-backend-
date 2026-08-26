@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-08-24 18:20:03",
+  "resumes_dir": "..\\RESUME",
+  "role_requirements_applied": true,
+  "total_resumes": 16,
+  "processing_status_counts": {
+    "PARTIALLY_PROCESSED": 16
+  },
+  "success_definition": "A resume counts as successfully parsed and standardized when its processing status is PROCESSED or PARTIALLY_PROCESSED (text was extracted, no system failure occurred, and a standardized profile was generated). FAILED resumes are excluded.",
+  "sop1_success_rate_percent": 100.0,
+  "successfully_parsed": 16,
+  "by_format": {
+    "docx": {
+      "PARTIALLY_PROCESSED": 7
+    },
+    "jpg": {
+      "PARTIALLY_PROCESSED": 1
+    },
+    "pdf": {
+      "PARTIALLY_PROCESSED": 5
+    },
+    "png": {
+      "PARTIALLY_PROCESSED": 2
+    },
+    "txt": {
+      "PARTIALLY_PROCESSED": 1
+    }
+  },
+  "failures": [],
+  "elapsed_seconds": 11.6
+}

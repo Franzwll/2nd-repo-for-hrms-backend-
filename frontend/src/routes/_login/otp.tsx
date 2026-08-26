@@ -23,7 +23,8 @@ export const Route = createFileRoute("/_login/otp")({
       { title: "OTP Verification — Oxford Suites Makati HRMS" },
       {
         name: "description",
-        content: "Enter your one-time password to complete sign-in to the Oxford Suites Makati HRMS portal.",
+        content:
+          "Enter your one-time password to complete sign-in to the Oxford Suites Makati HRMS portal.",
       },
     ],
   }),
@@ -36,7 +37,8 @@ const maskEmail = (email?: string) => {
   if (!email) return "";
   const [name, domain] = email.split("@");
   if (!name || !domain) return email;
-  if (name.length <= 2) return `${name[0] ?? "*"}${"*".repeat(Math.max(1, name.length - 1))}@${domain}`;
+  if (name.length <= 2)
+    return `${name[0] ?? "*"}${"*".repeat(Math.max(1, name.length - 1))}@${domain}`;
   return `${name[0]}${"*".repeat(name.length - 2)}${name[name.length - 1]}@${domain}`;
 };
 
@@ -165,7 +167,11 @@ function OTPPage() {
       setVerified(true);
       toast.success("Identity verified — signing you in…");
       const target =
-        res.user.role === "Super Admin" ? "/superadmin" : res.user.role === "Admin" ? "/admin" : "/employee";
+        res.user.role === "Super Admin"
+          ? "/superadmin"
+          : res.user.role === "Admin"
+            ? "/admin"
+            : "/employee";
       setTimeout(() => navigate({ to: target }), 1200);
     } catch (err: any) {
       setError(err?.message || "Invalid or expired OTP.");
@@ -212,7 +218,7 @@ function OTPPage() {
             className={cn(
               "absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ease-in-out scale-105",
               index === currentSlide ? "opacity-100" : "opacity-0",
-              img.animation
+              img.animation,
             )}
           />
         ))}
@@ -244,16 +250,24 @@ function OTPPage() {
               </div>
               <h1 className="font-display text-2xl font-semibold">OTP Verification</h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                We've sent a 6-digit code to <span className="font-medium text-foreground">{maskEmail(loginCtx?.email)}</span>. Enter it below to continue.
+                We've sent a 6-digit code to{" "}
+                <span className="font-medium text-foreground">{maskEmail(loginCtx?.email)}</span>.
+                Enter it below to continue.
               </p>
             </div>
 
             {/* OTP boxes */}
-            <div className="flex justify-center gap-2" role="group" aria-label="One-time password input">
+            <div
+              className="flex justify-center gap-2"
+              role="group"
+              aria-label="One-time password input"
+            >
               {digits.map((d, idx) => (
                 <input
                   key={idx}
-                  ref={(el) => { inputRefs.current[idx] = el; }}
+                  ref={(el) => {
+                    inputRefs.current[idx] = el;
+                  }}
                   type="text"
                   inputMode="numeric"
                   maxLength={1}
@@ -275,9 +289,7 @@ function OTPPage() {
             </div>
 
             {/* Error */}
-            {error && (
-              <p className="mt-3 text-center text-xs text-destructive">{error}</p>
-            )}
+            {error && <p className="mt-3 text-center text-xs text-destructive">{error}</p>}
 
             {/* Timer */}
             <div className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">

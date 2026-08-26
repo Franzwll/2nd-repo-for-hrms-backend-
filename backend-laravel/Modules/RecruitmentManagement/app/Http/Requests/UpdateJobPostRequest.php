@@ -3,6 +3,8 @@
 namespace Modules\RecruitmentManagement\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+use Modules\RecruitmentManagement\Enums\WorkSchedule;
 
 class UpdateJobPostRequest extends FormRequest
 {
@@ -18,7 +20,7 @@ class UpdateJobPostRequest extends FormRequest
             'department_id' => ['sometimes', 'integer', 'exists:departments,department_id'],
             'position_id' => ['sometimes', 'integer', 'exists:positions,position_id'],
             'employment_type' => ['sometimes', 'string', 'in:Full-time,Part-time,Contract,Seasonal'],
-            'schedule' => ['nullable', 'string', 'max:120'],
+            'schedule' => ['nullable', 'string', 'max:120', Rule::in(WorkSchedule::values())],
             'salary_min' => ['nullable', 'numeric', 'min:0'],
             'salary_max' => ['nullable', 'numeric', 'min:0'],
             'vacancies' => ['sometimes', 'integer', 'min:1'],

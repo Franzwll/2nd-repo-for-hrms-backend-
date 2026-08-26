@@ -36,6 +36,12 @@ Route::prefix('v1')->group(function () {
     Route::patch('onboarding-items/{item}/toggle', [EmployeeOnboardingItemController::class, 'toggle'])
          ->name('onboarding-items.toggle');
 
+    Route::post('onboarding-items/{item}/upload', [EmployeeOnboardingItemController::class, 'upload'])
+         ->name('onboarding-items.upload');
+
+    Route::get('onboarding-items/{item}/document', [EmployeeOnboardingItemController::class, 'document'])
+         ->name('onboarding-items.document');
+
     /* ------------------------------------------------------------------ */
     /* Checklist Templates                                                  */
     /* ------------------------------------------------------------------ */

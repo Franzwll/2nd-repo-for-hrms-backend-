@@ -147,7 +147,8 @@ export type PermissionGroup =
   | "Audit & Compliance"
   | "User Management";
 
-export type PermissionLevel = "Full" | "Edit" | "View" | "Delete" | "Approve / Reject Only" | "None";
+export type PermissionLevel =
+  "Full" | "Edit" | "View" | "Delete" | "Approve / Reject Only" | "None";
 
 export const permissionGroups: PermissionGroup[] = [
   "Dashboard Analytics",
@@ -158,7 +159,10 @@ export const permissionGroups: PermissionGroup[] = [
   "User Management",
 ];
 
-export const roleGroupMatrix: Record<SystemUser["role"], Record<PermissionGroup, PermissionLevel>> = {
+export const roleGroupMatrix: Record<
+  SystemUser["role"],
+  Record<PermissionGroup, PermissionLevel>
+> = {
   "Super Admin": {
     "Dashboard Analytics": "Full",
     "Employee Records": "Full",
@@ -283,10 +287,14 @@ const groupToBackendLevel = (level: PermissionLevel): string => {
 };
 
 const buildMatrixFromBackend = (
-  roles: { role_id: number; role_name: string; permissions: { module_name: string; permission_level: string }[] }[]
+  roles: {
+    role_id: number;
+    role_name: string;
+    permissions: { module_name: string; permission_level: string }[];
+  }[],
 ): Record<SystemUserRole, Record<PermissionGroup, PermissionLevel>> => {
   const next: Record<SystemUserRole, Record<PermissionGroup, PermissionLevel>> = JSON.parse(
-    JSON.stringify(roleGroupMatrix)
+    JSON.stringify(roleGroupMatrix),
   );
   roles.forEach((r) => {
     const name = r.role_name as SystemUserRole;
@@ -546,7 +554,10 @@ export function UserManagement() {
           value={users.length}
           tone="primary"
           icon={Users}
-          onClick={() => { setRoleFilter("all"); setStatusFilter("all"); }}
+          onClick={() => {
+            setRoleFilter("all");
+            setStatusFilter("all");
+          }}
           hint="Click to view all"
         />
         <StatCard
@@ -554,7 +565,10 @@ export function UserManagement() {
           value={users.filter((u) => u.status === "Active").length}
           tone="success"
           icon={UserCheck}
-          onClick={() => { setStatusFilter("Active"); setRoleFilter("all"); }}
+          onClick={() => {
+            setStatusFilter("Active");
+            setRoleFilter("all");
+          }}
           hint="Click to filter active"
         />
         <StatCard
@@ -562,7 +576,10 @@ export function UserManagement() {
           value={users.filter((u) => u.status === "Suspended").length}
           tone="caution"
           icon={UserX}
-          onClick={() => { setStatusFilter("Suspended"); setRoleFilter("all"); }}
+          onClick={() => {
+            setStatusFilter("Suspended");
+            setRoleFilter("all");
+          }}
           hint="Click to filter suspended"
         />
         <StatCard
@@ -570,173 +587,195 @@ export function UserManagement() {
           value={users.filter((u) => u.role !== "Employee").length}
           tone="gold"
           icon={ShieldCheck}
-          onClick={() => { setRoleFilter("Admin"); }}
+          onClick={() => {
+            setRoleFilter("Admin");
+          }}
           hint="Click to filter admins"
         />
       </div>
 
       <Tabs defaultValue="users" className="mt-6">
         <TabsList className="flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm">
-          <TabsTrigger className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer" value="users"><Users className="h-3.5 w-3.5" /> User List</TabsTrigger>
-          <TabsTrigger className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer" value="matrix"><ShieldCheck className="h-3.5 w-3.5" /> Permission Matrix</TabsTrigger>
-          <TabsTrigger className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer" value="auth"><KeyRound className="h-3.5 w-3.5" /> Authentication &amp; Login Security</TabsTrigger>
+          <TabsTrigger
+            className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+            value="users"
+          >
+            <Users className="h-3.5 w-3.5" /> User List
+          </TabsTrigger>
+          <TabsTrigger
+            className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+            value="matrix"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" /> Permission Matrix
+          </TabsTrigger>
+          <TabsTrigger
+            className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+            value="auth"
+          >
+            <KeyRound className="h-3.5 w-3.5" /> Authentication &amp; Login Security
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="mt-4">
           <Card className="border-border/70">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Users className="h-5 w-5 text-primary" /> User Roster</h2>
+                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                  <Users className="h-5 w-5 text-primary" /> User Roster
+                </h2>
                 <div className="flex flex-wrap items-center gap-2">
-                <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" className="cursor-pointer">
-                      <UserPlus className="mr-2 h-4 w-4" /> Create User
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-lg">
-                    <DialogHeader>
-                      <DialogTitle className="font-display text-2xl">
-                        Create User Account
-                      </DialogTitle>
-                    </DialogHeader>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Full name</Label>
-                        <Input
-                          value={newUser.name}
-                          onChange={(e) => setNewUser((p) => ({ ...p, name: e.target.value }))}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Username</Label>
-                        <Input
-                          value={newUser.username}
-                          onChange={(e) => setNewUser((p) => ({ ...p, username: e.target.value }))}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Email</Label>
-                        <Input
-                          type="email"
-                          value={newUser.email}
-                          onChange={(e) => setNewUser((p) => ({ ...p, email: e.target.value }))}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Phone number</Label>
-                        <Input
-                          value={newUser.phone}
-                          onChange={(e) => setNewUser((p) => ({ ...p, phone: e.target.value }))}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Role</Label>
-                        <Select
-                          value={newUser.role}
-                          onValueChange={(v) =>
-                            setNewUser((p) => ({
-                              ...p,
-                              role: v,
-                              department: v === "Super Admin" ? "Administration / HR" : p.department,
-                            }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(["Super Admin", "Admin", "Employee"] as const).map((r) => (
-                              <SelectItem key={r} value={r}>
-                                {roleLabels[r]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Department</Label>
-                        <Select
-                          value={newUser.department}
-                          onValueChange={(v) => setNewUser((p) => ({ ...p, department: v }))}
-                          disabled={newUser.role === "Super Admin"}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select department" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {deptOptions.map((d) => (
-                              <SelectItem key={d} value={d}>
-                                {d}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2 sm:col-span-2">
-                        <Label>Password</Label>
-                        <div className="flex gap-2">
+                  <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" className="cursor-pointer">
+                        <UserPlus className="mr-2 h-4 w-4" /> Create User
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle className="font-display text-2xl">
+                          Create User Account
+                        </DialogTitle>
+                      </DialogHeader>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Full name</Label>
                           <Input
-                            type="text"
-                            value={newUser.password}
-                            onChange={(e) =>
-                              setNewUser((p) => ({ ...p, password: e.target.value }))
-                            }
-                            placeholder="Enter password"
+                            value={newUser.name}
+                            onChange={(e) => setNewUser((p) => ({ ...p, name: e.target.value }))}
                           />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() =>
-                              setNewUser((p) => ({ ...p, password: DEFAULT_PASSWORD }))
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Username</Label>
+                          <Input
+                            value={newUser.username}
+                            onChange={(e) =>
+                              setNewUser((p) => ({ ...p, username: e.target.value }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Email</Label>
+                          <Input
+                            type="email"
+                            value={newUser.email}
+                            onChange={(e) => setNewUser((p) => ({ ...p, email: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Phone number</Label>
+                          <Input
+                            value={newUser.phone}
+                            onChange={(e) => setNewUser((p) => ({ ...p, phone: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Role</Label>
+                          <Select
+                            value={newUser.role}
+                            onValueChange={(v) =>
+                              setNewUser((p) => ({
+                                ...p,
+                                role: v,
+                                department:
+                                  v === "Super Admin" ? "Administration / HR" : p.department,
+                              }))
                             }
                           >
-                            Use default password
-                          </Button>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(["Super Admin", "Admin", "Employee"] as const).map((r) => (
+                                <SelectItem key={r} value={r}>
+                                  {roleLabels[r]}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Department</Label>
+                          <Select
+                            value={newUser.department}
+                            onValueChange={(v) => setNewUser((p) => ({ ...p, department: v }))}
+                            disabled={newUser.role === "Super Admin"}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select department" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {deptOptions.map((d) => (
+                                <SelectItem key={d} value={d}>
+                                  {d}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2 sm:col-span-2">
+                          <Label>Password</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              type="text"
+                              value={newUser.password}
+                              onChange={(e) =>
+                                setNewUser((p) => ({ ...p, password: e.target.value }))
+                              }
+                              placeholder="Enter password"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() =>
+                                setNewUser((p) => ({ ...p, password: DEFAULT_PASSWORD }))
+                              }
+                            >
+                              Use default password
+                            </Button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <DialogFooter>
-                      <Button onClick={createUser}>Create user</Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                      <DialogFooter>
+                        <Button onClick={createUser}>Create user</Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
 
-                <div className="relative w-full sm:w-64">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    className="pl-8"
-                    placeholder="Search users…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
-                <Select value={roleFilter} onValueChange={setRoleFilter}>
-                  <SelectTrigger className="w-44">
-                    <SelectValue placeholder="Role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All roles</SelectItem>
-                    {(["Super Admin", "Admin", "Employee"] as const).map((r) => (
-                      <SelectItem key={r} value={r}>
-                        {roleLabels[r]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-44">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All statuses</SelectItem>
-                    {["Active", "Suspended", "Disabled"].map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <div className="relative w-full sm:w-64">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      className="pl-8"
+                      placeholder="Search users…"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </div>
+                  <Select value={roleFilter} onValueChange={setRoleFilter}>
+                    <SelectTrigger className="w-44">
+                      <SelectValue placeholder="Role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All roles</SelectItem>
+                      {(["Super Admin", "Admin", "Employee"] as const).map((r) => (
+                        <SelectItem key={r} value={r}>
+                          {roleLabels[r]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-44">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All statuses</SelectItem>
+                      {["Active", "Suspended", "Disabled"].map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -783,25 +822,35 @@ export function UserManagement() {
                             </Button>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button size="icon" variant="ghost" aria-label={`More actions for ${u.name}`}>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  aria-label={`More actions for ${u.name}`}
+                                >
                                   <MoreHorizontal className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => openReset(u)}>
-                                  <KeyRound className="mr-2 h-4 w-4" />Reset password
+                                  <KeyRound className="mr-2 h-4 w-4" />
+                                  Reset password
                                 </DropdownMenuItem>
                                 {u.status !== "Active" && (
-                                  <DropdownMenuItem onClick={async () => {
-                                    try {
-                                      await userManagementApi.users.update(Number(u.id), { status: "Active" });
-                                      await loadUsers();
-                                      toast.success(`${u.username} account recovered`);
-                                    } catch (e: any) {
-                                      toast.error(e?.message || "Failed to recover account.");
-                                    }
-                                  }}>
-                                    <RotateCcw className="mr-2 h-4 w-4" />Recover account
+                                  <DropdownMenuItem
+                                    onClick={async () => {
+                                      try {
+                                        await userManagementApi.users.update(Number(u.id), {
+                                          status: "Active",
+                                        });
+                                        await loadUsers();
+                                        toast.success(`${u.username} account recovered`);
+                                      } catch (e: any) {
+                                        toast.error(e?.message || "Failed to recover account.");
+                                      }
+                                    }}
+                                  >
+                                    <RotateCcw className="mr-2 h-4 w-4" />
+                                    Recover account
                                   </DropdownMenuItem>
                                 )}
                               </DropdownMenuContent>
@@ -816,7 +865,8 @@ export function UserManagement() {
                                 <AlertDialogHeader>
                                   <AlertDialogTitle>Delete {u.name}?</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    This will permanently remove the user account. This action cannot be undone.
+                                    This will permanently remove the user account. This action
+                                    cannot be undone.
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
@@ -843,14 +893,20 @@ export function UserManagement() {
                     ))}
                     {loadingUsers && (
                       <TableRow>
-                        <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
+                        <TableCell
+                          colSpan={7}
+                          className="py-8 text-center text-sm text-muted-foreground"
+                        >
                           Loading users…
                         </TableCell>
                       </TableRow>
                     )}
                     {!loadingUsers && filteredUsers.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
+                        <TableCell
+                          colSpan={7}
+                          className="py-8 text-center text-sm text-muted-foreground"
+                        >
                           No users match your filters.
                         </TableCell>
                       </TableRow>
@@ -876,7 +932,9 @@ export function UserManagement() {
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><ShieldCheck className="h-5 w-5 text-primary" /> Permission Matrix</h2>
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                    <ShieldCheck className="h-5 w-5 text-primary" /> Permission Matrix
+                  </h2>
                   <p className="text-xs text-muted-foreground">
                     Role-based access matrix вЂ” click Edit to modify checkbox permissions.
                   </p>
@@ -907,11 +965,7 @@ export function UserManagement() {
                     </>
                   ) : (
                     <>
-                      <Button
-                        size="sm"
-                        onClick={saveMatrix}
-                        disabled={savingMatrix}
-                      >
+                      <Button size="sm" onClick={saveMatrix} disabled={savingMatrix}>
                         {savingMatrix ? "Saving…" : "Save"}
                       </Button>
                       <Button
@@ -965,10 +1019,15 @@ export function UserManagement() {
                             level === "Full" ||
                             level === "Approve / Reject Only";
                           const isEdit =
-                            level === "Edit" || level === "Full" || level === "Approve / Reject Only";
+                            level === "Edit" ||
+                            level === "Full" ||
+                            level === "Approve / Reject Only";
                           const isFull = level === "Full";
 
-                          const handleToggle = (type: "View" | "Edit" | "Full", checked: boolean) => {
+                          const handleToggle = (
+                            type: "View" | "Edit" | "Full",
+                            checked: boolean,
+                          ) => {
                             let next: PermissionLevel = level;
                             if (type === "View") {
                               next = checked ? (level === "None" ? "View" : level) : "None";
@@ -998,7 +1057,9 @@ export function UserManagement() {
                                     disabled={!isEditingMatrix}
                                     onCheckedChange={(c) => handleToggle("View", !!c)}
                                   />
-                                  <Label className="cursor-pointer" htmlFor={`view-${role}-${g}`}>View access</Label>
+                                  <Label className="cursor-pointer" htmlFor={`view-${role}-${g}`}>
+                                    View access
+                                  </Label>
                                 </div>
                                 <div className="flex items-center gap-2 text-xs font-normal select-none">
                                   <Checkbox
@@ -1007,7 +1068,9 @@ export function UserManagement() {
                                     disabled={!isEditingMatrix}
                                     onCheckedChange={(c) => handleToggle("Edit", !!c)}
                                   />
-                                  <Label className="cursor-pointer" htmlFor={`edit-${role}-${g}`}>Edit access</Label>
+                                  <Label className="cursor-pointer" htmlFor={`edit-${role}-${g}`}>
+                                    Edit access
+                                  </Label>
                                 </div>
                                 <div className="flex items-center gap-2 text-xs font-normal select-none">
                                   <Checkbox
@@ -1016,7 +1079,9 @@ export function UserManagement() {
                                     disabled={!isEditingMatrix}
                                     onCheckedChange={(c) => handleToggle("Full", !!c)}
                                   />
-                                  <Label className="cursor-pointer" htmlFor={`full-${role}-${g}`}>Full control</Label>
+                                  <Label className="cursor-pointer" htmlFor={`full-${role}-${g}`}>
+                                    Full control
+                                  </Label>
                                 </div>
                               </div>
                             </TableCell>
@@ -1040,7 +1105,9 @@ export function UserManagement() {
           <div className="grid gap-4 lg:grid-cols-2">
             <Card className="border-border/70">
               <CardContent className="flex flex-1 flex-col space-y-4 p-6">
-                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Shield className="h-5 w-5 text-primary" /> Login Security Policy</h2>
+                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                  <Shield className="h-5 w-5 text-primary" /> Login Security Policy
+                </h2>
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium">Two-factor authentication</p>
@@ -1105,7 +1172,9 @@ export function UserManagement() {
               <CardContent className="p-6">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
                   <div>
-                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Smartphone className="h-5 w-5 text-primary" /> Active Sessions</h2>
+                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                      <Smartphone className="h-5 w-5 text-primary" /> Active Sessions
+                    </h2>
                     <p className="text-xs text-muted-foreground">
                       Devices currently signed into portal accounts.
                     </p>
@@ -1234,9 +1303,7 @@ export function UserManagement() {
                 <Select
                   value={editDraft.status}
                   onValueChange={(v) =>
-                    setEditDraft((p) =>
-                      p ? { ...p, status: v as SystemUser["status"] } : p,
-                    )
+                    setEditDraft((p) => (p ? { ...p, status: v as SystemUser["status"] } : p))
                   }
                 >
                   <SelectTrigger>

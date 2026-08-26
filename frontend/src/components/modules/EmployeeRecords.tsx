@@ -119,7 +119,9 @@ function mapAuditToRecordLog(l: ApiAuditLog): RecordLog {
       : lower.includes("delet") || lower.includes("remov")
         ? "Deleted"
         : "Edited";
-  const timestamp = l.timestamp ? l.timestamp.replace("T", " ").slice(0, 16) : l.occurred_at ?? "";
+  const timestamp = l.timestamp
+    ? l.timestamp.replace("T", " ").slice(0, 16)
+    : (l.occurred_at ?? "");
   return {
     id: `LOG-${l.audit_log_id}`,
     timestamp,
@@ -396,7 +398,6 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const employeePage = usePagination(employeeSort.sorted);
   const logPage = usePagination(logSort.sorted);
 
-
   const toggle = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
@@ -448,7 +449,6 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     toast.success("History record updated");
   };
 
-
   const createEmployee = async () => {
     if (!form.name.trim() || !form.position.trim()) {
       toast.error("Name and position are required");
@@ -469,7 +469,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     }
     const supervisor =
       form.supervisor && form.supervisor !== "—"
-        ? roster.employees.find((e) => e.full_name === form.supervisor)?.employee_id ?? null
+        ? (roster.employees.find((e) => e.full_name === form.supervisor)?.employee_id ?? null)
         : null;
     try {
       const res = await hcmApi.employees.create({
@@ -541,7 +541,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     if (detail?.documents?.length) {
       return detail.documents.map((d) => ({
         name: d.title,
-        status: d.document_status === "Submitted" ? "Submitted" as const : "Missing" as const,
+        status: d.document_status === "Submitted" ? ("Submitted" as const) : ("Missing" as const),
         file: d.file_path ?? undefined,
       }));
     }
@@ -660,8 +660,12 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
 
       <Tabs defaultValue="list" className="mt-6">
         <TabsList className="flex h-auto flex-wrap justify-start">
-          <TabsTrigger className="flex items-center gap-1.5" value="list"><Users className="h-3.5 w-3.5" /> Employee List</TabsTrigger>
-          <TabsTrigger className="flex items-center gap-1.5" value="history"><History className="h-3.5 w-3.5" /> Record History</TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5" value="list">
+            <Users className="h-3.5 w-3.5" /> Employee List
+          </TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5" value="history">
+            <History className="h-3.5 w-3.5" /> Record History
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="list" className="mt-4">
@@ -669,7 +673,9 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Users className="h-5 w-5 text-primary" /> Employee List</h2>
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                    <Users className="h-5 w-5 text-primary" /> Employee List
+                  </h2>
                   <p className="text-xs text-muted-foreground">
                     {listView === "archived"
                       ? "Records inactive/unmodified for 10+ years (DOLE/BIR retention). Hidden from the default list."
@@ -729,8 +735,6 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     <Archive className="h-4 w-4" />
                   </Button>
 
-
-
                   {listView === "active" && (
                     <>
                       <Button
@@ -753,143 +757,143 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
 
               <div className="mt-4 overflow-x-auto">
                 <ListBody>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-10" />
-                      <SortHead
-                        sortKey="employee"
-                        sort={employeeSort.sort}
-                        onSort={employeeSort.toggle}
-                      >
-                        Employee
-                      </SortHead>
-                      <SortHead
-                        sortKey="position"
-                        sort={employeeSort.sort}
-                        onSort={employeeSort.toggle}
-                      >
-                        Position
-                      </SortHead>
-                      <SortHead
-                        sortKey="department"
-                        sort={employeeSort.sort}
-                        onSort={employeeSort.toggle}
-                      >
-                        Department
-                      </SortHead>
-                      <SortHead
-                        sortKey="type"
-                        sort={employeeSort.sort}
-                        onSort={employeeSort.toggle}
-                      >
-                        Type
-                      </SortHead>
-                      <SortHead
-                        sortKey="dateHired"
-                        sort={employeeSort.sort}
-                        onSort={employeeSort.toggle}
-                      >
-                        Date Hired
-                      </SortHead>
-                      <SortHead
-                        sortKey="status"
-                        sort={employeeSort.sort}
-                        onSort={employeeSort.toggle}
-                      >
-                        Status
-                      </SortHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {employeePage.pageItems.map((e) => (
-                      <TableRow key={e.id}>
-                        <TableCell>
-                          <Checkbox
-                            checked={selected.includes(e.id)}
-                            onCheckedChange={() => toggle(e.id)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-8 w-8">
-                              <AvatarFallback className="bg-secondary text-[0.7rem]">
-                                {initials(e.name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="text-sm font-medium">{e.name}</p>
-                              <p className="text-xs text-muted-foreground">{e.id}</p>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-10" />
+                        <SortHead
+                          sortKey="employee"
+                          sort={employeeSort.sort}
+                          onSort={employeeSort.toggle}
+                        >
+                          Employee
+                        </SortHead>
+                        <SortHead
+                          sortKey="position"
+                          sort={employeeSort.sort}
+                          onSort={employeeSort.toggle}
+                        >
+                          Position
+                        </SortHead>
+                        <SortHead
+                          sortKey="department"
+                          sort={employeeSort.sort}
+                          onSort={employeeSort.toggle}
+                        >
+                          Department
+                        </SortHead>
+                        <SortHead
+                          sortKey="type"
+                          sort={employeeSort.sort}
+                          onSort={employeeSort.toggle}
+                        >
+                          Type
+                        </SortHead>
+                        <SortHead
+                          sortKey="dateHired"
+                          sort={employeeSort.sort}
+                          onSort={employeeSort.toggle}
+                        >
+                          Date Hired
+                        </SortHead>
+                        <SortHead
+                          sortKey="status"
+                          sort={employeeSort.sort}
+                          onSort={employeeSort.toggle}
+                        >
+                          Status
+                        </SortHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {employeePage.pageItems.map((e) => (
+                        <TableRow key={e.id}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selected.includes(e.id)}
+                              onCheckedChange={() => toggle(e.id)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback className="bg-secondary text-[0.7rem]">
+                                  {initials(e.name)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="text-sm font-medium">{e.name}</p>
+                                <p className="text-xs text-muted-foreground">{e.id}</p>
+                              </div>
                             </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm">{e.position}</TableCell>
-                        <TableCell className="text-sm">{e.department}</TableCell>
-                        <TableCell className="text-xs">{e.employmentType}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {e.dateHired}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <Badge
-                              variant="outline"
-                              className={
-                                e.status === "Active"
-                                  ? "border-success/30 bg-success/15 text-success"
-                                  : "border-muted-foreground/30 bg-muted text-muted-foreground"
-                              }
-                            >
-                              {e.status}
-                            </Badge>
-                            {archivedIds.includes(e.id) && (
+                          </TableCell>
+                          <TableCell className="text-sm">{e.position}</TableCell>
+                          <TableCell className="text-sm">{e.department}</TableCell>
+                          <TableCell className="text-xs">{e.employmentType}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {e.dateHired}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap items-center gap-1.5">
                               <Badge
                                 variant="outline"
-                                className="border-gold/40 bg-gold-soft text-foreground"
-                                title={`Last updated ${lastUpdatedForEmployee(e.id)}`}
+                                className={
+                                  e.status === "Active"
+                                    ? "border-success/30 bg-success/15 text-success"
+                                    : "border-muted-foreground/30 bg-muted text-muted-foreground"
+                                }
                               >
-                                Archived · since {lastUpdatedForEmployee(e.id)}
+                                {e.status}
                               </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setProfileId(e.id);
-                                setProfileTab("personal");
-                                setHistoryFormOpen(false);
-                              }}
-                            >
-                              <FolderOpen className="mr-2 h-3.5 w-3.5" /> View Records
-                            </Button>
-                            {isSuper &&
-                              (archivedIds.includes(e.id) ? (
-                                <Button
-                                  size="sm"
+                              {archivedIds.includes(e.id) && (
+                                <Badge
                                   variant="outline"
-                                  onClick={() => restoreEmployee(e.id)}
+                                  className="border-gold/40 bg-gold-soft text-foreground"
+                                  title={`Last updated ${lastUpdatedForEmployee(e.id)}`}
                                 >
-                                  <ArchiveRestore className="mr-2 h-3.5 w-3.5" /> Restore
-                                </Button>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => archiveEmployee(e.id)}
-                                >
-                                  <Archive className="mr-2 h-3.5 w-3.5" /> Archive
-                                </Button>
-                              ))}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                                  Archived · since {lastUpdatedForEmployee(e.id)}
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setProfileId(e.id);
+                                  setProfileTab("personal");
+                                  setHistoryFormOpen(false);
+                                }}
+                              >
+                                <FolderOpen className="mr-2 h-3.5 w-3.5" /> View Records
+                              </Button>
+                              {isSuper &&
+                                (archivedIds.includes(e.id) ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => restoreEmployee(e.id)}
+                                  >
+                                    <ArchiveRestore className="mr-2 h-3.5 w-3.5" /> Restore
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => archiveEmployee(e.id)}
+                                  >
+                                    <Archive className="mr-2 h-3.5 w-3.5" /> Archive
+                                  </Button>
+                                ))}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </ListBody>
               </div>
               <TablePagination
@@ -910,7 +914,9 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><History className="h-5 w-5 text-primary" /> Record History</h2>
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                    <History className="h-5 w-5 text-primary" /> Record History
+                  </h2>
                   <p className="text-xs text-muted-foreground">
                     Log of who added, edited, or deleted employee records and files.
                   </p>
@@ -954,64 +960,64 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
 
               <div className="mt-4 overflow-x-auto">
                 <ListBody>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <SortHead sortKey="timestamp" sort={logSort.sort} onSort={logSort.toggle}>
-                        Timestamp
-                      </SortHead>
-                      <SortHead sortKey="actor" sort={logSort.sort} onSort={logSort.toggle}>
-                        Actor
-                      </SortHead>
-                      <SortHead sortKey="action" sort={logSort.sort} onSort={logSort.toggle}>
-                        Action
-                      </SortHead>
-                      <SortHead sortKey="department" sort={logSort.sort} onSort={logSort.toggle}>
-                        Department
-                      </SortHead>
-                      <SortHead sortKey="target" sort={logSort.sort} onSort={logSort.toggle}>
-                        Target Record / File
-                      </SortHead>
-                      <SortHead sortKey="notes" sort={logSort.sort} onSort={logSort.toggle}>
-                        Notes
-                      </SortHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {logPage.pageItems.map((l) => (
-                      <TableRow key={l.id}>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {l.timestamp}
-                        </TableCell>
-                        <TableCell className="text-sm">{l.actor}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={
-                              l.action === "Added"
-                                ? "border-success/30 bg-success/15 text-success"
-                                : l.action === "Edited"
-                                  ? "border-gold/40 bg-gold-soft text-foreground"
-                                  : "border-destructive/30 bg-destructive/15 text-destructive"
-                            }
-                          >
-                            {l.action}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm">{l.department}</TableCell>
-                        <TableCell className="text-sm">{l.target}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{l.notes}</TableCell>
-                      </TableRow>
-                    ))}
-                    {logPage.pageItems.length === 0 && (
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={6} className="py-8">
-                          <ListEmptyState placeholder="Search actor, target, notes…" />
-                        </TableCell>
+                        <SortHead sortKey="timestamp" sort={logSort.sort} onSort={logSort.toggle}>
+                          Timestamp
+                        </SortHead>
+                        <SortHead sortKey="actor" sort={logSort.sort} onSort={logSort.toggle}>
+                          Actor
+                        </SortHead>
+                        <SortHead sortKey="action" sort={logSort.sort} onSort={logSort.toggle}>
+                          Action
+                        </SortHead>
+                        <SortHead sortKey="department" sort={logSort.sort} onSort={logSort.toggle}>
+                          Department
+                        </SortHead>
+                        <SortHead sortKey="target" sort={logSort.sort} onSort={logSort.toggle}>
+                          Target Record / File
+                        </SortHead>
+                        <SortHead sortKey="notes" sort={logSort.sort} onSort={logSort.toggle}>
+                          Notes
+                        </SortHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {logPage.pageItems.map((l) => (
+                        <TableRow key={l.id}>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {l.timestamp}
+                          </TableCell>
+                          <TableCell className="text-sm">{l.actor}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={
+                                l.action === "Added"
+                                  ? "border-success/30 bg-success/15 text-success"
+                                  : l.action === "Edited"
+                                    ? "border-gold/40 bg-gold-soft text-foreground"
+                                    : "border-destructive/30 bg-destructive/15 text-destructive"
+                              }
+                            >
+                              {l.action}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm">{l.department}</TableCell>
+                          <TableCell className="text-sm">{l.target}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{l.notes}</TableCell>
+                        </TableRow>
+                      ))}
+                      {logPage.pageItems.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="py-8">
+                            <ListEmptyState placeholder="Search actor, target, notes…" />
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
                 </ListBody>
               </div>
               <TablePagination
@@ -1094,7 +1100,6 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
         </DialogContent>
       </Dialog>
 
-
       {/* 201 FILE */}
       <Dialog open={!!profile} onOpenChange={(o) => !o && setProfileId(null)}>
         <DialogContent className="flex h-[96vh] flex-col gap-3 overflow-hidden sm:max-w-6xl">
@@ -1119,7 +1124,11 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     </p>
                   )}
 
-                  <Tabs value={profileTab} onValueChange={setProfileTab} className="flex min-h-0 flex-1 flex-col">
+                  <Tabs
+                    value={profileTab}
+                    onValueChange={setProfileTab}
+                    className="flex min-h-0 flex-1 flex-col"
+                  >
                     <TabsList className="flex h-auto flex-wrap justify-start">
                       <TabsTrigger value="personal">Personal Information</TabsTrigger>
                       <TabsTrigger value="documents">Documents</TabsTrigger>
@@ -1151,7 +1160,10 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                       </div>
                     )}
 
-                    <TabsContent value="personal" className="mt-2 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
+                    <TabsContent
+                      value="personal"
+                      className="mt-2 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1"
+                    >
                       <Section title="Personal details">
                         <Field k="Full name" v={profile.name} />
                         <Field k="Birth date" v={p.birthDate} />
@@ -1203,7 +1215,10 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                       )}
                     </TabsContent>
 
-                    <TabsContent value="documents" className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+                    <TabsContent
+                      value="documents"
+                      className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
+                    >
                       <div className="space-y-1.5">
                         {docsFor(profile).map((doc, i) => (
                           <div
@@ -1259,7 +1274,10 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                       </div>
                     </TabsContent>
 
-                    <TabsContent value="history" className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+                    <TabsContent
+                      value="history"
+                      className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
+                    >
                       {isSuper && historyFormOpen && (
                         <div className="rounded-md border border-border p-3">
                           <p className="eyebrow mb-2">New history entry</p>
@@ -1313,10 +1331,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                         {[...hist]
                           .sort((a, b) => (a.date < b.date ? 1 : -1))
                           .map((h) => (
-                            <div
-                              key={h.id}
-                              className="rounded-md border border-border p-2.5"
-                            >
+                            <div key={h.id} className="rounded-md border border-border p-2.5">
                               {editingHistoryId === h.id ? (
                                 <div className="space-y-2">
                                   <div className="grid gap-2 sm:grid-cols-3">
@@ -1457,11 +1472,11 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-{roster.departments.map((d) => (
-                        <SelectItem key={d.code} value={d.name}>
-                          {d.name}
-                        </SelectItem>
-                      ))}
+                  {roster.departments.map((d) => (
+                    <SelectItem key={d.code} value={d.name}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

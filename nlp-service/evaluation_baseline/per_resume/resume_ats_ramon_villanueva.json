@@ -1,0 +1,280 @@
+{
+  "resume_file": "resume_ats_ramon_villanueva.pdf",
+  "requirements_applied": false,
+  "result": {
+    "success": true,
+    "profile": {
+      "personal_information": {
+        "name": "RAMON DELA PENA VILLANUEVA",
+        "email": "ramon.villanueva.rm@gmail.com",
+        "phone": "0917-604-8823",
+        "address": "Manila, Metro Manila, Philippines"
+      },
+      "education": [
+        "Bachelor of Science in Hospitality Management"
+      ],
+      "work_experience": [
+        {
+          "job_title": "Restaurant Supervisor",
+          "company": "March 2019",
+          "location": "June 2022",
+          "period": null,
+          "recognized_role": true
+        },
+        {
+          "job_title": "Kitchen Helper",
+          "company": null,
+          "location": null,
+          "period": null,
+          "recognized_role": true
+        }
+      ],
+      "skills": [
+        "Complaint Handling",
+        "Cost Reporting",
+        "Food Safety",
+        "Inventory Control",
+        "MS Office",
+        "POS Systems",
+        "Safety Compliance",
+        "Scheduling",
+        "Team Leadership"
+      ],
+      "certifications": [
+        "Food Safety and Hygiene Certification",
+        "Servsafe Food Protection Manager Certification"
+      ],
+      "unrecognized_certifications": [
+        "Servsafe Food Protection Manager Certification"
+      ],
+      "estimated_years_experience": 6.25,
+      "job_roles": {
+        "recognized": [
+          "Kitchen Helper",
+          "Restaurant Supervisor"
+        ],
+        "unrecognized": []
+      },
+      "unrecognized_skills": [
+        "Compliance"
+      ]
+    },
+    "entities": [
+      {
+        "label": "PERSON",
+        "value": "RAMON DELA PENA VILLANUEVA",
+        "source": "rule"
+      },
+      {
+        "label": "EDUCATION",
+        "value": "Bachelor of Science in Hospitality Management",
+        "source": "section_rule"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Restaurant Supervisor",
+        "source": "section_rule"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Kitchen Helper",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Team Leadership",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Inventory Control",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "POS Systems",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Cost Reporting",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Food Safety",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Compliance",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Complaint Handling",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Scheduling",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "MS Office",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Safety Compliance",
+        "source": "reference_scan"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "Servsafe Food Protection Manager Certification",
+        "source": "hint_pattern"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "Food Safety and Hygiene Certification",
+        "source": "section_rule"
+      },
+      {
+        "label": "EMAIL",
+        "value": "ramon.villanueva.rm@gmail.com",
+        "source": "regex"
+      },
+      {
+        "label": "PHONE",
+        "value": "0917-604-8823",
+        "source": "regex"
+      }
+    ],
+    "sections_detected": [
+      "additional",
+      "certifications",
+      "education",
+      "experience",
+      "skills",
+      "summary"
+    ],
+    "estimated_years_experience": 6.25,
+    "validation": {
+      "missing_information": [],
+      "invalid_format": [],
+      "skill_analysis": {
+        "recognized": [
+          "Complaint Handling",
+          "Cost Reporting",
+          "Food Safety",
+          "Inventory Control",
+          "MS Office",
+          "POS Systems",
+          "Safety Compliance",
+          "Scheduling",
+          "Team Leadership"
+        ],
+        "unrecognized": [
+          "Compliance"
+        ]
+      },
+      "job_role_analysis": {
+        "recognized": [
+          "Kitchen Helper",
+          "Restaurant Supervisor"
+        ],
+        "unrecognized": []
+      },
+      "credential_analysis": [
+        {
+          "required": null,
+          "extracted": "Servsafe Food Protection Manager Certification",
+          "status": "UNRECOGNIZED",
+          "note": "Invalid or requires verification based on system validation rules."
+        }
+      ],
+      "credential_issues": [],
+      "review_flags": []
+    },
+    "requirements_applied": {
+      "job_post_id": null,
+      "title": "Unspecified Position",
+      "required_skills": [],
+      "preferred_skills": [],
+      "education_level": null,
+      "experience_level": null,
+      "min_years_experience": 0.0,
+      "required_certifications": [],
+      "required_information": [
+        "name",
+        "email",
+        "phone"
+      ]
+    },
+    "match_score": 100.0,
+    "score_breakdown": {
+      "skills": {
+        "weight": 0.4,
+        "earned": 40.0,
+        "max": 40.0,
+        "matched_required": [],
+        "missing_required": [],
+        "matched_preferred": [],
+        "missing_preferred": [],
+        "required_coverage": 1.0,
+        "preferred_coverage": 1.0
+      },
+      "experience": {
+        "weight": 0.3,
+        "earned": 30.0,
+        "max": 30.0,
+        "estimated_years": 6.25,
+        "min_years_required": 0.0,
+        "requirement_met": true
+      },
+      "education": {
+        "weight": 0.2,
+        "earned": 20.0,
+        "max": 20.0,
+        "applicant_highest_level": [
+          "Bachelor of Science in Hospitality Management"
+        ],
+        "required_level": null,
+        "requirement_met": true
+      },
+      "certifications": {
+        "weight": 0.1,
+        "earned": 10.0,
+        "max": 10.0,
+        "matched": [],
+        "missing": [],
+        "no_requirements": true
+      }
+    },
+    "screening_status": "PERFECT_FOR_THE_JOB",
+    "screening_reasons": [
+      "Overall match score 100.0% reached the required threshold of 75.0% for Unspecified Position.",
+      "Education requirement met: True; experience requirement met: True (6.25 yrs vs 0.0 yrs minimum)."
+    ],
+    "matched_summary": "Education requirement satisfied; Experience requirement satisfied (6.25 yrs vs 0.0 yrs required); No certification requirements defined for this role — meets Unspecified Position requirements.",
+    "alternative_job": null,
+    "mandatory_requirements_met": true,
+    "model_info": {
+      "base_model": "en_core_web_sm",
+      "custom_ner_loaded": true,
+      "custom_ner_path": "C:\\Users\\Windows 10 Lite\\Downloads\\MUNJOR\\4TH YR\\DEV\\LATEST CLONE\\v5\\2nd-repo-for-hrms-backend-\\nlp-service\\models_spacy\\role_specific_ner"
+    },
+    "_timing_seconds": 774.4385,
+    "processing_status": "PARTIALLY_PROCESSED",
+    "text_extraction": {
+      "method": "pdfplumber",
+      "pages": 1,
+      "extension": ".pdf",
+      "original_length": null,
+      "character_count": 1807,
+      "warnings": []
+    },
+    "parsed_successfully": true
+  }
+}

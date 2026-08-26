@@ -1,0 +1,287 @@
+{
+  "resume_file": "resume_pdf_andrea_reyes.pdf",
+  "requirements_applied": false,
+  "result": {
+    "success": true,
+    "profile": {
+      "personal_information": {
+        "name": "ANDREA NICOLE REYES",
+        "email": "andrea.reyes.hk@yahoo.com",
+        "phone": "0918-772-4410"
+      },
+      "education": [
+        "Bachelor of Science in Hospitality Management"
+      ],
+      "work_experience": [
+        {
+          "job_title": "Supervisor",
+          "period": null,
+          "recognized_role": true
+        },
+        {
+          "job_title": "August 2021",
+          "period": "August 2021 – Present",
+          "recognized_role": false
+        },
+        {
+          "job_title": "Housekeeping Attendant",
+          "period": null,
+          "recognized_role": true
+        },
+        {
+          "job_title": "February 2018",
+          "period": "February 2018 – July 2021",
+          "recognized_role": false
+        }
+      ],
+      "skills": [
+        "Housekeeping Operations",
+        "Inventory Control",
+        "Linen Handling",
+        "MS Office",
+        "Scheduling"
+      ],
+      "certifications": [
+        "Occupational First Aid Certification",
+        "Tesda National Certificate"
+      ],
+      "unrecognized_certifications": [
+        "Occupational First Aid Certification",
+        "Tesda National Certificate"
+      ],
+      "estimated_years_experience": 7.5,
+      "job_roles": {
+        "recognized": [
+          "Housekeeping Attendant",
+          "Supervisor"
+        ],
+        "unrecognized": [
+          "August 2021",
+          "February 2018"
+        ]
+      },
+      "unrecognized_skills": [
+        "Guest Complaint",
+        "Resolution (cid:127"
+      ]
+    },
+    "entities": [
+      {
+        "label": "PERSON",
+        "value": "ANDREA NICOLE REYES",
+        "source": "custom_ner"
+      },
+      {
+        "label": "EDUCATION",
+        "value": "Bachelor of Science in Hospitality Management",
+        "source": "section_rule"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Supervisor",
+        "source": "custom_ner"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Housekeeping Attendant",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Housekeeping Operations",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Inventory Control",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Guest Complaint",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Resolution (cid:127",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Linen Handling",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "MS Office",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Scheduling",
+        "source": "reference_scan"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "Tesda National Certificate",
+        "source": "hint_pattern"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "Occupational First Aid Certification",
+        "source": "hint_pattern"
+      },
+      {
+        "label": "EMAIL",
+        "value": "andrea.reyes.hk@yahoo.com",
+        "source": "regex"
+      },
+      {
+        "label": "PHONE",
+        "value": "0918-772-4410",
+        "source": "regex"
+      }
+    ],
+    "sections_detected": [
+      "certifications",
+      "education",
+      "experience",
+      "skills",
+      "summary"
+    ],
+    "estimated_years_experience": 7.5,
+    "validation": {
+      "missing_information": [],
+      "invalid_format": [],
+      "skill_analysis": {
+        "recognized": [
+          "Housekeeping Operations",
+          "Inventory Control",
+          "Linen Handling",
+          "MS Office",
+          "Scheduling"
+        ],
+        "unrecognized": [
+          "Guest Complaint",
+          "Resolution (cid:127"
+        ]
+      },
+      "job_role_analysis": {
+        "recognized": [
+          "Housekeeping Attendant",
+          "Supervisor"
+        ],
+        "unrecognized": [
+          "August 2021",
+          "February 2018"
+        ]
+      },
+      "credential_analysis": [
+        {
+          "required": null,
+          "extracted": "Occupational First Aid Certification",
+          "status": "UNRECOGNIZED",
+          "note": "Invalid or requires verification based on system validation rules."
+        },
+        {
+          "required": null,
+          "extracted": "Tesda National Certificate",
+          "status": "UNRECOGNIZED",
+          "note": "Invalid or requires verification based on system validation rules."
+        }
+      ],
+      "credential_issues": [],
+      "review_flags": [
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "August 2021",
+          "note": "Not found in system reference data; flagged for manual review only."
+        },
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "February 2018",
+          "note": "Not found in system reference data; flagged for manual review only."
+        }
+      ]
+    },
+    "requirements_applied": {
+      "job_post_id": null,
+      "title": "Unspecified Position",
+      "required_skills": [],
+      "preferred_skills": [],
+      "education_level": null,
+      "experience_level": null,
+      "min_years_experience": 0.0,
+      "required_certifications": [],
+      "required_information": [
+        "name",
+        "email",
+        "phone"
+      ]
+    },
+    "match_score": 100.0,
+    "score_breakdown": {
+      "skills": {
+        "weight": 0.4,
+        "earned": 40.0,
+        "max": 40.0,
+        "matched_required": [],
+        "missing_required": [],
+        "matched_preferred": [],
+        "missing_preferred": [],
+        "required_coverage": 1.0,
+        "preferred_coverage": 1.0
+      },
+      "experience": {
+        "weight": 0.3,
+        "earned": 30.0,
+        "max": 30.0,
+        "estimated_years": 7.5,
+        "min_years_required": 0.0,
+        "requirement_met": true
+      },
+      "education": {
+        "weight": 0.2,
+        "earned": 20.0,
+        "max": 20.0,
+        "applicant_highest_level": [
+          "Bachelor of Science in Hospitality Management"
+        ],
+        "required_level": null,
+        "requirement_met": true
+      },
+      "certifications": {
+        "weight": 0.1,
+        "earned": 10.0,
+        "max": 10.0,
+        "matched": [],
+        "missing": [],
+        "no_requirements": true
+      }
+    },
+    "screening_status": "PERFECT_FOR_THE_JOB",
+    "screening_reasons": [
+      "Overall match score 100.0% reached the required threshold of 75.0% for Unspecified Position.",
+      "Education requirement met: True; experience requirement met: True (7.5 yrs vs 0.0 yrs minimum)."
+    ],
+    "matched_summary": "Education requirement satisfied; Experience requirement satisfied (7.5 yrs vs 0.0 yrs required); No certification requirements defined for this role — meets Unspecified Position requirements.",
+    "alternative_job": null,
+    "mandatory_requirements_met": true,
+    "model_info": {
+      "base_model": "en_core_web_sm",
+      "custom_ner_loaded": true,
+      "custom_ner_path": "C:\\Users\\PC\\Downloads\\Ferdi\\4TH_YR\\DEV\\v4\\2nd-repo-for-hrms-backend-LATEST\\2nd-repo-for-hrms-backend-\\nlp-service\\models_spacy\\role_specific_ner"
+    },
+    "_timing_seconds": 802.0031,
+    "processing_status": "PARTIALLY_PROCESSED",
+    "text_extraction": {
+      "method": "pdfplumber",
+      "pages": 1,
+      "extension": ".pdf",
+      "original_length": null,
+      "character_count": 1651,
+      "warnings": []
+    },
+    "parsed_successfully": true
+  }
+}

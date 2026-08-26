@@ -12,10 +12,54 @@ class AuditLogController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $user = $request->user();
+
+        if ($request->filled('module')) {
+            $module = $request->string('module')->value();
+            if (! $user || (! $user->hasModuleAccess('Audit Logs') && ! $user->hasModuleAccess($module))) {
+                return response()->json([
+                    'message' => "Access denied: you do not have permission to view audit logs for the {$module} module.",
+                ], 403);
+            }
+        } else {
+            if (! $user || ! $user->hasModuleAccess('Audit Logs')) {
+                return response()->json([
+                    'message' => 'Access denied: you do not have permission to access the Audit Logs module.',
+                ], 403);
+            }
+        }
+
         $query = AuditLog::query()->with('user');
 
         if ($request->filled('module')) {
-            $query->where('module_name', $request->string('module'));
+            $rawModule = $request->string('module')->value();
+            $modules = array_filter(array_map('trim', explode(',', $rawModule)));
+
+            if (in_array('Applicant Management', $modules, true)) {
+                $modules = array_unique(array_merge($modules, [
+                    'Applicant Management',
+                    'Screening',
+                    'Interview Scheduling',
+                    'Assessment',
+                    'Resume Screening',
+                ]));
+            }
+
+            if (in_array('Core HCM', $modules, true)) {
+                $modules = array_unique(array_merge($modules, [
+                    'Core HCM',
+                    'Department',
+                    'Position',
+                    'Salary Grade',
+                    'Recommendation',
+                ]));
+            }
+
+            if (count($modules) === 1) {
+                $query->where('module_name', reset($modules));
+            } else {
+                $query->whereIn('module_name', $modules);
+            }
         }
 
         if ($request->filled('severity')) {

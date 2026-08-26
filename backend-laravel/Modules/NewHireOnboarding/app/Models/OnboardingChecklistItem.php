@@ -13,12 +13,16 @@ class OnboardingChecklistItem extends Model
     public $timestamps = false; // only created_at
 
     protected $casts = [
-        'created_at' => 'datetime',
+        'requires_upload' => 'boolean',
+        'created_at'      => 'datetime',
     ];
 
     protected $fillable = [
         'template_id',
         'item_text',
+        'instructions',
+        'requires_upload',
+        'upload_placeholder',
         'sort_order',
     ];
 

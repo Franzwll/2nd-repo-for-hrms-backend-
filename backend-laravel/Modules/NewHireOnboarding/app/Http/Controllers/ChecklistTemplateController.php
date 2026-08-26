@@ -90,13 +90,16 @@ class ChecklistTemplateController extends Controller
         $model = OnboardingChecklistTemplate::findOrFail($template);
 
         $data = $request->validate([
-            'title'               => ['sometimes', 'string', 'max:200'],
-            'phase'               => ['sometimes', 'string', 'in:Pre-onboarding,Onboarding,Probationary,Regular'],
-            'position_scope_json' => ['nullable', 'array'],
-            'status'              => ['sometimes', 'string', 'in:Active,Inactive,Closed'],
-            'items'               => ['nullable', 'array'],
-            'items.*.item_text'   => ['required', 'string'],
-            'items.*.sort_order'  => ['nullable', 'integer', 'min:0'],
+            'title'                      => ['sometimes', 'string', 'max:200'],
+            'phase'                      => ['sometimes', 'string', 'in:Pre-onboarding,Onboarding,Probationary,Regular'],
+            'position_scope_json'        => ['nullable', 'array'],
+            'status'                     => ['sometimes', 'string', 'in:Active,Inactive,Closed'],
+            'items'                      => ['nullable', 'array'],
+            'items.*.item_text'          => ['required', 'string'],
+            'items.*.instructions'       => ['nullable', 'string'],
+            'items.*.requires_upload'    => ['nullable', 'boolean'],
+            'items.*.upload_placeholder' => ['nullable', 'string', 'max:255'],
+            'items.*.sort_order'         => ['nullable', 'integer', 'min:0'],
         ]);
 
         // "Closed" is the builder's label; the DB only stores Active/Inactive.
@@ -119,17 +122,19 @@ class ChecklistTemplateController extends Controller
             $updatedIds = [];
             foreach ($items as $index => $item) {
                 $existing = $existingItems->values()->get($index);
+                $itemPayload = [
+                    'item_text'          => $item['item_text'],
+                    'instructions'       => $item['instructions'] ?? null,
+                    'requires_upload'    => (bool) ($item['requires_upload'] ?? false),
+                    'upload_placeholder' => $item['upload_placeholder'] ?? null,
+                    'sort_order'         => $item['sort_order'] ?? $index,
+                ];
+
                 if ($existing) {
-                    $existing->update([
-                        'item_text'  => $item['item_text'],
-                        'sort_order' => $item['sort_order'] ?? $index,
-                    ]);
+                    $existing->update($itemPayload);
                     $updatedIds[] = $existing->template_item_id;
                 } else {
-                    $created = $model->items()->create([
-                        'item_text'  => $item['item_text'],
-                        'sort_order' => $item['sort_order'] ?? $index,
-                    ]);
+                    $created = $model->items()->create($itemPayload);
                     $updatedIds[] = $created->template_item_id;
                 }
             }

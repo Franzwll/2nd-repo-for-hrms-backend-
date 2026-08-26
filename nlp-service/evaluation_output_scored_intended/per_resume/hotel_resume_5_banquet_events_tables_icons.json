@@ -1,0 +1,307 @@
+{
+  "resume_file": "hotel_resume_5_banquet_events_tables_icons.docx",
+  "requirements_applied": false,
+  "result": {
+    "success": true,
+    "profile": {
+      "personal_information": {
+        "name": "Sophia Anne Garcia",
+        "email": "sophia.garcia.events@example.com",
+        "phone": "+63 919 220 6734"
+      },
+      "education": [
+        "Bachelor of Science in Hospitality Management"
+      ],
+      "work_experience": [],
+      "skills": [
+        "Attention to Detail",
+        "Banquet Service",
+        "Cash Handling",
+        "Communication",
+        "Food Safety",
+        "MS Office",
+        "Scheduling"
+      ],
+      "certifications": [],
+      "unrecognized_certifications": [],
+      "estimated_years_experience": 0.0,
+      "job_roles": {
+        "recognized": [],
+        "unrecognized": [
+          "front-office"
+        ]
+      },
+      "unrecognized_skills": [
+        "& Employer",
+        "+63",
+        "Assist with",
+        "Attend pre-",
+        "Bachelor of",
+        "College of",
+        "Events Coordinator",
+        "Function Sheets",
+        "March",
+        "Vendor Coordination",
+        "★ Event Coordination",
+        "🎓 Education",
+        "🏅 Certifications"
+      ]
+    },
+    "entities": [
+      {
+        "label": "PERSON",
+        "value": "Sophia Anne Garcia",
+        "source": "spacy_base"
+      },
+      {
+        "label": "EDUCATION",
+        "value": "Bachelor of Science in Hospitality Management",
+        "source": "section_rule"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "front-office",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "+63",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "★ Event Coordination",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Function Sheets",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Vendor Coordination",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Attention to Detail",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "& Employer",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Events Coordinator",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Attend pre-",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Assist with",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Banquet Service",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "March",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "🎓 Education",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Bachelor of",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "College of",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "🏅 Certifications",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Food Safety",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Communication",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "MS Office",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Scheduling",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Cash Handling",
+        "source": "section_rule"
+      },
+      {
+        "label": "EMAIL",
+        "value": "sophia.garcia.events@example.com",
+        "source": "regex"
+      },
+      {
+        "label": "PHONE",
+        "value": "+63 919 220 6734",
+        "source": "regex"
+      }
+    ],
+    "sections_detected": [
+      "skills",
+      "summary"
+    ],
+    "estimated_years_experience": 0.0,
+    "validation": {
+      "missing_information": [],
+      "invalid_format": [],
+      "skill_analysis": {
+        "recognized": [
+          "Attention to Detail",
+          "Banquet Service",
+          "Cash Handling",
+          "Communication",
+          "Food Safety",
+          "MS Office",
+          "Scheduling"
+        ],
+        "unrecognized": [
+          "& Employer",
+          "+63",
+          "Assist with",
+          "Attend pre-",
+          "Bachelor of",
+          "College of",
+          "Events Coordinator",
+          "Function Sheets",
+          "March",
+          "Vendor Coordination",
+          "★ Event Coordination",
+          "🎓 Education",
+          "🏅 Certifications"
+        ]
+      },
+      "job_role_analysis": {
+        "recognized": [],
+        "unrecognized": [
+          "front-office"
+        ]
+      },
+      "credential_analysis": [],
+      "credential_issues": [],
+      "review_flags": [
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "front-office",
+          "note": "Not found in system reference data; flagged for manual review only."
+        }
+      ]
+    },
+    "requirements_applied": {
+      "job_post_id": null,
+      "title": "Unspecified Position",
+      "required_skills": [],
+      "preferred_skills": [],
+      "education_level": null,
+      "experience_level": null,
+      "min_years_experience": 0.0,
+      "required_certifications": [],
+      "required_information": [
+        "name",
+        "email",
+        "phone"
+      ]
+    },
+    "match_score": 100.0,
+    "score_breakdown": {
+      "skills": {
+        "weight": 0.4,
+        "earned": 40.0,
+        "max": 40.0,
+        "matched_required": [],
+        "missing_required": [],
+        "matched_preferred": [],
+        "missing_preferred": [],
+        "required_coverage": 1.0,
+        "preferred_coverage": 1.0
+      },
+      "experience": {
+        "weight": 0.3,
+        "earned": 30.0,
+        "max": 30.0,
+        "estimated_years": 0.0,
+        "min_years_required": 0.0,
+        "requirement_met": true
+      },
+      "education": {
+        "weight": 0.2,
+        "earned": 20.0,
+        "max": 20.0,
+        "applicant_highest_level": [
+          "Bachelor of Science in Hospitality Management"
+        ],
+        "required_level": null,
+        "requirement_met": true
+      },
+      "certifications": {
+        "weight": 0.1,
+        "earned": 10.0,
+        "max": 10.0,
+        "matched": [],
+        "missing": [],
+        "no_requirements": true
+      }
+    },
+    "screening_status": "PERFECT_FOR_THE_JOB",
+    "screening_reasons": [
+      "Overall match score 100.0% reached the required threshold of 75.0% for Unspecified Position.",
+      "Education requirement met: True; experience requirement met: True (0.0 yrs vs 0.0 yrs minimum)."
+    ],
+    "matched_summary": "Education requirement satisfied; Experience requirement satisfied (0.0 yrs vs 0.0 yrs required); No certification requirements defined for this role — meets Unspecified Position requirements.",
+    "alternative_job": null,
+    "mandatory_requirements_met": true,
+    "model_info": {
+      "base_model": "en_core_web_sm",
+      "custom_ner_loaded": true,
+      "custom_ner_path": "C:\\Users\\PC\\Downloads\\Ferdi\\4TH_YR\\DEV\\v4\\2nd-repo-for-hrms-backend-LATEST\\2nd-repo-for-hrms-backend-\\nlp-service\\models_spacy\\role_specific_ner"
+    },
+    "_timing_seconds": 794.9638,
+    "processing_status": "PARTIALLY_PROCESSED",
+    "text_extraction": {
+      "method": "python-docx",
+      "pages": 1,
+      "extension": ".docx",
+      "original_length": null,
+      "character_count": 1348,
+      "warnings": []
+    },
+    "parsed_successfully": true
+  }
+}

@@ -25,7 +25,10 @@ export const Route = createFileRoute("/_landing/jobs/$jobId")({
   head: ({ loaderData }) => {
     if (!loaderData) {
       return {
-        meta: [{ title: "Vacancy unavailable — Oxford Suites Makati" }, { name: "robots", content: "noindex" }],
+        meta: [
+          { title: "Vacancy unavailable — Oxford Suites Makati" },
+          { name: "robots", content: "noindex" },
+        ],
       };
     }
     const { job } = loaderData;
@@ -75,7 +78,9 @@ function JobDetail() {
 
             <section>
               <h2 className="font-display text-2xl font-semibold">Job Description</h2>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{job.description}</p>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                {job.description}
+              </p>
             </section>
 
             <section className="mt-8">
@@ -163,7 +168,9 @@ function JobDetail() {
                           description: `Application ${res.data.applicant_code} for ${job.title} was received.`,
                         });
                       } catch (err: any) {
-                        toast.error(err?.message || "Unable to submit your application. Please try again.");
+                        toast.error(
+                          err?.message || "Unable to submit your application. Please try again.",
+                        );
                       } finally {
                         setApplying(false);
                       }
@@ -221,7 +228,11 @@ function JobDetail() {
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="cover">Cover Letter (optional)</Label>
-                        <Textarea id="cover" rows={4} placeholder="Tell us why you're a great fit." />
+                        <Textarea
+                          id="cover"
+                          rows={4}
+                          placeholder="Tell us why you're a great fit."
+                        />
                       </div>
                     </div>
 

@@ -160,9 +160,93 @@ class EmployeeOnboardingItemController extends Controller
             'employee_onboarding_item_id' => $oi->employee_onboarding_item_id,
             'template_item_id'             => $oi->template_item_id,
             'item_text'                    => $oi->item_text,
+            'instructions'                 => $templateItem->instructions,
+            'requires_upload'              => (bool) $templateItem->requires_upload,
+            'upload_placeholder'           => $templateItem->upload_placeholder,
+            'file_path'                    => null,
+            'file_name'                    => null,
+            'file_url'                     => null,
+            'notes'                        => null,
             'done'                          => false,
             'phase'                         => $oi->templateItem?->template?->phase
                 ?? $model->stageForOnboardingItem($oi),
         ], 201);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/onboarding-items/{item}/upload                         */
+    /* Employee SUBMITS a requirement: optional document + optional notes. */
+    /* Submission is recorded via submitted_at but does NOT mark the item  */
+    /* done — only Admin/Super Admin verification (toggle) moves progress. */
+    /* ------------------------------------------------------------------ */
+
+    public function upload(Request $request, int $item): JsonResponse
+    {
+        $model = EmployeeOnboardingItem::findOrFail($item);
+
+        $request->validate([
+            'file'  => ['nullable', 'file', 'max:10240'], // 10MB max
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $file = $request->file('file');
+        $fileName = null;
+        $filePath = $model->file_path;
+
+        if ($file) {
+            $fileName = $file->getClientOriginalName();
+            $filePath = $file->store('onboarding_documents', 'public');
+
+            // Clean up old file if replacing
+            if ($model->file_path && \Illuminate\Support\Facades\Storage::disk('public')->exists($model->file_path)) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($model->file_path);
+            }
+        }
+
+        DB::transaction(function () use ($model, $filePath, $fileName, $request) {
+            $model->update([
+                'file_path'    => $filePath,
+                'file_name'    => $fileName ?? $model->file_name,
+                'notes'        => $request->filled('notes')
+                    ? $request->input('notes')
+                    : $model->notes,
+                'submitted_at' => now(),
+            ]);
+        });
+
+        return response()->json([
+            'employee_onboarding_item_id' => $model->employee_onboarding_item_id,
+            'file_path'                    => $model->file_path,
+            'file_name'                    => $model->file_name,
+            'file_url'                     => $model->file_url,
+            'notes'                        => $model->notes,
+            'submitted_at'                 => $model->submitted_at?->toISOString(),
+            'done'                         => (bool) $model->done,
+            'completed_at'                 => $model->completed_at?->toISOString(),
+            'message'                      => $fileName
+                ? "Document '{$fileName}' submitted — awaiting HR verification."
+                : 'Submission sent — awaiting HR verification.',
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* GET /api/v1/onboarding-items/{item}/document                        */
+    /* Streams the employee's uploaded document from storage. Used instead */
+    /* of the public /storage URL so files stay accessible even when the   */
+    /* public/storage symlink or host root changes.                        */
+    /* ------------------------------------------------------------------ */
+
+    public function document(int $item): \Symfony\Component\HttpFoundation\BinaryFileResponse|\Symfony\Component\HttpFoundation\StreamedResponse|JsonResponse
+    {
+        $model = EmployeeOnboardingItem::findOrFail($item);
+
+        if (! $model->file_path || ! \Illuminate\Support\Facades\Storage::disk('public')->exists($model->file_path)) {
+            return response()->json(['message' => 'No document found for this checklist item.'], 404);
+        }
+
+        return \Illuminate\Support\Facades\Storage::disk('public')->download(
+            $model->file_path,
+            $model->file_name ?: null,
+        );
     }
 }

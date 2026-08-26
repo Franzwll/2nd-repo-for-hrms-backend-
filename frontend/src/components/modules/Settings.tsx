@@ -1,12 +1,16 @@
 import { useState, useEffect } from "react";
 import { mySettingsApi, settingsApi } from "@/lib/api";
 import { myProfile } from "@/data/ess";
+import { getUser } from "@/lib/auth";
+import { isValidEmail, isValidPhone, sanitizeName, sanitizePhone } from "@/lib/validation";
 import {
   ArrowRight,
   Bell,
   Building2,
   Database,
   Download,
+  Eye,
+  EyeOff,
   KeyRound,
   Plus,
   Shield,
@@ -67,8 +71,6 @@ type BackupEntry = {
   type: string;
 };
 
-export { AuditLogs } from "./AuditLogs";
-
 function SettingsCard({
   icon,
   title,
@@ -91,9 +93,7 @@ function SettingsCard({
       <CardContent className="flex flex-1 flex-col p-6">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span className="grid h-10 w-10 shrink-0 place-items-center text-primary">
-              {icon}
-            </span>
+            <span className="grid h-10 w-10 shrink-0 place-items-center text-primary">{icon}</span>
             <div>
               <h2 className="font-display text-xl font-semibold">{title}</h2>
               <p className="text-xs text-muted-foreground">{subtitle}</p>
@@ -141,19 +141,22 @@ function InfoRow({
 }
 
 export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employee" }) {
-  /** The portal's current user key — each user keeps per-user designated
-   *  Notifications / Preferences / Change Password values in the database. */
+  /** The portal's current user key — resolved from the authenticated session
+   *  so every logged-in account manages its OWN notifications / preferences /
+   *  password / OTP values in the database. */
   const currentUser =
-    role === "employee"
+    getUser()?.email ??
+    (role === "employee"
       ? myProfile.email
       : role === "admin"
         ? "juan.delacruz@oxfordsuites.com.ph"
-        : "bullseur@oxfordsuites.com.ph";
+        : "bullseur@oxfordsuites.com.ph");
 
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
   const [backupSchedule, setBackupSchedule] = useState("daily");
   const [backups, setBackups] = useState<BackupEntry[]>([]);
   const [backupInProgress, setBackupInProgress] = useState(false);
+  const [restoreInProgress, setRestoreInProgress] = useState(false);
   const [backupProgress, setBackupProgress] = useState(0);
   const [restoreTarget, setRestoreTarget] = useState<BackupEntry | null>(null);
   const [notify, setNotify] = useState<Record<string, boolean>>({});
@@ -161,12 +164,10 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPw, setShowPw] = useState({ current: false, next: false, confirm: false });
+  const [pwConfirmOpen, setPwConfirmOpen] = useState(false);
 
-  // Notifications dialog
-  const [notifOpen, setNotifOpen] = useState(false);
-  const [notifDraft, setNotifDraft] = useState(notify);
-
-  // Preferences
+  // Preferences — edited inline on the card; saved when the user clicks save.
   const [preferences, setPreferences] = useState({
     theme: "",
     language: "",
@@ -174,8 +175,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
     timeFormat: "",
     timeZone: "",
   });
-  const [prefsOpen, setPrefsOpen] = useState(false);
-  const [prefsDraft, setPrefsDraft] = useState(preferences);
+  const [prefsSavedSnapshot, setPrefsSavedSnapshot] = useState("");
 
   // Login security (password policy + session rules, saved to "security")
   const [security, setSecurity] = useState({
@@ -190,6 +190,10 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   });
   const [securityOpen, setSecurityOpen] = useState(false);
   const [securityDraft, setSecurityDraft] = useState(security);
+
+  // One-time password at login — per ACCOUNT. Each logged-in user toggles
+  // their own requirement (system_users.otp_enabled). null = still loading.
+  const [otpEnabled, setOtpEnabled] = useState<boolean | null>(null);
 
   // Change default password of all users (superadmin) — the default password
   // is also stored in the database (system_settings.default_password) and
@@ -210,87 +214,110 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   const [companyOpen, setCompanyOpen] = useState(false);
   const [companyDraft, setCompanyDraft] = useState(company);
 
+  /** Applies a flat key → value settings map from the backend onto local state. */
+  const applySettingsMap = (
+    map: Partial<{
+      company: typeof company;
+      preferences: typeof preferences;
+      security: typeof security;
+      notifications: Record<string, boolean>;
+      backups: BackupEntry[];
+      backup: { enabled?: boolean; schedule?: string };
+    }>,
+  ) => {
+    if (map["company"]) {
+      setCompany(map["company"]);
+      setCompanyDraft(map["company"]);
+    }
+    if (map["preferences"]) {
+      setPreferences(map["preferences"]);
+      setPrefsSavedSnapshot(JSON.stringify(map["preferences"]));
+    }
+    if (map["security"]) {
+      setSecurity(map["security"]);
+      setSecurityDraft(map["security"]);
+    }
+    if (map["notifications"]) {
+      setNotify(map["notifications"]);
+    }
+    if (map["backups"]) {
+      setBackups(Array.isArray(map["backups"]) ? map["backups"] : []);
+    }
+    if (map["backup"]) {
+      const b = map["backup"];
+      if (typeof b?.enabled === "boolean") setAutoBackupEnabled(b.enabled);
+      if (b?.schedule) setBackupSchedule(b.schedule);
+    }
+  };
+
   useEffect(() => {
-    settingsApi.getAll().then((res) => {
-      if (res?.map) {
-        if (res.map["company"]) {
-          setCompany(res.map["company"]);
-          setCompanyDraft(res.map["company"]);
+    settingsApi
+      .getAll()
+      .then((res) => {
+        if (res?.map) {
+          applySettingsMap(res.map);
         }
-        if (res.map["preferences"]) {
-          setPreferences(res.map["preferences"]);
-          setPrefsDraft(res.map["preferences"]);
-        }
-        if (res.map["security"]) {
-          setSecurity(res.map["security"]);
-          setSecurityDraft(res.map["security"]);
-        }
-        if (res.map["notifications"]) {
-          setNotify(res.map["notifications"]);
-          setNotifDraft(res.map["notifications"]);
-        }
-        if (res.map["backups"]) {
-          setBackups(Array.isArray(res.map["backups"]) ? res.map["backups"] : []);
-        }
-        if (res.map["backup"]) {
-          const b = res.map["backup"];
-          if (typeof b?.enabled === "boolean") setAutoBackupEnabled(b.enabled);
-          if (b?.schedule) setBackupSchedule(b.schedule);
-        }
-      }
-    }).catch((err) => {
-      console.warn("Could not fetch settings from database:", err);
-    });
+      })
+      .catch((err) => {
+        console.warn("Could not fetch settings from database:", err);
+      });
 
     // Per-user designated values — this user's own notifications/preferences
-    // (merged over the system defaults above).
-    mySettingsApi.get(currentUser)
+    // (merged over the system defaults above) and their personal OTP flag.
+    mySettingsApi
+      .get(currentUser)
       .then((mine) => {
         if (mine?.notifications && Object.keys(mine.notifications).length > 0) {
           setNotify((prev) => ({ ...prev, ...mine.notifications }));
-          setNotifDraft((prev) => ({ ...prev, ...mine.notifications }));
         }
         if (mine?.preferences && Object.keys(mine.preferences).length > 0) {
           setPreferences((prev) => ({ ...prev, ...mine.preferences }));
-          setPrefsDraft((prev) => ({ ...prev, ...mine.preferences }));
         }
+        setOtpEnabled(mine?.otp_enabled ?? true);
       })
       .catch((err) => {
         console.warn("Could not fetch per-user settings from database:", err);
       });
   }, [currentUser]);
 
-  const createBackup = () => {
+  const prefsDirty =
+    prefsSavedSnapshot !== "" && JSON.stringify(preferences) !== prefsSavedSnapshot;
+
+  /** Persists the inline-edited preferences to the database. */
+  const savePreferences = async () => {
+    try {
+      await mySettingsApi.save("preferences", currentUser, preferences);
+      setPrefsSavedSnapshot(JSON.stringify(preferences));
+      toast.success("Preferences saved to database");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save preferences");
+    }
+  };
+
+  /** Creates a real database backup on the server — the dump file is stored
+   *  under storage/app/backups and the entry is persisted by the backend. */
+  const createBackup = async () => {
     if (backupInProgress) return;
     setBackupInProgress(true);
-    setBackupProgress(0);
+    setBackupProgress(5);
+
+    // Indeterminate-ish progress while the server dumps the database.
     const timer = setInterval(() => {
-      setBackupProgress((p) => {
-        const next = p + 20;
-        if (next >= 100) {
-          clearInterval(timer);
-          setBackupInProgress(false);
-          setBackups((prev) => {
-            const created = [
-              {
-                id: `BKP-${105 + prev.length}`,
-                timestamp: new Date().toISOString().slice(0, 16).replace("T", " "),
-                size: "483 MB",
-                type: "Manual",
-              },
-              ...prev,
-            ];
-            settingsApi
-              .upsert("backups", created)
-              .catch((e) => console.warn("Could not save backups to database:", e));
-            return created;
-          });
-          toast.success("Backup created successfully");
-          return 0;
-        }
-        return next;
-      });
-    }, 300);
+      setBackupProgress((p) => Math.min(p + 7, 90));
+    }, 250);
+
+    try {
+      const res = await settingsApi.createBackup();
+      setBackups(Array.isArray(res.data) ? res.data : [res.backup, ...backups]);
+      toast.success(res.message || "Backup created successfully");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not create the backup");
+    } finally {
+      clearInterval(timer);
+      setBackupProgress(100);
+      setTimeout(() => setBackupProgress(0), 500);
+      setBackupInProgress(false);
+    }
   };
 
   const persistAutoBackup = (enabled: boolean, schedule: string) => {
@@ -299,10 +326,41 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
       .catch((e) => console.warn("Could not save backup settings to database:", e));
   };
 
-  const restoreBackup = () => {
-    if (!restoreTarget) return;
-    toast.success(`System restored from ${restoreTarget.id} (${restoreTarget.timestamp})`);
-    setRestoreTarget(null);
+  /** Toggles whether THIS account must verify an OTP at login
+   *  (persisted on the account row via PUT /my/otp). */
+  const persistOtpEnabled = (enabled: boolean) => {
+    setOtpEnabled(enabled);
+    mySettingsApi
+      .toggleOtp(currentUser, enabled)
+      .then((res) => setOtpEnabled(res.otp_enabled))
+      .catch((e) => {
+        console.warn("Could not save OTP setting:", e);
+        toast.error(e instanceof Error ? e.message : "Could not update your OTP setting");
+        setOtpEnabled((prev) => !enabled);
+      });
+  };
+
+  /** Rolls the whole system back to the selected snapshot on the server,
+   *  then refreshes every settings group from the restored database state. */
+  const restoreBackup = async () => {
+    if (!restoreTarget || restoreInProgress) return;
+    setRestoreInProgress(true);
+    try {
+      const res = await settingsApi.restoreBackup(restoreTarget.id);
+
+      // The restore rewrote system_settings — reload everything.
+      const all = await settingsApi.getAll();
+      if (all?.map) {
+        applySettingsMap(all.map);
+      }
+
+      toast.success(res.message);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not restore from the backup");
+    } finally {
+      setRestoreTarget(null);
+      setRestoreInProgress(false);
+    }
   };
 
   const changeOwnPassword = async () => {
@@ -368,24 +426,20 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
       />
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-        {/* Notifications */}
+        {/* Notifications — edited inline; each switch saves instantly */}
         <SettingsCard
           icon={<Bell className="h-5 w-5" />}
           title="Notifications"
           subtitle="Choose how you receive alerts and updates"
-          footer={{
-            label: "Manage notifications",
-            onClick: () => {
-              setNotifDraft(notify);
-              setNotifOpen(true);
-            },
-          }}
         >
           <div className="divide-y divide-border/60">
             {(
               ["Email notifications", "Browser notifications", "System announcements"] as const
             ).map((label) => (
-              <div key={label} className="flex items-center justify-between gap-4 py-2.5 first:pt-0 last:pb-0">
+              <div
+                key={label}
+                className="flex items-center justify-between gap-4 py-2.5 first:pt-0 last:pb-0"
+              >
                 <span className="text-sm text-muted-foreground">{label}</span>
                 <Switch
                   aria-label={label}
@@ -404,177 +458,109 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
               </div>
             ))}
           </div>
+          <p className="mt-3 text-xs text-muted-foreground">Changes are saved automatically.</p>
         </SettingsCard>
 
-        <Dialog open={notifOpen} onOpenChange={setNotifOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="font-display text-2xl">Manage notifications</DialogTitle>
-            </DialogHeader>
-            <div className="divide-y divide-border/60">
-              {(
-                ["Email notifications", "Browser notifications", "System announcements"] as const
-              ).map((label) => (
-                <div key={label} className="flex items-center justify-between gap-4 py-2.5 first:pt-0 last:pb-0">
-                  <span className="text-sm text-muted-foreground">{label}</span>
-                  <Switch
-                    aria-label={label}
-                    checked={notifDraft[label] ?? false}
-                    onCheckedChange={(v) => setNotifDraft((prev) => ({ ...prev, [label]: v }))}
-                  />
-                </div>
-              ))}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setNotifOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={async () => {
-                  setNotify(notifDraft);
-                  setNotifOpen(false);
-                  try {
-                    await mySettingsApi.save("notifications", currentUser, notifDraft);
-                    toast.success("Notification settings saved to database");
-                  } catch (e) {
-                    toast.error(e instanceof Error ? e.message : "Could not save notification settings");
-                  }
-                }}
-              >
-                Save changes
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Preferences */}
+        {/* Preferences — edited inline on the card */}
         <SettingsCard
           icon={<SlidersHorizontal className="h-5 w-5" />}
           title="Preferences"
           subtitle="Personalize how the portal looks and formats data"
-          footer={{
-            label: "Edit preferences",
-            onClick: () => {
-              setPrefsDraft(preferences);
-              setPrefsOpen(true);
-            },
-          }}
         >
-          <div className="divide-y divide-border/60">
-            <InfoRow label="Theme" value={preferences.theme} />
-            <InfoRow label="Language" value={preferences.language} />
-            <InfoRow label="Date format" value={preferences.dateFormat} />
-            <InfoRow label="Time format" value={preferences.timeFormat} />
-            <InfoRow label="Time zone" value={preferences.timeZone} />
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-muted-foreground">Theme</span>
+              <Select
+                value={preferences.theme}
+                onValueChange={(v) => setPreferences((p) => ({ ...p, theme: v }))}
+              >
+                <SelectTrigger className="h-8 w-40">
+                  <SelectValue placeholder="Select theme" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Light">Light</SelectItem>
+                  <SelectItem value="Dark">Dark</SelectItem>
+                  <SelectItem value="System">System</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-muted-foreground">Language</span>
+              <Select
+                value={preferences.language}
+                onValueChange={(v) => setPreferences((p) => ({ ...p, language: v }))}
+              >
+                <SelectTrigger className="h-8 w-40">
+                  <SelectValue placeholder="Select language" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="English">English</SelectItem>
+                  <SelectItem value="Filipino">Filipino</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-muted-foreground">Date format</span>
+              <Select
+                value={preferences.dateFormat}
+                onValueChange={(v) => setPreferences((p) => ({ ...p, dateFormat: v }))}
+              >
+                <SelectTrigger className="h-8 w-40">
+                  <SelectValue placeholder="Select format" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MM/DD/YYYY">MM/DD/YYYY</SelectItem>
+                  <SelectItem value="DD/MM/YYYY">DD/MM/YYYY</SelectItem>
+                  <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-muted-foreground">Time format</span>
+              <Select
+                value={preferences.timeFormat}
+                onValueChange={(v) => setPreferences((p) => ({ ...p, timeFormat: v }))}
+              >
+                <SelectTrigger className="h-8 w-40">
+                  <SelectValue placeholder="Select format" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="12-hour">12-hour</SelectItem>
+                  <SelectItem value="24-hour">24-hour</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-muted-foreground">Time zone</span>
+              <Select
+                value={preferences.timeZone}
+                onValueChange={(v) => setPreferences((p) => ({ ...p, timeZone: v }))}
+              >
+                <SelectTrigger className="h-8 w-40">
+                  <SelectValue placeholder="Select time zone" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Asia/Manila (GMT+8)">Asia/Manila (GMT+8)</SelectItem>
+                  <SelectItem value="UTC">UTC</SelectItem>
+                  <SelectItem value="America/Los_Angeles (GMT-8)">
+                    America/Los_Angeles (GMT-8)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="mt-4 flex items-center justify-end gap-2 border-t border-border/60 pt-4">
+            {prefsDirty && (
+              <span className="mr-auto text-xs font-medium text-caution">Unsaved changes</span>
+            )}
+            <Button size="sm" disabled={!prefsDirty} onClick={savePreferences}>
+              Save changes
+            </Button>
           </div>
         </SettingsCard>
 
-        <Dialog open={prefsOpen} onOpenChange={setPrefsOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="font-display text-2xl">Edit preferences</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4">
-              <div className="space-y-2">
-                <Label>Theme</Label>
-                <Select value={prefsDraft.theme} onValueChange={(v) => setPrefsDraft((p) => ({ ...p, theme: v }))}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Light">Light</SelectItem>
-                    <SelectItem value="Dark">Dark</SelectItem>
-                    <SelectItem value="System">System</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Language</Label>
-                <Select
-                  value={prefsDraft.language}
-                  onValueChange={(v) => setPrefsDraft((p) => ({ ...p, language: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="English">English</SelectItem>
-                    <SelectItem value="Filipino">Filipino</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Date format</Label>
-                <Select
-                  value={prefsDraft.dateFormat}
-                  onValueChange={(v) => setPrefsDraft((p) => ({ ...p, dateFormat: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MM/DD/YYYY">MM/DD/YYYY</SelectItem>
-                    <SelectItem value="DD/MM/YYYY">DD/MM/YYYY</SelectItem>
-                    <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Time format</Label>
-                <Select
-                  value={prefsDraft.timeFormat}
-                  onValueChange={(v) => setPrefsDraft((p) => ({ ...p, timeFormat: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="12-hour">12-hour</SelectItem>
-                    <SelectItem value="24-hour">24-hour</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Time zone</Label>
-                <Select
-                  value={prefsDraft.timeZone}
-                  onValueChange={(v) => setPrefsDraft((p) => ({ ...p, timeZone: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Asia/Manila (GMT+8)">Asia/Manila (GMT+8)</SelectItem>
-                    <SelectItem value="UTC">UTC</SelectItem>
-                    <SelectItem value="America/Los_Angeles (GMT-8)">America/Los_Angeles (GMT-8)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setPrefsOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={async () => {
-                  setPreferences(prefsDraft);
-                  setPrefsOpen(false);
-                  try {
-                    await mySettingsApi.save("preferences", currentUser, prefsDraft);
-                    toast.success("Preferences saved to database");
-                  } catch (e) {
-                    toast.error(e instanceof Error ? e.message : "Could not save preferences");
-                  }
-                }}
-              >
-                Save changes
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Login Security (superadmin) or Change Password (admin/employee) */}
-        {isSuperAdmin ? (
+        {/* Login Security — system-wide policy (superadmin only) */}
+        {isSuperAdmin && (
           <SettingsCard
             icon={<Shield className="h-5 w-5" />}
             title="Login Security"
@@ -588,7 +574,8 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
             }}
           >
             <div className="divide-y divide-border/60">
-              <InfoRow label="Two-factor authentication"
+              <InfoRow
+                label="Two-factor authentication"
                 value={security.twoFactor ? "Enabled" : "Disabled"}
                 tone={security.twoFactor ? "success" : "default"}
               />
@@ -615,58 +602,149 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
               <KeyRound className="mr-1.5 h-4 w-4" /> Change default password of all users
             </Button>
           </SettingsCard>
-        ) : (
-          <Card id="change-password" className="flex h-full flex-col scroll-mt-20 rounded-xl border-border/70 shadow-sm">
-            <CardContent className="flex flex-1 flex-col space-y-4 p-6">
-              <div className="flex items-center gap-3">
-                <span className="grid h-10 w-10 shrink-0 place-items-center text-primary">
-                  <KeyRound className="h-5 w-5" />
-                </span>
-                <div>
-                  <h2 className="font-display text-xl font-semibold">Change Password</h2>
-                  <p className="text-xs text-muted-foreground">Update your account password.</p>
-                </div>
+        )}
+
+        {/* Change Password + personal OTP toggle — every logged-in account */}
+        <Card
+          id="change-password"
+          className="flex h-full flex-col scroll-mt-20 rounded-xl border-border/70 shadow-sm"
+        >
+          <CardContent className="flex flex-1 flex-col space-y-4 p-6">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center text-primary">
+                <KeyRound className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="font-display text-xl font-semibold">Change Password</h2>
+                <p className="text-xs text-muted-foreground">
+                  Update your account password and sign-in security.
+                </p>
               </div>
-              <div className="grid gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="cur-pw">Current password</Label>
+            </div>
+
+            {/* Personal OTP requirement */}
+            <div className="flex items-center justify-between gap-4 rounded-md border border-border/70 bg-muted/30 px-3 py-2.5">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">OTP verification at login</p>
+                <p className="text-xs text-muted-foreground">
+                  {otpEnabled === false
+                    ? "Off — sign in with your password only"
+                    : "On — a code is emailed to you when you sign in"}
+                </p>
+              </div>
+              <Switch
+                aria-label="Require OTP at login"
+                checked={otpEnabled ?? true}
+                disabled={otpEnabled === null}
+                onCheckedChange={(v) => {
+                  persistOtpEnabled(v);
+                  toast.success(
+                    v ? "OTP enabled for your account" : "OTP disabled for your account",
+                  );
+                }}
+              />
+            </div>
+
+            <div className="grid gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="cur-pw">Current password</Label>
+                <div className="relative">
                   <Input
                     id="cur-pw"
-                    type="password"
+                    type={showPw.current ? "text" : "password"}
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     placeholder="••••••••"
+                    autoComplete="current-password"
+                    className="pr-10"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw((s) => ({ ...s, current: !s.current }))}
+                    aria-label={showPw.current ? "Hide current password" : "Show current password"}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {showPw.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-pw">New password</Label>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-pw">New password</Label>
+                <div className="relative">
                   <Input
                     id="new-pw"
-                    type="password"
+                    type={showPw.next ? "text" : "password"}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="••••••••"
+                    autoComplete="new-password"
+                    className="pr-10"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw((s) => ({ ...s, next: !s.next }))}
+                    aria-label={showPw.next ? "Hide new password" : "Show new password"}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {showPw.next ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirm-pw">Confirm new password</Label>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-pw">Confirm new password</Label>
+                <div className="relative">
                   <Input
                     id="confirm-pw"
-                    type="password"
+                    type={showPw.confirm ? "text" : "password"}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
+                    autoComplete="new-password"
+                    className="pr-10"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw((s) => ({ ...s, confirm: !s.confirm }))}
+                    aria-label={
+                      showPw.confirm ? "Hide confirmed password" : "Show confirmed password"
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {showPw.confirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
               </div>
-              <div className="mt-auto flex justify-end pt-1">
-                <Button onClick={changeOwnPassword}>
+            </div>
+
+            <AlertDialog open={pwConfirmOpen} onOpenChange={setPwConfirmOpen}>
+              <AlertDialogTrigger asChild>
+                <Button className="mt-auto self-end" disabled={!currentPassword || !newPassword}>
                   <KeyRound className="mr-2 h-4 w-4" /> Update password
                 </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Update your password?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Your account password will be changed and saved to the database. Use the new
+                    password the next time you sign in.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={(e) => {
+                      e.preventDefault();
+                      changeOwnPassword().then(() => setPwConfirmOpen(false));
+                    }}
+                  >
+                    Yes, update password
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </CardContent>
+        </Card>
 
         {isSuperAdmin && (
           <Dialog open={securityOpen} onOpenChange={setSecurityOpen}>
@@ -762,10 +840,12 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                     setSecurity(securityDraft);
                     setSecurityOpen(false);
                     try {
-                      await settingsApi.upsert('security', securityDraft);
+                      await settingsApi.upsert("security", securityDraft);
                       toast.success("System-wide login security policy saved to database");
                     } catch (e) {
-                      toast.error(e instanceof Error ? e.message : "Could not save security policy");
+                      toast.error(
+                        e instanceof Error ? e.message : "Could not save security policy",
+                      );
                     }
                   }}
                 >
@@ -786,9 +866,9 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   Change default password of all users
                 </DialogTitle>
                 <DialogDescription>
-                  Sets the same default password for every active system user account, and saves
-                  it to the database so new user accounts are created with it. Users will need to
-                  log in with the new password.
+                  Sets the same default password for every active system user account, and saves it
+                  to the database so new user accounts are created with it. Users will need to log
+                  in with the new password.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4">
@@ -875,8 +955,11 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   <Label htmlFor="co-contact">Contact number</Label>
                   <Input
                     id="co-contact"
+                    placeholder="e.g. +63 2 8999 0000"
                     value={companyDraft.contact}
-                    onChange={(e) => setCompanyDraft((p) => ({ ...p, contact: e.target.value }))}
+                    onChange={(e) =>
+                      setCompanyDraft((p) => ({ ...p, contact: sanitizePhone(e.target.value) }))
+                    }
                   />
                 </div>
                 <div className="space-y-2">
@@ -884,7 +967,9 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   <Input
                     id="co-hours"
                     value={companyDraft.businessHours}
-                    onChange={(e) => setCompanyDraft((p) => ({ ...p, businessHours: e.target.value }))}
+                    onChange={(e) =>
+                      setCompanyDraft((p) => ({ ...p, businessHours: e.target.value }))
+                    }
                   />
                 </div>
                 <div className="space-y-2">
@@ -910,13 +995,23 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                 </Button>
                 <Button
                   onClick={async () => {
+                    if (companyDraft.email && !isValidEmail(companyDraft.email)) {
+                      toast.error("Please enter a valid company email address.");
+                      return;
+                    }
+                    if (companyDraft.contact && !isValidPhone(companyDraft.contact)) {
+                      toast.error("Please enter a valid contact phone number.");
+                      return;
+                    }
                     setCompany(companyDraft);
                     setCompanyOpen(false);
                     try {
-                      await settingsApi.upsert('company', companyDraft);
+                      await settingsApi.upsert("company", companyDraft);
                       toast.success("Company information saved to database");
                     } catch (e) {
-                      toast.error(e instanceof Error ? e.message : "Could not save company information");
+                      toast.error(
+                        e instanceof Error ? e.message : "Could not save company information",
+                      );
                     }
                   }}
                 >
@@ -1018,7 +1113,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                               size="icon"
                               variant="ghost"
                               title="Download backup"
-                              onClick={() => toast.success(`Downloading ${b.id}`)}
+                              onClick={() => settingsApi.downloadBackup(b.id)}
                             >
                               <Download className="h-4 w-4" />
                             </Button>
@@ -1045,8 +1140,14 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={restoreBackup}>
-                                    Restore
+                                  <AlertDialogAction
+                                    disabled={restoreInProgress}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      restoreBackup();
+                                    }}
+                                  >
+                                    {restoreInProgress ? "Restoring…" : "Restore"}
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>

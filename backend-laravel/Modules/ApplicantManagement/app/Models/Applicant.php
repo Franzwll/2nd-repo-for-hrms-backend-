@@ -24,6 +24,7 @@ class Applicant extends Model
         'stage',
         'source',
         'resume_file_path',
+        'resume_original_name',
         'summary',
         'flags_json',
     ];
@@ -55,6 +56,17 @@ class Applicant extends Model
     public function screeningScores(): HasMany
     {
         return $this->hasMany(ApplicantScreeningScore::class, 'applicant_id', 'applicant_id');
+    }
+
+    public function screenings(): HasMany
+    {
+        return $this->hasMany(ApplicantScreening::class, 'applicant_id', 'applicant_id');
+    }
+
+    public function latestScreening(): HasOne
+    {
+        return $this->hasOne(ApplicantScreening::class, 'applicant_id', 'applicant_id')
+            ->latestOfMany('screening_id');
     }
 
     public function interviews(): HasMany

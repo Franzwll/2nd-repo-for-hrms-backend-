@@ -234,7 +234,11 @@ function AdminDashboard() {
                 <BarChart data={funnel}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="stage" fontSize={10} stroke="var(--color-muted-foreground)" />
-                  <YAxis fontSize={12} allowDecimals={false} stroke="var(--color-muted-foreground)" />
+                  <YAxis
+                    fontSize={12}
+                    allowDecimals={false}
+                    stroke="var(--color-muted-foreground)"
+                  />
                   <Tooltip contentStyle={tooltipStyle} />
                   <Bar dataKey="count" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
                 </BarChart>
@@ -250,7 +254,12 @@ function AdminDashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={sourceData} layout="vertical" margin={{ left: 30 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                  <XAxis type="number" allowDecimals={false} fontSize={12} stroke="var(--color-muted-foreground)" />
+                  <XAxis
+                    type="number"
+                    allowDecimals={false}
+                    fontSize={12}
+                    stroke="var(--color-muted-foreground)"
+                  />
                   <YAxis
                     type="category"
                     dataKey="name"
@@ -306,7 +315,8 @@ function AdminDashboard() {
               <h2 className="font-display text-2xl font-semibold">Vacancy Fill Rate</h2>
               <ul className="mt-4 space-y-4">
                 {vacancyJobs.map((j) => {
-                  const pct = j.vacancies > 0 ? Math.round((j.filled_count / j.vacancies) * 100) : 0;
+                  const pct =
+                    j.vacancies > 0 ? Math.round((j.filled_count / j.vacancies) * 100) : 0;
                   return (
                     <li key={j.job_post_id}>
                       <div className="flex items-center justify-between text-sm">

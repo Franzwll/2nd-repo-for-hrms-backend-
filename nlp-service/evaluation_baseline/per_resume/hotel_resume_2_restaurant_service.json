@@ -1,0 +1,286 @@
+{
+  "resume_file": "hotel_resume_2_restaurant_service.docx",
+  "requirements_applied": false,
+  "result": {
+    "success": true,
+    "profile": {
+      "personal_information": {
+        "name": "John Carlo Mendoza",
+        "email": "john.mendoza.chef@example.com",
+        "phone": "+63 918 654 2301",
+        "address": "Quezon City, Philippines"
+      },
+      "education": [
+        "Bachelor of Science in Tourism Management"
+      ],
+      "work_experience": [
+        {
+          "job_title": "Restaurant Server",
+          "company": null,
+          "location": null,
+          "period": null,
+          "recognized_role": true
+        },
+        {
+          "job_title": "Kitchen Helper",
+          "company": "Food Service Attendant",
+          "location": "Campus Café",
+          "period": null,
+          "recognized_role": true
+        },
+        {
+          "job_title": "Restaurant Cashier",
+          "company": "Assisted customers with menu questions and recommendations.",
+          "location": null,
+          "period": null,
+          "recognized_role": true
+        }
+      ],
+      "skills": [
+        "Barista Operations",
+        "Cash Handling",
+        "Food Safety",
+        "Order Taking",
+        "POS Systems",
+        "Table Service",
+        "Teamwork",
+        "Upselling"
+      ],
+      "certifications": [
+        "Food Safety and Hygiene Certification",
+        "Basic Barista Skills Certificate"
+      ],
+      "unrecognized_certifications": [
+        "Basic Barista Skills Certificate"
+      ],
+      "estimated_years_experience": 3.9,
+      "job_roles": {
+        "recognized": [
+          "Kitchen Helper",
+          "Restaurant Cashier",
+          "Restaurant Server"
+        ],
+        "unrecognized": []
+      },
+      "unrecognized_skills": [
+        "Dining Setup"
+      ]
+    },
+    "entities": [
+      {
+        "label": "PERSON",
+        "value": "John Carlo Mendoza",
+        "source": "rule"
+      },
+      {
+        "label": "EDUCATION",
+        "value": "Bachelor of Science in Tourism Management",
+        "source": "section_rule"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Restaurant Server",
+        "source": "section_rule"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Kitchen Helper",
+        "source": "section_rule"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Restaurant Cashier",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Table Service",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "POS Systems",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Food Safety",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Cash Handling",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Order Taking",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Upselling",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Dining Setup",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Teamwork",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Barista Operations",
+        "source": "reference_scan"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "Food Safety and Hygiene Certification",
+        "source": "section_rule"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "Basic Barista Skills Certificate",
+        "source": "hint_pattern"
+      },
+      {
+        "label": "EMAIL",
+        "value": "john.mendoza.chef@example.com",
+        "source": "regex"
+      },
+      {
+        "label": "PHONE",
+        "value": "+63 918 654 2301",
+        "source": "regex"
+      }
+    ],
+    "sections_detected": [
+      "certifications",
+      "education",
+      "experience",
+      "skills",
+      "summary"
+    ],
+    "estimated_years_experience": 3.9,
+    "validation": {
+      "missing_information": [],
+      "invalid_format": [],
+      "skill_analysis": {
+        "recognized": [
+          "Barista Operations",
+          "Cash Handling",
+          "Food Safety",
+          "Order Taking",
+          "POS Systems",
+          "Table Service",
+          "Teamwork",
+          "Upselling"
+        ],
+        "unrecognized": [
+          "Dining Setup"
+        ]
+      },
+      "job_role_analysis": {
+        "recognized": [
+          "Kitchen Helper",
+          "Restaurant Cashier",
+          "Restaurant Server"
+        ],
+        "unrecognized": []
+      },
+      "credential_analysis": [
+        {
+          "required": null,
+          "extracted": "Basic Barista Skills Certificate",
+          "status": "UNRECOGNIZED",
+          "note": "Invalid or requires verification based on system validation rules."
+        }
+      ],
+      "credential_issues": [],
+      "review_flags": []
+    },
+    "requirements_applied": {
+      "job_post_id": null,
+      "title": "Unspecified Position",
+      "required_skills": [],
+      "preferred_skills": [],
+      "education_level": null,
+      "experience_level": null,
+      "min_years_experience": 0.0,
+      "required_certifications": [],
+      "required_information": [
+        "name",
+        "email",
+        "phone"
+      ]
+    },
+    "match_score": 100.0,
+    "score_breakdown": {
+      "skills": {
+        "weight": 0.4,
+        "earned": 40.0,
+        "max": 40.0,
+        "matched_required": [],
+        "missing_required": [],
+        "matched_preferred": [],
+        "missing_preferred": [],
+        "required_coverage": 1.0,
+        "preferred_coverage": 1.0
+      },
+      "experience": {
+        "weight": 0.3,
+        "earned": 30.0,
+        "max": 30.0,
+        "estimated_years": 3.9,
+        "min_years_required": 0.0,
+        "requirement_met": true
+      },
+      "education": {
+        "weight": 0.2,
+        "earned": 20.0,
+        "max": 20.0,
+        "applicant_highest_level": [
+          "Bachelor of Science in Tourism Management"
+        ],
+        "required_level": null,
+        "requirement_met": true
+      },
+      "certifications": {
+        "weight": 0.1,
+        "earned": 10.0,
+        "max": 10.0,
+        "matched": [],
+        "missing": [],
+        "no_requirements": true
+      }
+    },
+    "screening_status": "PERFECT_FOR_THE_JOB",
+    "screening_reasons": [
+      "Overall match score 100.0% reached the required threshold of 75.0% for Unspecified Position.",
+      "Education requirement met: True; experience requirement met: True (3.9 yrs vs 0.0 yrs minimum)."
+    ],
+    "matched_summary": "Education requirement satisfied; Experience requirement satisfied (3.9 yrs vs 0.0 yrs required); No certification requirements defined for this role — meets Unspecified Position requirements.",
+    "alternative_job": null,
+    "mandatory_requirements_met": true,
+    "model_info": {
+      "base_model": "en_core_web_sm",
+      "custom_ner_loaded": true,
+      "custom_ner_path": "C:\\Users\\Windows 10 Lite\\Downloads\\MUNJOR\\4TH YR\\DEV\\LATEST CLONE\\v5\\2nd-repo-for-hrms-backend-\\nlp-service\\models_spacy\\role_specific_ner"
+    },
+    "_timing_seconds": 766.8017,
+    "processing_status": "PARTIALLY_PROCESSED",
+    "text_extraction": {
+      "method": "python-docx",
+      "pages": 1,
+      "extension": ".docx",
+      "original_length": null,
+      "character_count": 1364,
+      "warnings": []
+    },
+    "parsed_successfully": true
+  }
+}

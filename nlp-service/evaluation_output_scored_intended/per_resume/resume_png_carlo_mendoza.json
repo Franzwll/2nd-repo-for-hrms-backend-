@@ -1,0 +1,287 @@
+{
+  "resume_file": "resume_png_carlo_mendoza.png",
+  "requirements_applied": false,
+  "result": {
+    "success": true,
+    "profile": {
+      "personal_information": {
+        "name": "CARLO MI",
+        "email": "carlo.mendoza.svc@gmail.com",
+        "phone": "0921-345-6712"
+      },
+      "education": [
+        "Taguig National High School —"
+      ],
+      "work_experience": [
+        {
+          "job_title": "Restaurant Server",
+          "period": null,
+          "recognized_role": true
+        },
+        {
+          "job_title": "May 2023",
+          "period": "May 2023 — Present",
+          "recognized_role": false
+        },
+        {
+          "job_title": "January 2022",
+          "period": "January 2022 — April 2023",
+          "recognized_role": false
+        }
+      ],
+      "skills": [
+        "Cash Handling",
+        "Customer Service",
+        "Food Safety",
+        "POS Systems",
+        "Table Service",
+        "Upselling"
+      ],
+      "certifications": [
+        "TESDA Food and Beverage Services NC II",
+        "Basic Food Safety Orientation Certificate"
+      ],
+      "unrecognized_certifications": [
+        "Basic Food Safety Orientation Certificate"
+      ],
+      "estimated_years_experience": 2.5,
+      "job_roles": {
+        "recognized": [
+          "Restaurant Server"
+        ],
+        "unrecognized": [
+          "January 2022",
+          "May 2023",
+          "Upselling * Customer"
+        ]
+      },
+      "unrecognized_skills": [
+        ", increasing"
+      ]
+    },
+    "entities": [
+      {
+        "label": "PERSON",
+        "value": "CARLO MI",
+        "source": "custom_ner"
+      },
+      {
+        "label": "EDUCATION",
+        "value": "Taguig National High School —",
+        "source": "custom_ner"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Restaurant Server",
+        "source": "custom_ner"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Upselling * Customer",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": ", increasing",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Cash Handling",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Table Service",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Customer Service",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Food Safety",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "POS Systems",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Upselling",
+        "source": "reference_scan"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "TESDA Food and Beverage Services NC II",
+        "source": "section_rule"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "Basic Food Safety Orientation Certificate",
+        "source": "hint_pattern"
+      },
+      {
+        "label": "ORGANIZATION",
+        "value": "BGC",
+        "source": "spacy_base"
+      },
+      {
+        "label": "EMAIL",
+        "value": "carlo.mendoza.svc@gmail.com",
+        "source": "regex"
+      },
+      {
+        "label": "PHONE",
+        "value": "0921-345-6712",
+        "source": "regex"
+      }
+    ],
+    "sections_detected": [
+      "certifications",
+      "education",
+      "experience",
+      "skills",
+      "summary"
+    ],
+    "estimated_years_experience": 2.5,
+    "validation": {
+      "missing_information": [],
+      "invalid_format": [],
+      "skill_analysis": {
+        "recognized": [
+          "Cash Handling",
+          "Customer Service",
+          "Food Safety",
+          "POS Systems",
+          "Table Service",
+          "Upselling"
+        ],
+        "unrecognized": [
+          ", increasing"
+        ]
+      },
+      "job_role_analysis": {
+        "recognized": [
+          "Restaurant Server"
+        ],
+        "unrecognized": [
+          "January 2022",
+          "May 2023",
+          "Upselling * Customer"
+        ]
+      },
+      "credential_analysis": [
+        {
+          "required": null,
+          "extracted": "Basic Food Safety Orientation Certificate",
+          "status": "UNRECOGNIZED",
+          "note": "Invalid or requires verification based on system validation rules."
+        }
+      ],
+      "credential_issues": [],
+      "review_flags": [
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "January 2022",
+          "note": "Not found in system reference data; flagged for manual review only."
+        },
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "May 2023",
+          "note": "Not found in system reference data; flagged for manual review only."
+        },
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "Upselling * Customer",
+          "note": "Not found in system reference data; flagged for manual review only."
+        }
+      ]
+    },
+    "requirements_applied": {
+      "job_post_id": null,
+      "title": "Unspecified Position",
+      "required_skills": [],
+      "preferred_skills": [],
+      "education_level": null,
+      "experience_level": null,
+      "min_years_experience": 0.0,
+      "required_certifications": [],
+      "required_information": [
+        "name",
+        "email",
+        "phone"
+      ]
+    },
+    "match_score": 100.0,
+    "score_breakdown": {
+      "skills": {
+        "weight": 0.4,
+        "earned": 40.0,
+        "max": 40.0,
+        "matched_required": [],
+        "missing_required": [],
+        "matched_preferred": [],
+        "missing_preferred": [],
+        "required_coverage": 1.0,
+        "preferred_coverage": 1.0
+      },
+      "experience": {
+        "weight": 0.3,
+        "earned": 30.0,
+        "max": 30.0,
+        "estimated_years": 2.5,
+        "min_years_required": 0.0,
+        "requirement_met": true
+      },
+      "education": {
+        "weight": 0.2,
+        "earned": 20.0,
+        "max": 20.0,
+        "applicant_highest_level": [
+          "Taguig National High School —"
+        ],
+        "required_level": null,
+        "requirement_met": true
+      },
+      "certifications": {
+        "weight": 0.1,
+        "earned": 10.0,
+        "max": 10.0,
+        "matched": [],
+        "missing": [],
+        "no_requirements": true
+      }
+    },
+    "screening_status": "PERFECT_FOR_THE_JOB",
+    "screening_reasons": [
+      "Overall match score 100.0% reached the required threshold of 75.0% for Unspecified Position.",
+      "Education requirement met: True; experience requirement met: True (2.5 yrs vs 0.0 yrs minimum)."
+    ],
+    "matched_summary": "Education requirement satisfied; Experience requirement satisfied (2.5 yrs vs 0.0 yrs required); No certification requirements defined for this role — meets Unspecified Position requirements.",
+    "alternative_job": null,
+    "mandatory_requirements_met": true,
+    "model_info": {
+      "base_model": "en_core_web_sm",
+      "custom_ner_loaded": true,
+      "custom_ner_path": "C:\\Users\\PC\\Downloads\\Ferdi\\4TH_YR\\DEV\\v4\\2nd-repo-for-hrms-backend-LATEST\\2nd-repo-for-hrms-backend-\\nlp-service\\models_spacy\\role_specific_ner"
+    },
+    "_timing_seconds": 803.4188,
+    "processing_status": "PARTIALLY_PROCESSED",
+    "text_extraction": {
+      "method": "tesseract-ocr",
+      "pages": 1,
+      "extension": ".png",
+      "original_length": null,
+      "character_count": 1195,
+      "warnings": [
+        "Text extracted from image using OCR; accuracy may be lower."
+      ]
+    },
+    "parsed_successfully": true
+  }
+}

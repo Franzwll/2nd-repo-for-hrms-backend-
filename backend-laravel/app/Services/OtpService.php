@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Mail\SendOtpMail;
 use App\Models\SystemUser;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
@@ -12,6 +13,17 @@ class OtpService
 {
     private const TTL_SECONDS = 300;
     private const MAX_ATTEMPTS = 3;
+
+    /**
+     * Whether this specific account must pass OTP verification at login.
+     *
+     * Per-user flag (system_users.otp_enabled), toggled by the user in their
+     * portal Settings. Defaults to enabled when never touched.
+     */
+    public static function requiredFor(SystemUser $user): bool
+    {
+        return (bool) ($user->otp_enabled ?? true);
+    }
 
     public function issue(SystemUser $user): array
     {
@@ -107,6 +119,10 @@ class OtpService
 
     private function deliver(SystemUser $user, string $code): void
     {
+        if (! app()->environment('production')) {
+            Log::info("OTP issued for {$user->email}: >{$code}<");
+        }
+
         try {
             Mail::to($user->email)->send(
                 new SendOtpMail($code, $user->full_name ?: $user->username, self::TTL_SECONDS)

@@ -17,7 +17,14 @@ import { StatCard } from "@/components/portal/StatCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { myAttendance, myEmployeeDocuments, myPayroll, myPerformance, myProfile, wireframeActivity } from "@/data/ess";
+import {
+  myAttendance,
+  myEmployeeDocuments,
+  myPayroll,
+  myPerformance,
+  myProfile,
+  wireframeActivity,
+} from "@/data/ess";
 
 export const Route = createFileRoute("/employee/")({
   component: EmployeeDashboard,
@@ -27,10 +34,7 @@ function EmployeeDashboard() {
   const firstName = myProfile.name.split(" ")[0];
   const topActions = wireframeActivity.slice(0, 5);
 
-  const pendingOnboardingTasks = [
-    "Acknowledge Company Policies",
-    "Accept Employment Agreement",
-  ];
+  const pendingOnboardingTasks = ["Acknowledge Company Policies", "Accept Employment Agreement"];
 
   return (
     <div>
@@ -40,14 +44,28 @@ function EmployeeDashboard() {
         description="Here's what's happening with your employment today."
         actions={
           <Button asChild>
-            <Link to="/employee/ess" search={{}}>Go to ESS Management</Link>
+            <Link to="/employee/ess" search={{}}>
+              Go to ESS Management
+            </Link>
           </Button>
         }
       />
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <StatCard label="Department" value={myProfile.department} hint="Oxford Suites Makati" icon={Headset} tone="primary" />
-        <StatCard label="Position" value={myProfile.position} hint="Probationary Status" icon={ClipboardCheck} tone="gold" />
+        <StatCard
+          label="Department"
+          value={myProfile.department}
+          hint="Oxford Suites Makati"
+          icon={Headset}
+          tone="primary"
+        />
+        <StatCard
+          label="Position"
+          value={myProfile.position}
+          hint="Probationary Status"
+          icon={ClipboardCheck}
+          tone="gold"
+        />
       </div>
 
       {/* Quick Actions Grid (1 row with 2-column layout) */}
@@ -69,7 +87,9 @@ function EmployeeDashboard() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-sm">Attendance</p>
-                    <p className="text-xs text-muted-foreground font-normal">Time in/out &amp; corrections</p>
+                    <p className="text-xs text-muted-foreground font-normal">
+                      Time in/out &amp; corrections
+                    </p>
                   </div>
                 </Link>
               </Button>
@@ -85,7 +105,9 @@ function EmployeeDashboard() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-sm">Payroll</p>
-                    <p className="text-xs text-muted-foreground font-normal">Payslips &amp; overtime</p>
+                    <p className="text-xs text-muted-foreground font-normal">
+                      Payslips &amp; overtime
+                    </p>
                   </div>
                 </Link>
               </Button>
@@ -101,7 +123,9 @@ function EmployeeDashboard() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-sm">Document</p>
-                    <p className="text-xs text-muted-foreground font-normal">COE, BIR 2316, clearances</p>
+                    <p className="text-xs text-muted-foreground font-normal">
+                      COE, BIR 2316, clearances
+                    </p>
                   </div>
                 </Link>
               </Button>
@@ -127,44 +151,82 @@ function EmployeeDashboard() {
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <Link to="/employee/ess" search={{ category: "Attendance" }} className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5">
+              <Link
+                to="/employee/ess"
+                search={{ category: "Attendance" }}
+                className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5"
+              >
                 <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   <Clock className="h-3.5 w-3.5 text-primary" /> Attendance
                 </div>
-                <p className="mt-1 text-lg font-bold font-display">{myAttendance.monthly.present} Present</p>
-                <p className="text-xs text-muted-foreground">Time In {myAttendance.today.timeIn} · {myAttendance.monthly.late} late</p>
+                <p className="mt-1 text-lg font-bold font-display">
+                  {myAttendance.monthly.present} Present
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Time In {myAttendance.today.timeIn} · {myAttendance.monthly.late} late
+                </p>
               </Link>
-              <Link to="/employee/ess" search={{ category: "Payroll" }} className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5">
+              <Link
+                to="/employee/ess"
+                search={{ category: "Payroll" }}
+                className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5"
+              >
                 <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   <FileText className="h-3.5 w-3.5 text-emerald-600" /> Payroll
                 </div>
-                <p className="mt-1 text-lg font-bold font-display">₱{myPayroll.net.toLocaleString()}</p>
+                <p className="mt-1 text-lg font-bold font-display">
+                  ₱{myPayroll.net.toLocaleString()}
+                </p>
                 <p className="text-xs text-muted-foreground">Next payout {myPayroll.nextPayout}</p>
               </Link>
-              <Link to="/employee/ess" search={{ category: "Performance" }} className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5">
+              <Link
+                to="/employee/ess"
+                search={{ category: "Performance" }}
+                className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5"
+              >
                 <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   <TrendingUp className="h-3.5 w-3.5 text-purple-600" /> Performance
                 </div>
-                <p className="mt-1 text-lg font-bold font-display">{myPerformance.lmsCoursesCompleted}/{myPerformance.lmsCoursesAssigned} Courses</p>
-                <p className="text-xs text-muted-foreground">Avg {myPerformance.averageScore} · {myPerformance.competencyLevel}</p>
+                <p className="mt-1 text-lg font-bold font-display">
+                  {myPerformance.lmsCoursesCompleted}/{myPerformance.lmsCoursesAssigned} Courses
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Avg {myPerformance.averageScore} · {myPerformance.competencyLevel}
+                </p>
               </Link>
-              <Link to="/employee/ess" search={{ category: "Documents" }} className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5">
+              <Link
+                to="/employee/ess"
+                search={{ category: "Documents" }}
+                className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5"
+              >
                 <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   <FileCheck className="h-3.5 w-3.5 text-blue-600" /> Documents
                 </div>
-                <p className="mt-1 text-lg font-bold font-display">{myEmployeeDocuments.filter((d) => d.status !== "Missing").length} Submitted</p>
-                <p className="text-xs text-amber-600">{myEmployeeDocuments.filter((d) => d.status === "Missing").length} missing requirement</p>
+                <p className="mt-1 text-lg font-bold font-display">
+                  {myEmployeeDocuments.filter((d) => d.status !== "Missing").length} Submitted
+                </p>
+                <p className="text-xs text-amber-600">
+                  {myEmployeeDocuments.filter((d) => d.status === "Missing").length} missing
+                  requirement
+                </p>
               </Link>
             </div>
 
             {/* Recent activities log */}
             <div className="mt-4 space-y-2 border-t border-border pt-3">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent activities</p>
-                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">Top 5 Latest</Badge>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Recent activities
+                </p>
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                  Top 5 Latest
+                </Badge>
               </div>
               {topActions.map((act, index) => (
-                <div key={index} className="flex items-center justify-between gap-2 text-xs border-b border-border/50 pb-1.5">
+                <div
+                  key={index}
+                  className="flex items-center justify-between gap-2 text-xs border-b border-border/50 pb-1.5"
+                >
                   <span className="font-medium text-foreground truncate">{act.type}</span>
                   <span className="shrink-0 text-muted-foreground">{act.date}</span>
                 </div>
@@ -190,10 +252,15 @@ function EmployeeDashboard() {
               {/* Top 5 latest actions list */}
               <div className="space-y-2">
                 {topActions.map((act, index) => (
-                  <div key={index} className="flex items-center justify-between text-xs sm:text-sm border-b border-border/50 pb-1.5">
+                  <div
+                    key={index}
+                    className="flex items-center justify-between text-xs sm:text-sm border-b border-border/50 pb-1.5"
+                  >
                     <div className="flex items-center gap-2 overflow-hidden">
                       <span className="font-medium text-foreground truncate">{act.type}</span>
-                      <span className="text-xs text-muted-foreground shrink-0">({act.category})</span>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        ({act.category})
+                      </span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-xs text-muted-foreground">{act.date}</span>
@@ -203,8 +270,8 @@ function EmployeeDashboard() {
                           act.status === "Pending"
                             ? "bg-amber-500/10 text-amber-600 border-amber-500/30"
                             : act.status === "Approved"
-                            ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
-                            : "bg-blue-500/10 text-blue-600 border-blue-500/30"
+                              ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                              : "bg-blue-500/10 text-blue-600 border-blue-500/30"
                         }`}
                       >
                         {act.status}
@@ -245,5 +312,3 @@ function EmployeeDashboard() {
     </div>
   );
 }
-
-

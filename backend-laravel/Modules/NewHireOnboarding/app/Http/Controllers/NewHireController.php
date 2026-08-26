@@ -3,9 +3,12 @@
 namespace Modules\NewHireOnboarding\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Mail\NewHireCredentialsMail;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Modules\NewHireOnboarding\Http\Requests\StoreNewHireRequest;
 use Modules\NewHireOnboarding\Http\Requests\UpdateNewHireRequest;
 use Modules\NewHireOnboarding\Http\Resources\NewHireResource;
@@ -25,8 +28,12 @@ class NewHireController extends Controller
      * they can log into the Employee portal. The account starts with the
      * default password stored in system_settings.default_password (falls back
      * to the shipped default) and is linked to the hire's employee record.
+     *
+     * Returns an array with the account, the plain-text password (only when a
+     * new account was created) and whether it was newly created:
+     * ['user' => SystemUser, 'password' => ?string, 'created' => bool]
      */
-    private function ensurePortalAccount(NewHire $newHire): ?SystemUser
+    private function ensurePortalAccount(NewHire $newHire): ?array
     {
         $email = trim((string) $newHire->email);
         if ($email === '') {
@@ -35,7 +42,7 @@ class NewHireController extends Controller
 
         $existing = SystemUser::where('email', $email)->first();
         if ($existing) {
-            return $existing;
+            return ['user' => $existing, 'password' => null, 'created' => false];
         }
 
         $defaultPassword = SystemSetting::getValue('default_password', []);
@@ -51,7 +58,7 @@ class NewHireController extends Controller
             $username = $base . $suffix++;
         }
 
-        return SystemUser::create([
+        $user = SystemUser::create([
             'username'        => $username,
             'email'           => $email,
             'password_hash'   => Hash::make($password),
@@ -61,6 +68,36 @@ class NewHireController extends Controller
             'role_id'         => 3, // Employee portal role
             'status'          => 'Active',
         ]);
+
+        return ['user' => $user, 'password' => $password, 'created' => true];
+    }
+
+    /**
+     * Emails the new hire their Employee portal login credentials (email +
+     * password) right after their portal account is created. Failures are
+     * logged but never block the hire creation itself.
+     */
+    private function sendCredentialsEmail(NewHire $newHire, ?array $account): void
+    {
+        if (! $account || ! ($account['created'] ?? false) || empty($account['password'])) {
+            return;
+        }
+
+        try {
+            Mail::to($newHire->email)->send(new NewHireCredentialsMail(
+                employeeName: $newHire->name,
+                email: $newHire->email,
+                password: (string) $account['password'],
+                position: $newHire->position?->title,
+                startDate: $newHire->start_date?->format('F j, Y'),
+            ));
+        } catch (\Throwable $e) {
+            Log::warning('Could not send new hire credentials email', [
+                'new_hire_id' => $newHire->new_hire_id,
+                'email'       => $newHire->email,
+                'error'       => $e->getMessage(),
+            ]);
+        }
     }
 
     /* ------------------------------------------------------------------ */
@@ -135,6 +172,9 @@ class NewHireController extends Controller
         // Create the portal account so the hire can log into the Employee portal
         $account = $this->ensurePortalAccount($newHire);
 
+        // Email the employee their portal credentials (email + password)
+        $this->sendCredentialsEmail($newHire, $account);
+
         return response()->json(
             new NewHireResource($newHire->load(['department', 'position', 'onboardingItems.templateItem.template'])),
             201
@@ -205,7 +245,10 @@ class NewHireController extends Controller
 
         // Portal account (re)creation — hires completing their record at
         // probation get their Employee portal login here.
-        $this->ensurePortalAccount($model);
+        $account = $this->ensurePortalAccount($model);
+
+        // Email the employee their portal credentials (email + password)
+        $this->sendCredentialsEmail($model, $account);
 
         return response()->json(
             new NewHireResource($model->load(['department', 'position', 'onboardingItems.templateItem.template']))

@@ -2,6 +2,9 @@
 node_modules/
 npm-debug.log
 yarn-error.log
+.playwright-mcp/
+nlp-service/uvicorn_*.log
+
 
 # Laravel 4 specific
 bootstrap/compiled.php

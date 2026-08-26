@@ -52,6 +52,28 @@ class AuthController extends Controller
             return response()->json(['message' => 'Your account is not active. Contact an administrator.'], 403);
         }
 
+        // OTP can be switched off by each user for their own account
+        // (system_users.otp_enabled, toggled in portal Settings).
+        // When disabled, sign the user straight in — no one-time password step.
+        if (! OtpService::requiredFor($user)) {
+            $session = $this->completeLogin($request, $user);
+
+            AuditLogger::log(
+                'User logged in',
+                'Authentication',
+                'Info',
+                'user',
+                $user->username,
+                'Signed in with email and password (OTP disabled for role).',
+                $user
+            );
+
+            return response()->json([
+                'otp_required' => false,
+                ...$session,
+            ]);
+        }
+
         $issued = $this->otpService->issue($user);
 
         AuditLogger::log(
@@ -64,10 +86,13 @@ class AuthController extends Controller
             $user
         );
 
-        return response()->json($this->otpResponse(
-            'One-time password sent to your work email.',
-            $issued
-        ));
+        return response()->json([
+            'otp_required' => true,
+            ...$this->otpResponse(
+                'One-time password sent to your work email.',
+                $issued
+            ),
+        ]);
     }
 
     public function verifyOtp(OtpVerifyRequest $request): JsonResponse
@@ -94,21 +119,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'Your account is not active.'], 403);
         }
 
-        $token = $user->createToken('auth-token')->plainTextToken;
-
-        $user->forceFill([
-            'last_login_at' => now(),
-            'last_login_ip' => $request->ip(),
-        ])->save();
-
-        UserLoginActivity::create([
-            'system_user_id' => $user->system_user_id,
-            'login_at' => now(),
-            'ip_address' => $request->ip(),
-            'device_info' => $this->deviceInfo($request),
-            'user_agent' => $request->userAgent(),
-            'status' => 'success',
-        ]);
+        $session = $this->completeLogin($request, $user);
 
         AuditLogger::log(
             'User logged in',
@@ -120,11 +131,7 @@ class AuthController extends Controller
             $user
         );
 
-        return response()->json([
-            'token' => $token,
-            'token_type' => 'Bearer',
-            'user' => new UserResource($user),
-        ]);
+        return response()->json($session);
     }
 
     public function resendOtp(Request $request): JsonResponse
@@ -177,6 +184,35 @@ class AuthController extends Controller
             'login_token' => $issued['login_token'],
             'expires_in' => $issued['expires_in'],
             ...$this->debugOtp($issued['debug_otp']),
+        ];
+    }
+
+    /**
+     * Finishes a sign-in: creates the API token, stamps login metadata and
+     * records the login activity. Shared by the OTP and direct-login paths.
+     */
+    private function completeLogin(Request $request, SystemUser $user): array
+    {
+        $token = $user->createToken('auth-token')->plainTextToken;
+
+        $user->forceFill([
+            'last_login_at' => now(),
+            'last_login_ip' => $request->ip(),
+        ])->save();
+
+        UserLoginActivity::create([
+            'system_user_id' => $user->system_user_id,
+            'login_at' => now(),
+            'ip_address' => $request->ip(),
+            'device_info' => $this->deviceInfo($request),
+            'user_agent' => $request->userAgent(),
+            'status' => 'success',
+        ]);
+
+        return [
+            'token' => $token,
+            'token_type' => 'Bearer',
+            'user' => new UserResource($user),
         ];
     }
 
