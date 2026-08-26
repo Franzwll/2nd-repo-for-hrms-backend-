@@ -6,22 +6,6 @@ import { clearSession, getToken } from "./auth";
 
 const BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string) || "http://127.0.0.1:8000/api/v1";
 
-/**
- * Rebases a server-returned file URL (e.g. storage/... or an absolute URL
- * baked from an old APP_URL/host) onto the backend origin the frontend is
- * currently talking to, so files keep working even if the system folder,
- * host or port moved.
- */
-export function resolveStorageUrl(value: string | null): string | null {
-  if (!value) return null;
-  const origin = new URL(BASE_URL).origin;
-  try {
-    const u = new URL(value, origin);
-    return `${origin}${u.pathname}`;
-  } catch {
-    return value;
-  }
-}
 /* Lightweight GET cache: dedupes in-flight requests and caches responses for
    a short TTL so overlapping module fetches don't hit the server repeatedly. */
 const GET_CACHE_TTL_MS = 15_000;
@@ -117,22 +101,20 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 /* ========================================================================= */
 
 export interface ApiApplicant {
-    applicant_id: number;
-    applicant_code: string;
-    job_post_id: number;
-    name: string;
-    email: string;
-    phone: string | null;
-    applied_at: string | null;
-    fit_score: number | null;
-    status: "fit" | "other-role" | "credential" | "not-fit";
-    stage:
-      "Screened" | "Interview Scheduled" | "Assessed" | "Offer" | "Hired" | "Rejected" | "Accepted";
-    source: string | null;
-    summary: string | null;
-    flags_json: string[];
-    resume_url: string | null;
-    resume_original_name: string | null;
+  applicant_id: number;
+  applicant_code: string;
+  job_post_id: number;
+  name: string;
+  email: string;
+  phone: string | null;
+  applied_at: string | null;
+  fit_score: number | null;
+  status: "fit" | "other-role" | "credential" | "not-fit";
+  stage: "Screened" | "Interview Scheduled" | "Assessed" | "Offer" | "Hired" | "Rejected" | "Accepted";
+  source: string | null;
+  summary: string | null;
+  flags_json: string[];
+  resume_url: string | null;
   job_post?: {
     job_post_id: number;
     title: string;
@@ -234,12 +216,12 @@ export interface ApiInterview {
     applicant_id: number;
     applicant_code: string;
     name: string;
-    email: string;
-    phone: string | null;
-    position?: string | null;
-    department?: string | null;
-    stage: string;
-    fit_score: number | null;
+    email?: string;
+    phone?: string;
+    position?: string;
+    department?: string;
+    stage?: string;
+    fit_score?: number | null;
   } | null;
 }
 
@@ -256,10 +238,21 @@ export interface ApiAssessment {
     applicant_id: number;
     applicant_code: string;
     name: string;
-    position?: string | null;
-    department?: string | null;
-    stage: string;
+    position?: string;
+    department?: string;
+    stage?: string;
   } | null;
+}
+
+export function resolveStorageUrl(value: string | null): string | null {
+  if (!value) return null;
+  const origin = new URL(BASE_URL).origin;
+  try {
+    const u = new URL(value, origin);
+    return `${origin}${u.pathname}`;
+  } catch {
+    return value;
+  }
 }
 
 export const applicantsApi = {
@@ -281,56 +274,19 @@ export const applicantsApi = {
       // PHP never populates $_POST for raw multipart PUT bodies, so Laravel
       // sees an empty request. Send POST with a _method=PUT override field —
       // the standard Laravel pattern for multipart updates.
-      data.append("_method", "PUT");
+      data.append('_method', 'PUT');
     }
     return request<ApiApplicant>(`/applicants/${id}`, {
       method: isForm ? "POST" : "PUT",
       body: isForm ? data : JSON.stringify(data),
     });
   },
-  delete: (id: number | string) =>
-    request<{ message: string }>(`/applicants/${id}`, { method: "DELETE" }),
-  hire: (id: number | string) =>
-    request<ApiApplicant>(`/applicants/${id}/hire`, { method: "POST" }),
-  stats: () => request<any>("/applicants/stats"),
-  screenResume: (formData: FormData) =>
-    request<ApiScreeningPreview>("/applicants/screen-resume", {
-      method: "POST",
-      body: formData,
-    }),
-  /** Lightweight NLP pass (extraction only) used to auto-fill wizard fields. */
-  extractResume: (formData: FormData) =>
-    request<{
-      success: boolean;
-      processing_status?: string | null;
-      personal_information: {
-        name?: string | null;
-        email?: string | null;
-        phone?: string | null;
-        address?: string | null;
-      };
-      error_message?: string;
-    }>("/applicants/extract-resume", { method: "POST", body: formData }),
-  getScreening: (applicantId: number | string) =>
-    request<{ data: ApiScreening }>(`/applicants/${applicantId}/screening`),
+  delete: (id: number | string) => request<{ message: string }>(`/applicants/${id}`, { method: 'DELETE' }),
+  hire: (id: number | string) => request<ApiApplicant>(`/applicants/${id}/hire`, { method: 'POST' }),
+  stats: () => request<any>('/applicants/stats'),
   createAssessment: (applicantId: number | string, data: Record<string, any>) =>
     request<ApiAssessment>(`/applicants/${applicantId}/assessments`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  sendEmail: (
-    applicantId: number | string,
-    data: {
-      type: "accept" | "reject" | "offer";
-      position?: string;
-      details?: string;
-      interview_date?: string;
-      interview_time?: string;
-      interview_mode?: string;
-    },
-  ) =>
-    request<{ message: string }>(`/applicants/${applicantId}/send-email`, {
-      method: "POST",
+      method: 'POST',
       body: JSON.stringify(data),
     }),
 };
@@ -338,62 +294,7 @@ export const applicantsApi = {
 export const assessmentsApi = {
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
-    return request<{ data: ApiAssessment[]; meta: any }>(`/assessments${qs ? `?${qs}` : ""}`);
-  },
-};
-
-export interface ApiScreeningReference {
-  ref_id: number;
-  data_type: "skill" | "job_role" | "certification";
-  canonical_value: string;
-  aliases_json: string[] | null;
-  active: boolean;
-  created_at?: string | null;
-  updated_at?: string | null;
-}
-
-export type ScreeningReferencePayload = {
-  data_type: ApiScreeningReference["data_type"];
-  canonical_value: string;
-  aliases_json?: string[];
-  active?: boolean;
-};
-
-/** DB-managed spaCy screening vocabulary (skills / job roles / certifications + aliases). */
-export const screeningApi = {
-  referenceData: {
-    /** Grouped {skills, job_roles, certifications} mapping actually sent to the NLP service. */
-    mapping: () =>
-      request<{
-        success: boolean;
-        data: Record<"skills" | "job_roles" | "certifications", Record<string, string[]>>;
-        meta: { counts: Record<string, number> };
-      }>("/screening/reference-data"),
-    list: (params?: { data_type?: string; search?: string }) => {
-      const qs = new URLSearchParams(params).toString();
-      return request<{ success: boolean; data: ApiScreeningReference[]; meta: any }>(
-        `/screening/reference-data/list${qs ? `?${qs}` : ""}`,
-      );
-    },
-    create: (payload: ScreeningReferencePayload) =>
-      request<{ success: boolean; data: ApiScreeningReference; message: string }>(
-        "/screening/reference-data",
-        { method: "POST", body: JSON.stringify(payload) },
-      ),
-    update: (id: number, payload: ScreeningReferencePayload) =>
-      request<{ success: boolean; data: ApiScreeningReference; message: string }>(
-        `/screening/reference-data/${id}`,
-        { method: "PUT", body: JSON.stringify(payload) },
-      ),
-    remove: (id: number) =>
-      request<{ success: boolean; message: string }>(`/screening/reference-data/${id}`, {
-        method: "DELETE",
-      }),
-    toggleActive: (id: number) =>
-      request<{ success: boolean; data: ApiScreeningReference }>(
-        `/screening/reference-data/${id}/toggle`,
-        { method: "PATCH" },
-      ),
+    return request<{ data: ApiAssessment[]; meta: any }>(`/assessments${qs ? `?${qs}` : ''}`);
   },
 };
 
@@ -474,8 +375,8 @@ export const jobPostsApi = {
   get: (id: number | string) => request<ApiJobPost>(`/job-posts/${id}`),
   create: (data: FormData | Record<string, any>) => {
     const isForm = data instanceof FormData;
-    return request<ApiJobPost>("/job-posts", {
-      method: "POST",
+    return request<ApiJobPost>('/job-posts', {
+      method: 'POST',
       body: isForm ? data : JSON.stringify(data),
     });
   },
@@ -485,10 +386,10 @@ export const jobPostsApi = {
       // PHP never populates $_POST for raw multipart PUT bodies, so Laravel
       // sees an empty request. Send POST with a _method=PUT override field —
       // the standard Laravel pattern for multipart updates.
-      data.append("_method", "PUT");
+      data.append('_method', 'PUT');
     }
     return request<ApiJobPost>(`/job-posts/${id}`, {
-      method: isForm ? "POST" : "PUT",
+      method: isForm ? 'POST' : 'PUT',
       body: isForm ? data : JSON.stringify(data),
     });
   },
@@ -550,20 +451,20 @@ export interface ApiPosition {
 export const coreHcmApi = {
   departments: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
-    return request<{ data: ApiDepartment[]; meta: any }>(`/departments${qs ? `?${qs}` : ""}`);
+    return request<{ data: ApiDepartment[]; meta: any }>(`/departments${qs ? `?${qs}` : ''}`);
   },
   createDepartment: (data: Record<string, any>) =>
-    request<ApiDepartment>("/departments", {
-      method: "POST",
+    request<ApiDepartment>('/departments', {
+      method: 'POST',
       body: JSON.stringify(data),
     }),
   positions: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
-    return request<{ data: ApiPosition[]; meta: any }>(`/positions${qs ? `?${qs}` : ""}`);
+    return request<{ data: ApiPosition[]; meta: any }>(`/positions${qs ? `?${qs}` : ''}`);
   },
   createPosition: (data: Record<string, any>) =>
-    request<ApiPosition>("/positions", {
-      method: "POST",
+    request<ApiPosition>('/positions', {
+      method: 'POST',
       body: JSON.stringify(data),
     }),
 };
@@ -589,7 +490,6 @@ export interface ApiNewHire {
   completion_percent?: number;
   onboarding_items?: {
     employee_onboarding_item_id: number | null;
-    template_item_id: number | null;
     item_text: string;
     instructions?: string | null;
     requires_upload?: boolean;
@@ -599,8 +499,9 @@ export interface ApiNewHire {
     file_url?: string | null;
     notes?: string | null;
     done: boolean;
-    phase?: "Pre-onboarding" | "Probationary" | null;
     completed_at: string | null;
+    template_item_id: number | null;
+    phase: string;
   }[];
 }
 
@@ -677,17 +578,8 @@ export const checklistTemplatesApi = {
       body: JSON.stringify(data),
     }),
   delete: (id: number | string) =>
-    request<{ message: string }>(`/checklist-templates/${id}`, { method: "DELETE" }),
-  addItem: (
-    templateId: number | string,
-    item: {
-      item_text: string;
-      instructions?: string;
-      requires_upload?: boolean;
-      upload_placeholder?: string;
-      sort_order: number;
-    },
-  ) =>
+    request<{ message: string }>(`/checklist-templates/${id}`, { method: 'DELETE' }),
+  addItem: (templateId: number | string, item: { item_text: string; sort_order: number }) =>
     request<any>(`/checklist-templates/${templateId}/items`, {
       method: "POST",
       body: JSON.stringify(item),
@@ -719,23 +611,14 @@ export const onboardingItemsApi = {
       body: JSON.stringify({ template_id: templateId }),
     }),
   materialize: (newHireId: number | string, templateItemId: number | string) =>
-    request<{
-      employee_onboarding_item_id: number;
-      template_item_id: number;
-      item_text: string;
-      instructions?: string | null;
-      requires_upload?: boolean;
-      upload_placeholder?: string | null;
-      done: boolean;
-      phase: string;
-    }>(`/new-hires/${newHireId}/onboarding-items`, {
-      method: "POST",
-      body: JSON.stringify({ template_item_id: templateItemId }),
-    }),
+    request<{ employee_onboarding_item_id: number; template_item_id: number; item_text: string; done: boolean; phase: string }>(
+      `/new-hires/${newHireId}/onboarding-items`,
+      { method: 'POST', body: JSON.stringify({ template_item_id: templateItemId }) }
+    ),
   toggle: (itemId: number | string, body?: { done: boolean }) =>
     request<{ employee_onboarding_item_id: number; done: boolean; completed_at: string | null }>(
       `/onboarding-items/${itemId}/toggle`,
-      { method: "PATCH", ...(body ? { body: JSON.stringify(body) } : {}) },
+      { method: 'PATCH', ...(body ? { body: JSON.stringify(body) } : {}) }
     ),
   upload: (itemId: number | string, formData: FormData) =>
     request<{
@@ -789,14 +672,6 @@ export interface ApiSystemUser {
   full_name: string;
   username: string;
   department_name: string | null;
-}
-
-export interface ApiBackupEntry {
-  id: string;
-  timestamp: string;
-  size: string;
-  type: string;
-  filename?: string;
 }
 
 export const settingsApi = {
@@ -864,26 +739,17 @@ export const notificationsApi = {
 /** Per-user portal settings — each user keeps their own designated values. */
 export const mySettingsApi = {
   get: (user: string) =>
-    request<{
-      notifications: Record<string, boolean>;
-      preferences: Record<string, string>;
-      otp_enabled?: boolean;
-      user?: string;
-    }>(`/my/settings?user=${encodeURIComponent(user)}`),
+    request<{ notifications: Record<string, boolean>; preferences: Record<string, string> }>(
+      `/my/settings?user=${encodeURIComponent(user)}`
+    ),
   save: (scope: "notifications" | "preferences", user: string, value: any) =>
     request<{ setting_key: string; setting_value: any }>(`/my/settings/${scope}`, {
-      method: "PUT",
+      method: 'PUT',
       body: JSON.stringify({ user, value }),
     }),
-  /** Toggles THIS account's OTP-at-login requirement. */
-  toggleOtp: (user: string, enabled: boolean) =>
-    request<{ message: string; otp_enabled: boolean }>("/my/otp", {
-      method: "PUT",
-      body: JSON.stringify({ user, enabled }),
-    }),
   changePassword: (user: string, currentPassword: string, newPassword: string) =>
-    request<{ message: string }>("/my/change-password", {
-      method: "POST",
+    request<{ message: string }>('/my/change-password', {
+      method: 'POST',
       body: JSON.stringify({ user, current_password: currentPassword, new_password: newPassword }),
     }),
 };
@@ -923,6 +789,23 @@ export interface ApiVerifyResponse {
     last_login_at: string | null;
   };
 }
+
+export const mySettingsApi = {
+  get: (user: string) =>
+    request<{ notifications: Record<string, boolean>; preferences: Record<string, string> }>(
+      `/my/settings?user=${encodeURIComponent(user)}`,
+    ),
+  save: (scope: "notifications" | "preferences", user: string, value: any) =>
+    request<{ setting_key: string; setting_value: any }>(`/my/settings/${scope}`, {
+      method: "PUT",
+      body: JSON.stringify({ user, value }),
+    }),
+  changePassword: (user: string, currentPassword: string, newPassword: string) =>
+    request<{ message: string }>("/my/change-password", {
+      method: "POST",
+      body: JSON.stringify({ user, current_password: currentPassword, new_password: newPassword }),
+    }),
+};
 
 export const authApi = {
   login: (email: string, password: string) =>
@@ -1051,7 +934,7 @@ export interface ApiHR3Recommendation {
   evaluation_score: number;
   evaluator: string;
   date_submitted: string | null;
-  status: "Pending HR Action" | "Approved & Processed" | "Deferred";
+  status: "Pending HR Action" | "Approved & Processed" | "Deferred" | "Acknowledged";
   suggested_position: string | null;
   suggested_salary_grade: string | null;
   comments: string | null;
@@ -1075,6 +958,7 @@ export interface ApiPosition {
   title: string;
   department_id: number;
   department_name?: string;
+  department?: string | null;
   salary_grade_id: number;
   salary_grade?: string;
   level: string;
@@ -1103,6 +987,27 @@ export interface ApiOrgNode {
   filled: number;
   positions: ApiPosition[];
 }
+
+export const coreHcmApi = {
+  departments: (params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiDepartment[]; meta: any }>(`/departments${qs ? `?${qs}` : ""}`);
+  },
+  createDepartment: (data: Record<string, any>) =>
+    request<ApiDepartment>("/departments", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  positions: (params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiPosition[]; meta: any }>(`/positions${qs ? `?${qs}` : ""}`);
+  },
+  createPosition: (data: Record<string, any>) =>
+    request<ApiPosition>("/positions", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+};
 
 export const hcmApi = {
   employees: {
@@ -1180,6 +1085,16 @@ export const hcmApi = {
       const qs = new URLSearchParams(params).toString();
       return request<{ data: ApiSalaryGrade[]; meta: any }>(`/salary-grades${qs ? `?${qs}` : ""}`);
     },
+    create: (data: Record<string, any>) =>
+      request<{ message: string; data: ApiSalaryGrade }>("/salary-grades", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    update: (id: number | string, data: Record<string, any>) =>
+      request<{ message: string; data: ApiSalaryGrade }>(`/salary-grades/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
     remove: (id: number | string) =>
       request<{ message: string }>(`/salary-grades/${id}`, { method: "DELETE" }),
   },
@@ -1220,6 +1135,8 @@ export interface ApiRole {
   role_id: number;
   role_name: string;
   description: string | null;
+  is_super_admin: boolean;
+  is_protected: boolean;
   user_count: number;
   permissions: { module_name: string; permission_level: string }[];
 }
@@ -1471,11 +1388,11 @@ export const landingApi = {
     );
   },
   apply: (data: Record<string, any>) =>
-    request<{
-      message: string;
-      data: { applicant_id: number; applicant_code: string; job_title: string };
-    }>("/landing/apply", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+    request<{ message: string; data: { applicant_id: number; applicant_code: string; job_title: string } }>(
+      '/landing/apply',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    ),
 };

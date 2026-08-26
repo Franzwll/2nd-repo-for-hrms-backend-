@@ -4,7 +4,6 @@ namespace Modules\CoreHCM\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Department;
-use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\CoreHCM\Http\Requests\StoreDepartmentRequest;
@@ -46,15 +45,6 @@ class DepartmentController extends Controller
     {
         $department = Department::create($request->validated());
 
-        AuditLogger::log(
-            'Department created',
-            'Core HCM',
-            'Info',
-            'department',
-            $department->name,
-            'Created department ' . $department->code,
-        );
-
         return response()->json([
             'message' => 'Department created successfully.',
             'data' => new DepartmentResource($department),
@@ -75,15 +65,6 @@ class DepartmentController extends Controller
     {
         $department->update($request->validated());
 
-        AuditLogger::log(
-            'Department updated',
-            'Core HCM',
-            'Info',
-            'department',
-            $department->name,
-            'Updated department ' . $department->code,
-        );
-
         return response()->json([
             'message' => 'Department updated successfully.',
             'data' => new DepartmentResource($department),
@@ -99,15 +80,6 @@ class DepartmentController extends Controller
         $name = $department->name;
         $department->positions()->delete();
         $department->delete();
-
-        AuditLogger::log(
-            'Department deleted',
-            'Core HCM',
-            'Warning',
-            'department',
-            $name,
-            'Deleted department ' . $name,
-        );
 
         return response()->json(['message' => 'Department deleted successfully.']);
     }

@@ -36,6 +36,31 @@ import { cn } from "@/lib/utils";
 import { navForRole, roleMeta, type Role } from "@/lib/nav";
 import { authApi } from "@/lib/api";
 import { clearSession, getUser } from "@/lib/auth";
+import type { Notification } from "@/components/portal/portal-state";
+
+/** Map a notification's target to an in-app route for the current role. */
+function notificationTarget(targetType: string | null | undefined, role: Role): string | null {
+  if (!targetType) return null;
+  const base = roleMeta[role].base;
+  switch (targetType) {
+    case "employees":
+      return role === "employee" ? null : `${base}/employees`;
+    case "departments":
+    case "positions":
+    case "salary_grades":
+      return role === "employee" ? null : `${base}/dept-pos`;
+    case "system_users":
+      return role === "superadmin" ? `${base}/users` : `${base}/settings`;
+    case "system_roles":
+      return `${base}/settings`;
+    case "hr3_recommendations":
+      return `${base}/ess`;
+    case "chatbot_faqs":
+      return role === "employee" ? null : `${base}/chatbot`;
+    default:
+      return null;
+  }
+}
 
 export function PortalShell({ role, children }: { role: Role; children: ReactNode }) {
   const [open, setOpen] = useState(true);
@@ -106,9 +131,9 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
               const hasChildren = !!item.children?.length;
               const groupActive = hasChildren
                 ? item.children!.some((c) => {
-                    const [cPath] = (c.to ?? "").split("?");
-                    return cPath ? pathname === cPath || pathname.startsWith(cPath) : false;
-                  })
+                  const [cPath] = (c.to ?? "").split("?");
+                  return cPath ? pathname === cPath || pathname.startsWith(cPath) : false;
+                })
                 : isActive(item.to);
               const isOpen = expanded.includes(item.label);
 
@@ -342,36 +367,46 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                         <BellOff className="h-4 w-4" /> No notifications
                       </p>
                     )}
-                    {notifications.map((n) => (
-                      <button
-                        key={n.id}
-                        type="button"
-                        onClick={() => markRead(n.id)}
-                        className={cn(
-                          "flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60",
-                          !n.read && "bg-primary/5",
-                        )}
-                      >
-                        <span
+                    {notifications.map((n) => {
+                      const target = notificationTarget(n.targetType, role);
+                      return (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => {
+                            markRead(n.id);
+                            if (target) navigate({ to: target });
+                          }}
                           className={cn(
-                            "mt-1.5 h-2 w-2 shrink-0 rounded-full",
-                            n.tone === "success"
-                              ? "bg-success"
-                              : n.tone === "warning"
-                                ? "bg-gold"
-                                : "bg-primary",
-                            n.read && "opacity-30",
+                            "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60",
+                            !n.read && "bg-primary/5",
+                            target && "cursor-pointer",
                           )}
-                        />
-                        <span className="min-w-0">
-                          <span className="block text-sm font-medium">{n.title}</span>
-                          <span className="block text-xs text-muted-foreground">{n.detail}</span>
-                          <span className="mt-1 block text-[0.7rem] text-muted-foreground">
-                            {n.time}
+                        >
+                          <span
+                            className={cn(
+                              "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+                              n.tone === "success"
+                                ? "bg-success"
+                                : n.tone === "warning"
+                                  ? "bg-gold"
+                                  : "bg-primary",
+                              n.read && "opacity-30",
+                            )}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-medium">{n.title}</span>
+                            <span className="block text-xs text-muted-foreground">{n.detail}</span>
+                            <span className="mt-1 block text-[0.7rem] text-muted-foreground">
+                              {n.time}
+                            </span>
                           </span>
-                        </span>
-                      </button>
-                    ))}
+                          {target && (
+                            <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </ScrollArea>
               </PopoverContent>

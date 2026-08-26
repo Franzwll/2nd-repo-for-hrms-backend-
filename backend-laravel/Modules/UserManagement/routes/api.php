@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\UserManagement\Http\Controllers\RoleController;
 use Modules\UserManagement\Http\Controllers\UserController;
 
-Route::middleware(['auth:sanctum', 'permission:User Management'])->prefix('v1')->group(function () {
+Route::middleware(['auth:sanctum', 'permission:User Management:Full'])->prefix('v1')->group(function () {
     Route::get('users', [UserController::class, 'index'])->name('usermanagement.users.index');
     Route::post('users', [UserController::class, 'store'])->name('usermanagement.users.store');
     Route::get('users/{user}', [UserController::class, 'show'])->name('usermanagement.users.show');

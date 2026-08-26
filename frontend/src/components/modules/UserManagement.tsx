@@ -141,6 +141,8 @@ const roleLabels: Record<SystemUser["role"], string> = {
 
 export type PermissionGroup =
   | "Dashboard Analytics"
+  | "Applicant Management"
+  | "Recruitment Management"
   | "Employee Records"
   | "Lifecycle Actions"
   | "Request Queue & ESS"
@@ -152,6 +154,8 @@ export type PermissionLevel =
 
 export const permissionGroups: PermissionGroup[] = [
   "Dashboard Analytics",
+  "Applicant Management",
+  "Recruitment Management",
   "Employee Records",
   "Lifecycle Actions",
   "Request Queue & ESS",
@@ -165,6 +169,8 @@ export const roleGroupMatrix: Record<
 > = {
   "Super Admin": {
     "Dashboard Analytics": "Full",
+    "Applicant Management": "Full",
+    "Recruitment Management": "Full",
     "Employee Records": "Full",
     "Lifecycle Actions": "Full",
     "Request Queue & ESS": "Full",
@@ -173,6 +179,8 @@ export const roleGroupMatrix: Record<
   },
   Admin: {
     "Dashboard Analytics": "View",
+    "Applicant Management": "Edit",
+    "Recruitment Management": "Edit",
     "Employee Records": "Edit",
     "Lifecycle Actions": "Edit",
     "Request Queue & ESS": "Approve / Reject Only",
@@ -181,6 +189,8 @@ export const roleGroupMatrix: Record<
   },
   Employee: {
     "Dashboard Analytics": "None",
+    "Applicant Management": "None",
+    "Recruitment Management": "None",
     "Employee Records": "View",
     "Lifecycle Actions": "None",
     "Request Queue & ESS": "Edit",
@@ -272,6 +282,8 @@ const permissionLevelTone: Record<PermissionLevel, string> = {
 
 const GROUP_MODULE_MAP: Record<PermissionGroup, string[]> = {
   "Dashboard Analytics": ["Dashboard"],
+  "Applicant Management": ["Applicant Management"],
+  "Recruitment Management": ["Recruitment Management"],
   "Employee Records": ["Employee Records", "Core HCM"],
   "Lifecycle Actions": ["New Hire Onboarding", "Core HCM"],
   "Request Queue & ESS": ["ESS Management", "Employee Records"],
@@ -290,8 +302,9 @@ const buildMatrixFromBackend = (
   roles: {
     role_id: number;
     role_name: string;
+    is_protected?: boolean;
     permissions: { module_name: string; permission_level: string }[];
-  }[],
+  }[]
 ): Record<SystemUserRole, Record<PermissionGroup, PermissionLevel>> => {
   const next: Record<SystemUserRole, Record<PermissionGroup, PermissionLevel>> = JSON.parse(
     JSON.stringify(roleGroupMatrix),
@@ -329,6 +342,7 @@ export function UserManagement() {
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [deptOptions, setDeptOptions] = useState<string[]>(FALLBACK_DEPARTMENTS);
   const [roleIdByName, setRoleIdByName] = useState<Record<string, number>>({});
+  const [roleProtectedByName, setRoleProtectedByName] = useState<Record<string, boolean>>({});
   const [existingPerms, setExistingPerms] = useState<
     Record<number, { module_name: string; permission_level: string }[]>
   >({});
@@ -389,23 +403,26 @@ export function UserManagement() {
         const names = res.data.map((d) => d.name);
         if (names.length) setDeptOptions(names);
       })
-      .catch(() => {});
+      .catch(() => { });
     userManagementApi.roles
       .list()
       .then(async (rolesRes) => {
         const byName: Record<string, number> = {};
         const perms: Record<number, { module_name: string; permission_level: string }[]> = {};
+        const protectedByName: Record<string, boolean> = {};
         for (const r of rolesRes.data) {
           byName[r.role_name] = r.role_id;
           perms[r.role_id] = r.permissions;
+          protectedByName[r.role_name] = !!r.is_protected;
         }
         setRoleIdByName(byName);
+        setRoleProtectedByName(protectedByName);
         setExistingPerms(perms);
         const built = buildMatrixFromBackend(rolesRes.data);
         setMatrix(built);
         setMatrixDraft(built);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const filteredUsers = users.filter((u) => {
@@ -506,6 +523,9 @@ export function UserManagement() {
       for (const roleName of ["Super Admin", "Admin", "Employee"] as const) {
         const roleId = roleIdByName[roleName];
         if (!roleId) continue;
+        // System roles (e.g. Super Admin) have a protected permission matrix
+        // and must not be sent to the backend for update.
+        if (roleProtectedByName[roleName]) continue;
         const merged = new Map<string, string>();
         (existingPerms[roleId] ?? []).forEach((p) => merged.set(p.module_name, p.permission_level));
         for (const group of permissionGroups) {
@@ -936,7 +956,7 @@ export function UserManagement() {
                     <ShieldCheck className="h-5 w-5 text-primary" /> Permission Matrix
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    Role-based access matrix вЂ” click Edit to modify checkbox permissions.
+                    Role-based access matrix — click Edit to modify checkbox permissions.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -1005,96 +1025,104 @@ export function UserManagement() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(["Super Admin", "Admin", "Employee"] as const).map((role) => (
-                      <TableRow key={role}>
-                        <TableCell className="text-sm font-medium align-top pt-4">
-                          {roleLabels[role]}
-                        </TableCell>
-                        {permissionGroups.map((g) => {
-                          const active = isEditingMatrix ? matrixDraft : matrix;
-                          const level = active[role]?.[g] ?? "None";
-                          const isView =
-                            level === "View" ||
-                            level === "Edit" ||
-                            level === "Full" ||
-                            level === "Approve / Reject Only";
-                          const isEdit =
-                            level === "Edit" ||
-                            level === "Full" ||
-                            level === "Approve / Reject Only";
-                          const isFull = level === "Full";
+                    {(["Super Admin", "Admin", "Employee"] as const).map((role) => {
+                      const isProtected = roleProtectedByName[role] ?? false;
+                      return (
+                        <TableRow key={role}>
+                          <TableCell className="text-sm font-medium align-top pt-4">
+                            {roleLabels[role]}
+                            {isProtected && (
+                              <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                System
+                              </span>
+                            )}
+                          </TableCell>
+                          {permissionGroups.map((g) => {
+                            const active = isEditingMatrix ? matrixDraft : matrix;
+                            const level = active[role]?.[g] ?? "None";
+                            const isView =
+                              level === "View" ||
+                              level === "Edit" ||
+                              level === "Full" ||
+                              level === "Approve / Reject Only";
+                            const isEdit =
+                              level === "Edit" ||
+                              level === "Full" ||
+                              level === "Approve / Reject Only";
+                            const isFull = level === "Full";
 
-                          const handleToggle = (
-                            type: "View" | "Edit" | "Full",
-                            checked: boolean,
-                          ) => {
-                            let next: PermissionLevel = level;
-                            if (type === "View") {
-                              next = checked ? (level === "None" ? "View" : level) : "None";
-                            } else if (type === "Edit") {
-                              next = checked ? (level === "Full" ? "Full" : "Edit") : "View";
-                            } else if (type === "Full") {
-                              next = checked ? "Full" : "Edit";
-                            }
-                            setMatrixDraft((prev) => ({
-                              ...prev,
-                              [role]: { ...prev[role], [g]: next },
-                            }));
-                          };
+                            const handleToggle = (
+                              type: "View" | "Edit" | "Full",
+                              checked: boolean,
+                            ) => {
+                              let next: PermissionLevel = level;
+                              if (type === "View") {
+                                next = checked ? (level === "None" ? "View" : level) : "None";
+                              } else if (type === "Edit") {
+                                next = checked ? (level === "Full" ? "Full" : "Edit") : "View";
+                              } else if (type === "Full") {
+                                next = checked ? "Full" : "Edit";
+                              }
+                              setMatrixDraft((prev) => ({
+                                ...prev,
+                                [role]: { ...prev[role], [g]: next },
+                              }));
+                            };
 
-                          return (
-                            <TableCell key={g} className="align-top py-3">
-                              <div
-                                className={cn(
-                                  "space-y-1.5 rounded-md border border-border bg-card p-2.5 transition-opacity",
-                                  !isEditingMatrix && "opacity-85 pointer-events-none bg-muted/30",
-                                )}
-                              >
-                                <div className="flex items-center gap-2 text-xs font-normal select-none">
-                                  <Checkbox
-                                    id={`view-${role}-${g}`}
-                                    checked={isView}
-                                    disabled={!isEditingMatrix}
-                                    onCheckedChange={(c) => handleToggle("View", !!c)}
-                                  />
-                                  <Label className="cursor-pointer" htmlFor={`view-${role}-${g}`}>
-                                    View access
-                                  </Label>
+                            return (
+                              <TableCell key={g} className="align-top py-3">
+                                <div
+                                  className={cn(
+                                    "space-y-1.5 rounded-md border border-border bg-card p-2.5 transition-opacity",
+                                    (!isEditingMatrix || isProtected) && "opacity-85 pointer-events-none bg-muted/30",
+                                  )}
+                                >
+                                  <div className="flex items-center gap-2 text-xs font-normal select-none">
+                                    <Checkbox
+                                      id={`view-${role}-${g}`}
+                                      checked={isView}
+                                      disabled={!isEditingMatrix || isProtected}
+                                      onCheckedChange={(c) => handleToggle("View", !!c)}
+                                    />
+                                    <Label className="cursor-pointer" htmlFor={`view-${role}-${g}`}>
+                                      View access
+                                    </Label>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs font-normal select-none">
+                                    <Checkbox
+                                      id={`edit-${role}-${g}`}
+                                      checked={isEdit}
+                                      disabled={!isEditingMatrix || isProtected}
+                                      onCheckedChange={(c) => handleToggle("Edit", !!c)}
+                                    />
+                                    <Label className="cursor-pointer" htmlFor={`edit-${role}-${g}`}>
+                                      Edit access
+                                    </Label>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs font-normal select-none">
+                                    <Checkbox
+                                      id={`full-${role}-${g}`}
+                                      checked={isFull}
+                                      disabled={!isEditingMatrix || isProtected}
+                                      onCheckedChange={(c) => handleToggle("Full", !!c)}
+                                    />
+                                    <Label className="cursor-pointer" htmlFor={`full-${role}-${g}`}>
+                                      Full control
+                                    </Label>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2 text-xs font-normal select-none">
-                                  <Checkbox
-                                    id={`edit-${role}-${g}`}
-                                    checked={isEdit}
-                                    disabled={!isEditingMatrix}
-                                    onCheckedChange={(c) => handleToggle("Edit", !!c)}
-                                  />
-                                  <Label className="cursor-pointer" htmlFor={`edit-${role}-${g}`}>
-                                    Edit access
-                                  </Label>
-                                </div>
-                                <div className="flex items-center gap-2 text-xs font-normal select-none">
-                                  <Checkbox
-                                    id={`full-${role}-${g}`}
-                                    checked={isFull}
-                                    disabled={!isEditingMatrix}
-                                    onCheckedChange={(c) => handleToggle("Full", !!c)}
-                                  />
-                                  <Label className="cursor-pointer" htmlFor={`full-${role}-${g}`}>
-                                    Full control
-                                  </Label>
-                                </div>
-                              </div>
-                            </TableCell>
-                          );
-                        })}
-                      </TableRow>
-                    ))}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
                 {isEditingMatrix
-                  ? "Checkboxes active вЂ” click Save when finished editing permissions."
+                  ? "Checkboxes active — click Save when finished editing permissions."
                   : "Click the 'Edit matrix' button above to unlock and modify role permission checkboxes."}
               </p>
             </CardContent>
@@ -1259,10 +1287,10 @@ export function UserManagement() {
                     setEditDraft((p) =>
                       p
                         ? {
-                            ...p,
-                            role: v as SystemUser["role"],
-                            department: v === "Super Admin" ? "Administration / HR" : p.department,
-                          }
+                          ...p,
+                          role: v as SystemUser["role"],
+                          department: v === "Super Admin" ? "Administration / HR" : p.department,
+                        }
                         : p,
                     )
                   }

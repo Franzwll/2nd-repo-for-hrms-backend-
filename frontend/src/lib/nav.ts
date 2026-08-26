@@ -55,6 +55,11 @@ const hcmChildren = (base: string) => [
   { label: "Department & Position", to: `${base}/dept-pos` },
 ];
 
+const settingsChildren = (base: string) => [
+  { label: "Settings", to: `${base}/settings` },
+  { label: "Chatbot FAQ", to: `${base}/chatbot` },
+];
+
 export function navForRole(role: Role): NavItem[] {
   const base = roleMeta[role].base;
 
@@ -90,11 +95,19 @@ export function navForRole(role: Role): NavItem[] {
       ...shared,
       { label: "User Management", to: `${base}/users`, icon: ShieldCheck },
       { label: "Audit Logs", to: `${base}/audit`, icon: ScrollText },
-      { label: "Settings", to: `${base}/settings`, icon: Settings },
+      {
+        label: "Settings",
+        to: `${base}/settings`,
+        icon: Settings,
+        children: settingsChildren(base),
+      },
     ];
   }
 
-  return [...shared, { label: "Settings", to: `${base}/settings`, icon: Settings }];
+  return [
+    ...shared,
+    { label: "Settings", to: `${base}/settings`, icon: Settings, children: settingsChildren(base) },
+  ];
 }
 
 export const iconRegistry = { Users, UserCheck };

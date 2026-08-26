@@ -197,11 +197,27 @@ function httpResponse(string $path, string $maildrop): string
     $files = glob($maildrop . '/*.eml') ?: [];
     usort($files, fn ($a, $b) => filemtime($b) - filemtime($a));
 
+    if (preg_match('#^/html\?f=([^&]+)#', $path, $m)) {
+        $name = basename(urldecode($m[1]));
+        $file = $maildrop . '/' . $name;
+        if (is_file($file)) {
+            $raw = file_get_contents($file);
+            $parts = preg_split("/\r?\n\r?\n/", $raw, 2);
+            $body = $parts[1] ?? $raw;
+            if (stripos($raw, 'Content-Transfer-Encoding: quoted-printable') !== false) {
+                $body = quoted_printable_decode($body);
+            }
+            return "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: "
+                . strlen($body) . "\r\nConnection: close\r\n\r\n" . $body;
+        }
+        return "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nNot found";
+    }
+
     if (preg_match('#^/raw\?f=([^&]+)#', $path, $m)) {
         $name = basename(urldecode($m[1]));
         $file = $maildrop . '/' . $name;
         if (is_file($file)) {
-            $content = htmlspecialchars(file_get_contents($file));
+            $content = file_get_contents($file);
             return "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: "
                 . strlen($content) . "\r\nConnection: close\r\n\r\n" . $content;
         }
@@ -215,25 +231,41 @@ function httpResponse(string $path, string $maildrop): string
         $from = headerValue($eml, 'X-SMTP-Inbox-From', '(unknown)');
         $to = headerValue($eml, 'X-SMTP-Inbox-To', '(unknown)');
         $date = headerValue($eml, 'X-SMTP-Inbox-Date', '');
-        $size = number_format(strlen($eml));
         $name = basename($f);
+
+        // Extract OTP
+        $otp = '—';
+        if (preg_match('/>(\d{6})</', $eml, $otpMatch) || preg_match('/\b(\d{6})\b/', $eml, $otpMatch)) {
+            $otp = $otpMatch[1];
+        }
+
         $rows .= "<tr>"
-            . "<td>" . e($date) . "</td>"
-            . "<td>" . e($from) . "</td>"
+            . "<td style=\"white-space:nowrap;\">" . e($date) . "</td>"
             . "<td>" . e($to) . "</td>"
             . "<td>" . e($subject) . "</td>"
-            . "<td>" . $size . " bytes</td>"
-            . "<td><a href=\"/raw?f=" . urlencode($name) . "\">view raw</a></td>"
+            . "<td><span style=\"background:#520c19;color:#fff;padding:4px 10px;border-radius:6px;font-size:16px;font-weight:bold;letter-spacing:2px;font-family:monospace;\">" . e($otp) . "</span></td>"
+            . "<td>"
+            . "<a href=\"/html?f=" . urlencode($name) . "\" target=\"_blank\" style=\"margin-right:12px;font-weight:600;\">Preview Email</a>"
+            . "<a href=\"/raw?f=" . urlencode($name) . "\" style=\"color:#6b7280;\">Raw</a>"
+            . "</td>"
             . "</tr>\n";
     }
 
     $body = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Local SMTP Inbox</title>"
-        . "<style>body{font-family:system-ui,sans-serif;margin:24px;color:#1f2937}h1{font-size:20px}"
-        . "table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid #e5e7eb;padding:6px 10px;text-align:left}"
-        . "th{background:#f3f4f6}a{color:#520c19}</style></head><body>"
-        . "<h1>Local SMTP Inbox (" . count($files) . " messages)</h1>"
-        . ($files ? "<table><tr><th>Received</th><th>From</th><th>To</th><th>Subject</th><th>Size</th><th></th></tr>"
-            . $rows . "</table>" : "<p>No messages yet. Trigger a login to receive an OTP email.</p>")
+        . "<meta http-equiv=\"refresh\" content=\"5\">"
+        . "<style>body{font-family:system-ui,-apple-system,sans-serif;margin:32px;background:#f9fafb;color:#1f2937}"
+        . "h1{font-size:22px;color:#111827;display:flex;align-items:center;gap:12px;}"
+        . ".badge{background:#e0e7ff;color:#3730a3;font-size:12px;padding:2px 8px;border-radius:12px;font-weight:normal}"
+        . "table{border-collapse:separate;border-spacing:0;width:100%;background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.05);}"
+        . "th,td{padding:12px 16px;text-align:left;border-bottom:1px solid #f3f4f6}"
+        . "th{background:#f9fafb;font-weight:600;font-size:13px;color:#4b5563;border-bottom:1px solid #e5e7eb;}"
+        . "tr:last-child td{border-bottom:none}"
+        . "a{color:#520c19;text-decoration:none}a:hover{text-decoration:underline}"
+        . ".auto-refresh{font-size:12px;color:#6b7280;margin-top:8px;}</style></head><body>"
+        . "<h1>📬 Local SMTP Inbox <span class=\"badge\">" . count($files) . " messages</span></h1>"
+        . "<p class=\"auto-refresh\">Auto-refreshes every 5 seconds.</p>"
+        . ($files ? "<table style=\"margin-top:16px;\"><tr><th>Received</th><th>To</th><th>Subject</th><th>OTP Code</th><th>Actions</th></tr>"
+            . $rows . "</table>" : "<p style=\"padding:24px;background:#fff;border-radius:8px;border:1px solid #e5e7eb;\">No messages yet. Trigger a login to receive an OTP email.</p>")
         . "</body></html>";
 
     return "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: "

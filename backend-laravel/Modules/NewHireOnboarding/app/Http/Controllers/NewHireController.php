@@ -3,12 +3,21 @@
 namespace Modules\NewHireOnboarding\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+<<<<<<< HEAD
 use App\Mail\NewHireCredentialsMail;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+=======
+use App\Mail\SendPortalCredentialsMail;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
+>>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
 use Modules\NewHireOnboarding\Http\Requests\StoreNewHireRequest;
 use Modules\NewHireOnboarding\Http\Requests\UpdateNewHireRequest;
 use Modules\NewHireOnboarding\Http\Resources\NewHireResource;
@@ -25,6 +34,7 @@ class NewHireController extends Controller
 
     /**
      * Creates (or reuses) a system_users portal account for the new hire so
+<<<<<<< HEAD
      * they can log into the Employee portal. The account starts with the
      * default password stored in system_settings.default_password (falls back
      * to the shipped default) and is linked to the hire's employee record.
@@ -32,6 +42,11 @@ class NewHireController extends Controller
      * Returns an array with the account, the plain-text password (only when a
      * new account was created) and whether it was newly created:
      * ['user' => SystemUser, 'password' => ?string, 'created' => bool]
+=======
+     * they can log into the Employee portal. When an administrator has not
+     * configured a shared default password, a random one-time password is
+     * generated and emailed to the hire.
+>>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
      */
     private function ensurePortalAccount(NewHire $newHire): ?array
     {
@@ -48,7 +63,7 @@ class NewHireController extends Controller
         $defaultPassword = SystemSetting::getValue('default_password', []);
         $password = is_array($defaultPassword) && isset($defaultPassword['password'])
             ? (string) $defaultPassword['password']
-            : 'Oxford@2026';
+            : Str::password(12, symbols: false);
 
         // Unique username derived from the email's local part
         $base = strtolower(preg_replace('/[^a-z0-9._-]/i', '', explode('@', $email)[0] ?? 'user'));
@@ -69,6 +84,7 @@ class NewHireController extends Controller
             'status'          => 'Active',
         ]);
 
+<<<<<<< HEAD
         return ['user' => $user, 'password' => $password, 'created' => true];
     }
 
@@ -98,6 +114,18 @@ class NewHireController extends Controller
                 'error'       => $e->getMessage(),
             ]);
         }
+=======
+        try {
+            Mail::to($email)->send(new SendPortalCredentialsMail(
+                $password,
+                $user->full_name ?: $user->username,
+            ));
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $user;
+>>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
     }
 
     /* ------------------------------------------------------------------ */

@@ -7,6 +7,7 @@ use Modules\ApplicantManagement\Http\Controllers\ScreeningEvaluationController;
 use Modules\ApplicantManagement\Http\Controllers\ScreeningReferenceController;
 use Modules\ApplicantManagement\Http\Controllers\InterviewController;
 
+<<<<<<< HEAD
 /*
  * All Applicant Management endpoints are restricted to authenticated system
  * users whose role has access to the "Applicant Management" module
@@ -67,11 +68,53 @@ Route::prefix('v1')
         Route::apiResource('applicants', ApplicantManagementController::class)
              ->parameters(['applicants' => 'applicant'])
              ->names('applicant');
+=======
+Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
+
+    /* ------------------------------------------------------------------ */
+    /* Read-only endpoints (permission:Applicant Management)               */
+    /* ------------------------------------------------------------------ */
+
+    Route::middleware('permission:Applicant Management')->group(function () {
+        Route::get('applicants/stats', [ApplicantManagementController::class, 'stats'])
+             ->name('applicants.stats');
+
+        Route::get('applicants', [ApplicantManagementController::class, 'index'])
+             ->name('applicant.index');
+
+        Route::get('applicants/{applicant}', [ApplicantManagementController::class, 'show'])
+             ->name('applicant.show');
+
+        Route::get('interviews', [InterviewController::class, 'index'])
+             ->name('interview.index');
+
+        Route::get('interviews/{interview}', [InterviewController::class, 'show'])
+             ->name('interview.show');
+
+        Route::get('assessments', [ApplicantAssessmentController::class, 'index'])
+             ->name('assessments.index');
+    });
+
+    /* ------------------------------------------------------------------ */
+    /* Mutating endpoints (permission:Applicant Management:Edit)           */
+    /* ------------------------------------------------------------------ */
+
+    Route::middleware('permission:Applicant Management:Edit')->group(function () {
+        Route::post('applicants', [ApplicantManagementController::class, 'store'])
+             ->name('applicant.store');
+
+        Route::put('applicants/{applicant}', [ApplicantManagementController::class, 'update'])
+             ->name('applicant.update');
+
+        Route::delete('applicants/{applicant}', [ApplicantManagementController::class, 'destroy'])
+             ->name('applicant.destroy');
+>>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
 
         // Advance applicant to Offer / Hired stage
         Route::post('applicants/{applicant}/hire', [ApplicantManagementController::class, 'hire'])
              ->name('applicants.hire');
 
+<<<<<<< HEAD
         // Send email (accept / reject / offer) to applicant
         Route::post('applicants/{applicant}/send-email', [ApplicantManagementController::class, 'sendEmail'])
              ->name('applicants.send-email');
@@ -89,6 +132,16 @@ Route::prefix('v1')
         /* ------------------------------------------------------------------ */
         Route::get('assessments', [ApplicantAssessmentController::class, 'index'])
              ->name('assessments.index');
+=======
+        Route::post('interviews', [InterviewController::class, 'store'])
+             ->name('interview.store');
+
+        Route::put('interviews/{interview}', [InterviewController::class, 'update'])
+             ->name('interview.update');
+
+        Route::delete('interviews/{interview}', [InterviewController::class, 'destroy'])
+             ->name('interview.destroy');
+>>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
 
         Route::post('applicants/{applicant}/assessments', [ApplicantAssessmentController::class, 'store'])
              ->name('applicants.assessments.store');
@@ -96,3 +149,7 @@ Route::prefix('v1')
         Route::put('assessments/{assessment}', [ApplicantAssessmentController::class, 'update'])
              ->name('assessments.update');
     });
+<<<<<<< HEAD
+=======
+});
+>>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb

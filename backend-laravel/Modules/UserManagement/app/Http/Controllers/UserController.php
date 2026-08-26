@@ -3,8 +3,8 @@
 namespace Modules\UserManagement\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\SystemRole;
 use App\Models\SystemUser;
-use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -55,20 +55,17 @@ class UserController extends Controller
     {
         $validated = $request->validated();
 
+        $targetRole = SystemRole::find($validated['role_id']);
+
+        if ($targetRole && $targetRole->is_super_admin && ! $request->user()->isSuperAdmin()) {
+            return response()->json(['message' => 'Only a Super Admin can create a Super Admin account.'], 403);
+        }
+
         $user = SystemUser::create([
             ...$validated,
             'password_hash' => Hash::make($validated['password']),
             'last_login_at' => null,
         ]);
-
-        AuditLogger::log(
-            'User created',
-            'User Management',
-            'Info',
-            'user',
-            $user->username,
-            'Created system account for ' . $user->email,
-        );
 
         return response()->json([
             'message' => 'User created successfully.',
@@ -87,6 +84,17 @@ class UserController extends Controller
     {
         $validated = $request->validated();
 
+        $targetRole = SystemRole::find($validated['role_id']);
+
+        if ($targetRole && $targetRole->is_super_admin && ! $request->user()->isSuperAdmin()) {
+            return response()->json(['message' => 'Only a Super Admin can assign the Super Admin role.'], 403);
+        }
+
+        if ($user->system_user_id === $request->user()->system_user_id
+            && (int) $validated['role_id'] !== $request->user()->role_id) {
+            return response()->json(['message' => 'You cannot change your own role.'], 403);
+        }
+
         if (empty($validated['password'])) {
             unset($validated['password']);
         } else {
@@ -95,15 +103,6 @@ class UserController extends Controller
         }
 
         $user->update($validated);
-
-        AuditLogger::log(
-            'User updated',
-            'User Management',
-            'Info',
-            'user',
-            $user->username,
-            'Updated account for ' . $user->email,
-        );
 
         return response()->json([
             'message' => 'User updated successfully.',
@@ -117,8 +116,10 @@ class UserController extends Controller
             return response()->json(['message' => 'You cannot delete your own account.'], 422);
         }
 
-        if ($user->role_id === 1 && $user->status === 'Active') {
-            $otherSuperAdmins = SystemUser::where('role_id', 1)
+        $targetRole = $user->role_id ? SystemRole::find($user->role_id) : null;
+
+        if ($targetRole && $targetRole->is_super_admin && $user->status === 'Active') {
+            $otherSuperAdmins = SystemUser::whereHas('role', fn ($q) => $q->where('is_super_admin', true))
                 ->where('status', 'Active')
                 ->where('system_user_id', '!=', $user->system_user_id)
                 ->count();
@@ -131,15 +132,6 @@ class UserController extends Controller
         $username = $user->username;
         $user->tokens()->delete();
         $user->delete();
-
-        AuditLogger::log(
-            'User deleted',
-            'User Management',
-            'Warning',
-            'user',
-            $username,
-            'Deleted system account ' . $username,
-        );
 
         return response()->json(['message' => 'User deleted successfully.']);
     }

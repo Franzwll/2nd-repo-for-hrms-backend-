@@ -4,9 +4,9 @@ namespace Modules\CoreHCM\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Position;
-use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Modules\CoreHCM\Http\Requests\StorePositionRequest;
 use Modules\CoreHCM\Http\Requests\UpdatePositionRequest;
 use Modules\CoreHCM\Http\Resources\PositionResource;
@@ -54,15 +54,6 @@ class PositionController extends Controller
             'filled_count' => 0,
         ]);
 
-        AuditLogger::log(
-            'Position created',
-            'Core HCM',
-            'Info',
-            'position',
-            $position->title,
-            'Created position ' . $position->position_code,
-        );
-
         return response()->json([
             'message' => 'Position created successfully.',
             'data' => new PositionResource($position->load('department', 'salaryGrade')),
@@ -72,15 +63,6 @@ class PositionController extends Controller
     public function update(UpdatePositionRequest $request, Position $position): JsonResponse
     {
         $position->update($request->validated());
-
-        AuditLogger::log(
-            'Position updated',
-            'Core HCM',
-            'Info',
-            'position',
-            $position->title,
-            'Updated position ' . $position->position_code,
-        );
 
         return response()->json([
             'message' => 'Position updated successfully.',
@@ -97,22 +79,20 @@ class PositionController extends Controller
         $title = $position->title;
         $position->delete();
 
-        AuditLogger::log(
-            'Position deleted',
-            'Core HCM',
-            'Warning',
-            'position',
-            $title,
-            'Deleted position ' . $title,
-        );
-
         return response()->json(['message' => 'Position deleted successfully.']);
     }
 
     private function nextCode(): string
     {
-        $count = Position::count() + 1;
+        return DB::transaction(function () {
+            DB::selectOne('SELECT GET_LOCK(?, 5)', ['position_code_gen']);
+            try {
+                $count = Position::count() + 1;
 
-        return 'POS-' . str_pad((string) $count, 3, '0', STR_PAD_LEFT);
+                return 'POS-' . str_pad((string) $count, 3, '0', STR_PAD_LEFT);
+            } finally {
+                DB::selectOne('SELECT RELEASE_LOCK(?)', ['position_code_gen']);
+            }
+        });
     }
 }

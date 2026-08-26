@@ -40,7 +40,7 @@ return new class extends Migration
         });
 
         DB::statement("ALTER TABLE `hr3_recommendations` ADD CONSTRAINT `chk_hr3_recommendations_recommendation_type` CHECK (`recommendation_type` IN ('Regularization', 'Promotion', 'Performance Review'))");
-        DB::statement("ALTER TABLE `hr3_recommendations` ADD CONSTRAINT `chk_hr3_recommendations_status` CHECK (`status` IN ('Pending HR Action', 'Approved & Processed', 'Deferred'))");
+        DB::statement("ALTER TABLE `hr3_recommendations` ADD CONSTRAINT `chk_hr3_recommendations_status` CHECK (`status` IN ('Pending HR Action', 'Approved & Processed', 'Deferred', 'Acknowledged'))");
     }
 
     public function down(): void

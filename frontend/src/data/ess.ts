@@ -8,9 +8,11 @@ export type ESSRequest = {
   category: string;
   type: string;
   filed: string;
-  status: "Pending" | "Under Review" | "Approved" | "Rejected" | "Completed";
+  status: "Pending" | "Under Review" | "Approved" | "Rejected" | "Completed" | "Returned for Clarification";
   assignedTo: string;
   details: string;
+  returnedCount?: number | undefined;
+  note?: string | undefined;
 };
 
 export const essRequests: ESSRequest[] = [
@@ -175,6 +177,8 @@ export type EssCategory = {
   types: string[];
   /** Closed categories are hidden from employees when filing a new request. Defaults to open. */
   open?: boolean;
+  /** Custom categories added by admin */
+  custom?: boolean;
 };
 
 const essCategoryDescriptions: Record<string, string> = {
@@ -219,7 +223,7 @@ export function useEssCategories(): EssCategory[] {
 }
 
 export function addCategoryEntry(entry: { name: string; description: string; types: string[] }) {
-  essCategoryStore = [...essCategoryStore, { ...entry, open: true }];
+  essCategoryStore = [...essCategoryStore, { ...entry, open: true, custom: true }];
   notifyEssCategoryListeners();
 }
 

@@ -34,6 +34,7 @@ export type Notification = {
   time: string;
   read: boolean;
   tone: "info" | "success" | "warning";
+  targetType: string | null;
 };
 
 type State = {
@@ -42,26 +43,22 @@ type State = {
   loading: boolean;
 };
 
-const READ_STORAGE_KEY = "hrms-notifications-read";
+const seed: State = {
+  announcements: [],
+  notifications: [],
+  loading: true,
+};
 
-function loadReadFlags(): Set<string> {
-  try {
-    const raw = localStorage.getItem(READ_STORAGE_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw);
-    return new Set(Array.isArray(parsed) ? parsed : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function persistReadFlags(notifications: Notification[]) {
-  try {
-    const readIds = notifications.filter((n) => n.read).map((n) => n.id);
-    localStorage.setItem(READ_STORAGE_KEY, JSON.stringify(readIds));
-  } catch {
-    /* storage unavailable — ignore */
-  }
+function mapNotification(n: ApiNotification): Notification {
+  return {
+    id: n.id,
+    title: n.title,
+    detail: n.detail,
+    time: n.time,
+    read: n.read,
+    tone: (n.tone as Notification["tone"]) ?? "info",
+    targetType: n.target_type ?? null,
+  };
 }
 
 let state: State = {
@@ -77,6 +74,7 @@ function set(next: Partial<State>) {
 }
 
 let loaded = false;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 async function loadData() {
   try {
@@ -88,26 +86,26 @@ async function loadData() {
     const announcements =
       annRes.status === "fulfilled"
         ? (annRes.value.data ?? []).map((a) => ({
-            id: a.id,
-            title: a.title,
-            body: a.body,
-            audience: a.audience as Audience,
-            author: a.author ?? "System",
-            createdAt: a.created_at ?? a.published_date ?? "",
-          }))
+          id: a.id,
+          title: a.title,
+          body: a.body,
+          audience: a.audience as Audience,
+          author: a.author ?? "System",
+          createdAt: a.created_at ?? a.published_date ?? "",
+        }))
         : [];
 
     const readFlags = loadReadFlags();
     const notifications: Notification[] =
       notifRes.status === "fulfilled" && notifRes.value.data && notifRes.value.data.length > 0
         ? notifRes.value.data.map((n: ApiNotification) => ({
-            id: String(n.id),
-            title: n.title,
-            detail: n.detail,
-            time: n.time || "Just now",
-            read: n.read || readFlags.has(String(n.id)),
-            tone: (n.tone as any) || "info",
-          }))
+          id: String(n.id),
+          title: n.title,
+          detail: n.detail,
+          time: n.time || "Just now",
+          read: n.read || readFlags.has(String(n.id)),
+          tone: (n.tone as any) || "info",
+        }))
         : [];
 
     set({
@@ -120,10 +118,27 @@ async function loadData() {
   }
 }
 
+async function loadNotifications() {
+  try {
+    const res = await notificationsApi.list();
+    set({ notifications: (res.data ?? []).map(mapNotification) });
+  } catch {
+    // keep empty list on failure
+  }
+}
+
 function ensureLoaded() {
   if (!loaded) {
     loaded = true;
-    loadData();
+    loadAnnouncements();
+    loadNotifications();
+  }
+
+  // Poll for new notifications so the bell updates without a page reload.
+  if (!pollTimer) {
+    pollTimer = setInterval(() => {
+      loadNotifications();
+    }, 30_000);
   }
 }
 
@@ -145,18 +160,25 @@ export function usePortalState() {
     notifications: snapshot.notifications,
     loading: snapshot.loading,
     unreadCount: snapshot.notifications.filter((n) => !n.read).length,
-    markAllRead: () => {
+    markAllRead: async () => {
       const next = state.notifications.map((n) => ({ ...n, read: true }));
       set({ notifications: next });
-      persistReadFlags(next);
-      notificationsApi.markAllRead().catch(() => {});
+      try {
+        await notificationsApi.markAllRead();
+      } catch {
+        // optimistic update already applied
+      }
     },
-    markRead: (id: string) => {
+    markRead: async (id: string) => {
       const next = state.notifications.map((n) => (n.id === id ? { ...n, read: true } : n));
       set({ notifications: next });
-      persistReadFlags(next);
-      notificationsApi.markRead(id).catch(() => {});
+      try {
+        await notificationsApi.markRead(id);
+      } catch {
+        // optimistic update already applied
+      }
     },
+    refreshNotifications: loadNotifications,
     addAnnouncement: async (input: {
       title: string;
       body: string;
@@ -188,6 +210,7 @@ export function usePortalState() {
             time: "Just now",
             read: false,
             tone: "info",
+            targetType: null,
           },
           ...state.notifications,
         ],

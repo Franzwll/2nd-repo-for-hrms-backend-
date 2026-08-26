@@ -5,7 +5,9 @@ import {
   Building2,
   CheckCircle2,
   DollarSign,
+  Download,
   Eye,
+  FileText,
   GitBranch,
   History,
   Info,
@@ -78,6 +80,7 @@ import {
   type SalaryGrade,
 } from "@/data/hr";
 import { cn } from "@/lib/utils";
+import { exportToCsv, type CsvColumn } from "@/lib/csv-export";
 import { onHcmChanged, notifyHcmChanged } from "@/lib/hcm-sync";
 import { loadRecordDetail } from "@/lib/employeerecords";
 import { requisitionStore, useRequisitions, type Requisition } from "@/data/requisitions";
@@ -262,7 +265,7 @@ type HR3Recommendation = {
   evaluationScore: number;
   evaluator: string;
   dateSubmitted: string;
-  status: "Pending HR Action" | "Approved & Processed" | "Deferred";
+  status: "Pending HR Action" | "Approved & Processed" | "Deferred" | "Acknowledged";
   suggestedPosition?: string;
   suggestedSalaryGrade?: string;
   comments: string;
@@ -451,10 +454,10 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
   );
   const departmentStaff = selectedDepartment
     ? employees.filter(
-        (employee) =>
-          employee.department === selectedDepartment.name &&
-          employee.name !== selectedDepartment.head,
-      )
+      (employee) =>
+        employee.department === selectedDepartment.name &&
+        employee.name !== selectedDepartment.head,
+    )
     : [];
   const headEmployee = selectedDepartment
     ? employees.find((employee) => employee.name === selectedDepartment.head)
@@ -786,8 +789,7 @@ function EmployeeListManager({
     (r) =>
       (recStatusFilter === "all" ||
         (recStatusFilter === "Acknowledged" &&
-          acknowledgedIds.has(r.employeeId) &&
-          r.status === "Pending HR Action") ||
+          (r.status === "Acknowledged" || (acknowledgedIds.has(r.employeeId) && r.status === "Pending HR Action"))) ||
         recStatusFilter === r.status) &&
       (recTypeFilter === "all" || r.recommendationType === recTypeFilter) &&
       (() => {
@@ -1070,14 +1072,14 @@ function EmployeeListManager({
         tin_number: editEmpForm.tinNumber || null,
         emergency_contacts: editEmpForm.emergencyName
           ? [
-              {
-                name: editEmpForm.emergencyName,
-                relationship: editEmpForm.emergencyRelation || null,
-                phone: editEmpForm.emergencyPhone || null,
-                address: null,
-                is_primary: 1,
-              },
-            ]
+            {
+              name: editEmpForm.emergencyName,
+              relationship: editEmpForm.emergencyRelation || null,
+              phone: editEmpForm.emergencyPhone || null,
+              address: null,
+              is_primary: 1,
+            },
+          ]
           : [],
       });
       toast.success(`${editEmpForm.firstName} ${editEmpForm.lastName}'s profile updated.`);
@@ -1305,6 +1307,29 @@ function EmployeeListManager({
                 <SelectItem value="Promotion">Promotion</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 text-xs"
+              onClick={() => {
+                const timestamp = new Date().toISOString().slice(0, 10);
+                const columns: CsvColumn<HR3Recommendation>[] = [
+                  { header: "Evaluation ID", accessor: (r) => r.id },
+                  { header: "Employee", accessor: (r) => r.employeeName },
+                  { header: "Department", accessor: (r) => r.department },
+                  { header: "Type", accessor: (r) => r.recommendationType },
+                  { header: "Score (%)", accessor: (r) => r.evaluationScore },
+                  { header: "Evaluator", accessor: (r) => r.evaluator },
+                  { header: "Date Submitted", accessor: (r) => r.dateSubmitted },
+                  { header: "Status", accessor: (r) => r.status },
+                  { header: "Comments", accessor: (r) => r.comments },
+                ];
+                exportToCsv(`hr3-recommendations-${timestamp}`, columns, filteredRecs);
+                toast.success(`HR3 recommendations report (${filteredRecs.length} records) downloaded.`);
+              }}
+            >
+              <Download className="h-3.5 w-3.5" /> Generate Report
+            </Button>
           </div>
           <div className="min-w-0">
             <Table>
@@ -1450,6 +1475,31 @@ function EmployeeListManager({
                   <SelectItem value="Terminated">Terminated</SelectItem>
                 </SelectContent>
               </Select>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 gap-1.5 text-xs"
+                onClick={() => {
+                  const timestamp = new Date().toISOString().slice(0, 10);
+                  const columns: CsvColumn<Employee>[] = [
+                    { header: "Employee ID", accessor: (r) => r.id },
+                    { header: "Name", accessor: (r) => r.name },
+                    { header: "Department", accessor: (r) => r.department },
+                    { header: "Position", accessor: (r) => r.position },
+                    { header: "Salary Grade", accessor: (r) => r.salaryGrade },
+                    { header: "Employment Type", accessor: (r) => r.employmentType },
+                    { header: "Date Hired", accessor: (r) => r.dateHired },
+                    { header: "Status", accessor: (r) => r.status },
+                    { header: "Email", accessor: (r) => r.email },
+                    { header: "Phone", accessor: (r) => r.phone },
+                    { header: "Supervisor", accessor: (r) => r.supervisor },
+                  ];
+                  exportToCsv(`employee-roster-${timestamp}`, columns, filteredEmployees);
+                  toast.success(`Employee roster report (${filteredEmployees.length} records) downloaded.`);
+                }}
+              >
+                <Download className="h-4 w-4" /> Generate Report
+              </Button>
             </div>
           </div>
 
@@ -1502,8 +1552,8 @@ function EmployeeListManager({
                           e.status === "Active"
                             ? "border-success/40 bg-success/10 text-success text-[11px]"
                             : e.status === "Resigned" ||
-                                e.status === "Retired" ||
-                                e.status === "Terminated"
+                              e.status === "Retired" ||
+                              e.status === "Terminated"
                               ? "border-destructive/40 bg-destructive/10 text-destructive text-[11px]"
                               : "border-border text-muted-foreground text-[11px]"
                         }
@@ -2622,6 +2672,30 @@ function LifecycleLogsViewer() {
                 <SelectItem value="Retirement">Retirement</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-9 gap-1.5 text-xs"
+              onClick={() => {
+                const timestamp = new Date().toISOString().slice(0, 10);
+                const columns: CsvColumn<LifecycleLog>[] = [
+                  { header: "Log ID", accessor: (r) => r.id },
+                  { header: "Timestamp", accessor: (r) => r.timestamp },
+                  { header: "Action Category", accessor: (r) => r.category },
+                  { header: "Employee Name", accessor: (r) => r.employeeName },
+                  { header: "Employee ID", accessor: (r) => r.employeeId },
+                  { header: "Position", accessor: (r) => r.position },
+                  { header: "Department", accessor: (r) => r.department },
+                  { header: "Actor", accessor: (r) => r.actor },
+                  { header: "Actor Role", accessor: (r) => r.actorRole },
+                  { header: "Details", accessor: (r) => r.details },
+                ];
+                exportToCsv(`lifecycle-logs-${timestamp}`, columns, filteredLogs);
+                toast.success(`Lifecycle logs report (${filteredLogs.length} records) downloaded.`);
+              }}
+            >
+              <Download className="h-4 w-4" /> Generate Report
+            </Button>
           </div>
         </div>
 
@@ -3107,6 +3181,25 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                   onChange={(e) => setDeptTableSearch(e.target.value)}
                 />
               </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 gap-1.5 text-xs"
+                onClick={() => {
+                  const timestamp = new Date().toISOString().slice(0, 10);
+                  const columns: CsvColumn<Department>[] = [
+                    { header: "Dept Code", accessor: (r) => r.code },
+                    { header: "Department Name", accessor: (r) => r.name },
+                    { header: "Department Head", accessor: (r) => r.head },
+                    { header: "Positions Count", accessor: (r) => posList.filter((p) => p.department === r.name).length },
+                    { header: "Staff Count", accessor: (r) => getDerivedStaffCount(r.name) },
+                  ];
+                  exportToCsv(`departments-${timestamp}`, columns, filteredDepts);
+                  toast.success(`Departments report (${filteredDepts.length} records) downloaded.`);
+                }}
+              >
+                <Download className="h-4 w-4" /> Generate Report
+              </Button>
               {role === "superadmin" && (
                 <Button
                   size="sm"
@@ -3261,6 +3354,28 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                   ))}
                 </SelectContent>
               </Select>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 gap-1.5 text-xs"
+                onClick={() => {
+                  const timestamp = new Date().toISOString().slice(0, 10);
+                  const columns: CsvColumn<Position>[] = [
+                    { header: "POS ID", accessor: (r) => r.id },
+                    { header: "Job Position Title", accessor: (r) => r.title },
+                    { header: "Department", accessor: (r) => r.department },
+                    { header: "Level", accessor: (r) => r.level },
+                    { header: "Target Headcount", accessor: (r) => r.headcount },
+                    { header: "Filled Staff", accessor: (r) => r.filled },
+                    { header: "Vacancies", accessor: (r) => r.vacancies ?? 0 },
+                    { header: "Salary Grade / Band", accessor: (r) => r.salaryBand },
+                  ];
+                  exportToCsv(`positions-${timestamp}`, columns, filteredPositions);
+                  toast.success(`Positions report (${filteredPositions.length} records) downloaded.`);
+                }}
+              >
+                <Download className="h-4 w-4" /> Generate Report
+              </Button>
               {role === "superadmin" && (
                 <Button
                   size="sm"
@@ -3864,11 +3979,88 @@ function SalaryGradeManager() {
   const grades = useMemo<SalaryGrade[]>(() => hcm.salaryGrades.map(toUiSalaryGrade), [hcm]);
   const [sgSearch, setSgSearch] = useState("");
   const [sgLevelFilter, setSgLevelFilter] = useState("all");
-  const [pendingDelete, setPendingDelete] = useState<{
-    type: "sg";
-    id: number;
-    name: string;
-  } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ type: "sg"; id: number; name: string } | null>(null);
+
+  const [sgDialogOpen, setSgDialogOpen] = useState(false);
+  const [editingSg, setEditingSg] = useState<SalaryGrade | null>(null);
+  const [sgCode, setSgCode] = useState("");
+  const [sgTitle, setSgTitle] = useState("");
+  const [sgMin, setSgMin] = useState("");
+  const [sgMax, setSgMax] = useState("");
+  const [sgLevel, setSgLevel] = useState("Rank & File");
+  const [sgCurrency, setSgCurrency] = useState("PHP");
+  const [sgNotes, setSgNotes] = useState("");
+  const [sgSaving, setSgSaving] = useState(false);
+
+  const openAddSg = () => {
+    setEditingSg(null);
+    setSgCode("");
+    setSgTitle("");
+    setSgMin("");
+    setSgMax("");
+    setSgLevel("Rank & File");
+    setSgCurrency("PHP");
+    setSgNotes("");
+    setSgDialogOpen(true);
+  };
+
+  const openEditSg = (g: SalaryGrade) => {
+    setEditingSg(g);
+    setSgCode(g.code);
+    setSgTitle(g.title);
+    setSgMin(String(g.minSalary));
+    setSgMax(String(g.maxSalary));
+    setSgLevel(g.level);
+    setSgCurrency(g.currency || "PHP");
+    setSgNotes(g.notes || "");
+    setSgDialogOpen(true);
+  };
+
+  const saveSg = async () => {
+    if (!sgCode.trim() || !sgTitle.trim()) {
+      toast.error("Grade code and title are required.");
+      return;
+    }
+    const min = Number(sgMin);
+    const max = Number(sgMax);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max <= min) {
+      toast.error("Enter valid min and max salary (max must be greater than min).");
+      return;
+    }
+    const payload = {
+      code: sgCode.trim(),
+      title: sgTitle.trim(),
+      min_salary: min,
+      max_salary: max,
+      currency_code: sgCurrency.trim() || "PHP",
+      level: sgLevel,
+      notes: sgNotes.trim() || null,
+    };
+    setSgSaving(true);
+    try {
+      if (editingSg) {
+        const dbId = hcm.salaryGrades.find((g) => g.code === editingSg.code)?.salary_grade_id;
+        if (!dbId) {
+          toast.error("Could not resolve the salary grade in Core HCM.");
+          return;
+        }
+        await hcmApi.salaryGrades.update(dbId, payload);
+        toast.success(`Salary grade ${payload.code} updated.`);
+      } else {
+        await hcmApi.salaryGrades.create(payload);
+        toast.success(`Salary grade ${payload.code} created.`);
+      }
+      await refreshHcm();
+      setSgDialogOpen(false);
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      const msg = (err as { errors?: Record<string, string[]> }).errors;
+      toast.error(msg ? Object.values(msg).flat()[0] : status === 422 ? "Validation failed." : "Could not save salary grade.");
+      return;
+    } finally {
+      setSgSaving(false);
+    }
+  };
 
   const executeDelete = async () => {
     if (!pendingDelete) return;
@@ -3931,6 +4123,30 @@ function SalaryGradeManager() {
                 <SelectItem value="Executive">Executive</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-9 gap-1.5 text-xs"
+              onClick={() => {
+                const timestamp = new Date().toISOString().slice(0, 10);
+                const columns: CsvColumn<SalaryGrade>[] = [
+                  { header: "Grade Code", accessor: (r) => r.code },
+                  { header: "Band Title", accessor: (r) => r.title },
+                  { header: "Job Level", accessor: (r) => r.level },
+                  { header: "Min Salary", accessor: (r) => r.minSalary },
+                  { header: "Max Salary", accessor: (r) => r.maxSalary },
+                  { header: "Currency", accessor: (r) => r.currency },
+                  { header: "Notes", accessor: (r) => r.notes },
+                ];
+                exportToCsv(`salary-grades-${timestamp}`, columns, filteredGrades);
+                toast.success(`Salary grades report (${filteredGrades.length} records) downloaded.`);
+              }}
+            >
+              <Download className="h-4 w-4" /> Generate Report
+            </Button>
+            <Button size="sm" className="h-9 gap-1.5 text-xs" onClick={openAddSg}>
+              <Plus className="h-4 w-4" /> Add Grade
+            </Button>
           </div>
         </div>
       </CardHeader>
@@ -3972,19 +4188,27 @@ function SalaryGradeManager() {
                 </TableCell>
                 <TableCell className="text-right pr-6 font-mono text-xs">{sg.currency}</TableCell>
                 <TableCell className="text-center pr-4">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
-                    onClick={() => {
-                      const dbId = hcm.salaryGrades.find(
-                        (g) => g.code === sg.code,
-                      )?.salary_grade_id;
-                      if (dbId) setPendingDelete({ type: "sg", id: dbId, name: sg.code });
-                    }}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
+                  <div className="flex items-center justify-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2 text-xs"
+                      onClick={() => openEditSg(sg)}
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        const dbId = hcm.salaryGrades.find((g) => g.code === sg.code)?.salary_grade_id;
+                        if (dbId) setPendingDelete({ type: "sg", id: dbId, name: sg.code });
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -4002,6 +4226,68 @@ function SalaryGradeManager() {
           />
         </div>
       </CardContent>
+
+      {/* ADD / EDIT SALARY GRADE DIALOG */}
+      <Dialog open={sgDialogOpen} onOpenChange={setSgDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingSg ? `Edit Salary Grade — ${editingSg.code}` : "Add Salary Grade"}</DialogTitle>
+            <DialogDescription>
+              Define the compensation band (minimum and maximum salary) for this grade.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2 text-xs">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Grade Code</Label>
+                <Input value={sgCode} onChange={(e) => setSgCode(e.target.value)} className="text-xs font-mono" placeholder="e.g. SG-09" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Job Level</Label>
+                <Select value={sgLevel} onValueChange={setSgLevel}>
+                  <SelectTrigger className="text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Rank & File">Rank & File</SelectItem>
+                    <SelectItem value="Supervisory">Supervisory</SelectItem>
+                    <SelectItem value="Managerial">Managerial</SelectItem>
+                    <SelectItem value="Executive">Executive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Band Title</Label>
+              <Input value={sgTitle} onChange={(e) => setSgTitle(e.target.value)} className="text-xs" placeholder="e.g. Senior Staff" />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Min Salary</Label>
+                <Input type="number" value={sgMin} onChange={(e) => setSgMin(e.target.value)} className="text-xs font-mono" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Max Salary</Label>
+                <Input type="number" value={sgMax} onChange={(e) => setSgMax(e.target.value)} className="text-xs font-mono" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Currency</Label>
+                <Input value={sgCurrency} onChange={(e) => setSgCurrency(e.target.value)} className="text-xs font-mono" maxLength={3} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Notes</Label>
+              <Input value={sgNotes} onChange={(e) => setSgNotes(e.target.value)} className="text-xs" placeholder="Optional notes" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSgDialogOpen(false)} disabled={sgSaving}>Cancel</Button>
+            <Button onClick={saveSg} disabled={sgSaving}>
+              {sgSaving ? "Saving…" : editingSg ? "Save Changes" : "Add Salary Grade"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* DELETE CONFIRMATION DIALOG */}
       <AlertDialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
@@ -4117,6 +4403,28 @@ function RequisitionManager() {
                 <SelectItem value="Low">Low</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-9 gap-1.5 text-xs"
+              onClick={() => {
+                const timestamp = new Date().toISOString().slice(0, 10);
+                const columns: CsvColumn<Requisition>[] = [
+                  { header: "Req Code", accessor: (r) => r.id },
+                  { header: "Position Title", accessor: (r) => r.position },
+                  { header: "Department", accessor: (r) => r.department },
+                  { header: "Slots Requested", accessor: (r) => r.count },
+                  { header: "Urgency", accessor: (r) => r.urgency },
+                  { header: "Status", accessor: (r) => r.status },
+                  { header: "Date Requested", accessor: (r) => r.requestedAt },
+                  { header: "Justification", accessor: (r) => r.justification },
+                ];
+                exportToCsv(`requisitions-${timestamp}`, columns, filteredReqs);
+                toast.success(`Requisitions report (${filteredReqs.length} records) downloaded.`);
+              }}
+            >
+              <Download className="h-4 w-4" /> Generate Report
+            </Button>
           </div>
         </div>
       </CardHeader>

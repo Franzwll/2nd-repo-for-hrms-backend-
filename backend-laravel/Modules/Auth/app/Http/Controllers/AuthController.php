@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\SystemUser;
 use App\Models\UserLoginActivity;
 use App\Services\AuditLogger;
+use App\Services\Notifier;
 use App\Services\OtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -119,7 +120,40 @@ class AuthController extends Controller
             return response()->json(['message' => 'Your account is not active.'], 403);
         }
 
+<<<<<<< HEAD
         $session = $this->completeLogin($request, $user);
+=======
+        $token = $user->createToken('auth-token')->plainTextToken;
+
+        $previousIp = $user->last_login_ip;
+        $previousLogin = $user->last_login_at;
+
+        $user->forceFill([
+            'last_login_at' => now(),
+            'last_login_ip' => $request->ip(),
+        ])->save();
+
+        // Security alert: notify the user when signing in from a new IP address.
+        if ($previousLogin && $previousIp && $previousIp !== $request->ip()) {
+            Notifier::to([$user->system_user_id], [
+                'title' => 'New sign-in to your account',
+                'body' => 'We noticed a login to your account from a new IP address (' . $request->ip() . '). If this wasn’t you, reset your password.',
+                'type' => 'warning',
+                'module_name' => 'Authentication',
+                'target_type' => 'user',
+                'target_id' => (string) $user->system_user_id,
+            ]);
+        }
+
+        UserLoginActivity::create([
+            'system_user_id' => $user->system_user_id,
+            'login_at' => now(),
+            'ip_address' => $request->ip(),
+            'device_info' => $this->deviceInfo($request),
+            'user_agent' => $request->userAgent(),
+            'status' => 'success',
+        ]);
+>>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
 
         AuditLogger::log(
             'User logged in',

@@ -139,15 +139,15 @@ function transformApiApplicant(a: ApiApplicant): Applicant {
   return {
     id: a.applicant_code || `APP-${a.applicant_id}`,
     dbId: a.applicant_id,
-    name: a.name,
-    email: a.email,
+    name: a.name || `Applicant #${a.applicant_id}`,
+    email: a.email || "",
     phone: a.phone || "0912 345 6789",
     position: a.job_post?.title || "Front Desk Receptionist",
-    jobId: String(a.job_post_id),
+    jobId: String(a.job_post_id ?? ""),
     appliedAt: a.applied_at ? a.applied_at.slice(0, 16).replace("T", " ") : "2026-07-25 12:00",
     score: a.fit_score || 0,
-    status: a.status,
-    stage: a.stage,
+    status: normalizeApplicantStatus(a.status),
+    stage: (a.stage as any) || "Screened",
     source: (a.source || "Online Portal") as any,
     entities: a.screening_entities?.map((e) => ({ label: e.label, value: e.value })) || [],
     breakdown: a.screening_scores?.map((s) => ({ criterion: s.criterion, score: s.score })) || [],
@@ -1049,8 +1049,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       .catch(() => {
         console.warn("Could not fetch schedulable days, using default.");
       });
-    settingsApi
-      .listSystemUsers()
+    userManagementApi.users
+      .list()
       .then((res) => setAssessors(res.data))
       .catch(() => {
         console.warn("Could not fetch system users for assessor selector.");
@@ -1793,8 +1793,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       } catch (e) {
         console.warn("Could not persist applicant to database API:", e);
         toast.error(
-          `${schedule.applicant} could not be saved to the database, so the interview cannot be scheduled. ${
-            e instanceof Error ? e.message : ""
+          `${schedule.applicant} could not be saved to the database, so the interview cannot be scheduled. ${e instanceof Error ? e.message : ""
           }`,
         );
         return;
@@ -1840,12 +1839,97 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       } else {
         console.warn("Could not persist interview to database API or dispatch email:", e);
         toast.error(
-          `The interview could not be saved to the database. ${
-            e instanceof Error ? e.message : ""
+          `The interview could not be saved to the database. ${e instanceof Error ? e.message : ""
           }`,
         );
       }
     }
+  };
+
+  /** Generates and downloads a CSV report based on the selected report type. */
+  const generateReport = (reportId: string) => {
+    const timestamp = new Date().toISOString().slice(0, 10);
+
+    if (reportId === "all") {
+      const columns: CsvColumn<Applicant>[] = [
+        { header: "Applicant ID", accessor: (r) => r.id },
+        { header: "Name", accessor: (r) => r.name },
+        { header: "Email", accessor: (r) => r.email },
+        { header: "Phone", accessor: (r) => r.phone },
+        { header: "Position", accessor: (r) => r.position },
+        { header: "Applied At", accessor: (r) => r.appliedAt },
+        { header: "Score (%)", accessor: (r) => r.score },
+        { header: "Status", accessor: (r) => statusMeta[r.status].label },
+        { header: "Stage", accessor: (r) => r.stage },
+        { header: "Source", accessor: (r) => r.source },
+      ];
+      exportToCsv(`applicants-all-${timestamp}`, columns, rows);
+    } else if (reportId === "status") {
+      type StatusRow = { status: string; count: number; avgScore: number };
+      const statusRows: StatusRow[] = (Object.keys(statusMeta) as ApplicantStatus[]).map((k) => {
+        const group = rows.filter((a) => a.status === k);
+        return {
+          status: statusMeta[k].label,
+          count: group.length,
+          avgScore: group.length ? Math.round(group.reduce((t, a) => t + a.score, 0) / group.length) : 0,
+        };
+      });
+      const columns: CsvColumn<StatusRow>[] = [
+        { header: "Status", accessor: (r) => r.status },
+        { header: "Count", accessor: (r) => r.count },
+        { header: "Average Score (%)", accessor: (r) => r.avgScore },
+      ];
+      exportToCsv(`applicants-by-status-${timestamp}`, columns, statusRows);
+    } else if (reportId === "position") {
+      type PosRow = { position: string; total: number; passed: number; passRate: string };
+      const posMap = new Map<string, Applicant[]>();
+      rows.forEach((a) => {
+        const list = posMap.get(a.position) ?? [];
+        list.push(a);
+        posMap.set(a.position, list);
+      });
+      const posRows: PosRow[] = Array.from(posMap.entries()).map(([pos, list]) => ({
+        position: pos,
+        total: list.length,
+        passed: list.filter((a) => a.score >= passing).length,
+        passRate: list.length ? `${Math.round((list.filter((a) => a.score >= passing).length / list.length) * 100)}%` : "0%",
+      }));
+      const columns: CsvColumn<PosRow>[] = [
+        { header: "Position", accessor: (r) => r.position },
+        { header: "Total Applicants", accessor: (r) => r.total },
+        { header: "Passed Screening", accessor: (r) => r.passed },
+        { header: "Pass Rate", accessor: (r) => r.passRate },
+      ];
+      exportToCsv(`applicants-by-position-${timestamp}`, columns, posRows);
+    } else if (reportId === "screening") {
+      const columns: CsvColumn<Applicant>[] = [
+        { header: "Applicant ID", accessor: (r) => r.id },
+        { header: "Name", accessor: (r) => r.name },
+        { header: "Position", accessor: (r) => r.position },
+        { header: "Score (%)", accessor: (r) => r.score },
+        { header: "Status", accessor: (r) => statusMeta[r.status].label },
+        { header: "Extracted Entities", accessor: (r) => r.entities.map((e) => `${e.label}: ${e.value}`).join("; ") },
+        { header: "Flags", accessor: (r) => r.flags.join("; ") || "None" },
+        { header: "Summary", accessor: (r) => r.summary },
+      ];
+      exportToCsv(`screening-results-${timestamp}`, columns, rows);
+    } else if (reportId === "interview") {
+      const columns: CsvColumn<Interview>[] = [
+        { header: "Interview ID", accessor: (r) => r.id },
+        { header: "Applicant", accessor: (r) => r.applicant },
+        { header: "Position", accessor: (r) => r.position },
+        { header: "Date", accessor: (r) => r.date },
+        { header: "Time", accessor: (r) => r.time },
+        { header: "Mode", accessor: (r) => r.mode },
+        { header: "Interviewer", accessor: (r) => r.interviewer },
+        { header: "Status", accessor: (r) => r.status },
+      ];
+      exportToCsv(`interview-summary-${timestamp}`, columns, interviews);
+    }
+
+    toast.success("Report downloaded", {
+      description: "CSV file has been saved to your downloads folder.",
+    });
   };
 
   /** Downloads a printable interview evaluation form for an applicant. */
@@ -1863,13 +1947,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       "CRITERIA (score / 5)",
       ...assessmentCriteria.map((c) => `- ${c}: ${scores[c] ?? "____"} / 5`),
       "",
-      `Total score : ${
-        saved?.total ??
-        Math.round(
-          (assessmentCriteria.reduce((t, c) => t + (scores[c] ?? 4), 0) /
-            (assessmentCriteria.length * 5)) *
-            100,
-        )
+      `Total score : ${saved?.total ??
+      Math.round(
+        (assessmentCriteria.reduce((t, c) => t + (scores[c] ?? 4), 0) /
+          (assessmentCriteria.length * 5)) *
+        100,
+      )
       }%`,
       `Outcome     : ${saved?.outcome ?? "Pending"}`,
       "",
@@ -1965,7 +2048,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const total = Math.round(
       (assessmentCriteria.reduce((t, c) => t + (evalScores[c] ?? 4), 0) /
         (assessmentCriteria.length * 5)) *
-        100,
+      100,
     );
     const outcome = total >= 80 ? "Recommended" : total >= 65 ? "Hold" : "Not Recommended";
     setAssessments((prev) => [
@@ -2026,11 +2109,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       prev.map((x) =>
         x.id === applicant.id
           ? {
-              ...x,
-              position: targetTitle,
-              status: "fit",
-              stage: "Screened",
-            }
+            ...x,
+            position: targetTitle,
+            status: "fit",
+            stage: "Screened",
+          }
           : x,
       ),
     );
@@ -2369,15 +2452,15 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
   type AssessmentRow =
     | {
-        kind: "ready";
-        a: Applicant;
-        iv?: (typeof interviews)[number] | undefined;
-      }
+      kind: "ready";
+      a: Applicant;
+      iv?: (typeof interviews)[number] | undefined;
+    }
     | {
-        kind: "completed";
-        r: AssessmentResult;
-        iv?: (typeof interviews)[number] | undefined;
-      };
+      kind: "completed";
+      r: AssessmentResult;
+      iv?: (typeof interviews)[number] | undefined;
+    };
 
   const deptForPosition = (position: string) =>
     positions.find((p) => p.title === position)?.department ?? "�";
@@ -2385,27 +2468,27 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const assessmentRowsAll: AssessmentRow[] = [
     ...(assessmentFilter !== "completed"
       ? readyToAssess
-          .filter((a) => !isHiddenStage(a))
-          .map((a) => ({
-            kind: "ready" as const,
-            a,
-            iv: interviews.find((i) => i.applicant === a.name),
-          }))
+        .filter((a) => !isHiddenStage(a))
+        .map((a) => ({
+          kind: "ready" as const,
+          a,
+          iv: interviews.find((i) => i.applicant === a.name),
+        }))
       : []),
     ...(assessmentFilter !== "ready"
       ? assessments
-          .filter((r) => {
-            const src = rows.find((a) => a.id === r.applicantId);
-            if (!src) return true;
-            // Applicants who already reached Offer / Accepted / Hired /
-            // Rejected no longer belong in the assessment list.
-            return !isHiddenStage(src) && !noLongerAssessable(src);
-          })
-          .map((r) => ({
-            kind: "completed" as const,
-            r,
-            iv: interviews.find((i) => i.applicant === r.name),
-          }))
+        .filter((r) => {
+          const src = rows.find((a) => a.id === r.applicantId);
+          if (!src) return true;
+          // Applicants who already reached Offer / Accepted / Hired /
+          // Rejected no longer belong in the assessment list.
+          return !isHiddenStage(src) && !noLongerAssessable(src);
+        })
+        .map((r) => ({
+          kind: "completed" as const,
+          r,
+          iv: interviews.find((i) => i.applicant === r.name),
+        }))
       : []),
   ];
 
@@ -2443,8 +2526,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     .filter((e) =>
       auditSearch
         ? `${e.actorName} ${e.target} ${e.actionType} ${e.module} ${e.details}`
-            .toLowerCase()
-            .includes(auditSearch.toLowerCase())
+          .toLowerCase()
+          .includes(auditSearch.toLowerCase())
         : true,
     );
 
@@ -2485,11 +2568,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     // though they already have a booked interview.
     ...(rescheduling
       ? rows.filter(
-          (a) =>
-            a.name === rescheduling.applicant &&
-            (scheduleDept === "all" ||
-              positions.find((p) => p.title === a.position)?.department === scheduleDept),
-        )
+        (a) =>
+          a.name === rescheduling.applicant &&
+          (scheduleDept === "all" ||
+            positions.find((p) => p.title === a.position)?.department === scheduleDept),
+      )
       : []),
   ];
   const scheduleInterviewers = interviewers.filter(
@@ -3186,20 +3269,20 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           isToday && !selected && "bg-gold/30 ring-1 ring-inset ring-gold",
                           !selected && !free && !full && "hover:bg-muted/50",
                           count === 0 &&
-                            !schedulable &&
-                            (cell.inMonth
-                              ? "text-muted-foreground/40"
-                              : "opacity-40 text-muted-foreground/40"),
+                          !schedulable &&
+                          (cell.inMonth
+                            ? "text-muted-foreground/40"
+                            : "opacity-40 text-muted-foreground/40"),
                           count > 0 &&
-                            !selected &&
-                            !full &&
-                            "bg-primary/5 font-semibold text-primary",
+                          !selected &&
+                          !full &&
+                          "bg-primary/5 font-semibold text-primary",
                           selected && free && "bg-green-700 font-semibold text-white",
                           selected && full && "bg-red-700 font-semibold text-white",
                           selected &&
-                            !free &&
-                            !full &&
-                            "bg-primary font-semibold text-primary-foreground",
+                          !free &&
+                          !full &&
+                          "bg-primary font-semibold text-primary-foreground",
                         )}
                       >
                         {cell.date.getDate()}
@@ -3308,8 +3391,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         .filter((i) =>
                           calSearch
                             ? `${i.applicant} ${i.position} ${i.interviewer}`
-                                .toLowerCase()
-                                .includes(calSearch.toLowerCase())
+                              .toLowerCase()
+                              .includes(calSearch.toLowerCase())
                             : true,
                         )
                         .map((i) => (
@@ -3765,10 +3848,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                   ? "Walk-ins allowed"
                                   : "Walk-ins not allowed",
                                 `Default type: ${slotSettings.defaultMode}`,
-                                `Schedulable days: ${
-                                  schedulableDays.length
-                                    ? schedulableDays.map((d) => d.slice(0, 3)).join(", ")
-                                    : "None"
+                                `Schedulable days: ${schedulableDays.length
+                                  ? schedulableDays.map((d) => d.slice(0, 3)).join(", ")
+                                  : "None"
                                 }`,
                               ].map((line) => (
                                 <span key={line} className="flex items-center gap-1.5">
@@ -3985,12 +4067,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </span>
                         {schedule.date && schedule.time
                           ? ` � ${new Date(`${schedule.date}T00:00:00`).toLocaleDateString(
-                              "en-US",
-                              {
-                                month: "short",
-                                day: "numeric",
-                              },
-                            )} at ${schedule.time}`
+                            "en-US",
+                            {
+                              month: "short",
+                              day: "numeric",
+                            },
+                          )} at ${schedule.time}`
                           : " � pick a date and time"}
                         {schedule.interviewer ? ` � ${schedule.interviewer}` : ""}
                       </p>
@@ -4515,18 +4597,18 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     auditActionFilter !== "all" ||
                     auditDeptFilter !== "all" ||
                     auditActorFilter !== "all") && (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setAuditSearch("");
-                        setAuditActionFilter("all");
-                        setAuditDeptFilter("all");
-                        setAuditActorFilter("all");
-                      }}
-                    >
-                      Reset
-                    </Button>
-                  )}
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setAuditSearch("");
+                          setAuditActionFilter("all");
+                          setAuditDeptFilter("all");
+                          setAuditActorFilter("all");
+                        }}
+                      >
+                        Reset
+                      </Button>
+                    )}
                 </div>
               </div>
 
@@ -4703,44 +4785,44 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     const cols =
                       r.id === "interview"
                         ? [
-                            { header: "Applicant", key: "applicant" },
-                            { header: "Position", key: "position" },
-                            { header: "Date", key: "date" },
-                            { header: "Time", key: "time" },
-                            { header: "Mode", key: "mode" },
-                            { header: "Interviewer", key: "interviewer" },
-                            { header: "Status", key: "status" },
-                          ]
+                          { header: "Applicant", key: "applicant" },
+                          { header: "Position", key: "position" },
+                          { header: "Date", key: "date" },
+                          { header: "Time", key: "time" },
+                          { header: "Mode", key: "mode" },
+                          { header: "Interviewer", key: "interviewer" },
+                          { header: "Status", key: "status" },
+                        ]
                         : r.id === "screening"
                           ? [
-                              { header: "ID", key: "id" },
-                              { header: "Name", key: "name" },
-                              { header: "Position", key: "position" },
-                              { header: "Email", key: "email" },
-                              { header: "Score", key: "score" },
-                              { header: "Status", key: "status" },
-                              { header: "Stage", key: "stage" },
-                            ]
+                            { header: "ID", key: "id" },
+                            { header: "Name", key: "name" },
+                            { header: "Position", key: "position" },
+                            { header: "Email", key: "email" },
+                            { header: "Score", key: "score" },
+                            { header: "Status", key: "status" },
+                            { header: "Stage", key: "stage" },
+                          ]
                           : [
-                              { header: "ID", key: "id" },
-                              { header: "Name", key: "name" },
-                              { header: "Email", key: "email" },
-                              { header: "Position", key: "position" },
-                              { header: "Score", key: "score" },
-                              { header: "Status", key: "status" },
-                              { header: "Stage", key: "stage" },
-                              { header: "Applied", key: "appliedAt" },
-                            ];
+                            { header: "ID", key: "id" },
+                            { header: "Name", key: "name" },
+                            { header: "Email", key: "email" },
+                            { header: "Position", key: "position" },
+                            { header: "Score", key: "score" },
+                            { header: "Status", key: "status" },
+                            { header: "Stage", key: "stage" },
+                            { header: "Applied", key: "appliedAt" },
+                          ];
                     const data =
                       r.id === "interview"
                         ? interviews
                         : rows.filter((a) =>
-                            r.id === "passed"
-                              ? a.score >= passing
-                              : r.id === "position" || r.id === "status"
-                                ? true
-                                : true,
-                          );
+                          r.id === "passed"
+                            ? a.score >= passing
+                            : r.id === "position" || r.id === "status"
+                              ? true
+                              : true,
+                        );
                     exportReport(
                       {
                         title: `Applicant Management — ${r.title}`,
@@ -5102,7 +5184,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   <div className="relative flex-1 min-h-[520px] overflow-auto bg-muted/30 p-3">
                     {review.resumeUrl ? (
                       /\.(jpe?g|png)$/i.test(review.resumeUrl) ||
-                      /\.(jpe?g|png)$/i.test(review.resumeOriginalName || "") ? (
+                        /\.(jpe?g|png)$/i.test(review.resumeOriginalName || "") ? (
                         <div className="flex h-full w-full items-center justify-center">
                           <img
                             src={review.resumeUrl}
@@ -5166,7 +5248,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         /\.doc$/i.test(review.resumeOriginalName || "") ? (
                         <div className="flex h-full w-full flex-col overflow-hidden rounded-sm border border-border bg-white">
                           {window.location.hostname === "localhost" ||
-                          window.location.hostname === "127.0.0.1" ? (
+                            window.location.hostname === "127.0.0.1" ? (
                             <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-white p-6 text-center">
                               <div className="rounded-full bg-amber-50 p-3">
                                 <FileText className="h-8 w-8 text-amber-600" />
@@ -5602,7 +5684,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     {Math.round(
                       (assessmentCriteria.reduce((t, c) => t + (evalScores[c] ?? 4), 0) /
                         (assessmentCriteria.length * 5)) *
-                        100,
+                      100,
                     )}
                     %
                   </p>
@@ -5986,7 +6068,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   <div className="relative flex-1 min-h-[520px] overflow-auto bg-muted/30 p-3">
                     {resumePreviewUrl && addResumeFile ? (
                       /\.(jpe?g|png)$/i.test(addResumeFile.name) ||
-                      addResumeFile.type.startsWith("image/") ? (
+                        addResumeFile.type.startsWith("image/") ? (
                         <div className="flex h-full w-full items-center justify-center">
                           <img
                             src={resumePreviewUrl}
