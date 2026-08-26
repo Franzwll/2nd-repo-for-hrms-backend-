@@ -8,9 +8,18 @@ Route::middleware(['auth:sanctum', 'permission:ESS Management'])->prefix('v1/ess
     // Employee Self-Service (Portal) Endpoints
     Route::get('my-overview', [EssPortalController::class, 'getOverview']);
     Route::get('my-schedule', [EssPortalController::class, 'getSchedule']);
+    Route::get('my-attendance', [EssPortalController::class, 'getMyAttendance']);
     Route::get('my-leaves', [EssPortalController::class, 'getLeaves']);
     Route::get('my-benefits', [EssPortalController::class, 'getBenefits']);
+    Route::get('my-payroll', [EssPortalController::class, 'getPayroll']);
+    Route::get('my-documents', [EssPortalController::class, 'getMyDocuments']);
+    Route::post('my-documents/upload', [EssPortalController::class, 'uploadDocument']);
+    Route::get('my-performance', [EssPortalController::class, 'getMyPerformance']);
+    Route::get('categories', [EssPortalController::class, 'getCategories']);
     Route::get('my-requests', [EssPortalController::class, 'getMyRequests']);
+    Route::get('recognitions', [EssPortalController::class, 'getRecognitions']);
+    Route::post('recognitions', [EssPortalController::class, 'postKudos']);
+    Route::post('recognitions/{id}/react', [EssPortalController::class, 'reactKudos']);
     Route::post('requests', [EssPortalController::class, 'createRequest']);
     Route::post('clock', [EssPortalController::class, 'clock']);
 

@@ -3,32 +3,27 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Clock, MapPin, CheckCircle2, Coffee, LogOut, LogIn, AlertCircle } from "lucide-react";
-import { toast } from "sonner";
-import { myAttendance, mySchedule } from "@/data/ess";
-import { essApi } from "@/lib/api";
+import { Clock, MapPin } from "lucide-react";
+import { myAttendance } from "@/data/ess";
 
 interface QuickClockModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onClockAction?: (actionType: string, time: string) => void;
 }
 
-export function QuickClockModal({ open, onOpenChange, onClockAction }: QuickClockModalProps) {
+export function QuickClockModal({ open, onOpenChange }: QuickClockModalProps) {
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
-  const [currentStatus, setCurrentStatus] = useState<"clocked_in" | "on_break" | "clocked_out">("clocked_in");
-  const [punchLog, setPunchLog] = useState({
+  const [currentStatus] = useState<"clocked_in" | "on_break" | "clocked_out">("clocked_in");
+  const punchLog = {
     timeIn: myAttendance.today.timeIn || "07:52 AM",
     breakIn: myAttendance.today.breakIn || "12:00 PM",
     breakOut: myAttendance.today.breakOut || "12:58 PM",
     timeOut: myAttendance.today.timeOut !== "—" ? myAttendance.today.timeOut : "—",
-  });
+  };
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -48,46 +43,6 @@ export function QuickClockModal({ open, onOpenChange, onClockAction }: QuickCloc
     month: "long",
     day: "numeric",
   });
-
-  const handlePunch = async (type: "in" | "break_start" | "break_end" | "out") => {
-    const timeStr = currentTime.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-
-    if (type === "in") {
-      try {
-        await essApi.clock("clock_in");
-        setPunchLog((prev) => ({ ...prev, timeIn: timeStr }));
-        setCurrentStatus("clocked_in");
-        toast.success(`Clocked IN recorded at ${timeStr}`);
-        onClockAction?.("Clock In", timeStr);
-      } catch (err: any) {
-        toast.error(err.message || "Failed to record clock-in.");
-      }
-    } else if (type === "break_start") {
-      setPunchLog((prev) => ({ ...prev, breakIn: timeStr }));
-      setCurrentStatus("on_break");
-      toast.info(`Break STARTED at ${timeStr}`);
-      onClockAction?.("Break Out", timeStr);
-    } else if (type === "break_end") {
-      setPunchLog((prev) => ({ ...prev, breakOut: timeStr }));
-      setCurrentStatus("clocked_in");
-      toast.success(`Break ENDED at ${timeStr}`);
-      onClockAction?.("Break In", timeStr);
-    } else if (type === "out") {
-      try {
-        await essApi.clock("clock_out");
-        setPunchLog((prev) => ({ ...prev, timeOut: timeStr }));
-        setCurrentStatus("clocked_out");
-        toast.success(`Clocked OUT recorded at ${timeStr}`);
-        onClockAction?.("Clock Out", timeStr);
-      } catch (err: any) {
-        toast.error(err.message || "Failed to record clock-out.");
-      }
-    }
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -165,51 +120,11 @@ export function QuickClockModal({ open, onOpenChange, onClockAction }: QuickCloc
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="grid grid-cols-2 gap-2.5 pt-2">
-          <Button
-            variant="outline"
-            className="border-emerald-500/40 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 gap-1.5"
-            onClick={() => handlePunch("in")}
-          >
-            <LogIn className="h-4 w-4" /> Punch In
-          </Button>
-
-          {currentStatus === "clocked_in" ? (
-            <Button
-              variant="outline"
-              className="border-amber-500/40 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 gap-1.5"
-              onClick={() => handlePunch("break_start")}
-            >
-              <Coffee className="h-4 w-4" /> Start Break
-            </Button>
-          ) : (
-            <Button
-              variant="outline"
-              className="border-amber-500/40 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 gap-1.5"
-              onClick={() => handlePunch("break_end")}
-            >
-              <Coffee className="h-4 w-4" /> End Break
-            </Button>
-          )}
-
-          <Button
-            variant="outline"
-            className="col-span-2 border-rose-500/40 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 gap-1.5"
-            onClick={() => handlePunch("out")}
-          >
-            <LogOut className="h-4 w-4" /> Punch Out (End Shift)
-          </Button>
-        </div>
-
-        <DialogFooter className="sm:justify-between border-t border-border pt-3">
-          <p className="text-[11px] text-muted-foreground">
+        <div className="border-t border-border pt-3 text-center">
+          <p className="text-xs text-muted-foreground">
             Logs are automatically synced with biometric server.
           </p>
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

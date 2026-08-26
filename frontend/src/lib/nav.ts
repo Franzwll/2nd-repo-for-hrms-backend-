@@ -10,6 +10,7 @@ import {
   ScrollText,
   Settings,
   ClipboardCheck,
+  Bot,
   type LucideIcon,
 } from "lucide-react";
 
@@ -43,11 +44,12 @@ const recruitmentChildren = (base: string) => [
 ];
 
 const essChildren = (base: string) => [
-  { label: "All Requests", to: `${base}/ess` },
-  { label: "Attendance", to: `${base}/ess?category=Attendance` },
+  { label: "Overview", to: `${base}/ess` },
+  { label: "Attendance & Schedule", to: `${base}/ess?category=Attendance` },
   { label: "Payroll", to: `${base}/ess?category=Payroll` },
   { label: "Performance", to: `${base}/ess?category=Performance` },
   { label: "Company Documents", to: `${base}/ess?category=Documents` },
+  { label: "Social Recognition", to: `${base}/ess?category=Recognition` },
 ];
 
 const hcmChildren = (base: string) => [
@@ -67,6 +69,7 @@ export function navForRole(role: Role): NavItem[] {
     return [
       { label: "Dashboard", to: base, icon: LayoutDashboard },
       { label: "ESS", to: `${base}/ess`, icon: Headset, children: essChildren(base) },
+      { label: "HR AI Concierge", to: `${base}/ai`, icon: Bot },
       { label: "Onboarding", to: `${base}/onboarding`, icon: ClipboardCheck },
       { label: "Settings", to: `${base}/settings`, icon: Settings },
     ];

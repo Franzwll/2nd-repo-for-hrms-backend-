@@ -298,6 +298,61 @@ export const assessmentsApi = {
   },
 };
 
+export interface ApiScreeningReference {
+  ref_id: number;
+  data_type: "skill" | "job_role" | "certification";
+  canonical_value: string;
+  aliases_json: string[] | null;
+  active: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export type ScreeningReferencePayload = {
+  data_type: ApiScreeningReference["data_type"];
+  canonical_value: string;
+  aliases_json?: string[];
+  active?: boolean;
+};
+
+/** DB-managed spaCy screening vocabulary (skills / job roles / certifications + aliases). */
+export const screeningApi = {
+  referenceData: {
+    /** Grouped {skills, job_roles, certifications} mapping actually sent to the NLP service. */
+    mapping: () =>
+      request<{
+        success: boolean;
+        data: Record<"skills" | "job_roles" | "certifications", Record<string, string[]>>;
+        meta: { counts: Record<string, number> };
+      }>("/screening/reference-data"),
+    list: (params?: { data_type?: string; search?: string }) => {
+      const qs = new URLSearchParams(params).toString();
+      return request<{ success: boolean; data: ApiScreeningReference[]; meta: any }>(
+        `/screening/reference-data/list${qs ? `?${qs}` : ""}`,
+      );
+    },
+    create: (payload: ScreeningReferencePayload) =>
+      request<{ success: boolean; data: ApiScreeningReference; message: string }>(
+        "/screening/reference-data",
+        { method: "POST", body: JSON.stringify(payload) },
+      ),
+    update: (id: number, payload: ScreeningReferencePayload) =>
+      request<{ success: boolean; data: ApiScreeningReference; message: string }>(
+        `/screening/reference-data/${id}`,
+        { method: "PUT", body: JSON.stringify(payload) },
+      ),
+    remove: (id: number) =>
+      request<{ success: boolean; message: string }>(`/screening/reference-data/${id}`, {
+        method: "DELETE",
+      }),
+    toggleActive: (id: number) =>
+      request<{ success: boolean; data: ApiScreeningReference }>(
+        `/screening/reference-data/${id}/toggle`,
+        { method: "PATCH" },
+      ),
+  },
+};
+
 export const interviewsApi = {
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
@@ -717,43 +772,6 @@ export const settingsApi = {
     ),
 };
 
-export interface ApiNotification {
-  id: string;
-  title: string;
-  detail: string;
-  module?: string;
-  tone: "info" | "success" | "warning";
-  read: boolean;
-  time: string;
-  created_at?: string;
-}
-
-export const notificationsApi = {
-  list: () => request<{ data: ApiNotification[]; unread_count: number }>("/notifications"),
-  markRead: (id: string | number) =>
-    request<{ message: string }>(`/notifications/${id}/read`, { method: "PATCH" }),
-  markAllRead: () =>
-    request<{ message: string }>("/notifications/mark-all-read", { method: "POST" }),
-};
-
-/** Per-user portal settings — each user keeps their own designated values. */
-export const mySettingsApi = {
-  get: (user: string) =>
-    request<{ notifications: Record<string, boolean>; preferences: Record<string, string> }>(
-      `/my/settings?user=${encodeURIComponent(user)}`
-    ),
-  save: (scope: "notifications" | "preferences", user: string, value: any) =>
-    request<{ setting_key: string; setting_value: any }>(`/my/settings/${scope}`, {
-      method: 'PUT',
-      body: JSON.stringify({ user, value }),
-    }),
-  changePassword: (user: string, currentPassword: string, newPassword: string) =>
-    request<{ message: string }>('/my/change-password', {
-      method: 'POST',
-      body: JSON.stringify({ user, current_password: currentPassword, new_password: newPassword }),
-    }),
-};
-
 /* ========================================================================= */
 /* 5. AUTH                                                                   */
 /* ========================================================================= */
@@ -987,27 +1005,6 @@ export interface ApiOrgNode {
   filled: number;
   positions: ApiPosition[];
 }
-
-export const coreHcmApi = {
-  departments: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
-    return request<{ data: ApiDepartment[]; meta: any }>(`/departments${qs ? `?${qs}` : ""}`);
-  },
-  createDepartment: (data: Record<string, any>) =>
-    request<ApiDepartment>("/departments", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  positions: (params?: Record<string, any>) => {
-    const qs = new URLSearchParams(params).toString();
-    return request<{ data: ApiPosition[]; meta: any }>(`/positions${qs ? `?${qs}` : ""}`);
-  },
-  createPosition: (data: Record<string, any>) =>
-    request<ApiPosition>("/positions", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-};
 
 export const hcmApi = {
   employees: {
@@ -1388,11 +1385,418 @@ export const landingApi = {
     );
   },
   apply: (data: Record<string, any>) =>
-    request<{ message: string; data: { applicant_id: number; applicant_code: string; job_title: string } }>(
-      '/landing/apply',
-      {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }
-    ),
+    request<{
+      message: string;
+      data: { applicant_id: number; applicant_code: string; job_title: string };
+    }>("/landing/apply", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+};
+
+/* ========================================================================= */
+/* 10. EMPLOYEE SELF-SERVICE (ESS) & ESS MANAGEMENT                           */
+/* ========================================================================= */
+
+export interface ApiEssEmployee {
+  id: number;
+  code: string;
+  name: string;
+  email: string;
+  department: string;
+  position: string;
+  supervisor: string;
+  employment_type?: string;
+  date_hired?: string;
+}
+
+export interface ApiLeaveBalance {
+  id?: number;
+  type: string;
+  total: number;
+  used: number;
+  available: number;
+  period_year?: number;
+}
+
+export interface ApiScheduleDay {
+  day: string;
+  shift: string;
+  time: string;
+  hours: string;
+  location: string;
+}
+
+export interface ApiRecognitionItem {
+  id: string;
+  sender: string;
+  senderRole: string;
+  senderAvatar: string;
+  recipient: string;
+  recipientRole: string;
+  recipientAvatar: string;
+  badge: string;
+  badgeColor: string;
+  message: string;
+  reactions: {
+    clap: number;
+    heart: number;
+    fire: number;
+    star: number;
+  };
+  timeAgo: string;
+  createdAt: string;
+}
+
+export interface ApiPayrollData {
+  employee_name: string;
+  position: string;
+  department: string;
+  baseSalary: number;
+  allowances: number;
+  gross: number;
+  net: number;
+  nextPayout: string;
+  deductions: {
+    sss: number;
+    philhealth: number;
+    pagibig: number;
+    tax: number;
+    total: number;
+  };
+  payslips: {
+    id: string;
+    period: string;
+    gross: number;
+    deductions: number;
+    net: number;
+    payoutDate: string;
+    status: string;
+  }[];
+}
+
+export interface ApiEssOverview {
+  employee: ApiEssEmployee;
+  today_schedule: {
+    shift_name: string;
+    time: string;
+    is_rest_day: boolean;
+    location: string;
+  };
+  today_attendance: {
+    time_in: string | null;
+    time_out: string | null;
+    status: string;
+  };
+  monthly_attendance?: {
+    present: number;
+    late: number;
+    absent: number;
+    overtime_hours: number;
+    total_leave_available: number;
+  };
+  payroll_summary?: {
+    base_salary: number;
+    estimated_net: number;
+    next_payout: string;
+  };
+  performance_summary?: {
+    lms_completed: number;
+    lms_total: number;
+    competency_level: string;
+    average_score: number;
+  };
+  leave_balances: ApiLeaveBalance[];
+  pending_requests_count: number;
+  recent_requests: any[];
+}
+
+export interface ApiEssBenefit {
+  employee_benefit_id: number;
+  benefit_name: string;
+  reference_value: string | null;
+  note: string | null;
+  status: string;
+  effective_date: string | null;
+}
+
+export interface ApiEssRequestItem {
+  id: string;
+  db_id?: number;
+  employee?: string;
+  employeeId?: string;
+  department?: string;
+  category: string;
+  category_code?: string;
+  type: string;
+  filed: string;
+  date_from?: string;
+  date_to?: string;
+  status:
+  | "Pending"
+  | "Under Review"
+  | "Approved"
+  | "Rejected"
+  | "Completed"
+  | "Returned for Clarification";
+  assignedTo?: string;
+  assigned_to?: string;
+  details: string;
+  note?: string;
+  returnedCount?: number;
+  attachment_path?: string | null;
+}
+
+export interface ApiEssCategory {
+  ess_category_id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  is_open: boolean;
+  sort_order: number;
+}
+
+export const essApi = {
+  // Employee Portal
+  overview: () => request<ApiEssOverview>('/ess/my-overview'),
+  schedule: () => request<{ employee: ApiEssEmployee; weekly_roster: ApiScheduleDay[] }>('/ess/my-schedule'),
+  myAttendance: () =>
+    request<{
+      summary: {
+        present_days: number;
+        late_days: number;
+        absent_days: number;
+        overtime_hours: number;
+        average_hours: number;
+      };
+      records: {
+        id: number;
+        date: string;
+        day: string;
+        rawDate: string;
+        timeIn: string;
+        timeOut: string;
+        workedHours: number;
+        overtimeHours: number;
+        status: string;
+        device: string;
+        remarks: string;
+      }[];
+    }>('/ess/my-attendance'),
+  myDocuments: () =>
+    request<{
+      documents: {
+        id: number;
+        code: string;
+        title: string;
+        category: string;
+        status: string;
+        verified: boolean;
+        issuedDate: string;
+        expiryDate: string;
+        fileSize: string;
+        fileType: string;
+        downloadUrl: string | null;
+      }[];
+    }>('/ess/my-documents'),
+  uploadDocument: (data: { title: string; category: string; file_path?: string }) =>
+    request<{ message: string; document: any }>('/ess/my-documents/upload', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  myPerformance: () =>
+    request<{
+      employee: {
+        name: string;
+        role: string;
+        department: string;
+        overall_rating: number;
+        competency_level: string;
+      };
+      stats: {
+        completed_courses: number;
+        in_progress_courses: number;
+        average_score: number;
+        total_training_hours: number;
+      };
+      courses: {
+        id: string;
+        title: string;
+        category: string;
+        progress: number;
+        status: string;
+        score: number | null;
+        duration: string;
+        completedDate: string | null;
+      }[];
+    }>('/ess/my-performance'),
+  getCategories: () =>
+    request<{
+      categories: {
+        id: number;
+        name: string;
+        code: string;
+        description: string | null;
+        is_open: boolean;
+      }[];
+    }>('/ess/categories'),
+  leaves: () => request<{ balances: ApiLeaveBalance[]; history: any[] }>('/ess/my-leaves'),
+  benefits: () => request<{ benefits: ApiEssBenefit[] }>('/ess/my-benefits'),
+  myPayroll: () => request<ApiPayrollData>('/ess/my-payroll'),
+  recognitions: () => request<{ recognitions: ApiRecognitionItem[] }>('/ess/recognitions'),
+  sendKudos: (data: { recipient: string; badge: string; message: string }) =>
+    request<{ message: string; recognition: ApiRecognitionItem; recognitions: ApiRecognitionItem[] }>('/ess/recognitions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  reactKudos: (id: string, reaction: 'clap' | 'heart' | 'fire' | 'star') =>
+    request<{ message: string; reactions: Record<string, number> }>(`/ess/recognitions/${id}/react`, {
+      method: 'POST',
+      body: JSON.stringify({ reaction }),
+    }),
+  myRequests: (params?: Record<string, any>) => {
+    const qs = params ? new URLSearchParams(params).toString() : "";
+    return request<{ requests: ApiEssRequestItem[] }>(`/ess/my-requests${qs ? `?${qs}` : ""}`);
+  },
+  createRequest: (data: {
+    category_code?: string | undefined;
+    category_name?: string | undefined;
+    request_type: string;
+    date_from?: string | undefined;
+    date_to?: string | undefined;
+    details: string;
+    attachment_path?: string | null | undefined;
+  }) =>
+    request<{ message: string; request: any }>("/ess/requests", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  clock: (action: "clock_in" | "clock_out") =>
+    request<{ message: string; record: any }>("/ess/clock", {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    }),
+
+  // Admin & Superadmin Management
+  adminRequests: (params?: Record<string, any>) => {
+    const qs = params ? new URLSearchParams(params).toString() : "";
+    return request<{
+      counts: {
+        total: number;
+        pending: number;
+        under_review: number;
+        approved: number;
+        completed: number;
+        rejected: number;
+        returned: number;
+      };
+      requests: ApiEssRequestItem[];
+    }>(`/ess/admin/requests${qs ? `?${qs}` : ""}`);
+  },
+  updateRequestStatus: (id: string | number, data: { status: string; note?: string | undefined }) =>
+    request<{ message: string; request: any }>(`/ess/admin/requests/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  fileOnBehalf: (data: {
+    employee_id: number;
+    category_name: string;
+    request_type: string;
+    date_from?: string | undefined;
+    date_to?: string | undefined;
+    details: string;
+  }) =>
+    request<{ message: string; request: any }>("/ess/admin/requests/behalf", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  categories: () => request<{ categories: ApiEssCategory[] }>("/ess/admin/categories"),
+  toggleCategory: (id: string | number) =>
+    request<{ message: string; category: ApiEssCategory }>(`/ess/admin/categories/${id}/toggle`, {
+      method: "PUT",
+    }),
+  auditLogs: () => request<{ logs: any[] }>("/ess/admin/audit-logs"),
+};
+
+export interface ApiChatbotReply {
+  reply: string;
+  quick_replies: string[];
+  topic: string | null;
+}
+
+export interface ApiChatbotFaq {
+  faq_id: number;
+  question: string;
+  answer: string;
+  keywords: string | null;
+  enabled: boolean;
+  sort_order: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export const chatbotApi = {
+  chat: (data: { message: string; session_id?: string | null; topic?: string | null }) =>
+    request<ApiChatbotReply>("/landing/chat", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+};
+
+export const chatbotFaqApi = {
+  list: () => request<{ data: ApiChatbotFaq[] }>("/chatbot/faqs"),
+  create: (data: {
+    question: string;
+    answer: string;
+    keywords?: string | null;
+    enabled?: boolean;
+    sort_order?: number;
+  }) =>
+    request<{ message: string; data: ApiChatbotFaq }>("/chatbot/faqs", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (
+    id: number | string,
+    data: {
+      question?: string;
+      answer?: string;
+      keywords?: string | null;
+      enabled?: boolean;
+      sort_order?: number;
+    },
+  ) =>
+    request<{ message: string; data: ApiChatbotFaq }>(`/chatbot/faqs/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  remove: (id: number | string) =>
+    request<{ message: string }>(`/chatbot/faqs/${id}`, { method: "DELETE" }),
+};
+
+/* ========================================================================= */
+/* 11. NOTIFICATIONS                                                          */
+/* ========================================================================= */
+
+export interface ApiNotification {
+  id: string;
+  notification_id: number;
+  title: string;
+  detail: string;
+  time: string;
+  read: boolean;
+  tone: "info" | "success" | "warning";
+  type: string;
+  module: string | null;
+  target_type: string | null;
+  target_id: string | null;
+  created_at: string;
+}
+
+export const notificationsApi = {
+  list: () => request<{ data: ApiNotification[]; unread_count: number }>("/notifications"),
+  markRead: (id: number | string) =>
+    request<{ message: string }>(`/notifications/${id}/read`, { method: "PATCH" }),
+  markAllRead: () =>
+    request<{ message: string }>("/notifications/mark-all-read", { method: "POST" }),
 };

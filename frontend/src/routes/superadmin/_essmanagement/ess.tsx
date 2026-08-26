@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { EssManagement } from "@/components/modules/EssManagement";
+import { EssManagement } from "@/components/modules/ess";
 export const Route = createFileRoute("/superadmin/_essmanagement/ess")({
   head: () => ({
     meta: [

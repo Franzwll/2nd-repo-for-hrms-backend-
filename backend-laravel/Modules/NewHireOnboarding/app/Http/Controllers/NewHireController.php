@@ -3,21 +3,13 @@
 namespace Modules\NewHireOnboarding\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-<<<<<<< HEAD
 use App\Mail\NewHireCredentialsMail;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-=======
-use App\Mail\SendPortalCredentialsMail;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
->>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
 use Modules\NewHireOnboarding\Http\Requests\StoreNewHireRequest;
 use Modules\NewHireOnboarding\Http\Requests\UpdateNewHireRequest;
 use Modules\NewHireOnboarding\Http\Resources\NewHireResource;
@@ -34,7 +26,6 @@ class NewHireController extends Controller
 
     /**
      * Creates (or reuses) a system_users portal account for the new hire so
-<<<<<<< HEAD
      * they can log into the Employee portal. The account starts with the
      * default password stored in system_settings.default_password (falls back
      * to the shipped default) and is linked to the hire's employee record.
@@ -42,11 +33,6 @@ class NewHireController extends Controller
      * Returns an array with the account, the plain-text password (only when a
      * new account was created) and whether it was newly created:
      * ['user' => SystemUser, 'password' => ?string, 'created' => bool]
-=======
-     * they can log into the Employee portal. When an administrator has not
-     * configured a shared default password, a random one-time password is
-     * generated and emailed to the hire.
->>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
      */
     private function ensurePortalAccount(NewHire $newHire): ?array
     {
@@ -74,17 +60,16 @@ class NewHireController extends Controller
         }
 
         $user = SystemUser::create([
-            'username'        => $username,
-            'email'           => $email,
-            'password_hash'   => Hash::make($password),
-            'full_name'       => $newHire->name,
+            'username' => $username,
+            'email' => $email,
+            'password_hash' => Hash::make($password),
+            'full_name' => $newHire->name,
             'department_name' => $newHire->department?->name,
-            'employee_id'     => $newHire->employee_id,
-            'role_id'         => 3, // Employee portal role
-            'status'          => 'Active',
+            'employee_id' => $newHire->employee_id,
+            'role_id' => 3, // Employee portal role
+            'status' => 'Active',
         ]);
 
-<<<<<<< HEAD
         return ['user' => $user, 'password' => $password, 'created' => true];
     }
 
@@ -95,7 +80,7 @@ class NewHireController extends Controller
      */
     private function sendCredentialsEmail(NewHire $newHire, ?array $account): void
     {
-        if (! $account || ! ($account['created'] ?? false) || empty($account['password'])) {
+        if (!$account || !($account['created'] ?? false) || empty($account['password'])) {
             return;
         }
 
@@ -110,22 +95,10 @@ class NewHireController extends Controller
         } catch (\Throwable $e) {
             Log::warning('Could not send new hire credentials email', [
                 'new_hire_id' => $newHire->new_hire_id,
-                'email'       => $newHire->email,
-                'error'       => $e->getMessage(),
+                'email' => $newHire->email,
+                'error' => $e->getMessage(),
             ]);
         }
-=======
-        try {
-            Mail::to($email)->send(new SendPortalCredentialsMail(
-                $password,
-                $user->full_name ?: $user->username,
-            ));
-        } catch (\Throwable $e) {
-            report($e);
-        }
-
-        return $user;
->>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
     }
 
     /* ------------------------------------------------------------------ */
@@ -140,8 +113,8 @@ class NewHireController extends Controller
         if ($search = $request->query('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('new_hire_code', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%");
+                    ->orWhere('new_hire_code', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
             });
         }
         if ($stage = $request->query('stage')) {
@@ -154,16 +127,16 @@ class NewHireController extends Controller
             $query->where('employee_id', $employeeId);
         }
 
-        $perPage   = (int) $request->query('per_page', 15);
+        $perPage = (int) $request->query('per_page', 15);
         $paginated = $query->paginate($perPage);
 
         return response()->json([
             'data' => NewHireResource::collection($paginated->items()),
             'meta' => [
                 'current_page' => $paginated->currentPage(),
-                'last_page'    => $paginated->lastPage(),
-                'per_page'     => $paginated->perPage(),
-                'total'        => $paginated->total(),
+                'last_page' => $paginated->lastPage(),
+                'per_page' => $paginated->perPage(),
+                'total' => $paginated->total(),
             ],
         ]);
     }
@@ -181,13 +154,15 @@ class NewHireController extends Controller
         // when the payload does not carry them, so new hires never end up
         // with NULL position_id / department_id (which surfaces as
         // "Position: Staff, Department: General" in the pre-onboarding list).
-        if (isset($data['applicant_id'])
-            && (empty($data['position_id']) || empty($data['department_id']))) {
+        if (
+            isset($data['applicant_id'])
+            && (empty($data['position_id']) || empty($data['department_id']))
+        ) {
             $jobPost = \Modules\ApplicantManagement\Models\Applicant::with('jobPost')
                 ->find($data['applicant_id'])?->jobPost;
 
             if ($jobPost) {
-                $data['position_id']   = $data['position_id']   ?? $jobPost->position_id;
+                $data['position_id'] = $data['position_id'] ?? $jobPost->position_id;
                 $data['department_id'] = $data['department_id'] ?? $jobPost->department_id;
             }
         }
@@ -256,11 +231,11 @@ class NewHireController extends Controller
 
         $nextStage = match ($model->stage) {
             'Pre-onboarding' => 'Probationary',
-            'Probationary'   => 'Regular',
-            default          => null,
+            'Probationary' => 'Regular',
+            default => null,
         };
 
-        if (! $nextStage) {
+        if (!$nextStage) {
             return response()->json([
                 'message' => "New hire is already at the final stage ({$model->stage}).",
             ], 422);
@@ -290,13 +265,13 @@ class NewHireController extends Controller
     public function stats(): JsonResponse
     {
         return response()->json([
-            'total'           => NewHire::count(),
-            'by_stage'        => NewHire::selectRaw('stage, COUNT(*) as count')
-                                        ->groupBy('stage')
-                                        ->pluck('count', 'stage'),
-            'starting_soon'   => NewHire::where('start_date', '>=', now()->toDateString())
-                                        ->where('start_date', '<=', now()->addDays(7)->toDateString())
-                                        ->count(),
+            'total' => NewHire::count(),
+            'by_stage' => NewHire::selectRaw('stage, COUNT(*) as count')
+                ->groupBy('stage')
+                ->pluck('count', 'stage'),
+            'starting_soon' => NewHire::where('start_date', '>=', now()->toDateString())
+                ->where('start_date', '<=', now()->addDays(7)->toDateString())
+                ->count(),
         ]);
     }
 }

@@ -76,6 +76,19 @@ function set(next: Partial<State>) {
 let loaded = false;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
+const READ_STORAGE_KEY = "hrms-notifications-read";
+
+function loadReadFlags(): Set<string> {
+  try {
+    const raw = localStorage.getItem(READ_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
 async function loadData() {
   try {
     const [annRes, notifRes] = await Promise.allSettled([
@@ -130,8 +143,7 @@ async function loadNotifications() {
 function ensureLoaded() {
   if (!loaded) {
     loaded = true;
-    loadAnnouncements();
-    loadNotifications();
+    loadData();
   }
 
   // Poll for new notifications so the bell updates without a page reload.
@@ -178,7 +190,6 @@ export function usePortalState() {
         // optimistic update already applied
       }
     },
-    refreshNotifications: loadNotifications,
     addAnnouncement: async (input: {
       title: string;
       body: string;

@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 use Modules\Settings\Models\SystemSetting;
+use App\Models\SystemUser;
 
 /**
  * Per-user portal settings (Notifications, Preferences, Change Password).
@@ -29,7 +30,6 @@ class MySettingsController extends Controller
         return "my_{$scope}_{$slug}";
     }
 
-<<<<<<< HEAD
     /**
      * Resolves the account these personal settings belong to.
      *
@@ -47,28 +47,12 @@ class MySettingsController extends Controller
     /* GET /api/v1/my/settings?user=<email>                                */
     /* Returns the current user's notifications + preferences (merged over  */
     /* the global system defaults) and their personal OTP flag.            */
-=======
-    /** The email scope belongs to the authenticated account only. */
-    private static function authenticatedUser(Request $request): string
-    {
-        return $request->user()->email ?? $request->user()->username;
-    }
-
-    /* ------------------------------------------------------------------ */
-    /* GET /api/v1/my/settings                                             */
-    /* Returns the current user's notifications + preferences, merged over  */
-    /* the global system defaults.                                         */
->>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
     /* ------------------------------------------------------------------ */
 
     public function show(Request $request): JsonResponse
     {
-<<<<<<< HEAD
         $session = auth('sanctum')->user();
         $user = self::resolveUser($request, (string) $request->query('user', '')) ?? '';
-=======
-        $user = static::authenticatedUser($request);
->>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
 
         $defaults = [
             'notifications' => SystemSetting::getValue('notifications', []),
@@ -77,13 +61,13 @@ class MySettingsController extends Controller
             'user'          => $user !== '' ? $user : $session?->email,
         ];
 
-        $mine = SystemSetting::getValue(static::keyFor('notifications', $user), []);
-        $defaults['notifications'] = array_merge(
-            is_array($defaults['notifications']) ? $defaults['notifications'] : [],
-            is_array($mine) ? $mine : [],
-        );
+        if ($user !== '') {
+            $mine = SystemSetting::getValue(static::keyFor('notifications', $user), []);
+            $defaults['notifications'] = array_merge(
+                is_array($defaults['notifications']) ? $defaults['notifications'] : [],
+                is_array($mine) ? $mine : [],
+            );
 
-<<<<<<< HEAD
             $prefs = SystemSetting::getValue(static::keyFor('preferences', $user), []);
             $defaults['preferences'] = array_merge(
                 is_array($defaults['preferences']) ? $defaults['preferences'] : [],
@@ -97,13 +81,6 @@ class MySettingsController extends Controller
                 $defaults['otp_enabled'] = (bool) ($account->otp_enabled ?? true);
             }
         }
-=======
-        $prefs = SystemSetting::getValue(static::keyFor('preferences', $user), []);
-        $defaults['preferences'] = array_merge(
-            is_array($defaults['preferences']) ? $defaults['preferences'] : [],
-            is_array($prefs) ? $prefs : [],
-        );
->>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
 
         return response()->json($defaults);
     }
@@ -111,11 +88,7 @@ class MySettingsController extends Controller
     /* ------------------------------------------------------------------ */
     /* PUT /api/v1/my/settings/{scope}                                     */
     /* scope: notifications | preferences                                  */
-<<<<<<< HEAD
     /* body: { value }  (user param optional when authenticated)           */
-=======
-    /* body: { value }                                                     */
->>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
     /* ------------------------------------------------------------------ */
 
     public function save(Request $request, string $scope): JsonResponse
@@ -125,10 +98,7 @@ class MySettingsController extends Controller
         }
 
         $data = $request->validate([
-<<<<<<< HEAD
             'user'  => ['nullable', 'string', 'max:190'],
-=======
->>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
             'value' => ['required', 'array'],
         ]);
 
@@ -139,11 +109,7 @@ class MySettingsController extends Controller
         }
 
         $setting = SystemSetting::setValue(
-<<<<<<< HEAD
             static::keyFor($scope, $user),
-=======
-            static::keyFor($scope, static::authenticatedUser($request)),
->>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
             $data['value'],
             auth('sanctum')->user()?->system_user_id
         );
@@ -198,15 +164,11 @@ class MySettingsController extends Controller
     public function changePassword(Request $request): JsonResponse
     {
         $data = $request->validate([
-<<<<<<< HEAD
             'user'             => ['nullable', 'string', 'max:190'],
-=======
->>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
             'current_password' => ['required', 'string'],
             'new_password'     => ['required', 'string', 'min:8', 'max:72'],
         ]);
 
-<<<<<<< HEAD
         $identifier = self::resolveUser($request, $data['user'] ?? null);
 
         if (! $identifier) {
@@ -241,9 +203,6 @@ class MySettingsController extends Controller
                 'status'        => 'Active',
             ]);
         }
-=======
-        $user = $request->user();
->>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
 
         if (! Hash::check($data['current_password'], $user->password_hash)) {
             throw ValidationException::withMessages([

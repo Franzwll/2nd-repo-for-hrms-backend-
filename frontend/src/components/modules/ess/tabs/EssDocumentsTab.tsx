@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { FileCheck, Download, Upload, Plus, Search, ArrowUpDown, Send, AlertCircle, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,14 +20,55 @@ import { myEmployeeDocuments } from "@/data/ess";
 import { DocumentRequestModal } from "@/components/modules/ess/modals/DocumentRequestModal";
 import { DocumentUploadModal } from "@/components/modules/ess/modals/DocumentUploadModal";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
+import { essApi } from "@/lib/api";
 import { toast } from "sonner";
 
 export function EssDocumentsTab() {
   const [documents, setDocuments] = useState(myEmployeeDocuments);
-  const [docRequests, setDocRequests] = useState([
-    { id: "REQ-4409", date: "Jul 01, 2026", isoDate: "2026-07-01", type: "Certificate of Employment (with Salary)", status: "Released", statusRank: 1, purpose: "Bank loan application" },
-    { id: "REQ-4360", date: "Feb 03, 2026", isoDate: "2026-02-03", type: "HMO Certification", status: "Released", statusRank: 1, purpose: "Dependent medical enrollment" },
-  ]);
+  const [docRequests, setDocRequests] = useState<any[]>([]);
+
+  // Live Database Fetch
+  useEffect(() => {
+    essApi
+      .myDocuments()
+      .then((res) => {
+        if (res?.documents?.length) {
+          setDocuments(
+            res.documents.map((d) => ({
+              id: d.code || `DOC-${d.id}`,
+              title: d.title,
+              category: d.category,
+              status: d.status,
+              date: d.issuedDate,
+              size: d.fileSize,
+            }))
+          );
+        }
+      })
+      .catch(() => {});
+
+    essApi
+      .myRequests()
+      .then((res) => {
+        if (res?.requests?.length) {
+          const docItems = res.requests
+            .filter((r) => r.category.toLowerCase().includes("doc") || r.type.toLowerCase().includes("coe") || r.type.toLowerCase().includes("cert"))
+            .map((r) => ({
+              id: r.id,
+              date: r.filed,
+              isoDate: r.date_from || r.filed,
+              type: r.type,
+              status: r.status,
+              statusRank: r.status === "Approved" || r.status === "Completed" ? 1 : 2,
+              purpose: r.details,
+            }));
+          if (docItems.length > 0) {
+            setDocRequests(docItems);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const [docSearch, setDocSearch] = useState("");
   const [docSort, setDocSort] = useState("date-desc");
@@ -83,9 +124,14 @@ export function EssDocumentsTab() {
     <div className="space-y-6">
       {/* 3 Metric Cards */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
-            <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Submitted &amp; Verified</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Submitted &amp; Verified</p>
+              <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600 dark:text-emerald-400">
+                <FileCheck className="h-4 w-4" />
+              </div>
+            </div>
             <p className="mt-1 text-2xl font-bold font-display text-emerald-600 dark:text-emerald-400">
               {documents.filter((d) => d.status === "Submitted" || d.status === "Available" || d.status === "Released").length} File(s)
             </p>
@@ -93,9 +139,14 @@ export function EssDocumentsTab() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
-            <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Missing Action Item</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Missing Action Item</p>
+              <div className="rounded-lg bg-rose-500/10 p-2 text-rose-600 dark:text-rose-400">
+                <AlertCircle className="h-4 w-4" />
+              </div>
+            </div>
             <p className="mt-1 text-2xl font-bold font-display text-rose-600 dark:text-rose-400">
               {documents.filter((d) => d.status === "Missing").length} Action Item
             </p>
@@ -103,9 +154,14 @@ export function EssDocumentsTab() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
-            <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Available for Download</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Available for Download</p>
+              <div className="rounded-lg bg-primary/10 p-2 text-primary">
+                <Download className="h-4 w-4" />
+              </div>
+            </div>
             <p className="mt-1 text-2xl font-bold font-display text-primary">
               {documents.filter((d) => d.status === "Available" || d.status === "Released").length} Records
             </p>
@@ -120,7 +176,7 @@ export function EssDocumentsTab() {
           <div>
             <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
               <FileCheck className="h-5 w-5 text-primary" />
-              My Employment Documents Repository
+              My Employment Documents
             </CardTitle>
             <p className="text-xs text-muted-foreground">Compliance documents, statutory IDs, and official company clearances.</p>
           </div>
@@ -162,22 +218,13 @@ export function EssDocumentsTab() {
                     <EssStatusBadge status={doc.status} />
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">{doc.date}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{doc.size}</TableCell>
-                  <TableCell className="text-right">
-                    {doc.status === "Available" || doc.status === "Released" ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 text-xs text-primary hover:bg-primary/10 gap-1"
-                        onClick={() => toast.success(`Downloading ${doc.title}`)}
-                      >
-                        <Download className="h-3.5 w-3.5" /> Download
-                      </Button>
-                    ) : doc.status === "Missing" ? (
+                  <TableCell className="text-xs text-muted-foreground font-mono">{doc.size}</TableCell>
+                  <TableCell className="text-right space-x-1">
+                    {doc.status === "Missing" ? (
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-8 text-xs border-amber-500/50 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 gap-1"
+                        className="h-8 text-xs border-amber-500/40 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 gap-1"
                         onClick={() => openUploadForDoc(doc.title)}
                       >
                         <Upload className="h-3.5 w-3.5" /> Upload Now
@@ -197,7 +244,10 @@ export function EssDocumentsTab() {
       <Card className="border-border/70 shadow-xs">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
           <div>
-            <CardTitle className="font-display text-xl font-semibold">My Document Requests</CardTitle>
+            <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              My Document Requests
+            </CardTitle>
             <p className="text-xs text-muted-foreground">Click row to track certificate issuance status.</p>
           </div>
           <div className="flex items-center gap-2">

@@ -184,19 +184,19 @@ function JobDetail() {
                     <div className="mt-5 space-y-4">
                       <div className="space-y-1.5">
                         <Label htmlFor="name">Full Name *</Label>
-                        <Input id="name" required placeholder="Juan Dela Cruz" />
+                        <Input id="name" name="name" required placeholder="Juan Dela Cruz" />
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="email">Email Address *</Label>
-                        <Input id="email" type="email" required placeholder="juan@email.com" />
+                        <Input id="email" name="email" type="email" required placeholder="juan@email.com" />
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="phone">Phone Number *</Label>
-                        <Input id="phone" required placeholder="+63 917 000 0000" />
+                        <Input id="phone" name="phone" required placeholder="+63 917 000 0000" />
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="location">Location *</Label>
-                        <Input id="location" required placeholder="Makati City" />
+                        <Input id="location" name="location" required placeholder="Makati City" />
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="resume">Resume / CV (optional)</Label>
@@ -220,6 +220,7 @@ function JobDetail() {
                         </label>
                         <Input
                           id="resume"
+                          name="resume"
                           type="file"
                           accept=".pdf,.doc,.docx"
                           className="sr-only"
@@ -230,6 +231,7 @@ function JobDetail() {
                         <Label htmlFor="cover">Cover Letter (optional)</Label>
                         <Textarea
                           id="cover"
+                          name="cover"
                           rows={4}
                           placeholder="Tell us why you're a great fit."
                         />

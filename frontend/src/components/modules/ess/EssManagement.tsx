@@ -95,7 +95,7 @@ import { departments, employees } from "@/data/hr";
 import { useSort, SortHead } from "@/components/portal/sortable";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
-import { EmployeeEss } from "@/components/modules/EmployeeEss";
+import { EmployeeEss } from "./EmployeeEss";
 import { essApi, type ApiEssRequestItem } from "@/lib/api";
 
 type Status = ESSRequest["status"] | "Returned for Clarification";

@@ -7,94 +7,86 @@ use Modules\Settings\Http\Controllers\SettingsController;
 
 Route::prefix('v1')->group(function () {
 
-    /* ------------------------------------------------------------------ */
-    /* System Settings                                                      */
-    /* ------------------------------------------------------------------ */
+     /* ------------------------------------------------------------------ */
+     /* System Settings                                                      */
+     /* ------------------------------------------------------------------ */
 
-    // List all settings + flat map
-    Route::get('settings', [SettingsController::class, 'index'])
-         ->middleware(['auth:sanctum', 'permission:Settings'])
-         ->name('settings.index');
+     // List all settings + flat map
+     Route::get('settings', [SettingsController::class, 'index'])
+          ->middleware(['auth:sanctum', 'permission:Settings'])
+          ->name('settings.index');
 
-    /* ------------------------------------------------------------------ */
-    /* Database backups (declared before the {key} wildcard)               */
-    /* ------------------------------------------------------------------ */
+     /* ------------------------------------------------------------------ */
+     /* Database backups (declared before the {key} wildcard)               */
+     /* ------------------------------------------------------------------ */
 
-    Route::prefix('settings/backups')->name('settings.backups.')->group(function () {
-        Route::get('/', [BackupController::class, 'index'])->name('index');
-        Route::post('/', [BackupController::class, 'store'])->name('store');
-        Route::get('/{id}/download', [BackupController::class, 'download'])->name('download');
-        Route::post('/{id}/restore', [BackupController::class, 'restore'])->name('restore');
-    });
+     Route::prefix('settings/backups')->name('settings.backups.')->group(function () {
+          Route::get('/', [BackupController::class, 'index'])->name('index');
+          Route::post('/', [BackupController::class, 'store'])->name('store');
+          Route::get('/{id}/download', [BackupController::class, 'download'])->name('download');
+          Route::post('/{id}/restore', [BackupController::class, 'restore'])->name('restore');
+     });
 
-    // Bulk upsert — must be declared BEFORE the {key} wildcard
-    Route::patch('settings/bulk', [SettingsController::class, 'bulkUpsert'])
-         ->middleware(['auth:sanctum', 'permission:Settings:Edit'])
-         ->name('settings.bulk');
+     // Bulk upsert — must be declared BEFORE the {key} wildcard
+     Route::patch('settings/bulk', [SettingsController::class, 'bulkUpsert'])
+          ->middleware(['auth:sanctum', 'permission:Settings:Edit'])
+          ->name('settings.bulk');
 
-    // Show single setting by key
-    Route::get('settings/{key}', [SettingsController::class, 'show'])
-         ->middleware(['auth:sanctum', 'permission:Settings'])
-         ->name('settings.show');
+     // Show single setting by key
+     Route::get('settings/{key}', [SettingsController::class, 'show'])
+          ->middleware(['auth:sanctum', 'permission:Settings'])
+          ->name('settings.show');
 
-    // Upsert (create or update) a single setting
-    Route::put('settings/{key}', [SettingsController::class, 'upsert'])
-         ->middleware(['auth:sanctum', 'permission:Settings:Edit'])
-         ->name('settings.upsert');
+     // Upsert (create or update) a single setting
+     Route::put('settings/{key}', [SettingsController::class, 'upsert'])
+          ->middleware(['auth:sanctum', 'permission:Settings:Edit'])
+          ->name('settings.upsert');
 
-    // Delete a setting
-    Route::delete('settings/{key}', [SettingsController::class, 'destroy'])
-         ->middleware(['auth:sanctum', 'permission:Settings:Edit'])
-         ->name('settings.destroy');
+     // Delete a setting
+     Route::delete('settings/{key}', [SettingsController::class, 'destroy'])
+          ->middleware(['auth:sanctum', 'permission:Settings:Edit'])
+          ->name('settings.destroy');
 
-    // List system users (e.g. for the assessment assessor selector)
-    Route::get('system-users', [SettingsController::class, 'listSystemUsers'])
-         ->middleware(['auth:sanctum', 'permission:Settings'])
-         ->name('settings.system-users');
+     // List system users (e.g. for the assessment assessor selector)
+     Route::get('system-users', [SettingsController::class, 'listSystemUsers'])
+          ->middleware(['auth:sanctum', 'permission:Settings'])
+          ->name('settings.system-users');
 
-    // Reset the password of every system user to the given default
-    Route::post('reset-default-password', [SettingsController::class, 'resetDefaultPassword'])
-         ->middleware(['auth:sanctum', 'permission:Settings:Full'])
-         ->name('settings.reset-default-password');
+     // Reset the password of every system user to the given default
+     Route::post('reset-default-password', [SettingsController::class, 'resetDefaultPassword'])
+          ->middleware(['auth:sanctum', 'permission:Settings:Full'])
+          ->name('settings.reset-default-password');
 
-    /* ------------------------------------------------------------------ */
-    /* Per-user portal settings (self-service, must be authenticated)      */
-    /* ------------------------------------------------------------------ */
+     /* ------------------------------------------------------------------ */
+     /* Per-user portal settings (self-service, must be authenticated)      */
+     /* ------------------------------------------------------------------ */
 
-    // Current user's notifications + preferences (merged over system defaults)
-    Route::get('my/settings', [MySettingsController::class, 'show'])
-         ->middleware('auth:sanctum')
-         ->name('my-settings.show');
+     // Current user's notifications + preferences (merged over system defaults)
+     Route::get('my/settings', [MySettingsController::class, 'show'])
+          ->middleware('auth:sanctum')
+          ->name('my-settings.show');
 
-    // Save the current user's notifications or preferences
-    Route::put('my/settings/{scope}', [MySettingsController::class, 'save'])
-         ->middleware('auth:sanctum')
-         ->name('my-settings.save');
+     // Save the current user's notifications or preferences
+     Route::put('my/settings/{scope}', [MySettingsController::class, 'save'])
+          ->middleware('auth:sanctum')
+          ->name('my-settings.save');
 
-<<<<<<< HEAD
-    // Toggle the current user's own OTP-at-login requirement
-    Route::put('my/otp', [MySettingsController::class, 'toggleOtp'])
-         ->name('my.toggle-otp');
+     // Toggle the current user's own OTP-at-login requirement
+     Route::put('my/otp', [MySettingsController::class, 'toggleOtp'])
+          ->name('my.toggle-otp');
 
-    // Change the current user's password (verified against system_users)
-=======
-    // Change the current user's password (verified against the authenticated account)
->>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb
-    Route::post('my/change-password', [MySettingsController::class, 'changePassword'])
-         ->middleware('auth:sanctum')
-         ->name('my.change-password');
-<<<<<<< HEAD
+     // Change the current user's password (verified against system_users)
+     Route::post('my/change-password', [MySettingsController::class, 'changePassword'])
+          ->middleware('auth:sanctum')
+          ->name('my.change-password');
 
-    /* ------------------------------------------------------------------ */
-    /* Notifications                                                      */
-    /* ------------------------------------------------------------------ */
-    Route::get('notifications', [\Modules\Settings\Http\Controllers\NotificationController::class, 'index'])
-         ->name('notifications.index');
-    Route::patch('notifications/{id}/read', [\Modules\Settings\Http\Controllers\NotificationController::class, 'markRead'])
-         ->name('notifications.read');
-    Route::post('notifications/mark-all-read', [\Modules\Settings\Http\Controllers\NotificationController::class, 'markAllRead'])
-         ->name('notifications.mark-all-read');
+     /* ------------------------------------------------------------------ */
+     /* Notifications                                                      */
+     /* ------------------------------------------------------------------ */
+     Route::get('notifications', [\Modules\Settings\Http\Controllers\NotificationController::class, 'index'])
+          ->name('notifications.index');
+     Route::patch('notifications/{id}/read', [\Modules\Settings\Http\Controllers\NotificationController::class, 'markRead'])
+          ->name('notifications.read');
+     Route::post('notifications/mark-all-read', [\Modules\Settings\Http\Controllers\NotificationController::class, 'markAllRead'])
+          ->name('notifications.mark-all-read');
 });
-=======
-});
->>>>>>> c9534c3a510cfd0fdda3bbc879d3dcc95cadcceb

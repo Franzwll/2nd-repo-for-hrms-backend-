@@ -23,8 +23,9 @@ import { essApi, type ApiEssRequestItem } from "@/lib/api";
 import { toast } from "sonner";
 
 export function EssRequestCenterTab() {
-  const [category, setCategory] = useState(requestCategories[0]?.name || "");
-  const [requestType, setRequestType] = useState(requestCategories[0]?.types[0] || "");
+  const [categoriesList, setCategoriesList] = useState(requestCategories);
+  const [category, setCategory] = useState(requestCategories[0]?.name || "Leaves & Time Off");
+  const [requestType, setRequestType] = useState(requestCategories[0]?.types[0] || "Vacation Leave");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [reason, setReason] = useState("");
@@ -37,6 +38,25 @@ export function EssRequestCenterTab() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
+
+  // Load database categories
+  useEffect(() => {
+    essApi
+      .getCategories()
+      .then((res) => {
+        if (res?.categories?.length) {
+          const mapped = res.categories.map((c) => {
+            const defaultMatch = requestCategories.find((rc) => rc.name.toLowerCase() === c.name.toLowerCase());
+            return {
+              name: c.name,
+              types: defaultMatch?.types || [c.name],
+            };
+          });
+          setCategoriesList(mapped);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const loadRequests = async () => {
     try {
@@ -228,7 +248,7 @@ export function EssRequestCenterTab() {
                   value={category}
                   onValueChange={(val) => {
                     setCategory(val);
-                    const found = requestCategories.find((c) => c.name === val);
+                    const found = categoriesList.find((c) => c.name === val);
                     if (found && found.types.length > 0) setRequestType(found.types[0] || "");
                   }}
                 >
@@ -236,7 +256,7 @@ export function EssRequestCenterTab() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {requestCategories.map((c) => (
+                    {categoriesList.map((c) => (
                       <SelectItem key={c.name} value={c.name}>
                         {c.name}
                       </SelectItem>
@@ -252,7 +272,7 @@ export function EssRequestCenterTab() {
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {(requestCategories.find((c) => c.name === category)?.types ?? []).map((t) => (
+                    {(categoriesList.find((c) => c.name === category)?.types ?? []).map((t) => (
                       <SelectItem key={t} value={t}>
                         {t}
                       </SelectItem>

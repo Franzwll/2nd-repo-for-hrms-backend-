@@ -62,8 +62,45 @@ function notificationTarget(targetType: string | null | undefined, role: Role): 
   }
 }
 
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 export function PortalShell({ role, children }: { role: Role; children: ReactNode }) {
   const [open, setOpen] = useState(true);
+  const [mounted, setMounted] = useState(false);
+  const [time, setTime] = useState<Date>(new Date());
+
+  useEffect(() => {
+    setMounted(true);
+    setTime(new Date());
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const timeString = mounted
+    ? time.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      })
+    : "--:--:-- --";
+
+  const dateString = mounted
+    ? time.toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "Loading...";
+
   const navigate = useNavigate();
   const meta = roleMeta[role];
   const user = getUser();
@@ -251,7 +288,18 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 sm:gap-4">
+            {/* Live Digital Clock & Date */}
+            <div className="flex flex-col items-end justify-center rounded-xl border border-border/80 bg-background/80 px-3 py-1.5 shadow-2xs">
+              <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider leading-none" suppressHydrationWarning>
+                {dateString}
+              </p>
+              <p className="font-mono text-sm sm:text-base font-bold text-primary leading-tight mt-0.5" suppressHydrationWarning>
+                {timeString}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="Announcements" className="relative">
@@ -419,20 +467,20 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                   className="flex items-center gap-2 rounded-full border border-border bg-background py-1 pl-1 pr-3 transition-colors hover:bg-muted"
                 >
                   <Avatar className="h-7 w-7">
-                    <AvatarFallback className="bg-primary text-[0.7rem] text-primary-foreground">
-                      {meta.initials}
+                    <AvatarFallback className="bg-primary text-[0.7rem] text-primary-foreground font-semibold">
+                      {getInitials(displayName) || meta.initials}
                     </AvatarFallback>
                   </Avatar>
                   <span className="hidden text-sm sm:inline">
-                    Welcome, <span className="font-medium">{meta.user.split(" ")[0]}</span>
+                    Welcome, <span className="font-medium">{displayName.split(" ")[0]}</span>
                   </span>
                   <ChevronDown className="hidden h-4 w-4 text-muted-foreground sm:inline" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
-                  <p className="text-sm font-medium">{displayName}</p>
-                  <p className="text-xs font-normal text-muted-foreground">{meta.label}</p>
+                  <p className="text-sm font-medium truncate">{displayName}</p>
+                  <p className="text-xs font-normal text-muted-foreground truncate">{user?.department_name || meta.label}</p>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
@@ -452,6 +500,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+        </div>
         </header>
 
         {/* Mobile nav */}
