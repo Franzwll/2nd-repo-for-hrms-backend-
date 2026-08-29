@@ -86,6 +86,7 @@ class NewHireController extends Controller
 
         try {
             Mail::to($newHire->email)->send(new NewHireCredentialsMail(
+                recipientEmail: $newHire->email,
                 employeeName: $newHire->name,
                 email: $newHire->email,
                 password: (string) $account['password'],

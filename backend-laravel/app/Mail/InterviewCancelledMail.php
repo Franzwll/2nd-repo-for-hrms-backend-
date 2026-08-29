@@ -13,6 +13,7 @@ class InterviewCancelledMail extends Mailable
     use Queueable, SerializesModels;
 
     public function __construct(
+        public string $recipientEmail,
         public string $applicantName,
         public string $position,
         public ?string $interviewDate = null,

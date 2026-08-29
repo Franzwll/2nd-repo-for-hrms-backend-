@@ -105,6 +105,7 @@ class InterviewController extends Controller
         if ($applicant->email) {
             try {
                 Mail::to($applicant->email)->send(new ApplicantAcceptedMail(
+                    recipientEmail: $applicant->email,
                     applicantName: $applicant->name,
                     position: $applicant->jobPost?->title ?? 'Position',
                     interviewDate: $interview->scheduled_date,
@@ -151,6 +152,7 @@ class InterviewController extends Controller
         if ($scheduleChanged && $applicant?->email) {
             try {
                 Mail::to($applicant->email)->send(new InterviewRescheduledMail(
+                    recipientEmail: $applicant->email,
                     applicantName: $applicant->name,
                     position: $applicant->jobPost?->title ?? 'Position',
                     interviewDate: $model->scheduled_date,
@@ -198,6 +200,7 @@ class InterviewController extends Controller
         if ($applicant?->email) {
             try {
                 Mail::to($applicant->email)->send(new InterviewCancelledMail(
+                    recipientEmail: $applicant->email,
                     applicantName: $applicant->name,
                     position: $applicant->jobPost?->title ?? 'Position',
                     interviewDate: $model->scheduled_date,

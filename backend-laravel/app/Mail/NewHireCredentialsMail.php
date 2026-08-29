@@ -13,6 +13,7 @@ class NewHireCredentialsMail extends Mailable
     use Queueable, SerializesModels;
 
     public function __construct(
+        public string $recipientEmail,
         public string $employeeName,
         public string $email,
         public string $password,

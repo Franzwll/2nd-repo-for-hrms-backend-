@@ -347,6 +347,7 @@ class ApplicantManagementController extends Controller
                     if ($newStage === 'Accepted' || $newStage === 'Interview Scheduled') {
                         $latestInterview = $model->interviews()->latest('scheduled_date')->first();
                         Mail::to($model->email)->send(new ApplicantAcceptedMail(
+                            recipientEmail: $model->email,
                             applicantName: $model->name,
                             position: $positionTitle,
                             interviewDate: $latestInterview?->scheduled_date,
@@ -355,11 +356,13 @@ class ApplicantManagementController extends Controller
                         ));
                     } elseif ($newStage === 'Rejected') {
                         Mail::to($model->email)->send(new ApplicantRejectedMail(
+                            recipientEmail: $model->email,
                             applicantName: $model->name,
                             position: $positionTitle
                         ));
                     } elseif ($newStage === 'Offer') {
                         Mail::to($model->email)->send(new OfferNewJobMail(
+                            recipientEmail: $model->email,
                             applicantName: $model->name,
                             offeredPosition: $positionTitle,
                             details: "Official job offer for {$positionTitle} at Oxford Suites Makati."
@@ -385,6 +388,7 @@ class ApplicantManagementController extends Controller
             if ($model->email) {
                 try {
                     Mail::to($model->email)->send(new OfferNewJobMail(
+                        recipientEmail: $model->email,
                         applicantName: $model->name,
                         offeredPosition: $positionTitle,
                         details: "Your profile has been referred and offered for the position of {$positionTitle}."
@@ -471,6 +475,7 @@ class ApplicantManagementController extends Controller
         if ($model->email && $nextStage === 'Offer') {
             try {
                 Mail::to($model->email)->send(new OfferNewJobMail(
+                    recipientEmail: $model->email,
                     applicantName: $model->name,
                     offeredPosition: $positionTitle,
                     details: "Formal offer extended for {$positionTitle}."
@@ -504,6 +509,7 @@ class ApplicantManagementController extends Controller
             if ($type === 'accept') {
                 $latestInterview = $model->interviews()->latest('scheduled_date')->first();
                 Mail::to($model->email)->send(new ApplicantAcceptedMail(
+                    recipientEmail: $model->email,
                     applicantName: $model->name,
                     position: $positionTitle,
                     interviewDate: $request->input('interview_date', $latestInterview?->scheduled_date),
@@ -512,11 +518,13 @@ class ApplicantManagementController extends Controller
                 ));
             } elseif ($type === 'reject') {
                 Mail::to($model->email)->send(new ApplicantRejectedMail(
+                    recipientEmail: $model->email,
                     applicantName: $model->name,
                     position: $positionTitle
                 ));
             } elseif ($type === 'offer') {
                 Mail::to($model->email)->send(new OfferNewJobMail(
+                    recipientEmail: $model->email,
                     applicantName: $model->name,
                     offeredPosition: $positionTitle,
                     details: $details

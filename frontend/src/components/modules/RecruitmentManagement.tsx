@@ -15,6 +15,7 @@ import {
   ChevronsUpDown,
   Copy,
   CheckCircle2,
+  Download,
   Facebook,
   Globe,
   FilePlus2,
@@ -77,9 +78,15 @@ import { requisitionStore, useRequisitions, type Requisition } from "@/data/requ
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useSort } from "@/components/portal/sortable";
 import { cn } from "@/lib/utils";
-import hiringTemplate from "@/assets/hiring-template.png.asset.json";
-import { coreHcmApi, jobPostsApi, resolveStorageUrl, type ApiJobPost } from "@/lib/api";
+import { API_BASE_URL, coreHcmApi, jobPostsApi, resolveStorageUrl, type ApiJobPost } from "@/lib/api";
 import { sanitizeDigitsOnly, sanitizeDecimalString, sanitizeInteger } from "@/lib/validation";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { exportReport, type ReportData, type ReportFormat } from "@/lib/report-export";
 
 function transformApiJob(j: ApiJobPost): Job {
   const job: Job = {
@@ -103,7 +110,7 @@ function transformApiJob(j: ApiJobPost): Job {
     responsibilities: j.responsibilities || [],
     qualifications: j.qualifications || [],
     skills: j.skills || [],
-    benefits: j.benefits || [],
+    benefits: [],
     applicants: Number(j.applicants_count) || 0,
     platforms: j.platforms && j.platforms.length > 0 ? j.platforms : ["Website"],
   };
@@ -192,14 +199,13 @@ const platformMeta = [
 type BlockId =
   | "title"
   | "info"
+  | "picture"
   | "description"
   | "responsibilities"
   | "qualifications"
   | "skills"
-  | "benefits"
   | "instructions"
-  | "about"
-  | "social";
+  | "about";
 
 const blockLibrary: { id: BlockId; label: string; hint: string }[] = [
   { id: "title", label: "Job Title", hint: "Headline + department" },
@@ -208,10 +214,9 @@ const blockLibrary: { id: BlockId; label: string; hint: string }[] = [
   { id: "responsibilities", label: "Key Responsibilities", hint: "Bulleted duties" },
   { id: "qualifications", label: "Qualifications", hint: "Bulleted requirements" },
   { id: "skills", label: "Required Skills", hint: "Bulleted skill tags" },
-  { id: "benefits", label: "Benefits", hint: "Perks badges" },
   { id: "instructions", label: "Application Instruction", hint: "How to apply" },
   { id: "about", label: "About Company", hint: "Company blurb" },
-  { id: "social", label: "Social Media Links", hint: "Facebook / Instagram / website" },
+  { id: "picture", label: "Picture of Hiring", hint: "Template or uploaded image" },
 ];
 
 const fullBlocks: BlockId[] = blockLibrary.map((b) => b.id);
@@ -242,10 +247,8 @@ type Draft = {
   responsibilities: string;
   qualifications: string;
   skills: string;
-  benefits: string;
   instructions: string;
   about: string;
-  social: string;
 };
 
 const blankDraft: Draft = {
@@ -260,17 +263,14 @@ const blankDraft: Draft = {
   responsibilities: "",
   qualifications: "",
   skills: "",
-  benefits: "",
   instructions: "",
   about: "",
-  social: "",
 };
 
 const defaultAbout =
   "Oxford Suites Makati is a premier all-suite hotel in the heart of Makati's business district, known for warm Filipino hospitality and dependable service.";
 const defaultInstructions =
   "Interested applicants may send their updated resume through this posting or walk-in for an interview at the HR Office, Oxford Suites Makati.";
-const defaultSocial = "facebook.com/OxfordSuitesMakati · instagram.com/oxfordsuitesmakati";
 
 function jobToDraft(j: Job): Draft {
   return {
@@ -285,10 +285,8 @@ function jobToDraft(j: Job): Draft {
     responsibilities: j.responsibilities.join("\n"),
     qualifications: j.qualifications.join("\n"),
     skills: j.skills.join("\n"),
-    benefits: j.benefits.join("\n"),
     instructions: defaultInstructions,
     about: defaultAbout,
-    social: defaultSocial,
   };
 }
 
@@ -310,14 +308,10 @@ function hasContentFor(id: BlockId, d: Draft): boolean {
       return d.qualifications.trim() !== "";
     case "skills":
       return d.skills.trim() !== "";
-    case "benefits":
-      return d.benefits.trim() !== "";
     case "instructions":
       return d.instructions.trim() !== "";
     case "about":
       return d.about.trim() !== "";
-    case "social":
-      return d.social.trim() !== "";
     default:
       return false;
   }
@@ -376,6 +370,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               filled: p.filled_count,
               salaryBand: "",
               dbId: p.position_id,
+                departmentId: p.department_id,
             })),
           );
         }
@@ -488,7 +483,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       responsibilities: lines(draft.responsibilities),
       qualifications: lines(draft.qualifications),
       skills: lines(draft.skills),
-      benefits: lines(draft.benefits),
       applicants: existing?.applicants ?? 0,
       platforms: [],
     };
@@ -502,7 +496,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
     // Persist the draft to the database so it survives reloads
     try {
-      let positionId = knownPositions.find((p) => p.title === title)?.dbId;
+      let positionId = positionsForDepartment(draft.department).find((p) => p.title === title)?.dbId;
       let departmentId = knownDepartments.find((d) => d.name === draft.department)?.dbId;
       if (!departmentId) {
         const created = await coreHcmApi.createDepartment({ name: draft.department });
@@ -534,7 +528,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         responsibilities: payload.responsibilities,
         qualifications: payload.qualifications,
         skills: payload.skills,
-        benefits: payload.benefits,
         platforms: [],
       };
 
@@ -567,6 +560,18 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       toast.success("Job post status updated in database");
     } catch (e) {
       console.warn("Could not toggle job on API:", e);
+    }
+  };
+
+  const deleteJob = async (job: Job) => {
+    if (!job.dbId || !window.confirm(`Delete the “${job.title}” job posting?`)) return;
+    try {
+      await jobPostsApi.delete(job.dbId);
+      setJobList((prev) => prev.filter((item) => item.id !== job.id));
+      toast.success(`“${job.title}” deleted`);
+    } catch (e) {
+      console.warn("Could not delete job on API:", e);
+      toast.error("The job posting could not be deleted.");
     }
   };
 
@@ -639,7 +644,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       responsibilities: lines(draft.responsibilities),
       qualifications: lines(draft.qualifications),
       skills: lines(draft.skills),
-      benefits: lines(draft.benefits),
       applicants: editingJobId ? (jobList.find((j) => j.id === editingJobId)?.applicants ?? 0) : 0,
       platforms: chosen,
     };
@@ -663,7 +667,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     // Persist to backend database API — resolve the position & department
     // from the database (Core HCM) and auto-create them when the role is new,
     // so every posting carries a valid position_id / department_id.
-    let positionId = knownPositions.find((p) => p.title === draft.title)?.dbId;
+    let positionId = positionsForDepartment(draft.department).find((p) => p.title === draft.title)?.dbId;
     let departmentId = knownDepartments.find((d) => d.name === draft.department)?.dbId;
 
     try {
@@ -699,7 +703,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         responsibilities: jobPayload.responsibilities,
         qualifications: jobPayload.qualifications,
         skills: jobPayload.skills,
-        benefits: jobPayload.benefits,
         platforms: chosen,
       };
       // Uploaded poster picture rides along as multipart/form-data
@@ -761,6 +764,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setBuilderStarted(true);
     setEditingJobId(null);
     setSourceReqId(null);
+    setLinkedReqId(null);
     setMode("custom");
     setNewOpen(false);
     setDeptDialogOpen(false);
@@ -775,6 +779,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setBlocks(fullBlocks);
     setEditingJobId(job.id);
     setSourceReqId(null);
+    setLinkedReqId(null);
     setMode("template");
     setBuilderStarted(true);
     setSavedSnapshot(snapshotOf(seeded, fullBlocks));
@@ -788,6 +793,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setBlocks(fullBlocks);
     setEditingJobId(null);
     setSourceReqId(null);
+    setLinkedReqId(null);
     setMode("template");
     setBuilderStarted(true);
     setSavedSnapshot(snapshotOf(seeded, fullBlocks));
@@ -809,6 +815,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setBlocks(fullBlocks);
     setEditingJobId(null);
     setSourceReqId(reqId);
+    setLinkedReqId(null);
     setMode("template");
     setBuilderStarted(true);
     setSavedSnapshot(snapshotOf(seeded, fullBlocks));
@@ -977,6 +984,40 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     );
   }
 
+  type RequisitionSortKey = "id" | "position" | "department" | "count" | "requestedAt" | "urgency" | "status";
+
+  function RequisitionSortHead({
+    sortKey,
+    children,
+    align = "left",
+    sort,
+    onSort,
+  }: {
+    sortKey: RequisitionSortKey;
+    children: ReactNode;
+    align?: "left" | "right" | "center";
+    sort: ReturnType<typeof useSort<Requisition, RequisitionSortKey>>["sort"];
+    onSort: (key: RequisitionSortKey) => void;
+  }) {
+    const active = sort?.key === sortKey;
+    const Icon = !active ? ChevronsUpDown : sort?.dir === "asc" ? ArrowUp : ArrowDown;
+    return (
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={cn(
+          "flex items-center gap-1.5 text-left text-[0.65rem] font-semibold uppercase tracking-wide transition-colors hover:text-foreground",
+          active ? "text-foreground" : "text-muted-foreground",
+          align === "right" && "justify-end text-right",
+          align === "center" && "justify-center text-center",
+        )}
+      >
+        <span>{children}</span>
+        <Icon className={cn("h-3 w-3 shrink-0", active ? "opacity-100" : "opacity-40")} />
+      </button>
+    );
+  }
+
   const pendingRequisitions = requisitions.filter((r) => r.status !== "Converted");
   const highUrgencyCount = requisitions.filter(
     (r) => r.urgency === "High" && r.status !== "Converted",
@@ -1005,10 +1046,19 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       (reqUrgency === "all" || r.urgency === reqUrgency)
     );
   });
+  const reqSort = useSort(filteredRequisitions, {
+    id: (r: Requisition) => r.id,
+    position: (r: Requisition) => r.position,
+    department: (r: Requisition) => r.department,
+    count: (r: Requisition) => r.count,
+    requestedAt: (r: Requisition) => r.requestedAt,
+    urgency: (r: Requisition) => r.urgency,
+    status: (r: Requisition) => r.status,
+  });
   const REQ_PER_PAGE = DEFAULT_PAGE_SIZE;
-  const reqPageCount = Math.max(1, Math.ceil(filteredRequisitions.length / REQ_PER_PAGE));
+  const reqPageCount = Math.max(1, Math.ceil(reqSort.sorted.length / REQ_PER_PAGE));
   const reqPageSafe = Math.min(reqPage, reqPageCount);
-  const visibleRequisitions = filteredRequisitions.slice(
+  const visibleRequisitions = reqSort.sorted.slice(
     (reqPageSafe - 1) * REQ_PER_PAGE,
     reqPageSafe * REQ_PER_PAGE,
   );
@@ -1045,6 +1095,79 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const effectiveReqId = sourceReqId ?? linkedReqId;
   const sourceReq = requisitions.find((r) => r.id === effectiveReqId) ?? null;
 
+  useEffect(() => {
+    if (!linkedReqId || sourceReqId) return;
+    const request = requisitions.find((r) => r.id === linkedReqId);
+    if (!request) return;
+    setDraft((current) => ({
+      ...current,
+      title: request.position,
+      department: request.department,
+      vacancies: String(request.count),
+    }));
+  }, [linkedReqId, sourceReqId, requisitions]);
+
+  const recruitmentReport = {
+    title: "Recruitment Management Report",
+    subtitle: "Vacancies, job postings, and staffing requisitions",
+    columns: [
+      { header: "Job title", key: "title" },
+      { header: "Department", key: "department" },
+      { header: "Status", key: "status" },
+      { header: "Vacancies", key: "vacancies" },
+      { header: "Filled", key: "filled" },
+      { header: "Applicants", key: "applicants" },
+      { header: "Posted", key: "posted" },
+    ],
+    rows: [
+      ...jobList.map((job) => ({ ...job })),
+      ...pendingRequisitions.map((request) => ({
+        title: `${request.position} (requisition ${request.id})`,
+        department: request.department,
+        status: request.status,
+        vacancies: request.count,
+        filled: "-",
+        applicants: "-",
+        posted: request.requestedAt,
+      })),
+    ],
+    summary: [
+      { label: "Active postings", value: openCount },
+      { label: "Total vacancies", value: totalVacancies },
+      { label: "Pending requisitions", value: pendingRequisitions.length },
+    ],
+  };
+  const requisitionReport = {
+    title: "Vacancy Requisitions Report",
+    subtitle: "Pending requisitions from Core HCM",
+    columns: [
+      { header: "Reference", key: "id" },
+      { header: "Position", key: "position" },
+      { header: "Department", key: "department" },
+      { header: "Openings", key: "count" },
+      { header: "Urgency", key: "urgency" },
+      { header: "Status", key: "status" },
+      { header: "Requested", key: "requestedAt" },
+    ],
+    rows: filteredRequisitions.map((request) => ({ ...request })),
+  };
+  const ReportMenu = ({ report, buttonClassName }: { report: ReportData; buttonClassName?: string }) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" className={cn("gap-2", buttonClassName)}>
+          <Download className="h-4 w-4" /> Generate report
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {(["pdf", "docx", "excel"] as ReportFormat[]).map((format) => (
+          <DropdownMenuItem key={format} onClick={() => exportReport(report, format)}>
+            <FileText className="mr-2 h-4 w-4" /> Export as {format.toUpperCase()}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   const salaryLine =
     draft.salaryMin || draft.salaryMax
       ? `${peso(Number(draft.salaryMin) || 0)} – ${peso(Number(draft.salaryMax) || 0)} a month`
@@ -1075,7 +1198,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       </div>
     );
 
-  const posterImageUrl = customPosterUrl ?? hiringTemplate.url;
+  const posterImageUrl =
+    customPosterUrl ??
+    `${API_BASE_URL}/job-posts/template-picture?title=${encodeURIComponent(draft.title || "Position")}`;
+  const positionsForDepartment = (department: string) => {
+    const departmentId = knownDepartments.find((d) => d.name === department)?.dbId;
+    return knownPositions.filter(
+      (p) =>
+        (departmentId !== undefined && p.departmentId === departmentId) ||
+        (p.departmentId === undefined && p.department === department),
+    );
+  };
 
   const handlePosterUpload = (file: File | null) => {
     if (!file) return;
@@ -1228,21 +1361,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           </ul>
         </div>
       )}
-      {has("benefits") && lines(draft.benefits).length > 0 && (
+      {has("about") && draft.about && (
         <div>
-          <p className="font-display text-lg font-semibold">Benefits</p>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {lines(draft.benefits).map((b) => (
-              <span
-                key={b}
-                className="rounded-md border border-border bg-card px-2.5 py-1 text-[0.65rem] font-medium text-foreground"
-              >
-                {b}
-              </span>
-            ))}
-          </div>
+          <p className="font-display text-lg font-semibold">About us</p>
+          <p className="mt-1.5 text-muted-foreground">{draft.about}</p>
         </div>
       )}
+      {has("picture") && <HiringPoster className="mx-auto max-w-md" />}
       <Button size="sm" className="w-full sm:w-auto">
         Apply Now
       </Button>
@@ -1316,16 +1441,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           <p className="text-xs font-semibold">About us</p>
           <p className="text-muted-foreground">{draft.about || defaultAbout}</p>
         </div>
-        {lines(draft.benefits).length > 0 && (
-          <div>
-            <p className="text-xs font-semibold">Benefits</p>
-            <ul className="list-inside list-disc text-muted-foreground">
-              {lines(draft.benefits).map((b) => (
-                <li key={b}>{b}</li>
-              ))}
-            </ul>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -1355,14 +1470,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           </ul>
         </div>
       )}
-      {lines(draft.benefits).length > 0 && (
+      {draft.about && (
         <div>
-          <p className="font-semibold">What We Offer:</p>
-          <ul className="list-inside list-disc text-muted-foreground">
-            {lines(draft.benefits).map((b) => (
-              <li key={b}>{b}</li>
-            ))}
-          </ul>
+          <p className="font-semibold">About us:</p>
+          <p className="text-muted-foreground">{draft.about}</p>
         </div>
       )}
       <p>Ready to join our team? {draft.instructions || defaultInstructions}</p>
@@ -1382,7 +1493,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         <MoreHorizontal className="ml-auto h-4 w-4 text-muted-foreground" />
       </div>
       <div className="px-3 pb-3 text-muted-foreground">{facebookCaption}</div>
-      <HiringPoster />
+      {has("picture") && <HiringPoster className="border-t border-border" />}
       <div className="flex items-center justify-around border-t border-border px-3 py-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <ThumbsUp className="h-3.5 w-3.5" /> Like
@@ -1408,13 +1519,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         </p>
         <MoreHorizontal className="ml-auto h-4 w-4 text-muted-foreground" />
       </div>
-      <HiringPoster />
-      <div className="flex items-center gap-3 p-3">
-        <Heart className="h-5 w-5" />
-        <MessageCircle className="h-5 w-5" />
-        <Send className="h-5 w-5" />
-        <Bookmark className="ml-auto h-5 w-5" />
-      </div>
       <div className="px-3 pb-3 text-sm text-muted-foreground">
         <p className="font-semibold text-foreground">
           oxfordsuitesmakati{" "}
@@ -1425,6 +1529,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         <p className="text-muted-foreground">Location: Makati City, Philippines</p>
         <div className="mt-1">{facebookCaption}</div>
       </div>
+      {has("picture") && <HiringPoster />}
+      <div className="flex items-center gap-3 p-3">
+        <Heart className="h-5 w-5" />
+        <MessageCircle className="h-5 w-5" />
+        <Send className="h-5 w-5" />
+        <Bookmark className="ml-auto h-5 w-5" />
+      </div>
     </div>
   );
 
@@ -1434,6 +1545,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         eyebrow={role === "superadmin" ? "Super Admin · Recruitment" : "Admin · Recruitment"}
         title="Recruitment Management"
         description="Open or close postings per position, then build job posts with live multi-platform previews."
+        actions={<ReportMenu report={recruitmentReport} />}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -1662,6 +1774,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                             onCheckedChange={() => toggleActive(j.id)}
                             aria-label={`Toggle posting for ${j.title}`}
                           />
+                          {role === "superadmin" && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => deleteJob(j)}
+                              aria-label={`Delete posting for ${j.title}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
@@ -1677,14 +1800,16 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     key={j.id}
                     className={j.active ? "border-success/40" : "border-border/70 opacity-80"}
                   >
-                    <CardContent className="p-5">
-                      {j.picture && (
-                        <img
-                          src={j.picture}
-                          alt={`${j.title} hiring poster`}
-                          className="mb-3 aspect-video w-full rounded-md border border-border object-cover"
-                        />
-                      )}
+                    <CardContent className="flex h-full flex-col p-5">
+                      <div className="min-h-0 flex-1">
+                      <img
+                        src={
+                          j.picture ||
+                          `${API_BASE_URL}/job-posts/template-picture?title=${encodeURIComponent(j.title)}`
+                        }
+                        alt={`${j.title} hiring poster`}
+                        className="mb-3 aspect-video w-full rounded-md border border-border object-cover"
+                      />
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="eyebrow">{j.department}</p>
@@ -1725,13 +1850,24 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                         ))}
                       </div>
 
-                      <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-3">
+                      </div>
+                      <div className="mt-4 flex min-h-[76px] flex-wrap content-end gap-2 border-t border-border pt-3">
                         <Button size="sm" variant="outline" onClick={() => editTemplate(j)}>
                           Edit Template
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => copyAndUseTemplate(j)}>
                           <Copy className="mr-1.5 h-3.5 w-3.5" /> Copy & Use Template
                         </Button>
+                        {role === "superadmin" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => deleteJob(j)}
+                          >
+                            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
+                          </Button>
+                        )}
                       </div>
 
                       <div className="mt-3 flex items-center justify-between">
@@ -1849,6 +1985,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                       ))}
                     </SelectContent>
                   </Select>
+                  <ReportMenu
+                    report={requisitionReport}
+                    buttonClassName="h-10 whitespace-nowrap"
+                  />
                 </div>
               </div>
               <ListBody className="mt-4 space-y-2 overflow-x-auto">
@@ -1858,27 +1998,41 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     reqGridCols,
                   )}
                 >
-                  {[
-                    "Ref Number",
-                    "Department",
-                    "Openings",
-                    "Requested",
-                    "Urgency",
-                    "Status",
-                    "Set status",
-                    "Note",
-                    "Job post",
-                  ].map((h, i) => (
-                    <span
-                      key={h || `col-${i}`}
-                      className={cn(
-                        "text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground",
-                        i === 8 && "text-right",
-                      )}
-                    >
-                      {h}
-                    </span>
-                  ))}
+                  <RequisitionSortHead sortKey="id" sort={reqSort.sort} onSort={reqSort.toggle}>
+                    Ref Number
+                  </RequisitionSortHead>
+                  <RequisitionSortHead
+                    sortKey="department"
+                    sort={reqSort.sort}
+                    onSort={reqSort.toggle}
+                  >
+                    Department
+                  </RequisitionSortHead>
+                  <RequisitionSortHead sortKey="count" sort={reqSort.sort} onSort={reqSort.toggle}>
+                    Openings
+                  </RequisitionSortHead>
+                  <RequisitionSortHead
+                    sortKey="requestedAt"
+                    sort={reqSort.sort}
+                    onSort={reqSort.toggle}
+                  >
+                    Requested
+                  </RequisitionSortHead>
+                  <RequisitionSortHead sortKey="urgency" sort={reqSort.sort} onSort={reqSort.toggle}>
+                    Urgency
+                  </RequisitionSortHead>
+                  <RequisitionSortHead sortKey="status" sort={reqSort.sort} onSort={reqSort.toggle}>
+                    Status
+                  </RequisitionSortHead>
+                  <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Set status
+                  </span>
+                  <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Note
+                  </span>
+                  <span className="text-right text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Job post
+                  </span>
                 </div>
                 {visibleRequisitions.map((r) => (
                   <Card key={r.id} className="border-border/70">
@@ -2134,44 +2288,45 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                 {id === "title" && (
                                   <div className="grid gap-2 sm:grid-cols-2">
                                     <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Job title</Label>
+                                      <Label className="text-[0.7rem]">Department</Label>
                                       <Select
-                                        value={draft.title}
-                                        onValueChange={(v) =>
+                                        value={draft.department}
+                                        onValueChange={(department) => {
+                                          const firstPosition = positionsForDepartment(department)[0];
                                           setDraft({
                                             ...draft,
-                                            title: v,
-                                            department:
-                                              knownPositions.find((p) => p.title === v)
-                                                ?.department ?? draft.department,
-                                          })
-                                        }
+                                            department,
+                                            title: firstPosition?.title ?? "",
+                                          });
+                                        }}
                                       >
                                         <SelectTrigger className="h-8 text-xs">
-                                          <SelectValue placeholder="Select a position from Core HR" />
+                                          <SelectValue placeholder="Select a department" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                          {knownPositions.map((p) => (
-                                            <SelectItem key={p.id} value={p.title}>
-                                              {p.title}
+                                          {knownDepartments.map((d) => (
+                                            <SelectItem key={d.code} value={d.name}>
+                                              {d.name}
                                             </SelectItem>
                                           ))}
                                         </SelectContent>
                                       </Select>
                                     </div>
                                     <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Department</Label>
+                                      <Label className="text-[0.7rem]">Job title</Label>
                                       <Select
-                                        value={draft.department}
-                                        onValueChange={(v) => setDraft({ ...draft, department: v })}
+                                        value={draft.title}
+                                        onValueChange={(v) =>
+                                          setDraft({ ...draft, title: v })
+                                        }
                                       >
                                         <SelectTrigger className="h-8 text-xs">
-                                          <SelectValue />
+                                          <SelectValue placeholder="Select a position from Core HR" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                          {knownDepartments.map((d) => (
-                                            <SelectItem key={d.code} value={d.name}>
-                                              {d.name}
+                                          {positionsForDepartment(draft.department).map((p) => (
+                                            <SelectItem key={p.id} value={p.title}>
+                                              {p.title}
                                             </SelectItem>
                                           ))}
                                         </SelectContent>
@@ -2228,6 +2383,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                         min={1}
                                         className="h-8 text-xs"
                                         value={draft.vacancies}
+                                        disabled={role === "admin" && Boolean(sourceReqId)}
                                         onChange={(e) =>
                                           setDraft({
                                             ...draft,
@@ -2280,6 +2436,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                     placeholder="Short pitch of the role…"
                                   />
                                 )}
+                                {id === "picture" && (
+                                  <div className="space-y-2">
+                                    <HiringPoster className="mx-auto max-w-md" />
+                                    <PosterUploadControl />
+                                  </div>
+                                )}
                                 {id === "responsibilities" && (
                                   <Textarea
                                     autoFocus
@@ -2314,18 +2476,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                     placeholder="One skill per line…"
                                   />
                                 )}
-                                {id === "benefits" && (
-                                  <Textarea
-                                    autoFocus
-                                    rows={2}
-                                    className="text-xs"
-                                    value={draft.benefits}
-                                    onChange={(e) =>
-                                      setDraft({ ...draft, benefits: e.target.value })
-                                    }
-                                    placeholder="One benefit per line…"
-                                  />
-                                )}
                                 {id === "instructions" && (
                                   <Textarea
                                     autoFocus
@@ -2347,21 +2497,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                     onChange={(e) => setDraft({ ...draft, about: e.target.value })}
                                     placeholder="Company blurb…"
                                   />
-                                )}
-                                {id === "social" && (
-                                  <div className="space-y-2">
-                                    <Textarea
-                                      autoFocus
-                                      rows={2}
-                                      className="text-xs"
-                                      value={draft.social}
-                                      onChange={(e) =>
-                                        setDraft({ ...draft, social: e.target.value })
-                                      }
-                                      placeholder="Social media links…"
-                                    />
-                                    <PosterUploadControl />
-                                  </div>
                                 )}
                               </div>
                             )}
@@ -2570,14 +2705,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   <SelectValue placeholder="Select a position" />
                 </SelectTrigger>
                 <SelectContent>
-                  {knownPositions
-                    .filter((p) => p.department === pendingDept)
+                  {positionsForDepartment(pendingDept)
                     .map((p) => (
                       <SelectItem key={p.id} value={p.title}>
                         {p.title}
                       </SelectItem>
                     ))}
-                  {knownPositions.filter((p) => p.department === pendingDept).length === 0 && (
+                  {positionsForDepartment(pendingDept).length === 0 && (
                     <div className="px-2 py-3 text-xs text-muted-foreground">
                       No positions defined for this department.
                     </div>
