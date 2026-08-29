@@ -1393,7 +1393,7 @@ export function UserManagement() {
             <Button variant="outline" onClick={() => setResetUser(null)}>
               Cancel
             </Button>
-            <Button onClick={submitReset}>Save password</Button>
+            <Button onClick={saveReset}>Save password</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

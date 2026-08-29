@@ -9,6 +9,7 @@ use Modules\NewHireOnboarding\Http\Requests\StoreChecklistTemplateRequest;
 use Modules\NewHireOnboarding\Http\Resources\ChecklistTemplateResource;
 use Modules\NewHireOnboarding\Models\OnboardingChecklistItem;
 use Modules\NewHireOnboarding\Models\OnboardingChecklistTemplate;
+use App\Services\AuditLogger;
 
 class ChecklistTemplateController extends Controller
 {
@@ -57,6 +58,14 @@ class ChecklistTemplateController extends Controller
         $data['status']        = $data['status'] ?? 'Active';
 
         $template = OnboardingChecklistTemplate::create($data);
+
+        AuditLogger::log(
+            action: 'Checklist Template Created',
+            module: 'New Hire Onboarding',
+            targetType: 'Checklist Template',
+            targetId: (string) $template->getKey(),
+            details: "Created onboarding checklist template '{$template->title}' (status: {$template->status}).",
+        );
 
         // Persist nested items
         foreach ($items as $item) {
@@ -114,6 +123,14 @@ class ChecklistTemplateController extends Controller
         unset($data['items']);
 
         $model->update($data);
+
+        AuditLogger::log(
+            action: 'Checklist Template Updated',
+            module: 'New Hire Onboarding',
+            targetType: 'Checklist Template',
+            targetId: (string) $model->getKey(),
+            details: "Updated onboarding checklist template '{$model->title}' (status: {$model->status}).",
+        );
 
         if ($items !== null) {
             $existingItems = $model->items()->get();
@@ -197,6 +214,14 @@ class ChecklistTemplateController extends Controller
         ]);
 
         $model->update($data);
+
+        AuditLogger::log(
+            action: 'Checklist Template Item Updated',
+            module: 'New Hire Onboarding',
+            targetType: 'Checklist Template Item',
+            targetId: (string) $model->getKey(),
+            details: "Updated checklist item text for template item (ID: {$model->template_item_id}).",
+        );
 
         return response()->json([
             'template_item_id' => $model->template_item_id,
