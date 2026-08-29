@@ -13,6 +13,7 @@ class OfferNewJobMail extends Mailable
     use Queueable, SerializesModels;
 
     public function __construct(
+        public string $recipientEmail,
         public string $applicantName,
         public string $offeredPosition,
         public ?string $details = null,

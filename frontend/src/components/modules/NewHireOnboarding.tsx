@@ -38,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -834,6 +835,17 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     cancelEditMasterChecklist();
   };
 
+  const configureMasterChecklistItem = (index: number) => {
+    const item = editChecklistRichItems[index];
+    if (!item) return;
+    setEditChecklistRichItems((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+    setEditChecklistNewItem(item.item_text);
+    setEditItemInstructions(item.instructions ?? "");
+    setEditItemRequiresUpload(item.requires_upload !== false);
+    setEditItemUploadPlaceholder(item.upload_placeholder ?? "");
+    setShowEditItemDetails(true);
+  };
+
   const deleteMasterChecklist = (id: string) => {
     hireStore.deleteMasterChecklist(id);
     if (editingChecklistId === id) cancelEditMasterChecklist();
@@ -1183,8 +1195,8 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
           </Card>
 
           <div className="mt-6 grid gap-6 2xl:grid-cols-[1.6fr_1fr]">
-            <Card className="min-w-0 border-border/70">
-              <CardContent className="min-w-0 p-6">
+            <Card className="flex h-[42rem] min-w-0 flex-col border-border/70">
+              <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col p-6">
                 <div className="flex flex-col gap-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -1269,8 +1281,8 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                   </div>
                 </div>
 
-                <div className="mt-4 overflow-x-auto">
-                  <ListBody>
+                <div className="mt-4 min-h-0 flex-1 overflow-auto overscroll-contain">
+                  <ListBody className="min-w-[720px]">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -1427,7 +1439,8 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                     </Table>
                   </ListBody>
                 </div>
-                <TablePagination
+                <div className="shrink-0 border-t border-border/60 pt-3">
+                  <TablePagination
                   page={hirePage.page}
                   pageCount={hirePage.pageCount}
                   from={hirePage.from}
@@ -1435,14 +1448,15 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                   total={hirePage.total}
                   label="hires"
                   onPageChange={hirePage.setPage}
-                />
+                  />
+                </div>
               </CardContent>
             </Card>
 
             {/* CHECKLIST PANEL — right corner */}
             <Card
               className={cn(
-                "flex h-full min-w-0 flex-col border-border/70 transition-colors",
+                "flex h-[42rem] min-w-0 flex-col border-border/70 transition-colors",
                 selected &&
                   selected.stage === "Probationary" &&
                   evaluationRequested.includes(selected.id) &&
@@ -1455,7 +1469,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                   "border-success/50 bg-success/5 ring-1 ring-success/30",
               )}
             >
-              <CardContent className="flex min-w-0 flex-1 flex-col p-6">
+              <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-6">
                 {!selected ? (
                   <div className="flex flex-1 flex-col items-center justify-center gap-3 py-10 text-center text-sm text-muted-foreground">
                     <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
@@ -1542,6 +1556,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             </div>
 
                             <>
+                              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
                               <ul className="mt-3 space-y-1.5">
                                 {[...selected.checklist]
                                   .filter(
@@ -1652,6 +1667,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   </CollapsibleContent>
                                 </Collapsible>
                               )}
+                            </div>
                             </>
 
                             {progress(selected) === 100 && !isWaiting && (
@@ -1661,7 +1677,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             )}
 
                             {!isWaiting && (
-                              <div className="mt-auto flex flex-wrap items-stretch gap-2 pt-4">
+                                  <div className="mt-auto flex flex-wrap items-stretch gap-2 pt-4">
                                 {editingId === selected.id ? (
                                   <>
                                     <Button
@@ -1707,13 +1723,28 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   Advance to Probationary
                                 </Button>
                               ) : (
-                                <p className="mt-2 rounded-md border border-dashed border-border bg-muted/40 p-3 text-center text-xs text-muted-foreground">
-                                  Complete every checklist item and save the checklist to unlock
-                                  “Advance to Probationary”.
-                                </p>
+                                <div className="mt-2 flex items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/40 p-3 text-center text-xs text-muted-foreground">
+                                  <span>Advance to Probationary is locked.</span>
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6 shrink-0"
+                                        aria-label="Why advancing is locked"
+                                      >
+                                        <Info className="h-4 w-4" />
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-72 text-xs">
+                                      Complete every checklist item and save the checklist to unlock
+                                      “Advance to Probationary”.
+                                    </PopoverContent>
+                                  </Popover>
+                                </div>
                               ))}
 
-                            {selected.stage === "Probationary" && (
+                              {selected.stage === "Probationary" && (
                               <div className="mt-4">
                                 {isWaiting ? (
                                   <div className="animate-in overflow-hidden rounded-xl border border-gold/40 bg-gold/5 fade-in duration-500">
@@ -1826,14 +1857,28 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   </div>
                                 ) : (
                                   <div className="rounded-xl border border-dashed border-border bg-muted/30 p-4 text-center">
-                                    <p className="text-xs font-medium">
-                                      Request for evaluation is locked
-                                    </p>
-                                    <p className="mt-1 text-[0.7rem] text-muted-foreground">
-                                      Complete all {selected.checklist.length} checklist items (
-                                      {selected.checklist.filter((c) => c.done).length} done) and
-                                      save the checklist to unlock it.
-                                    </p>
+                                    <div className="flex items-center justify-center gap-2">
+                                      <p className="text-xs font-medium">
+                                        Request for evaluation is locked
+                                      </p>
+                                      <Popover>
+                                        <PopoverTrigger asChild>
+                                          <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="h-6 w-6"
+                                            aria-label="Why evaluation is locked"
+                                          >
+                                            <Info className="h-4 w-4" />
+                                          </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-72 text-xs">
+                                          Complete all {selected.checklist.length} checklist items (
+                                          {selected.checklist.filter((c) => c.done).length} done)
+                                          and save the checklist to unlock it.
+                                        </PopoverContent>
+                                      </Popover>
+                                    </div>
                                   </div>
                                 )}
                               </div>
@@ -2053,18 +2098,32 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                       </p>
                                     )}
                                   </div>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-6 w-6 cursor-pointer shrink-0"
-                                    onClick={() =>
-                                      setEditChecklistRichItems((prev) =>
-                                        prev.filter((_, x) => x !== i),
-                                      )
-                                    }
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-6 w-6 cursor-pointer"
+                                      onClick={() =>
+                                        setEditChecklistRichItems((prev) =>
+                                          prev.filter((_, x) => x !== i),
+                                        )
+                                      }
+                                      aria-label={`Delete ${item.item_text}`}
+                                      title="Delete checklist item"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-6 w-6 cursor-pointer text-primary"
+                                      aria-label={`Configure ${item.item_text}`}
+                                      title="Configure checklist item"
+                                      onClick={() => configureMasterChecklistItem(i)}
+                                    >
+                                      <Pencil className="h-3 w-3" />
+                                    </Button>
+                                  </div>
                                 </li>
                               ))}
                             </ul>
@@ -2385,7 +2444,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
 
                 <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_13rem_auto]">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Checklist item</Label>
+                    <Label className="text-xs">Checklist Item info</Label>
                     <Input
                       value={reqItemDraft}
                       onChange={(e) => setReqItemDraft(e.target.value)}
@@ -2425,7 +2484,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
                       <tr>
-                        <th className="px-4 py-2.5 text-left font-medium">Checklist Item</th>
+                        <th className="px-4 py-2.5 text-left font-medium">Checklist Item info</th>
                         <th className="px-4 py-2.5 text-left font-medium">Job Position</th>
                         <th className="px-4 py-2.5 text-left font-medium">Requested</th>
                         <th className="px-4 py-2.5 text-right font-medium">Actions</th>

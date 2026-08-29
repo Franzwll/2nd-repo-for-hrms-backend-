@@ -5,6 +5,7 @@
 import { clearSession, getToken } from "./auth";
 
 const BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string) || "http://127.0.0.1:8000/api/v1";
+export const API_BASE_URL = BASE_URL;
 
 /* Lightweight GET cache: dedupes in-flight requests and caches responses for
    a short TTL so overlapping module fetches don't hit the server repeatedly. */
@@ -248,10 +249,11 @@ export function resolveStorageUrl(value: string | null): string | null {
   if (!value) return null;
   const origin = new URL(BASE_URL).origin;
   try {
-    const u = new URL(value, origin);
-    return `${origin}${u.pathname}`;
+    const normalized = value.replace(/\\/g, "/").replace(/^\.\//, "");
+    const u = new URL(normalized, origin);
+    return `${origin}${u.pathname}${u.search}`;
   } catch {
-    return value;
+    return value.replace(/\\/g, "/");
   }
 }
 
@@ -300,6 +302,12 @@ export const applicantsApi = {
       body: formData,
     }),
   screenResume: (formData: FormData) =>
+    request<ApiScreeningPreview>('/applicants/screen-resume', {
+      method: 'POST',
+      body: formData,
+    }),
+  getScreening: (id: number | string) =>
+    request<{ data: ApiScreening }>(`/applicants/${id}/screening`),
     request<{
       success: boolean;
       match_score?: number | null;
@@ -426,7 +434,6 @@ export interface ApiJobPost {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
-  benefits: string[];
   platforms?: string[];
   picture: string | null;
   picture_url: string | null;
@@ -1314,6 +1321,8 @@ export interface ApiLandingJob {
   qualifications: string[];
   skills: string[];
   benefits: string[];
+  picture?: string | null;
+  picture_url?: string | null;
 }
 
 export interface ApiAnnouncement {

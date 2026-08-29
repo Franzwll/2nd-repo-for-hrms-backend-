@@ -109,19 +109,23 @@ import { departments, positions } from "@/data/hr";
 import { hireStore } from "@/data/hires";
 import { jobs } from "@/data/jobs";
 import { useNavigate } from "@tanstack/react-router";
-import { cn } from "@/lib/utils";
+import { cn, downloadTextFile } from "@/lib/utils";
 import { SortHead, useSort } from "@/components/portal/sortable";
 import {
   applicantsApi,
   assessmentsApi,
   auditLogApi,
+  coreHcmApi,
   interviewsApi,
   jobPostsApi,
   resolveStorageUrl,
   screeningApi,
   settingsApi,
   type ApiApplicant,
+  type ApiDepartment,
   type ApiInterview,
+  type ApiJobPost,
+  type ApiPosition,
   type ApiScreeningPreview,
   type ApiScreeningReference,
   type ApiSystemUser,
@@ -1117,6 +1121,71 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     interviewer: interviewers[0]!.name,
   });
   const [scheduleDept, setScheduleDept] = useState<string>("all");
+  const [schedulePosition, setSchedulePosition] = useState<string>("all");
+  /** DB-backed lookups for departments / positions / job-posts (with fallback to static hr.ts). */
+  const [dbDepartments, setDbDepartments] = useState<ApiDepartment[]>([]);
+  const [dbPositions, setDbPositions] = useState<ApiPosition[]>([]);
+  const [dbJobPosts, setDbJobPosts] = useState<ApiJobPost[]>([]);
+
+  useEffect(() => {
+    Promise.allSettled([
+      coreHcmApi.departments({ per_page: 100 }),
+      coreHcmApi.positions({ per_page: 200 }),
+      jobPostsApi.list({ per_page: 200 }),
+    ]).then(([deptRes, posRes, jobRes]) => {
+      if (deptRes.status === "fulfilled") {
+        const d = (deptRes.value as any)?.data ?? [];
+        if (Array.isArray(d) && d.length) setDbDepartments(d);
+      }
+      if (posRes.status === "fulfilled") {
+        const p = (posRes.value as any)?.data ?? [];
+        if (Array.isArray(p) && p.length) setDbPositions(p);
+      }
+      if (jobRes.status === "fulfilled") {
+        const j = (jobRes.value as any)?.data ?? [];
+        if (Array.isArray(j) && j.length) setDbJobPosts(j);
+      }
+    });
+  }, []);
+
+  const displayDepartments = useMemo(() => {
+    if (dbDepartments.length) {
+      return dbDepartments.map((d) => ({ code: String(d.department_id ?? d.code), name: d.name }));
+    }
+    return departments;
+  }, [dbDepartments]);
+
+  const displayPositions = useMemo(() => {
+    if (dbPositions.length) {
+      return dbPositions.map((p) => ({
+        id: String(p.position_id ?? p.position_code),
+        title: p.title,
+        // ApiPosition.department may be name; fallback to lookup via department_id
+        department:
+          (p as any).department_name ??
+          (p as any).department ??
+          dbDepartments.find((d) => String(d.department_id) === String((p as any).department_id))?.name ??
+          departments.find((d) => String((d as any).department_id) === String((p as any).department_id))?.name ??
+          "General",
+      }));
+    }
+    return positions;
+  }, [dbPositions, dbDepartments]);
+
+  const activeJobTitles = useMemo(() => {
+    const s = new Set<string>();
+    dbJobPosts.forEach((j: any) => {
+      const isActive = j.active !== false && (j.status === "Open" || j.status === "Published" || j.status === "published");
+      if (isActive && j.title) s.add(j.title);
+    });
+    return s;
+  }, [dbJobPosts]);
+
+  const deptHasPosting = useCallback(
+    (deptName: string) => dbJobPosts.some((j: any) => (j.department ?? j.department_name) === deptName && j.active !== false && (j.status === "Open" || j.status === "Published" || j.status === "published")),
+    [dbJobPosts],
+  );
+
   /** Interview being rescheduled — prefills Book an Interview and updates the record on confirm. */
   const [rescheduling, setRescheduling] = useState<Interview | null>(null);
 
@@ -1205,6 +1274,53 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   // Report format state
   const [reportFormat, setReportFormat] = useState<ReportFormat>("pdf");
 
+  const handleExportAuditReport = (format: ReportFormat) => {
+    const rowsForReport = auditSort.sorted.length ? auditSort.sorted : auditFiltered;
+    if (rowsForReport.length === 0) {
+      toast.error("No audit entries to export for current filters.");
+      return;
+    }
+    const columns = [
+      { header: "Date & Time", key: "datetime", width: "14%" },
+      { header: "Performed By", key: "actor", width: "14%" },
+      { header: "Position", key: "position", width: "14%" },
+      { header: "Department", key: "dept", width: "12%" },
+      { header: "Action", key: "action", width: "12%" },
+      { header: "Applicant", key: "applicant", width: "12%" },
+      { header: "Module", key: "module", width: "10%" },
+      { header: "Details", key: "details", width: "22%" },
+    ];
+    const rowsData = rowsForReport.map((e) => ({
+      datetime: `${e.date} ${e.time}`,
+      actor: e.actorName,
+      position: e.actorPosition,
+      dept: e.actorDepartment,
+      action: e.actionType,
+      applicant: e.target,
+      module: e.module,
+      details: e.details,
+    }));
+    const filterSummary =
+      auditSearch || auditActionFilter !== "all" || auditDeptFilter !== "all" || auditActorFilter !== "all"
+        ? `Filters — Action: ${auditActionFilter} | Dept: ${auditDeptFilter} | User: ${auditActorFilter}${auditSearch ? ` | Search: "${auditSearch}"` : ""}`
+        : "All audit entries (no filters)";
+    exportReport(
+      {
+        title: "History & Audit Report — Applicant Management",
+        subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · ${filterSummary}`,
+        columns,
+        rows: rowsData,
+        summary: [
+          { label: "Total Entries", value: auditLog.length },
+          { label: "Filtered", value: rowsForReport.length },
+          { label: "Generated", value: new Date().toLocaleString() },
+        ],
+      },
+      format,
+    );
+    toast.success(`Audit report exported as ${format.toUpperCase()}`);
+  };
+
   // Add-applicant flow
   const [addOpen, setAddOpen] = useState(false);
   const [addStep, setAddStep] = useState<1 | 2 | 3>(1);
@@ -1217,6 +1333,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [pendingResume, setPendingResume] = useState<File | null>(null);
   const [replaceOpen, setReplaceOpen] = useState(false);
   const [addDept, setAddDept] = useState<string>(positions[0]!.department);
+  useEffect(() => {
+    if (displayPositions.length && !displayPositions.some((p) => p.department === addDept)) {
+      const firstDept = displayPositions[0]?.department;
+      if (firstDept) {
+        setAddDept(firstDept);
+        const firstPos = displayPositions.find((p) => p.department === firstDept);
+        if (firstPos) setAddForm((f) => ({ ...f, position: firstPos.title }));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayPositions]);
   const [addForm, setAddForm] = useState({
     name: "",
     email: "",
@@ -1348,11 +1475,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     return () => URL.revokeObjectURL(url);
   }, [addResumeFile]);
 
-  /** Zoom levels for resume previews (50-300%, default 200% centered). */
-  const [addPreviewZoom, setAddPreviewZoom] = useState(200);
-  const [reviewPreviewZoom, setReviewPreviewZoom] = useState(200);
-  useEffect(() => setAddPreviewZoom(200), [addResumeFile]);
-  useEffect(() => setReviewPreviewZoom(200), [review?.id]);
+  /** Zoom levels for resume previews (50-300%, default 100% centered per requirement). */
+  const [addPreviewZoom, setAddPreviewZoom] = useState(100);
+  const [reviewPreviewZoom, setReviewPreviewZoom] = useState(100);
+  useEffect(() => setAddPreviewZoom(100), [addResumeFile]);
+  useEffect(() => setReviewPreviewZoom(100), [review?.id]);
 
   /** DOCX HTML preview for local file (Add Applicant) */
   const addDocxContainerRef = useRef<HTMLDivElement>(null);
@@ -1396,7 +1523,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           experimental: false,
         } as any);
       } catch (e) {
-        if (!cancelled) setAddDocxError(String(e));
+        // Fallback: try mammoth to convert docx -> HTML (covers many docx that docx-preview cannot render)
+        try {
+          const mammoth = await import("mammoth");
+          const ab2 = await addResumeFile.arrayBuffer();
+          if (cancelled || !addDocxContainerRef.current) return;
+          const result = await mammoth.convertToHtml({ arrayBuffer: ab2 });
+          if (result.value) {
+            addDocxContainerRef.current.innerHTML = `<div class="p-4 text-sm leading-relaxed">${result.value}</div>`;
+            if (!cancelled) setAddDocxError(null);
+          } else {
+            throw e;
+          }
+        } catch (e2) {
+          if (!cancelled) setAddDocxError(String(e2));
+        }
       } finally {
         if (!cancelled) setAddDocxLoading(false);
       }
@@ -1440,11 +1581,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         return;
       }
       el.innerHTML = "";
+      let abCache: ArrayBuffer | null = null;
       try {
         const { renderAsync } = await import("docx-preview");
         const resp = await fetch(review.resumeUrl!);
         if (!resp.ok) throw new Error("fetch failed");
         const ab = await resp.arrayBuffer();
+        abCache = ab.slice(0);
         if (cancelled || !reviewDocxContainerRef.current) return;
         await renderAsync(ab, reviewDocxContainerRef.current, undefined, {
           className: "docx",
@@ -1456,7 +1599,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           ignoreLastRenderedPageBreak: true,
         } as any);
       } catch (e) {
-        if (!cancelled) setReviewDocxError(String(e));
+        // Mammoth fallback — convert docx to HTML for preview when docx-preview fails
+        try {
+          const mammoth = await import("mammoth");
+          const ab = abCache ?? (await (await fetch(review.resumeUrl!)).arrayBuffer());
+          if (cancelled || !reviewDocxContainerRef.current) return;
+          const result = await mammoth.convertToHtml({ arrayBuffer: ab });
+          if (result.value) {
+            reviewDocxContainerRef.current.innerHTML = `<div class="p-4 text-sm leading-relaxed">${result.value}</div>`;
+            if (!cancelled) setReviewDocxError(null);
+          } else {
+            throw e;
+          }
+        } catch (e2) {
+          if (!cancelled) setReviewDocxError(String(e2));
+        }
       } finally {
         if (!cancelled) setReviewDocxLoading(false);
       }
@@ -2380,7 +2537,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       };
 
   const deptForPosition = (position: string) =>
-    positions.find((p) => p.title === position)?.department ?? "�";
+    displayPositions.find((p) => p.title === position)?.department ?? "�";
 
   const assessmentRowsAll: AssessmentRow[] = [
     ...(assessmentFilter !== "completed"
@@ -2479,7 +2636,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         !interviews.some((i) => i.applicant === a.name) &&
         !["Assessed", "Offer", "Hired", "Rejected"].includes(a.stage) &&
         (scheduleDept === "all" ||
-          positions.find((p) => p.title === a.position)?.department === scheduleDept),
+          displayPositions.find((p) => p.title === a.position)?.department === scheduleDept) &&
+        (schedulePosition === "all" || a.position === schedulePosition),
     ),
     // While rescheduling, the applicant being moved stays selectable even
     // though they already have a booked interview.
@@ -2488,7 +2646,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           (a) =>
             a.name === rescheduling.applicant &&
             (scheduleDept === "all" ||
-              positions.find((p) => p.title === a.position)?.department === scheduleDept),
+              displayPositions.find((p) => p.title === a.position)?.department === scheduleDept) &&
+            (schedulePosition === "all" || a.position === schedulePosition),
         )
       : []),
   ];
@@ -2616,7 +2775,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All positions</SelectItem>
-                      {positions.map((p) => (
+                      {displayPositions.map((p) => (
                         <SelectItem key={p.id} value={p.title}>
                           {p.title}
                         </SelectItem>
@@ -2828,7 +2987,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All positions</SelectItem>
-                      {positions.map((p) => (
+                      {displayPositions.map((p) => (
                         <SelectItem key={p.id} value={p.title}>
                           {p.title}
                         </SelectItem>
@@ -3031,7 +3190,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
         {/* SCHEDULING */}
         <TabsContent value="scheduling" className="mt-4 space-y-6">
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="grid gap-6 xl:grid-cols-2 xl:items-stretch">
             {/* ?? Interview Calendar ??????????????????????????????? */}
             <Card className="flex h-full flex-col rounded-xl border-border/70 shadow-sm">
               <CardContent className="flex flex-1 flex-col p-5">
@@ -3180,11 +3339,20 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           setSchedule((s) => ({ ...s, date: iso }));
                         }}
                         className={cn(
-                          "relative min-h-[2.9rem] border-b border-r border-border/70 text-sm transition-colors last:border-r-0",
-                          free && !selected && "bg-success/25 font-semibold text-success",
-                          full && !selected && "bg-destructive/25 font-semibold text-destructive",
-                          isToday && !selected && "bg-gold/30 ring-1 ring-inset ring-gold",
-                          !selected && !free && !full && "hover:bg-muted/50",
+                          "relative min-h-[2.9rem] cursor-pointer border-b border-r border-border/70 text-sm transition-colors hover:z-10 last:border-r-0",
+                          free &&
+                            !selected &&
+                            "bg-success/25 font-semibold text-success hover:bg-success/35 hover:shadow-sm",
+                          full &&
+                            !selected &&
+                            "bg-destructive/25 font-semibold text-destructive hover:bg-destructive/35 hover:shadow-sm",
+                          isToday &&
+                            !selected &&
+                            "bg-gold/30 ring-1 ring-inset ring-gold hover:bg-gold/40 hover:shadow-sm",
+                          !selected &&
+                            !free &&
+                            !full &&
+                            "hover:bg-muted/50 hover:shadow-sm",
                           count === 0 &&
                             !schedulable &&
                             (cell.inMonth
@@ -3193,7 +3361,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           count > 0 &&
                             !selected &&
                             !full &&
-                            "bg-primary/5 font-semibold text-primary",
+                            "bg-primary/5 font-semibold text-primary hover:bg-primary/10 hover:shadow-sm",
                           selected && free && "bg-green-700 font-semibold text-white",
                           selected && full && "bg-red-700 font-semibold text-white",
                           selected &&
@@ -3203,22 +3371,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         )}
                       >
                         {cell.date.getDate()}
-                        {count > 0 && (
-                          <span
-                            className={cn(
-                              "absolute bottom-1.5 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full",
-                              selected ? "bg-white" : full ? "bg-destructive" : "bg-primary",
-                            )}
-                          />
-                        )}
-                        {free && (
-                          <span
-                            className={cn(
-                              "absolute bottom-1.5 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full",
-                              selected ? "bg-white" : "bg-success",
-                            )}
-                          />
-                        )}
                         {count > 1 && (
                           <span
                             className={cn(
@@ -3238,7 +3390,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   })}
                 </div>
 
-                <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
+                <div className="mt-3 flex flex-wrap justify-between gap-x-3 gap-y-2 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-success" /> Free day (schedulable)
                   </span>
@@ -3389,8 +3541,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
                 {/* Booking progress removed per user request */ undefined}
 
-                <div className="mt-4 flex-1 space-y-4">
-                  <Dialog open={slotDialogOpen} onOpenChange={setSlotDialogOpen}>
+                <div className="mt-4 flex flex-1 flex-col">
+                  <div className="flex-1 space-y-4">
+                    <Dialog open={slotDialogOpen} onOpenChange={setSlotDialogOpen}>
                     <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-[min(1400px,95vw)]">
                       <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 font-display text-2xl">
@@ -3821,28 +3974,70 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     </div>
                   )}
 
-                  <div className="space-y-2">
-                    <Label className="text-sm">Filter by Department</Label>
-                    <Select
-                      value={scheduleDept}
-                      onValueChange={(v) => {
-                        setScheduleDept(v);
-                        setSchedule((p) => ({ ...p, applicant: "" }));
-                        setRescheduling(null);
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All departments" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All departments</SelectItem>
-                        {departments.map((d) => (
-                          <SelectItem key={d.code} value={d.name}>
-                            {d.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label className="text-sm">Filter by Department</Label>
+                      <Select
+                        value={scheduleDept}
+                        onValueChange={(v) => {
+                          setScheduleDept(v);
+                          setSchedulePosition("all");
+                          setSchedule((p) => ({ ...p, applicant: "" }));
+                          setRescheduling(null);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="All departments" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All departments</SelectItem>
+                          {displayDepartments.map((d) => (
+                            <SelectItem key={d.code} value={d.name}>
+                              <span className="flex items-center gap-2">
+                                {d.name}
+                                {deptHasPosting(d.name) && (
+                                  <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
+                                    Posting
+                                  </span>
+                                )}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm">Position</Label>
+                      <Select
+                        value={schedulePosition}
+                        onValueChange={(v) => {
+                          setSchedulePosition(v);
+                          setSchedule((p) => ({ ...p, applicant: "" }));
+                          setRescheduling(null);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="All positions" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All positions</SelectItem>
+                          {displayPositions
+                            .filter((p) => scheduleDept === "all" || p.department === scheduleDept)
+                            .map((p) => (
+                              <SelectItem key={p.id} value={p.title}>
+                                <span className="flex items-center gap-2">
+                                  {p.title}
+                                  {activeJobTitles.has(p.title) && (
+                                    <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
+                                      Posting
+                                    </span>
+                                  )}
+                                </span>
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -3968,43 +4163,46 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3 rounded-lg border border-border/70 bg-muted/25 p-4">
-                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                    <div className="min-w-0 text-sm">
-                      <p className="font-medium">
-                        {schedule.mode === "Virtual" ? "Virtual Interview" : "On-site Interview"}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {schedule.mode === "Virtual"
-                          ? "Meeting link: meet.oxfordsuites.ph/interview-room"
-                          : "Location: Oxford Suites Makati, HR Office, 3rd Floor"}
-                      </p>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">
-                          {schedule.applicant || "No applicant selected"}
-                        </span>
-                        {schedule.date && schedule.time
-                          ? ` � ${new Date(`${schedule.date}T00:00:00`).toLocaleDateString(
-                              "en-US",
-                              {
-                                month: "short",
-                                day: "numeric",
-                              },
-                            )} at ${schedule.time}`
-                          : " � pick a date and time"}
-                        {schedule.interviewer ? ` � ${schedule.interviewer}` : ""}
-                      </p>
-                    </div>
                   </div>
+                  <div className="mt-auto space-y-3 border-t border-border/30 pt-4">
+                    <div className="flex items-start gap-3 rounded-lg border border-border/70 bg-muted/25 p-4">
+                      <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      <div className="min-w-0 text-sm">
+                        <p className="font-medium">
+                          {schedule.mode === "Virtual" ? "Virtual Interview" : "On-site Interview"}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {schedule.mode === "Virtual"
+                            ? "Meeting link: meet.oxfordsuites.ph/interview-room"
+                            : "Location: Oxford Suites Makati, HR Office, 3rd Floor"}
+                        </p>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          <span className="font-medium text-foreground">
+                            {schedule.applicant || "No applicant selected"}
+                          </span>
+                          {schedule.date && schedule.time
+                            ? ` � ${new Date(`${schedule.date}T00:00:00`).toLocaleDateString(
+                                "en-US",
+                                {
+                                  month: "short",
+                                  day: "numeric",
+                                },
+                              )} at ${schedule.time}`
+                            : " � pick a date and time"}
+                          {schedule.interviewer ? ` � ${schedule.interviewer}` : ""}
+                        </p>
+                      </div>
+                    </div>
 
-                  <Button
-                    className="w-full"
-                    size="lg"
-                    disabled={!schedule.applicant || !schedule.date || !schedule.time}
-                    onClick={confirmSchedule}
-                  >
-                    <Mail className="mr-2 h-4 w-4" /> Confirm &amp; Send Invitation
-                  </Button>
+                    <Button
+                      className="w-full"
+                      size="lg"
+                      disabled={!schedule.applicant || !schedule.date || !schedule.time}
+                      onClick={confirmSchedule}
+                    >
+                      <Mail className="mr-2 h-4 w-4" /> Confirm &amp; Send Invitation
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -4233,7 +4431,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All departments</SelectItem>
-                      {departments.map((d) => (
+                      {displayDepartments.map((d) => (
                         <SelectItem key={d.code} value={d.name}>
                           {d.name}
                         </SelectItem>
@@ -4491,7 +4689,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All departments</SelectItem>
-                      {departments.map((d) => (
+                      {displayDepartments.map((d) => (
                         <SelectItem key={d.code} value={d.name}>
                           {d.name}
                         </SelectItem>
@@ -4511,6 +4709,24 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       ))}
                     </SelectContent>
                   </Select>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="gap-2">
+                        <Download className="h-4 w-4" /> Generate Report
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44">
+                      <DropdownMenuItem onClick={() => handleExportAuditReport("pdf")}>
+                        <FileText className="mr-2 h-4 w-4" /> Export as PDF
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleExportAuditReport("docx")}>
+                        <FileText className="mr-2 h-4 w-4" /> Export as DOCX
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleExportAuditReport("excel")}>
+                        <Download className="mr-2 h-4 w-4" /> Export as Excel
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   {(auditSearch ||
                     auditActionFilter !== "all" ||
                     auditDeptFilter !== "all" ||
@@ -5711,7 +5927,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   value={addDept}
                   onValueChange={(v) => {
                     setAddDept(v);
-                    const first = positions.find((p) => p.department === v);
+                    const first = displayPositions.find((p) => p.department === v);
                     if (first) setAddForm((f) => ({ ...f, position: first.title }));
                   }}
                 >
@@ -5719,9 +5935,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {[...new Set(positions.map((p) => p.department))].map((d) => (
+                    {[...new Set(displayPositions.map((p) => p.department))].map((d) => (
                       <SelectItem key={d} value={d}>
-                        {d}
+                        <span className="flex items-center gap-2">
+                          {d}
+                          {deptHasPosting(d) && (
+                            <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
+                              Posting
+                            </span>
+                          )}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -5738,11 +5961,18 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {positions
+                    {displayPositions
                       .filter((p) => p.department === addDept)
                       .map((p) => (
                         <SelectItem key={p.id} value={p.title}>
-                          {p.title}
+                          <span className="flex items-center gap-2">
+                            {p.title}
+                            {activeJobTitles.has(p.title) && (
+                              <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
+                                Posting
+                              </span>
+                            )}
+                          </span>
                         </SelectItem>
                       ))}
                   </SelectContent>
