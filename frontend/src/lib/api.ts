@@ -308,17 +308,6 @@ export const applicantsApi = {
     }),
   getScreening: (id: number | string) =>
     request<{ data: ApiScreening }>(`/applicants/${id}/screening`),
-    request<{
-      success: boolean;
-      match_score?: number | null;
-      screening_status?: string | null;
-      entities?: { label: string; value: string }[];
-      processing_status?: string | null;
-      error_message?: string;
-    }>('/applicants/screen-resume', {
-      method: 'POST',
-      body: formData,
-    }),
   createAssessment: (applicantId: number | string, data: Record<string, any>) =>
     request<ApiAssessment>(`/applicants/${applicantId}/assessments`, {
       method: 'POST',
