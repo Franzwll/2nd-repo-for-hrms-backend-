@@ -25,6 +25,10 @@ import {
   Users,
   X,
   ArrowUpDown,
+  Compass,
+  Flag,
+  Clock,
+  Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -367,10 +371,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const [knownPositions, setKnownPositions] = useState<
     { dbId: number; id: string; title: string; department: string }[]
   >([]);
-  /** Hired/accepted applicants from the live database, for the add-hire form. */
+  /** Hired/candidate applicants from the live database, for the add-hire form. */
   const [candidateApplicants, setCandidateApplicants] = useState<
-    { id: string; name: string; position: string; email: string; phone: string }[]
+    { id: string; name: string; position: string; email: string; phone: string; stage?: string }[]
   >([]);
+  const [isManualName, setIsManualName] = useState(false);
 
   useEffect(() => {
     checklistRequestsApi
@@ -419,16 +424,15 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       .list({ per_page: 100 })
       .then((res) => {
         if (res?.data) {
-          const hired = res.data
-            .filter((a) => a.stage === "Accepted" || a.stage === "Hired")
-            .map((a) => ({
-              id: String(a.applicant_id),
-              name: a.name,
-              position: a.job_post?.title || "Staff",
-              email: a.email || "",
-              phone: a.phone || "",
-            }));
-          setCandidateApplicants(hired);
+          const candidates = res.data.map((a) => ({
+            id: String(a.applicant_id),
+            name: a.name,
+            position: a.job_post?.title || "Staff",
+            email: a.email || "",
+            phone: a.phone || "",
+            stage: a.stage || "Screened",
+          }));
+          setCandidateApplicants(candidates);
         }
       })
       .catch((err) => console.warn("Could not fetch applicants from API:", err));
@@ -2665,13 +2669,40 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>Full name</Label>
+              <div className="flex items-center justify-between">
+                <Label>Full name</Label>
+                {!nameLocked && candidateApplicants.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsManualName(!isManualName);
+                      setForm((prev) => ({ ...prev, name: "" }));
+                    }}
+                    className="text-[11px] font-medium text-primary hover:underline cursor-pointer"
+                  >
+                    {isManualName ? "Select from applicants" : "Or type custom name"}
+                  </button>
+                )}
+              </div>
               {nameLocked ? (
                 <>
                   <Input value={form.name} readOnly className="bg-muted/50" />
                   <p className="text-[0.7rem] text-muted-foreground">
                     Accepted applicant — details carried over from assessment.
                   </p>
+                </>
+              ) : isManualName || candidateApplicants.length === 0 ? (
+                <>
+                  <Input
+                    placeholder="Enter hire's full name"
+                    value={form.name}
+                    onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                  />
+                  {candidateApplicants.length === 0 && (
+                    <p className="text-[0.7rem] text-muted-foreground">
+                      No applicants found — enter the candidate's name manually.
+                    </p>
+                  )}
                 </>
               ) : (
                 <Select
@@ -2697,7 +2728,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                       .filter((a) => !hires.some((h) => h.name === a.name))
                       .map((a) => (
                         <SelectItem key={a.id} value={a.name}>
-                          {a.name} — {a.position}
+                          {a.name} — {a.position} {a.stage ? `(${a.stage})` : ""}
                         </SelectItem>
                       ))}
                   </SelectContent>
@@ -3180,6 +3211,66 @@ export function EmployeeOnboarding() {
     };
   }, [syncListHeight, filteredItems, viewingItem]);
 
+  // Calculate Tenure & 30-60-90-180 Day Probation Milestones
+  const hireDateStr = newHire?.start_date || "2026-08-01";
+  const hireDate = useMemo(() => new Date(hireDateStr), [hireDateStr]);
+  const now = useMemo(() => new Date(), []);
+
+  const elapsedDays = useMemo(() => {
+    const diffTime = Math.abs(now.getTime() - hireDate.getTime());
+    return Math.max(1, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+  }, [hireDate, now]);
+
+  const totalProbationDays = 180;
+  const currentMonthNum = Math.min(6, Math.max(1, Math.ceil(elapsedDays / 30)));
+  const daysRemaining = Math.max(0, totalProbationDays - elapsedDays);
+  const tenurePct = Math.min(100, Math.round((elapsedDays / totalProbationDays) * 100));
+
+  const regularizationDate = useMemo(() => {
+    const d = new Date(hireDate);
+    d.setDate(d.getDate() + 180);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }, [hireDate]);
+
+  const milestones = [
+    {
+      id: "w1",
+      dayTarget: 7,
+      label: "Week 1",
+      title: "Orientation & Setup",
+      desc: "Biometrics, company policies & initial tooling",
+      status: elapsedDays >= 7 ? "completed" : "in-progress",
+      targetDate: new Date(hireDate.getTime() + 7 * 86400000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    },
+    {
+      id: "m1",
+      dayTarget: 30,
+      label: "Month 1",
+      title: "30-Day Check-in",
+      desc: "Initial performance touchpoint with supervisor",
+      status: elapsedDays >= 30 ? "completed" : elapsedDays >= 7 ? "in-progress" : "upcoming",
+      targetDate: new Date(hireDate.getTime() + 30 * 86400000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    },
+    {
+      id: "m3",
+      dayTarget: 90,
+      label: "Month 3",
+      title: "Mid-Probation Review",
+      desc: "Mid-term evaluation & KPI performance sync",
+      status: elapsedDays >= 90 ? "completed" : elapsedDays >= 30 ? "in-progress" : "upcoming",
+      targetDate: new Date(hireDate.getTime() + 90 * 86400000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    },
+    {
+      id: "m6",
+      dayTarget: 180,
+      label: "Month 6",
+      title: "Regularization",
+      desc: "Final appraisal for regular employment status",
+      status: elapsedDays >= 180 ? "completed" : elapsedDays >= 90 ? "in-progress" : "upcoming",
+      targetDate: regularizationDate,
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -3196,6 +3287,114 @@ export function EmployeeOnboarding() {
           probationary requirements below have been verified.
         </p>
       </div>
+
+      {/* PROBATIONARY JOURNEY & MILESTONE TIMELINE */}
+      <Card className="border-border/70 shadow-xs overflow-hidden">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 bg-muted/20 border-b border-border/60">
+          <div>
+            <CardTitle className="font-display text-lg sm:text-xl font-semibold flex items-center gap-2">
+              <Compass className="h-5 w-5 text-primary" />
+              Probationary Journey &amp; Milestone Timeline
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Track your active tenure duration, 30-90-180 day performance touchpoints, and regularization pathway.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs font-semibold px-2.5 py-1 flex items-center gap-1.5 shadow-2xs">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              Day {elapsedDays} of {totalProbationDays} Active
+            </Badge>
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs font-semibold px-2.5 py-1">
+              Month {currentMonthNum} of 6
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="p-6 space-y-6">
+          {/* Stepper Progression Grid */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {milestones.map((m) => {
+              const isCompleted = m.status === "completed";
+              const isInProgress = m.status === "in-progress";
+
+              return (
+                <div
+                  key={m.id}
+                  className={`relative rounded-xl border p-4 transition-all ${
+                    isCompleted
+                      ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/15 shadow-2xs"
+                      : isInProgress
+                      ? "border-primary/60 bg-primary/5 shadow-xs ring-1 ring-primary/25"
+                      : "border-border/70 bg-muted/10 opacity-75"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                        isCompleted
+                          ? "bg-emerald-500/15 text-emerald-600 border border-emerald-500/30"
+                          : isInProgress
+                          ? "bg-primary text-primary-foreground font-semibold"
+                          : "bg-muted text-muted-foreground border border-border"
+                      }`}
+                    >
+                      {m.label}
+                    </span>
+
+                    {isCompleted ? (
+                      <div className="flex items-center gap-1 text-emerald-600 text-xs font-semibold">
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span>Passed</span>
+                      </div>
+                    ) : isInProgress ? (
+                      <div className="flex items-center gap-1 text-primary text-xs font-semibold">
+                        <Clock className="h-4 w-4 animate-pulse" />
+                        <span>Current Stage</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 text-muted-foreground text-xs font-medium">
+                        <Calendar className="h-3.5 w-3.5" />
+                        <span>{m.targetDate}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <h4 className="font-display text-sm font-bold text-foreground">
+                    {m.title}
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-1 leading-snug">
+                    {m.desc}
+                  </p>
+
+                  <div className="mt-3 pt-2.5 border-t border-border/60 flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">Target: Day {m.dayTarget}</span>
+                    <span className="font-semibold text-foreground">
+                      {isCompleted ? "Verified ✓" : isInProgress ? `Day ${elapsedDays} · Active` : m.targetDate}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Overall Probation Timeline Bar */}
+          <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs mb-2">
+              <span className="font-semibold text-foreground flex items-center gap-1.5">
+                <Flag className="h-3.5 w-3.5 text-primary" /> Overall Probationary Elapsed Progress
+              </span>
+              <span className="text-muted-foreground">
+                <strong className="text-primary font-bold">{tenurePct}%</strong> elapsed · <strong className="text-foreground">{daysRemaining} days</strong> remaining until regularization review
+              </span>
+            </div>
+            <Progress value={tenurePct} className="h-2.5" />
+            <div className="flex justify-between items-center text-[11px] text-muted-foreground mt-2">
+              <span>Start Date: <strong className="text-foreground">{hireDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</strong></span>
+              <span>Target Regularization: <strong className="text-foreground">{regularizationDate}</strong></span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* NEW HIRE ONBOARDING Header & Progress Card */}
       <Card className="border-border/70 overflow-hidden">
