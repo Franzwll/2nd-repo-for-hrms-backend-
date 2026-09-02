@@ -191,14 +191,15 @@ function FindJobs() {
             {pageItems.map((job) => (
               <Card key={job.id} className="border-border/70 overflow-hidden">
                 <CardContent className="p-0">
-                  <div className="flex gap-0">
-                    {/* Picture on the left */}
+                  <div className="flex flex-col sm:flex-row gap-0">
+                    {/* Picture on the left — show whole poster, never crop */}
                     {job.picture && (
-                      <div className="shrink-0">
+                      <div className="flex w-full shrink-0 items-center justify-center overflow-hidden bg-white sm:w-48 md:w-56">
                         <img
                           src={job.picture}
                           alt={`${job.title} hiring poster`}
-                          className="h-full w-48 object-cover"
+                          className="h-auto max-h-72 w-full object-contain sm:h-full sm:max-h-none sm:w-full"
+                          loading="lazy"
                         />
                       </div>
                     )}

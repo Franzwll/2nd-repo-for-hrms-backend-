@@ -17,4 +17,15 @@ export default defineConfig({
     }),
     react(),
   ],
+  // Proxy API calls to the Laravel backend so document previews are same-origin.
+  // A same-origin <iframe>/<img> lets the browser render PDFs/images inline
+  // instead of downloading them (cross-origin PDFs are forced to download).
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
+    },
+  },
 });

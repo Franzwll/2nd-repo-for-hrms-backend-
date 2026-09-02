@@ -82,10 +82,10 @@ function JobDetail() {
     if (!file) return;
     setFileName(file.name);
     setResumeFile(file);
-    // Validate type/size before extraction
-    const okType = /\.(pdf|docx?)$/i.test(file.name);
+    // Validate type/size before extraction — same allow-list as Recruitment Management (add applicant)
+    const okType = /\.(pdf|docx?|png|jpe?g|webp|heic|heif|bmp|gif|tiff|tif|avif|svg)$/i.test(file.name);
     if (!okType) {
-      toast.error("Unsupported file — please use PDF or DOCX.");
+      toast.error("Unsupported file — please use PDF, DOC, DOCX, PNG, JPG or JPEG.");
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
@@ -167,7 +167,7 @@ function JobDetail() {
                 <img
                   src={job.picture}
                   alt={`${job.title} hiring poster`}
-                  className="h-44 w-40 shrink-0 rounded-md border border-border object-cover shadow-sm"
+                  className="h-44 w-40 shrink-0 rounded-md border border-border bg-white object-contain shadow-sm"
                 />
               )}
 
@@ -304,14 +304,27 @@ function JobDetail() {
                       }
                       setApplying(true);
                       try {
-                        const res = await landingApi.apply({
-                          job_post_id: Number(job.id),
-                          name: n,
-                          email: em,
-                          phone: ph,
-                          source: "Landing Page",
-                          summary: cover,
-                        });
+                        let res;
+                        if (resumeFile) {
+                          const fd = new FormData();
+                          fd.append("job_post_id", String(job.id));
+                          fd.append("name", n);
+                          fd.append("email", em);
+                          fd.append("phone", ph);
+                          fd.append("source", "Landing Page");
+                          fd.append("summary", cover);
+                          fd.append("resume", resumeFile);
+                          res = await landingApi.apply(fd);
+                        } else {
+                          res = await landingApi.apply({
+                            job_post_id: Number(job.id),
+                            name: n,
+                            email: em,
+                            phone: ph,
+                            source: "Landing Page",
+                            summary: cover,
+                          });
+                        }
                         setSubmitted(true);
                         toast.success("Application submitted", {
                           description: `Application ${res.data.applicant_code} for ${job.title} was received.`,
@@ -438,7 +451,7 @@ function JobDetail() {
                                 )}
                               />
                               <span className="text-sm text-muted-foreground">
-                                Drag a file here or click to upload — PDF, DOC, DOCX (max 5MB) —
+                                Drag a file here or click to upload — PDF, DOC, DOCX, PNG, JPG (max 10MB) —
                                 auto-fills name, email, phone, location
                               </span>
                             </>
@@ -448,7 +461,7 @@ function JobDetail() {
                           id="resume"
                           name="resume"
                           type="file"
-                          accept=".pdf,.doc,.docx"
+                          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,.heic,.heif,.bmp,.gif,.tiff,.tif,.avif,.svg"
                           className="sr-only"
                           onChange={(e) => handleResumeExtract(e.target.files?.[0] ?? null)}
                         />

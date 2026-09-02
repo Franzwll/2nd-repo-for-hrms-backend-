@@ -37,6 +37,118 @@ class ScreeningReferenceController extends Controller
     }
 
     /* ------------------------------------------------------------------ */
+    /* GET /api/v1/screening/status                                        */
+    /* NLP service health + the effective scoring configuration.           */
+    /* ------------------------------------------------------------------ */
+
+    public function status(): JsonResponse
+    {
+        $nlp = app(\App\Services\NlpService::class);
+        $health = $nlp->healthDetails();
+
+        // Effective configuration = persisted HR settings when present,
+        // otherwise the NLP service's built-in defaults from /health.
+        $configured = \Modules\Settings\Models\SystemSetting::where('setting_key', 'screening.configuration')
+            ->value('setting_value');
+
+        $defaults = [
+            'criteria' => [
+                'Skills' => ['weight' => 40, 'enabled' => true],
+                'Work Experience' => ['weight' => 30, 'enabled' => true],
+                'Educational Background' => ['weight' => 20, 'enabled' => true],
+                'Certifications' => ['weight' => 10, 'enabled' => true],
+            ],
+            'passing_score' => 75,
+            'required_skills_coverage_min' => 0.6,
+        ];
+
+        $effective = is_array($configured) && ! empty($configured) ? $configured : $defaults;
+        $serviceDefaults = [
+            'weights' => $health['weights'] ?? null,
+            'thresholds' => $health['thresholds'] ?? null,
+        ];
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'nlp_service' => [
+                    'online' => $health !== null,
+                    'base_model' => $health['base_model'] ?? null,
+                    'custom_ner_loaded' => $health['custom_ner_loaded'] ?? false,
+                    'model_info' => $health['model_info'] ?? null,
+                ],
+                // 'saved' = the HR configuration stored in the database (null when never saved)
+                'saved' => is_array($configured) && ! empty($configured) ? $configured : null,
+                // 'effective' = what screenings actually run with right now
+                'effective' => $effective,
+                'service_defaults' => $serviceDefaults,
+            ],
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* PUT /api/v1/screening/configuration                                 */
+    /* Persists the HR scoring configuration used by every screening run.   */
+    /* ------------------------------------------------------------------ */
+
+    public function saveConfiguration(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'configuration' => ['required', 'array'],
+            'configuration.criteria' => ['required', 'array'],
+            'configuration.criteria.*.weight' => ['required', 'numeric', 'min:0', 'max:100'],
+            'configuration.criteria.*.enabled' => ['required', 'boolean'],
+            'configuration.passing_score' => ['required', 'numeric', 'min:0', 'max:100'],
+            'configuration.required_skills_coverage_min' => ['required', 'numeric', 'min:0', 'max:1'],
+        ]);
+
+        $config = $validated['configuration'];
+
+        // Enabled criteria weights must total exactly 100% — the NLP service
+        // normalizes the rest, but HR should not be able to save nonsense.
+        $enabledTotal = 0.0;
+        foreach ($config['criteria'] as $entry) {
+            if ($entry['enabled']) {
+                $enabledTotal += (float) $entry['weight'];
+            }
+        }
+        if (round($enabledTotal, 2) !== 100.0) {
+            return response()->json([
+                'message' => "Enabled criteria weights must total 100% (currently {$enabledTotal}%).",
+            ], 422);
+        }
+
+        \Modules\Settings\Models\SystemSetting::setValue(
+            'screening.configuration',
+            $config,
+            $request->user()?->id
+        );
+
+        AuditLogger::log(
+            action: 'Screening Configuration Saved',
+            module: 'Applicant Management',
+            severity: 'Info',
+            targetType: 'Screening Configuration',
+            targetId: 'screening.configuration',
+            details: sprintf(
+                'Criteria weights saved (Skills %s%%, Experience %s%%, Education %s%%, Certifications %s%%) — passing score %s%%, coverage minimum %s%%.',
+                $config['criteria']['Skills']['enabled'] ? $config['criteria']['Skills']['weight'] : 'off',
+                $config['criteria']['Work Experience']['enabled'] ? $config['criteria']['Work Experience']['weight'] : 'off',
+                $config['criteria']['Educational Background']['enabled'] ? $config['criteria']['Educational Background']['weight'] : 'off',
+                $config['criteria']['Certifications']['enabled'] ? $config['criteria']['Certifications']['weight'] : 'off',
+                $config['passing_score'],
+                round(((float) $config['required_skills_coverage_min']) * 100) . '%'
+            )
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => $config,
+            'message' => 'Screening configuration saved. It applies to every new screening run.',
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
     /* GET /api/v1/screening/reference-data/list                           */
     /* Flat admin listing with optional type filter and search.             */
     /* ------------------------------------------------------------------ */

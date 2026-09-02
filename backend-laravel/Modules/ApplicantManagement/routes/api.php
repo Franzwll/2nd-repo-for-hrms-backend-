@@ -8,35 +8,42 @@ use Modules\ApplicantManagement\Http\Controllers\ScreeningReferenceController;
 use Modules\ApplicantManagement\Http\Controllers\InterviewController;
 
 /*
- * All Applicant Management endpoints are restricted to authenticated system
- * users whose role has access to the "Applicant Management" module
- * (Super Admin = Full, Admin = Edit; Employee = None -> 403). This matches
- * the convention used by the UserManagement / CoreHCM / AuditLog modules.
+ * Resume file preview (token auth, no auth:sanctum header required).
  *
- * Public job applications do NOT go through this module - they use the
- * dedicated POST /landing/apply endpoint, which stays open.
+ * The Applicant Management review dialog previews resumes inside a browser
+ * <iframe>/<img>, which cannot send an Authorization header, so this route
+ * authenticates directly from the ?token= query param (Bearer fallback)
+ * instead of relying on the auth:sanctum middleware. Permission is checked
+ * in the controller. Serving through /api (not the public /storage symlink)
+ * keeps the preview same-origin so the browser renders PDFs/images inline
+ * instead of a blank white box.
  */
+Route::prefix('v1')->middleware('api')->group(function () {
+     Route::get('applicants/{applicant}/resume-document', [ApplicantManagementController::class, 'resumeDocument'])
+          ->name('applicants.resume-document');
+});
+
 Route::prefix('v1')
      ->middleware(['auth:sanctum', 'permission:Applicant Management'])
      ->group(function () {
 
-          /* ------------------------------------------------------------------ */
-          /* Applicants                                                           */
-          /* ------------------------------------------------------------------ */
-          Route::get('applicants/stats', [ApplicantManagementController::class, 'stats'])
-               ->name('applicants.stats');
+           /* ------------------------------------------------------------------ */
+           /* Applicants                                                           */
+           /* ------------------------------------------------------------------ */
+           Route::get('applicants/stats', [ApplicantManagementController::class, 'stats'])
+                ->name('applicants.stats');
 
-          // Preview screening for an uploaded resume (no applicant created yet)
-          Route::post('applicants/screen-resume', [ApplicantManagementController::class, 'screenResume'])
-               ->name('applicants.screen-resume');
+           // Preview screening for an uploaded resume (no applicant created yet)
+           Route::post('applicants/screen-resume', [ApplicantManagementController::class, 'screenResume'])
+                ->name('applicants.screen-resume');
 
-          // Lightweight NLP extraction (profile only) - autofills wizard contact fields
-          Route::post('applicants/extract-resume', [ApplicantManagementController::class, 'extractResume'])
-               ->name('applicants.extract-resume');
+           // Lightweight NLP extraction (profile only) - autofills wizard contact fields
+           Route::post('applicants/extract-resume', [ApplicantManagementController::class, 'extractResume'])
+                ->name('applicants.extract-resume');
 
-          // Latest full spaCy screening detail for one applicant
-          Route::get('applicants/{applicant}/screening', [ApplicantManagementController::class, 'screeningDetail'])
-               ->name('applicants.screening');
+           // Latest full spaCy screening detail for one applicant
+           Route::get('applicants/{applicant}/screening', [ApplicantManagementController::class, 'screeningDetail'])
+                ->name('applicants.screening');
 
           // Research evaluation (SOP 1/2/3/5)
           Route::post('applicants/{applicant}/ground-truth', [ScreeningEvaluationController::class, 'storeGroundTruth'])
@@ -50,13 +57,20 @@ Route::prefix('v1')
           Route::get('evaluation/sop5-score-alignment', [ScreeningEvaluationController::class, 'sop5'])
                ->name('evaluation.sop5');
 
-          // DB-managed screening reference data (skills/roles/certifications + aliases)
-          Route::get('screening/reference-data', [ScreeningReferenceController::class, 'index'])
-               ->name('screening.reference-data');
-          Route::get('screening/reference-data/list', [ScreeningReferenceController::class, 'list'])
-               ->name('screening.reference-data.list');
-          Route::post('screening/reference-data', [ScreeningReferenceController::class, 'store'])
-               ->name('screening.reference-data.store');
+           // DB-managed screening reference data (skills/roles/certifications + aliases)
+           Route::get('screening/reference-data', [ScreeningReferenceController::class, 'index'])
+                ->name('screening.reference-data');
+           Route::get('screening/reference-data/list', [ScreeningReferenceController::class, 'list'])
+                ->name('screening.reference-data.list');
+
+           // NLP service status + HR scoring configuration (Screening Setup dialog)
+           Route::get('screening/status', [ScreeningReferenceController::class, 'status'])
+                ->name('screening.status');
+           Route::put('screening/configuration', [ScreeningReferenceController::class, 'saveConfiguration'])
+                ->name('screening.configuration.save');
+
+           Route::post('screening/reference-data', [ScreeningReferenceController::class, 'store'])
+                ->name('screening.reference-data.store');
           Route::put('screening/reference-data/{id}', [ScreeningReferenceController::class, 'update'])
                ->name('screening.reference-data.update');
           Route::patch('screening/reference-data/{id}/toggle', [ScreeningReferenceController::class, 'toggle'])

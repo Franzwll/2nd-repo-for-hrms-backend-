@@ -75,6 +75,11 @@ class NlpService
     /**
      * Full screening call with structured role requirements and alternative open jobs.
      * Returns ['ok' => bool, 'data' => ?array, 'error' => ?string] so callers never fail silently.
+     *
+     * $screeningSettings optionally carries the HR-configurable scoring
+     * configuration persisted from the Screening Setup dialog:
+     * {weights: {skills, experience, education, certifications},
+     *  passing_score: 0-100, required_skills_coverage_min: 0-1}.
      */
     public function screenResumeStructured(
         string $filePath,
@@ -82,7 +87,8 @@ class NlpService
         array $requirements,
         array $openJobs = [],
         int $timeoutSeconds = 120,
-        ?array $referenceData = null
+        ?array $referenceData = null,
+        ?array $screeningSettings = null
     ): array {
         if (!is_file($filePath)) {
             return ['ok' => false, 'data' => null, 'error' => "Resume file not found at {$filePath}"];
@@ -97,6 +103,10 @@ class NlpService
             // the NLP service falls back to its bundled seed JSON when absent.
             if ($referenceData) {
                 $payload['reference_data'] = json_encode($referenceData);
+            }
+            // HR-configurable weights / thresholds from the Screening Setup.
+            if ($screeningSettings) {
+                $payload['screening_settings'] = json_encode($screeningSettings);
             }
 
             $response = Http::timeout($timeoutSeconds)
@@ -136,6 +146,24 @@ class NlpService
             return (bool) Http::timeout(5)->get("{$this->baseUrl}/health")->successful();
         } catch (\Throwable) {
             return false;
+        }
+    }
+
+    /**
+     * Full service status — weights, thresholds and loaded model info from
+     * the NLP /health endpoint. Returns null when the service is unreachable.
+     */
+    public function healthDetails(): ?array
+    {
+        try {
+            $response = Http::timeout(5)->get("{$this->baseUrl}/health");
+            if (! $response->successful()) {
+                return null;
+            }
+
+            return $response->json();
+        } catch (\Throwable) {
+            return null;
         }
     }
 }

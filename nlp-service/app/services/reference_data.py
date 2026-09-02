@@ -18,8 +18,8 @@ from typing import Dict, List, Optional, Tuple
 
 from app import config
 
-_FUZZY_MIN_LENGTH = 6
-_FUZZY_CUTOFF = 0.86
+_FUZZY_MIN_LENGTH = 5
+_FUZZY_CUTOFF = 0.82  # lowered from 0.86 to tolerate OCR noise (e.g. PROPESSIONAL, Houskeeping) — blurred scans need more permissive matching
 
 
 def _load(filename: str) -> Dict[str, List[str]]:

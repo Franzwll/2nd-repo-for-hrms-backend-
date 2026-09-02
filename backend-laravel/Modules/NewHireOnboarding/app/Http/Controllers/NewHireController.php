@@ -282,6 +282,13 @@ class NewHireController extends Controller
         // Auto-apply matching Active checklist templates for the new stage
         OnboardingChecklistTemplate::applyAllFor($model);
 
+        // Regularization must reach the Core HCM employee record too — the
+        // employee list / org chart reads employment_type from `employees`,
+        // so without this a regularized hire would still show Probationary.
+        if ($nextStage === 'Regular') {
+            $this->regularizeEmployeeRecord($model);
+        }
+
         // Portal account (re)creation — hires completing their record at
         // probation get their Employee portal login here.
         $account = $this->ensurePortalAccount($model);
@@ -292,6 +299,107 @@ class NewHireController extends Controller
         return response()->json(
             new NewHireResource($model->load(['department', 'position', 'onboardingItems.templateItem.template']))
         );
+    }
+
+    /**
+     * Marks the hire's linked Core HCM employee record as Regular. When no
+     * employee row exists yet (hire was never handed to Employee Records),
+     * one is created from the hire's own details so the org chart / employee
+     * list reflects the regularization. Also writes the position history
+     * entry Core HCM's own regularization flow uses.
+     */
+    private function regularizeEmployeeRecord(NewHire $newHire): void
+    {
+        $employee = $newHire->employee_id
+            ? \App\Models\Employee::find($newHire->employee_id)
+            : \App\Models\Employee::where('email', $newHire->email)->first();
+
+        if (!$employee) {
+            // No employee record yet — create one from the hire's details.
+            // A duplicate email (e.g. shared test account) must never block
+            // the regularization itself, so failures fall back to updating
+            // whatever exists by code alone.
+            if (!$newHire->position_id || !$newHire->department_id) {
+                return; // not enough data to file an employee record
+            }
+
+            try {
+                $nameParts = preg_split('/\s+/', trim($newHire->name) ?: 'New Hire', 2);
+                $employee = \App\Models\Employee::create([
+                    'employee_code' => $this->nextEmployeeCode(),
+                    'first_name' => $nameParts[0] ?? 'New',
+                    'last_name' => $nameParts[1] ?? ($nameParts[0] ?? 'Hire'),
+                    'email' => $newHire->email ?: null,
+                    'phone' => $newHire->phone,
+                    'position_id' => $newHire->position_id,
+                    'department_id' => $newHire->department_id,
+                    'employment_type' => 'Regular',
+                    'date_hired' => $newHire->start_date,
+                    'status' => 'Active',
+                    'onboarding_complete' => true,
+                ]);
+
+                \App\Models\Position::where('position_id', $newHire->position_id)->increment('filled_count');
+
+                // Link the hire (and the portal account) to the new employee row.
+                $newHire->update(['employee_id' => $employee->employee_id]);
+                \Modules\Settings\Models\SystemUser::where('email', $newHire->email)
+                    ->update(['employee_id' => $employee->employee_id]);
+
+                AuditLogger::log(
+                    action: 'Employee Record Created',
+                    module: 'New Hire Onboarding',
+                    targetType: 'Employee',
+                    targetId: (string) $employee->employee_id,
+                    details: "Employee record {$employee->employee_code} created for regularized hire {$newHire->new_hire_code}.",
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Could not create employee record during regularization', [
+                    'new_hire_id' => $newHire->new_hire_id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return; // hire is still Regular; employee sync can be retried
+            }
+        } elseif ($employee->employment_type !== 'Regular') {
+            $employee->update(['employment_type' => 'Regular']);
+        }
+
+        \App\Models\EmployeePositionHistory::create([
+            'employee_id' => $employee->employee_id,
+            'effective_date' => now()->toDateString(),
+            'change_type' => 'Regularization',
+            'old_position_id' => $employee->position_id,
+            'new_position_id' => $employee->position_id,
+            'notes' => 'Regularized upon completing the onboarding pipeline (new hire promoted to Regular).',
+        ]);
+
+        AuditLogger::log(
+            action: 'Employee regularized',
+            module: 'New Hire Onboarding',
+            targetType: 'Employee',
+            targetId: (string) $employee->employee_id,
+            details: "Employment type of {$employee->full_name} set to Regular (hire {$newHire->new_hire_code} reached the Regular stage).",
+        );
+    }
+
+    /**
+     * Next sequential employee code (EMP-XXXX) — same generator Core HCM
+     * uses, guarded by a table lock so concurrent creates can't collide.
+     */
+    private function nextEmployeeCode(): string
+    {
+        return \Illuminate\Support\Facades\DB::transaction(function () {
+            \Illuminate\Support\Facades\DB::selectOne('SELECT GET_LOCK(?, 5)', ['employee_code_gen']);
+            try {
+                $last = \App\Models\Employee::max('employee_code');
+                $next = $last ? ((int) substr($last, 4)) + 1 : 1;
+
+                return 'EMP-' . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+            } finally {
+                \Illuminate\Support\Facades\DB::selectOne('SELECT RELEASE_LOCK(?)', ['employee_code_gen']);
+            }
+        });
     }
 
     /* ------------------------------------------------------------------ */

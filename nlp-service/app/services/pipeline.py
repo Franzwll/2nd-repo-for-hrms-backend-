@@ -12,6 +12,7 @@ def analyze_resume_text(
     requirements: Optional[Dict],
     open_jobs: Optional[List[Dict]],
     reference_override: Optional[Dict[str, Dict[str, List[str]]]] = None,
+    screening_settings: Optional[Dict] = None,
 ) -> Dict:
     started = time.perf_counter()
     extractor = entity_extraction.get_extractor()
@@ -35,7 +36,9 @@ def analyze_resume_text(
         references[2],
     )
 
-    classification = screening.full_classification(profile, validation, parsed_requirements, open_jobs)
+    classification = screening.full_classification(
+        profile, validation, parsed_requirements, open_jobs, screening_settings
+    )
 
     return {
         "success": True,
@@ -73,6 +76,7 @@ def analyze_resume_file(
     requirements: Optional[Dict],
     open_jobs: Optional[List[Dict]],
     reference_override: Optional[Dict[str, Dict[str, List[str]]]] = None,
+    screening_settings: Optional[Dict] = None,
 ) -> Dict:
     try:
         extraction_meta = extract_text(path, filename)
@@ -84,7 +88,9 @@ def analyze_resume_file(
             "file": {"name": filename},
         }
 
-    result = analyze_resume_text(extraction_meta["text"], requirements, open_jobs, reference_override)
+    result = analyze_resume_text(
+        extraction_meta["text"], requirements, open_jobs, reference_override, screening_settings
+    )
 
     warnings = list(extraction_meta.get("warnings") or [])
     unrecognized = result["validation"]["skill_analysis"]["unrecognized"] + \
