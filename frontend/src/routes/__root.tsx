@@ -11,8 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { Toaster } from "../components/ui/sonner";
-import { reportLovableError } from "../lib/lovable-error-reporting";
-
+import { reportError } from "../lib/error-reporting";
 
 function NotFoundComponent() {
   return (
@@ -40,7 +39,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    reportError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
 
   return (
@@ -90,10 +89,24 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary_large_image" },
       { property: "og:title", content: "Oxford Suites Makati — Hotel, Dining & Careers" },
       { name: "twitter:title", content: "Oxford Suites Makati — Hotel, Dining & Careers" },
-      { property: "og:description", content: "Discover Oxford Suites Makati: elegant suites, distinctive dining, event venues, and hospitality careers with our HRMS recruitment portal." },
-      { name: "twitter:description", content: "Discover Oxford Suites Makati: elegant suites, distinctive dining, event venues, and hospitality careers with our HRMS recruitment portal." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b34748db-cf5e-4ce9-a617-b80368e68838/id-preview-f6ff7c7b--64872254-6f02-4d48-8e46-912da4b446e4.lovable.app-1785936729737.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b34748db-cf5e-4ce9-a617-b80368e68838/id-preview-f6ff7c7b--64872254-6f02-4d48-8e46-912da4b446e4.lovable.app-1785936729737.png" },
+      {
+        property: "og:description",
+        content:
+          "Discover Oxford Suites Makati: elegant suites, distinctive dining, event venues, and hospitality careers with our HRMS recruitment portal.",
+      },
+      {
+        name: "twitter:description",
+        content:
+          "Discover Oxford Suites Makati: elegant suites, distinctive dining, event venues, and hospitality careers with our HRMS recruitment portal.",
+      },
+      {
+        property: "og:image",
+        content: "/oxford-mark-maroon.png",
+      },
+      {
+        name: "twitter:image",
+        content: "/oxford-mark-maroon.png",
+      },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -140,4 +153,3 @@ function RootComponent() {
     </QueryClientProvider>
   );
 }
-

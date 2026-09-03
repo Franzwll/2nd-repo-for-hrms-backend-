@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Bell,
   Plus,
@@ -8,6 +8,7 @@ import {
   CheckCheck,
   ChevronDown,
   ChevronRight,
+  Clock3,
   LogOut,
   Megaphone,
   Menu,
@@ -62,13 +63,50 @@ function notificationTarget(targetType: string | null | undefined, role: Role): 
   }
 }
 
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 export function PortalShell({ role, children }: { role: Role; children: ReactNode }) {
   const [open, setOpen] = useState(true);
+  const [mounted, setMounted] = useState(false);
+  const [time, setTime] = useState<Date>(new Date());
+
+  useEffect(() => {
+    setMounted(true);
+    setTime(new Date());
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const timeString = mounted
+    ? time.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      })
+    : "--:--:-- --";
+
+  const dateString = mounted
+    ? time.toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "Loading...";
+
   const navigate = useNavigate();
   const meta = roleMeta[role];
   const user = getUser();
   const displayName = user?.full_name || meta.user;
-  const nav = navForRole(role);
+  const nav = useMemo(() => navForRole(role), [role]);
   const location = useRouterState({ select: (s) => s.location });
   const pathname = location.pathname;
   const searchStr = location.searchStr || "";
@@ -76,6 +114,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
     nav.filter((i) => i.children?.length).map((i) => i.label),
   );
   const [announceOpen, setAnnounceOpen] = useState(false);
+  const lastActiveGroupRef = useRef<string | null>(null);
 
   const handleLogout = async () => {
     try {
@@ -102,7 +141,11 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
     return searchStr.includes(childQuery);
   };
 
-  // Auto-expand the group that contains the active route.
+  // Auto-expand the group that contains the active route, but respect manual collapse.
+  // Previously `nav` was recreated every render, so the effect fired on every render
+  // and immediately re-added the active group after the user collapsed it.
+  // Now `nav` is memoized and we only auto-expand when the active *group* changes,
+  // so closing "Recruitment & Onboarding" while on "/superadmin/onboarding" stays closed.
   useEffect(() => {
     const owner = nav.find((i) =>
       i.children?.some((c) => {
@@ -110,7 +153,11 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
         return cPath ? pathname === cPath || pathname.startsWith(cPath) : false;
       }),
     );
-    if (owner) setExpanded((prev) => (prev.includes(owner.label) ? prev : [...prev, owner.label]));
+    const ownerLabel = owner?.label ?? null;
+    if (ownerLabel && lastActiveGroupRef.current !== ownerLabel) {
+      setExpanded((prev) => (prev.includes(ownerLabel) ? prev : [...prev, ownerLabel]));
+    }
+    lastActiveGroupRef.current = ownerLabel;
   }, [pathname, nav]);
 
   return (
@@ -131,9 +178,9 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
               const hasChildren = !!item.children?.length;
               const groupActive = hasChildren
                 ? item.children!.some((c) => {
-                    const [cPath] = (c.to ?? "").split("?");
-                    return cPath ? pathname === cPath || pathname.startsWith(cPath) : false;
-                  })
+                  const [cPath] = (c.to ?? "").split("?");
+                  return cPath ? pathname === cPath || pathname.startsWith(cPath) : false;
+                })
                 : isActive(item.to);
               const isOpen = expanded.includes(item.label);
 
@@ -251,7 +298,29 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 sm:gap-4">
+            {/* Live Digital Clock & Date — minimal, no border */}
+            <div className="flex items-center gap-2.5">
+              <div className="hidden sm:flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                <Clock3 className="h-4 w-4 text-primary" />
+              </div>
+              <div className="flex flex-col items-end leading-none sm:items-start">
+                <span
+                  className="font-mono text-sm font-semibold tabular-nums tracking-tight"
+                  suppressHydrationWarning
+                >
+                  {timeString}
+                </span>
+                <span
+                  className="text-[10px] font-medium tracking-wider text-muted-foreground sm:text-[11px] mt-1"
+                  suppressHydrationWarning
+                >
+                  {dateString}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="Announcements" className="relative">
@@ -419,20 +488,23 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                   className="flex items-center gap-2 rounded-full border border-border bg-background py-1 pl-1 pr-3 transition-colors hover:bg-muted"
                 >
                   <Avatar className="h-7 w-7">
-                    <AvatarFallback className="bg-primary text-[0.7rem] text-primary-foreground">
-                      {meta.initials}
+                    <AvatarFallback
+                      suppressHydrationWarning
+                      className="bg-primary text-[0.7rem] text-primary-foreground font-semibold"
+                    >
+                      {getInitials(displayName) || meta.initials}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="hidden text-sm sm:inline">
-                    Welcome, <span className="font-medium">{meta.user.split(" ")[0]}</span>
+                  <span suppressHydrationWarning className="hidden text-sm sm:inline">
+                    Welcome, <span className="font-medium">{displayName.split(" ")[0]}</span>
                   </span>
                   <ChevronDown className="hidden h-4 w-4 text-muted-foreground sm:inline" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
-                  <p className="text-sm font-medium">{displayName}</p>
-                  <p className="text-xs font-normal text-muted-foreground">{meta.label}</p>
+                  <p className="text-sm font-medium truncate">{displayName}</p>
+                  <p className="text-xs font-normal text-muted-foreground truncate">{user?.department_name || meta.label}</p>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
@@ -452,6 +524,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+        </div>
         </header>
 
         {/* Mobile nav */}

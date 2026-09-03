@@ -23,15 +23,16 @@ class AuthController extends Controller
 
     public function login(LoginRequest $request): JsonResponse
     {
-        $user = SystemUser::where('email', $request->string('email'))->first();
+        $login = $request->string('email');
+        $user = SystemUser::where('email', $login)->orWhere('username', $login)->first();
 
-        if (! $user || ! Hash::check($request->string('password'), $user->password_hash)) {
+        if (!$user || !Hash::check($request->string('password'), $user->password_hash)) {
             AuditLogger::log(
                 'Failed login attempt',
                 'Authentication',
                 'Warning',
                 'user',
-                $user?->username,
+                $user?->username ?: $login,
                 'Invalid credentials supplied.',
                 $user
             );
@@ -53,6 +54,28 @@ class AuthController extends Controller
             return response()->json(['message' => 'Your account is not active. Contact an administrator.'], 403);
         }
 
+        // OTP can be switched off by each user for their own account
+        // (system_users.otp_enabled, toggled in portal Settings).
+        // When disabled, sign the user straight in — no one-time password step.
+        if (!OtpService::requiredFor($user)) {
+            $session = $this->completeLogin($request, $user);
+
+            AuditLogger::log(
+                'User logged in',
+                'Authentication',
+                'Info',
+                'user',
+                $user->username,
+                'Signed in with email and password (OTP disabled for role).',
+                $user
+            );
+
+            return response()->json([
+                'otp_required' => false,
+                ...$session,
+            ]);
+        }
+
         $issued = $this->otpService->issue($user);
 
         AuditLogger::log(
@@ -65,10 +88,13 @@ class AuthController extends Controller
             $user
         );
 
-        return response()->json($this->otpResponse(
-            'One-time password sent to your work email.',
-            $issued
-        ));
+        return response()->json([
+            'otp_required' => true,
+            ...$this->otpResponse(
+                'One-time password sent to your work email.',
+                $issued
+            ),
+        ]);
     }
 
     public function verifyOtp(OtpVerifyRequest $request): JsonResponse
@@ -78,7 +104,7 @@ class AuthController extends Controller
             $request->string('otp')
         );
 
-        if (! $user) {
+        if (!$user) {
             AuditLogger::log(
                 'Failed OTP verification',
                 'Authentication',
@@ -126,6 +152,12 @@ class AuthController extends Controller
             'status' => 'success',
         ]);
 
+        $session = [
+            'token' => $token,
+            'token_type' => 'Bearer',
+            'user' => new UserResource($user),
+        ];
+
         AuditLogger::log(
             'User logged in',
             'Authentication',
@@ -136,11 +168,7 @@ class AuthController extends Controller
             $user
         );
 
-        return response()->json([
-            'token' => $token,
-            'token_type' => 'Bearer',
-            'user' => new UserResource($user),
-        ]);
+        return response()->json($session);
     }
 
     public function resendOtp(Request $request): JsonResponse
@@ -149,7 +177,7 @@ class AuthController extends Controller
 
         $result = $this->otpService->resend($request->string('login_token'));
 
-        if (! $result['ok']) {
+        if (!$result['ok']) {
             return response()->json(['message' => 'Login token is invalid or expired.'], 422);
         }
 
@@ -196,9 +224,38 @@ class AuthController extends Controller
         ];
     }
 
+    /**
+     * Finishes a sign-in: creates the API token, stamps login metadata and
+     * records the login activity. Shared by the OTP and direct-login paths.
+     */
+    private function completeLogin(Request $request, SystemUser $user): array
+    {
+        $token = $user->createToken('auth-token')->plainTextToken;
+
+        $user->forceFill([
+            'last_login_at' => now(),
+            'last_login_ip' => $request->ip(),
+        ])->save();
+
+        UserLoginActivity::create([
+            'system_user_id' => $user->system_user_id,
+            'login_at' => now(),
+            'ip_address' => $request->ip(),
+            'device_info' => $this->deviceInfo($request),
+            'user_agent' => $request->userAgent(),
+            'status' => 'success',
+        ]);
+
+        return [
+            'token' => $token,
+            'token_type' => 'Bearer',
+            'user' => new UserResource($user),
+        ];
+    }
+
     private function debugOtp(string $code): array
     {
-        if (! app()->environment(['local', 'testing'])) {
+        if (!app()->environment(['local', 'testing'])) {
             return [];
         }
 

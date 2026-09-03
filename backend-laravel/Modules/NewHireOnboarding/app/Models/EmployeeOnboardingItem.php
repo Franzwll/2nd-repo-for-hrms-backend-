@@ -15,7 +15,11 @@ class EmployeeOnboardingItem extends Model
         'new_hire_id',
         'template_item_id',
         'item_text',
+        'file_path',
+        'file_name',
+        'notes',
         'done',
+        'submitted_at',
         'completed_at',
         'completed_by_user_id',
     ];
@@ -23,7 +27,15 @@ class EmployeeOnboardingItem extends Model
     protected $casts = [
         'done'         => 'boolean',
         'completed_at' => 'datetime',
+        'submitted_at' => 'datetime',
     ];
+
+    protected $appends = ['file_url'];
+
+    public function getFileUrlAttribute(): ?string
+    {
+        return $this->file_path ? asset('storage/' . $this->file_path) : null;
+    }
 
     public function newHire(): BelongsTo
     {

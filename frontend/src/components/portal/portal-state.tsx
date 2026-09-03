@@ -76,18 +76,54 @@ function set(next: Partial<State>) {
 let loaded = false;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-async function loadAnnouncements() {
+const READ_STORAGE_KEY = "hrms-notifications-read";
+
+function loadReadFlags(): Set<string> {
   try {
-    const res = await announcementsApi.list();
+    const raw = localStorage.getItem(READ_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
+async function loadData() {
+  try {
+    const [annRes, notifRes] = await Promise.allSettled([
+      announcementsApi.list(),
+      notificationsApi.list(),
+    ]);
+
+    const announcements =
+      annRes.status === "fulfilled"
+        ? (annRes.value.data ?? []).map((a) => ({
+          id: a.id,
+          title: a.title,
+          body: a.body,
+          audience: a.audience as Audience,
+          author: a.author ?? "System",
+          createdAt: a.created_at ?? a.published_date ?? "",
+        }))
+        : [];
+
+    const readFlags = loadReadFlags();
+    const notifications: Notification[] =
+      notifRes.status === "fulfilled" && notifRes.value.data && notifRes.value.data.length > 0
+        ? notifRes.value.data.map((n: ApiNotification) => ({
+          id: String(n.id),
+          title: n.title,
+          detail: n.detail,
+          time: n.time || "Just now",
+          read: n.read || readFlags.has(String(n.id)),
+          tone: (n.tone as any) || "info",
+        }))
+        : [];
+
     set({
-      announcements: (res.data ?? []).map((a) => ({
-        id: a.id,
-        title: a.title,
-        body: a.body,
-        audience: a.audience as Audience,
-        author: a.author ?? "System",
-        createdAt: a.created_at ?? a.published_date ?? "",
-      })),
+      announcements,
+      notifications,
       loading: false,
     });
   } catch {
@@ -107,8 +143,7 @@ async function loadNotifications() {
 function ensureLoaded() {
   if (!loaded) {
     loaded = true;
-    loadAnnouncements();
-    loadNotifications();
+    loadData();
   }
 
   // Poll for new notifications so the bell updates without a page reload.
@@ -155,7 +190,6 @@ export function usePortalState() {
         // optimistic update already applied
       }
     },
-    refreshNotifications: loadNotifications,
     addAnnouncement: async (input: {
       title: string;
       body: string;
@@ -197,6 +231,7 @@ export function usePortalState() {
       await announcementsApi.remove(id);
       set({ announcements: state.announcements.filter((a) => a.id !== id) });
     },
-    refreshAnnouncements: loadAnnouncements,
+    refreshAnnouncements: loadData,
+    refreshNotifications: loadData,
   };
 }

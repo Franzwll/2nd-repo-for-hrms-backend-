@@ -4,9 +4,17 @@ export const Route = createFileRoute("/superadmin/_newhireonboarding/onboarding"
   head: () => ({
     meta: [
       { title: "New Hire Onboarding — Oxford Suites Makati HRMS" },
-      { name: "description", content: "Pre-onboarding, probationary and regularization tracking with requirement checklists." },
+      {
+        name: "description",
+        content:
+          "Pre-onboarding, probationary and regularization tracking with requirement checklists.",
+      },
       { property: "og:title", content: "New Hire Onboarding — Oxford Suites Makati HRMS" },
-      { property: "og:description", content: "Pre-onboarding, probationary and regularization tracking with requirement checklists." },
+      {
+        property: "og:description",
+        content:
+          "Pre-onboarding, probationary and regularization tracking with requirement checklists.",
+      },
     ],
   }),
   component: () => <NewHireOnboarding role="superadmin" />,

@@ -22,7 +22,9 @@ class SettingsServiceProvider extends ModuleServiceProvider
      *
      * @var string[]
      */
-    // protected array $commands = [];
+    protected array $commands = [
+        \Modules\Settings\Console\RunSettingsAutoBackup::class,
+    ];
 
     /**
      * Provider classes to register.
@@ -36,11 +38,12 @@ class SettingsServiceProvider extends ModuleServiceProvider
 
     /**
      * Define module schedules.
-     * 
-     * @param $schedule
+     *
+     * The command itself reads system_settings.backup and only creates a dump
+     * when the configured cadence (daily / weekly / monthly) is actually due.
      */
-    // protected function configureSchedules(Schedule $schedule): void
-    // {
-    //     $schedule->command('inspire')->hourly();
-    // }
+    protected function configureSchedules(Schedule $schedule): void
+    {
+        $schedule->command('settings:auto-backup')->everySixHours();
+    }
 }

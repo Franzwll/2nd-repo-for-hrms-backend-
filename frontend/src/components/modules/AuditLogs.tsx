@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import { Activity, AlertTriangle, Download, ScrollText, Search, ShieldAlert, Users } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  Download,
+  ScrollText,
+  Search,
+  ShieldAlert,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
@@ -118,7 +126,18 @@ export function AuditLogs() {
   const uniqueActors = new Set(entries.map((a) => a.user)).size;
 
   const exportCsv = () => {
-    const header = ["Timestamp", "User", "Role", "Department", "Action", "Module", "Device", "IP Address", "URL", "Severity"];
+    const header = [
+      "Timestamp",
+      "User",
+      "Role",
+      "Department",
+      "Action",
+      "Module",
+      "Device",
+      "IP Address",
+      "URL",
+      "Severity",
+    ];
     const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
     const lines = filteredRows.map((a) =>
       [
@@ -132,7 +151,7 @@ export function AuditLogs() {
         esc(a.ip_address),
         esc(a.url ?? ""),
         a.severity,
-      ].join(",")
+      ].join(","),
     );
     const blob = new Blob([[header.join(","), ...lines].join("\n")], {
       type: "text/csv;charset=utf-8;",
@@ -239,7 +258,9 @@ export function AuditLogs() {
       <Card className="mt-4 border-border/70">
         <CardContent className="p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><ScrollText className="h-5 w-5 text-primary" /> System Activity</h2>
+            <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+              <ScrollText className="h-5 w-5 text-primary" /> System Activity
+            </h2>
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative min-w-[14rem] flex-1">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -288,7 +309,9 @@ export function AuditLogs() {
                   <SortHead sortKey="user" sort={sort} onSort={toggle}>
                     User
                   </SortHead>
-                  <SortHead sortKey="role" sort={sort} onSort={toggle}>Role</SortHead>
+                  <SortHead sortKey="role" sort={sort} onSort={toggle}>
+                    Role
+                  </SortHead>
                   <TableHead>Action Type</TableHead>
                   <SortHead sortKey="action" sort={sort} onSort={toggle}>
                     Action Details
@@ -311,32 +334,53 @@ export function AuditLogs() {
                 {auditPage.pageItems.map((a) => {
                   const actLower = a.action.toLowerCase();
                   const actionType: "Create" | "Update" | "Delete" | "Security" =
-                    actLower.includes("create") || actLower.includes("add") || actLower.includes("generate") || actLower.includes("regularized")
+                    actLower.includes("create") ||
+                    actLower.includes("add") ||
+                    actLower.includes("generate") ||
+                    actLower.includes("regularized")
                       ? "Create"
-                      : actLower.includes("delete") || actLower.includes("revoke") || actLower.includes("disable") || actLower.includes("exit") || actLower.includes("deactivated")
-                      ? "Delete"
-                      : actLower.includes("login") || actLower.includes("password") || actLower.includes("2fa") || actLower.includes("permission") || actLower.includes("policy") || actLower.includes("security")
-                      ? "Security"
-                      : "Update";
+                      : actLower.includes("delete") ||
+                          actLower.includes("revoke") ||
+                          actLower.includes("disable") ||
+                          actLower.includes("exit") ||
+                          actLower.includes("deactivated")
+                        ? "Delete"
+                        : actLower.includes("login") ||
+                            actLower.includes("password") ||
+                            actLower.includes("2fa") ||
+                            actLower.includes("permission") ||
+                            actLower.includes("policy") ||
+                            actLower.includes("security")
+                          ? "Security"
+                          : "Update";
 
                   const actionTypeTone =
                     actionType === "Create"
                       ? "border-success/40 bg-success/10 text-success"
                       : actionType === "Delete"
-                      ? "border-destructive/40 bg-destructive/10 text-destructive"
-                      : actionType === "Security"
-                      ? "border-amber-500/40 bg-amber-500/10 text-amber-600"
-                      : "border-primary/40 bg-primary/10 text-primary";
+                        ? "border-destructive/40 bg-destructive/10 text-destructive"
+                        : actionType === "Security"
+                          ? "border-amber-500/40 bg-amber-500/10 text-amber-600"
+                          : "border-primary/40 bg-primary/10 text-primary";
 
                   return (
                     <TableRow key={a.audit_log_id}>
-                      <TableCell className="text-xs text-muted-foreground">{formatTimestamp(a.timestamp)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {formatTimestamp(a.timestamp)}
+                      </TableCell>
                       <TableCell className="text-xs">
                         <div className="font-semibold text-foreground">{a.user}</div>
                       </TableCell>
-                      <TableCell><Badge variant="outline" className="text-[10px] font-medium">{a.role}</Badge></TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={cn("text-[10px] font-semibold", actionTypeTone)}>
+                        <Badge variant="outline" className="text-[10px] font-medium">
+                          {a.role}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={cn("text-[10px] font-semibold", actionTypeTone)}
+                        >
                           {actionType}
                         </Badge>
                       </TableCell>
@@ -344,7 +388,9 @@ export function AuditLogs() {
                       <TableCell className="text-xs text-muted-foreground">{a.module}</TableCell>
                       <TableCell className="text-xs">
                         <div>{a.device}</div>
-                        <div className="font-mono text-[11px] text-muted-foreground">{a.ip_address}</div>
+                        <div className="font-mono text-[11px] text-muted-foreground">
+                          {a.ip_address}
+                        </div>
                       </TableCell>
                       <TableCell className="max-w-[18rem]">
                         {a.url ? (
@@ -365,8 +411,8 @@ export function AuditLogs() {
                             a.severity === "Critical"
                               ? "border-destructive/30 bg-destructive/15 text-destructive text-[10px]"
                               : a.severity === "Warning"
-                              ? "border-warning/40 bg-warning/20 text-warning-foreground text-[10px]"
-                              : "border-border text-muted-foreground text-[10px]"
+                                ? "border-warning/40 bg-warning/20 text-warning-foreground text-[10px]"
+                                : "border-border text-muted-foreground text-[10px]"
                           }
                         >
                           {a.severity}

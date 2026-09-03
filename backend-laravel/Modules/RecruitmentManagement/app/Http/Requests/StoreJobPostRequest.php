@@ -3,6 +3,8 @@
 namespace Modules\RecruitmentManagement\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+use Modules\RecruitmentManagement\Enums\WorkSchedule;
 
 class StoreJobPostRequest extends FormRequest
 {
@@ -18,7 +20,7 @@ class StoreJobPostRequest extends FormRequest
             'department_id' => ['required', 'integer', 'exists:departments,department_id'],
             'position_id' => ['required', 'integer', 'exists:positions,position_id'],
             'employment_type' => ['required', 'string', 'in:Full-time,Part-time,Contract,Seasonal'],
-            'schedule' => ['nullable', 'string', 'max:120'],
+            'schedule' => ['nullable', 'string', 'max:120', Rule::in(WorkSchedule::values())],
             'salary_min' => ['nullable', 'numeric', 'min:0'],
             'salary_max' => ['nullable', 'numeric', 'min:0', 'gte:salary_min'],
             'vacancies' => ['required', 'integer', 'min:1'],
@@ -31,7 +33,6 @@ class StoreJobPostRequest extends FormRequest
             'responsibilities' => ['nullable', 'array'],
             'qualifications' => ['nullable', 'array'],
             'skills' => ['nullable', 'array'],
-            'benefits' => ['nullable', 'array'],
             'platforms' => ['nullable', 'array'],
             'platforms.*' => ['string', 'in:Website,Facebook,Instagram,Indeed'],
             'picture' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],

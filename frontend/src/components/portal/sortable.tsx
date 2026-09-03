@@ -37,7 +37,10 @@ export function useSort<T, K extends string>(
       if (va == null) return 1;
       if (vb == null) return -1;
       if (typeof va === "number" && typeof vb === "number") return (va - vb) * factor;
-      return String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: "base" }) * factor;
+      return (
+        String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: "base" }) *
+        factor
+      );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, sort]);

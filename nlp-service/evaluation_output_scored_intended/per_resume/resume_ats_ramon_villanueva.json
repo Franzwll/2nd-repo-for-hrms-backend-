@@ -1,0 +1,342 @@
+{
+  "resume_file": "resume_ats_ramon_villanueva.pdf",
+  "requirements_applied": false,
+  "result": {
+    "success": true,
+    "profile": {
+      "personal_information": {
+        "name": "RAMON DELA PENA VILLANUEVA",
+        "email": "ramon.villanueva.rm@gmail.com",
+        "phone": "0917-604-8823"
+      },
+      "education": [
+        "Bachelor of Science in Hospitality Management"
+      ],
+      "work_experience": [
+        {
+          "job_title": "July 2022",
+          "period": "July 2022 - Present",
+          "recognized_role": false
+        },
+        {
+          "job_title": "Restaurant Supervisor",
+          "period": null,
+          "recognized_role": true
+        },
+        {
+          "job_title": "March 2019",
+          "period": "March 2019 - June 2022",
+          "recognized_role": false
+        }
+      ],
+      "skills": [
+        "Complaint Handling",
+        "Food Safety",
+        "Inventory Control",
+        "MS Office",
+        "POS Systems",
+        "Safety Compliance",
+        "Scheduling"
+      ],
+      "certifications": [
+        "Doh Sanitation And Food Safety Training Certificate",
+        "English (Fluent), Filipino (Native)",
+        "Languages",
+        "Servsafe Food Protection Manager Certification"
+      ],
+      "unrecognized_certifications": [
+        "Doh Sanitation And Food Safety Training Certificate",
+        "English (Fluent), Filipino (Native)",
+        "Languages",
+        "Servsafe Food Protection Manager Certification"
+      ],
+      "estimated_years_experience": 6.25,
+      "job_roles": {
+        "recognized": [
+          "Restaurant Supervisor"
+        ],
+        "unrecognized": [
+          "Assistant Restaurant",
+          "July 2022",
+          "March 2019",
+          "front-of"
+        ]
+      },
+      "unrecognized_skills": [
+        "Protection Manager Certification"
+      ]
+    },
+    "entities": [
+      {
+        "label": "PERSON",
+        "value": "RAMON DELA PENA VILLANUEVA",
+        "source": "rule"
+      },
+      {
+        "label": "EDUCATION",
+        "value": "Bachelor of Science in Hospitality Management",
+        "source": "section_rule"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Assistant Restaurant",
+        "source": "custom_ner"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "front-of",
+        "source": "custom_ner"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Restaurant Supervisor",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Inventory Control",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Food Safety",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Protection Manager Certification",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "POS Systems",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Complaint Handling",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Scheduling",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "MS Office",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Safety Compliance",
+        "source": "reference_scan"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "Servsafe Food Protection Manager Certification",
+        "source": "hint_pattern"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "Doh Sanitation And Food Safety Training Certificate",
+        "source": "hint_pattern"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "Languages",
+        "source": "section_rule"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "English (Fluent), Filipino (Native)",
+        "source": "section_rule"
+      },
+      {
+        "label": "ORGANIZATION",
+        "value": "Harborview Restaurant Group",
+        "source": "spacy_base"
+      },
+      {
+        "label": "ORGANIZATION",
+        "value": "Golden Spoon Restaurant",
+        "source": "spacy_base"
+      },
+      {
+        "label": "EMAIL",
+        "value": "ramon.villanueva.rm@gmail.com",
+        "source": "regex"
+      },
+      {
+        "label": "PHONE",
+        "value": "0917-604-8823",
+        "source": "regex"
+      }
+    ],
+    "sections_detected": [
+      "certifications",
+      "education",
+      "experience",
+      "skills",
+      "summary"
+    ],
+    "estimated_years_experience": 6.25,
+    "validation": {
+      "missing_information": [],
+      "invalid_format": [],
+      "skill_analysis": {
+        "recognized": [
+          "Complaint Handling",
+          "Food Safety",
+          "Inventory Control",
+          "MS Office",
+          "POS Systems",
+          "Safety Compliance",
+          "Scheduling"
+        ],
+        "unrecognized": [
+          "Protection Manager Certification"
+        ]
+      },
+      "job_role_analysis": {
+        "recognized": [
+          "Restaurant Supervisor"
+        ],
+        "unrecognized": [
+          "Assistant Restaurant",
+          "July 2022",
+          "March 2019",
+          "front-of"
+        ]
+      },
+      "credential_analysis": [
+        {
+          "required": null,
+          "extracted": "Doh Sanitation And Food Safety Training Certificate",
+          "status": "UNRECOGNIZED",
+          "note": "Invalid or requires verification based on system validation rules."
+        },
+        {
+          "required": null,
+          "extracted": "English (Fluent), Filipino (Native)",
+          "status": "UNRECOGNIZED",
+          "note": "Invalid or requires verification based on system validation rules."
+        },
+        {
+          "required": null,
+          "extracted": "Languages",
+          "status": "UNRECOGNIZED",
+          "note": "Invalid or requires verification based on system validation rules."
+        },
+        {
+          "required": null,
+          "extracted": "Servsafe Food Protection Manager Certification",
+          "status": "UNRECOGNIZED",
+          "note": "Invalid or requires verification based on system validation rules."
+        }
+      ],
+      "credential_issues": [],
+      "review_flags": [
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "Assistant Restaurant",
+          "note": "Not found in system reference data; flagged for manual review only."
+        },
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "July 2022",
+          "note": "Not found in system reference data; flagged for manual review only."
+        },
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "March 2019",
+          "note": "Not found in system reference data; flagged for manual review only."
+        },
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "front-of",
+          "note": "Not found in system reference data; flagged for manual review only."
+        }
+      ]
+    },
+    "requirements_applied": {
+      "job_post_id": null,
+      "title": "Unspecified Position",
+      "required_skills": [],
+      "preferred_skills": [],
+      "education_level": null,
+      "experience_level": null,
+      "min_years_experience": 0.0,
+      "required_certifications": [],
+      "required_information": [
+        "name",
+        "email",
+        "phone"
+      ]
+    },
+    "match_score": 100.0,
+    "score_breakdown": {
+      "skills": {
+        "weight": 0.4,
+        "earned": 40.0,
+        "max": 40.0,
+        "matched_required": [],
+        "missing_required": [],
+        "matched_preferred": [],
+        "missing_preferred": [],
+        "required_coverage": 1.0,
+        "preferred_coverage": 1.0
+      },
+      "experience": {
+        "weight": 0.3,
+        "earned": 30.0,
+        "max": 30.0,
+        "estimated_years": 6.25,
+        "min_years_required": 0.0,
+        "requirement_met": true
+      },
+      "education": {
+        "weight": 0.2,
+        "earned": 20.0,
+        "max": 20.0,
+        "applicant_highest_level": [
+          "Bachelor of Science in Hospitality Management"
+        ],
+        "required_level": null,
+        "requirement_met": true
+      },
+      "certifications": {
+        "weight": 0.1,
+        "earned": 10.0,
+        "max": 10.0,
+        "matched": [],
+        "missing": [],
+        "no_requirements": true
+      }
+    },
+    "screening_status": "PERFECT_FOR_THE_JOB",
+    "screening_reasons": [
+      "Overall match score 100.0% reached the required threshold of 75.0% for Unspecified Position.",
+      "Education requirement met: True; experience requirement met: True (6.25 yrs vs 0.0 yrs minimum)."
+    ],
+    "matched_summary": "Education requirement satisfied; Experience requirement satisfied (6.25 yrs vs 0.0 yrs required); No certification requirements defined for this role — meets Unspecified Position requirements.",
+    "alternative_job": null,
+    "mandatory_requirements_met": true,
+    "model_info": {
+      "base_model": "en_core_web_sm",
+      "custom_ner_loaded": true,
+      "custom_ner_path": "C:\\Users\\PC\\Downloads\\Ferdi\\4TH_YR\\DEV\\v4\\2nd-repo-for-hrms-backend-LATEST\\2nd-repo-for-hrms-backend-\\nlp-service\\models_spacy\\role_specific_ner"
+    },
+    "_timing_seconds": 799.9844,
+    "processing_status": "PARTIALLY_PROCESSED",
+    "text_extraction": {
+      "method": "pdfplumber",
+      "pages": 1,
+      "extension": ".pdf",
+      "original_length": null,
+      "character_count": 1807,
+      "warnings": []
+    },
+    "parsed_successfully": true
+  }
+}

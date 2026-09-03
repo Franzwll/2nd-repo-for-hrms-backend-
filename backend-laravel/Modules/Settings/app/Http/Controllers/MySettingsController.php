@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 use Modules\Settings\Models\SystemSetting;
+use App\Models\SystemUser;
 
 /**
  * Per-user portal settings (Notifications, Preferences, Change Password).
@@ -29,38 +30,57 @@ class MySettingsController extends Controller
         return "my_{$scope}_{$slug}";
     }
 
-    /** The email scope belongs to the authenticated account only. */
-    private static function authenticatedUser(Request $request): string
+    /**
+     * Resolves the account these personal settings belong to.
+     *
+     * The authenticated session user (Bearer token) always wins; the explicit
+     * ?user= / body parameter is only a fallback for token-less demo calls.
+     */
+    private static function resolveUser(Request $request, ?string $fallback = null): ?string
     {
-        return $request->user()->email ?? $request->user()->username;
+        $sessionEmail = auth('sanctum')->user()?->email;
+
+        return $sessionEmail ?: ($fallback ?: null);
     }
 
     /* ------------------------------------------------------------------ */
-    /* GET /api/v1/my/settings                                             */
-    /* Returns the current user's notifications + preferences, merged over  */
-    /* the global system defaults.                                         */
+    /* GET /api/v1/my/settings?user=<email>                                */
+    /* Returns the current user's notifications + preferences (merged over  */
+    /* the global system defaults) and their personal OTP flag.            */
     /* ------------------------------------------------------------------ */
 
     public function show(Request $request): JsonResponse
     {
-        $user = static::authenticatedUser($request);
+        $session = auth('sanctum')->user();
+        $user = self::resolveUser($request, (string) $request->query('user', '')) ?? '';
 
         $defaults = [
             'notifications' => SystemSetting::getValue('notifications', []),
             'preferences'   => SystemSetting::getValue('preferences', []),
+            'otp_enabled'   => true,
+            'user'          => $user !== '' ? $user : $session?->email,
         ];
 
-        $mine = SystemSetting::getValue(static::keyFor('notifications', $user), []);
-        $defaults['notifications'] = array_merge(
-            is_array($defaults['notifications']) ? $defaults['notifications'] : [],
-            is_array($mine) ? $mine : [],
-        );
+        if ($user !== '') {
+            $mine = SystemSetting::getValue(static::keyFor('notifications', $user), []);
+            $defaults['notifications'] = array_merge(
+                is_array($defaults['notifications']) ? $defaults['notifications'] : [],
+                is_array($mine) ? $mine : [],
+            );
 
-        $prefs = SystemSetting::getValue(static::keyFor('preferences', $user), []);
-        $defaults['preferences'] = array_merge(
-            is_array($defaults['preferences']) ? $defaults['preferences'] : [],
-            is_array($prefs) ? $prefs : [],
-        );
+            $prefs = SystemSetting::getValue(static::keyFor('preferences', $user), []);
+            $defaults['preferences'] = array_merge(
+                is_array($defaults['preferences']) ? $defaults['preferences'] : [],
+                is_array($prefs) ? $prefs : [],
+            );
+
+            // Personal OTP flag lives on the account row itself.
+            $account = $session
+                ?? SystemUser::where('email', $user)->orWhere('username', $user)->first();
+            if ($account) {
+                $defaults['otp_enabled'] = (bool) ($account->otp_enabled ?? true);
+            }
+        }
 
         return response()->json($defaults);
     }
@@ -68,7 +88,7 @@ class MySettingsController extends Controller
     /* ------------------------------------------------------------------ */
     /* PUT /api/v1/my/settings/{scope}                                     */
     /* scope: notifications | preferences                                  */
-    /* body: { value }                                                     */
+    /* body: { value }  (user param optional when authenticated)           */
     /* ------------------------------------------------------------------ */
 
     public function save(Request $request, string $scope): JsonResponse
@@ -78,18 +98,59 @@ class MySettingsController extends Controller
         }
 
         $data = $request->validate([
+            'user'  => ['nullable', 'string', 'max:190'],
             'value' => ['required', 'array'],
         ]);
 
+        $user = self::resolveUser($request, $data['user'] ?? null);
+
+        if (! $user) {
+            return response()->json(['message' => 'No authenticated user and no user provided.'], 401);
+        }
+
         $setting = SystemSetting::setValue(
-            static::keyFor($scope, static::authenticatedUser($request)),
+            static::keyFor($scope, $user),
             $data['value'],
-            $request->user()?->id ?? null
+            auth('sanctum')->user()?->system_user_id
         );
 
         return response()->json([
             'setting_key'   => $setting->setting_key,
             'setting_value' => $setting->setting_value,
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* PUT /api/v1/my/otp                                                  */
+    /* Toggle THIS account's OTP-at-login requirement.                     */
+    /* body: { enabled, user? }                                            */
+    /* ------------------------------------------------------------------ */
+
+    public function toggleOtp(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'enabled' => ['required', 'boolean'],
+            'user'    => ['nullable', 'string', 'max:190'],
+        ]);
+
+        $session = auth('sanctum')->user();
+
+        $account = $session
+            ?? SystemUser::where('email', $data['user'] ?? '')
+                ->orWhere('username', $data['user'] ?? '')
+                ->first();
+
+        if (! $account) {
+            return response()->json(['message' => 'Account not found.'], 404);
+        }
+
+        $account->update(['otp_enabled' => $data['enabled']]);
+
+        return response()->json([
+            'message'     => $data['enabled']
+                ? 'OTP verification enabled for your account.'
+                : 'OTP verification disabled for your account.',
+            'otp_enabled' => (bool) $account->otp_enabled,
         ]);
     }
 
@@ -103,11 +164,45 @@ class MySettingsController extends Controller
     public function changePassword(Request $request): JsonResponse
     {
         $data = $request->validate([
+            'user'             => ['nullable', 'string', 'max:190'],
             'current_password' => ['required', 'string'],
             'new_password'     => ['required', 'string', 'min:8', 'max:72'],
         ]);
 
-        $user = $request->user();
+        $identifier = self::resolveUser($request, $data['user'] ?? null);
+
+        if (! $identifier) {
+            return response()->json(['message' => 'No authenticated user and no user provided.'], 401);
+        }
+
+        $user = SystemUser::where('email', $identifier)
+            ->orWhere('username', $identifier)
+            ->first();
+
+        // Auto-provision missing demo accounts with the default password so
+        // the portal's change-password flow works out of the box.
+        if (! $user) {
+            $defaultPassword = SystemSetting::getValue('default_password', []);
+            $default = is_array($defaultPassword) && isset($defaultPassword['password'])
+                ? (string) $defaultPassword['password']
+                : 'Oxford@2026';
+
+            $base = strtolower(preg_replace('/[^a-z0-9._-]/i', '', explode('@', $identifier)[0] ?? 'user'));
+            $username = $base;
+            $suffix = 1;
+            while (SystemUser::where('username', $username)->exists()) {
+                $username = $base . $suffix++;
+            }
+
+            $user = SystemUser::create([
+                'username'      => $username,
+                'email'         => $identifier,
+                'password_hash' => Hash::make($default),
+                'full_name'     => $username,
+                'role_id'       => 3,
+                'status'        => 'Active',
+            ]);
+        }
 
         if (! Hash::check($data['current_password'], $user->password_hash)) {
             throw ValidationException::withMessages([

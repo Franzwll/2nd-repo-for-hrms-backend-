@@ -3,8 +3,15 @@
 namespace Modules\ApplicantManagement\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Mail\ApplicantAcceptedMail;
+use App\Mail\InterviewCancelledMail;
+use App\Mail\InterviewRescheduledMail;
+use App\Services\AuditLogger;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Modules\ApplicantManagement\Http\Requests\StoreInterviewRequest;
 use Modules\ApplicantManagement\Http\Requests\UpdateInterviewRequest;
 use Modules\ApplicantManagement\Http\Resources\InterviewResource;
@@ -77,6 +84,39 @@ class InterviewController extends Controller
             $applicant->update(['stage' => 'Interview Scheduled']);
         }
 
+        AuditLogger::log(
+            action: 'Interview Booked',
+            module: 'Applicant Management',
+            severity: 'Info',
+            targetType: 'Interview',
+            targetId: (string) $interview->interview_id,
+            details: "Scheduled interview for {$applicant->name} on {$interview->scheduled_date} at {$interview->scheduled_time} ({$interview->mode})."
+        );
+
+        NotificationService::send(
+            title: "Interview scheduled: {$applicant->name}",
+            body: "Booked on {$interview->scheduled_date} {$interview->scheduled_time} with {$interview->interviewer_name}.",
+            module: 'Applicant Management',
+            type: 'info',
+            targetType: 'Interview',
+            targetId: (string) $interview->interview_id
+        );
+
+        if ($applicant->email) {
+            try {
+                Mail::to($applicant->email)->send(new ApplicantAcceptedMail(
+                    recipientEmail: $applicant->email,
+                    applicantName: $applicant->name,
+                    position: $applicant->jobPost?->title ?? 'Position',
+                    interviewDate: $interview->scheduled_date,
+                    interviewTime: $interview->scheduled_time,
+                    interviewMode: $interview->mode
+                ));
+            } catch (\Throwable $e) {
+                Log::warning("Failed to send interview invitation to {$applicant->email}: " . $e->getMessage());
+            }
+        }
+
         return response()->json(new InterviewResource($interview->load('applicant.jobPost.department')), 201);
     }
 
@@ -96,8 +136,101 @@ class InterviewController extends Controller
 
     public function update(UpdateInterviewRequest $request, int $interview): JsonResponse
     {
-        $model = Interview::findOrFail($interview);
+        $model = Interview::with('applicant')->findOrFail($interview);
+
+        $previousDate = $model->scheduled_date;
+        $previousTime = $model->scheduled_time;
+        $previousMode = $model->mode;
+        $previousStatus = $model->status;
+
         $model->update($request->validated());
+
+        $applicant = $model->applicant;
+
+        /* --- Cancellation via status update ------------------------------- */
+        /* The interview record is KEPT and labelled "Cancelled"; the          */
+        /* applicant is returned to the "Screened" stage so they can be        */
+        /* re-booked, and a cancellation email is dispatched.                  */
+        if ($model->status === 'Cancelled' && $previousStatus !== 'Cancelled') {
+            if (
+                $applicant
+                && in_array($applicant->stage, ['Interview Scheduled', 'Accepted'])
+            ) {
+                $applicant->update(['stage' => 'Screened']);
+            }
+
+            AuditLogger::log(
+                action: 'Interview Cancelled',
+                module: 'Applicant Management',
+                severity: 'Warning',
+                targetType: 'Interview',
+                targetId: (string) $model->interview_id,
+                details: "Cancelled interview for {$applicant?->name} scheduled on {$model->scheduled_date} {$model->scheduled_time}."
+            );
+
+            NotificationService::send(
+                title: "Interview cancelled: {$applicant?->name}",
+                body: "Interview on {$model->scheduled_date} {$model->scheduled_time} was cancelled.",
+                module: 'Applicant Management',
+                type: 'warning',
+                targetType: 'Interview',
+                targetId: (string) $model->interview_id
+            );
+
+            if ($applicant?->email) {
+                try {
+                    Mail::to($applicant->email)->send(new InterviewCancelledMail(
+                        recipientEmail: $applicant->email,
+                        applicantName: $applicant->name,
+                        position: $applicant->jobPost?->title ?? 'Position',
+                        interviewDate: $model->scheduled_date,
+                        interviewTime: $model->scheduled_time,
+                        interviewMode: $model->mode
+                    ));
+                } catch (\Throwable $e) {
+                    Log::warning("Failed to send cancellation notice to {$applicant->email}: " . $e->getMessage());
+                }
+            }
+
+            return response()->json(new InterviewResource($model->load('applicant.jobPost.department')));
+        }
+
+        /* Reactivated (re-booked) from a cancelled interview */
+        if ($previousStatus === 'Cancelled' && $model->status !== 'Cancelled') {
+            if ($applicant && in_array($applicant->stage, ['Screened', 'Accepted'])) {
+                $applicant->update(['stage' => 'Interview Scheduled']);
+            }
+        }
+
+        $scheduleChanged = $model->scheduled_date !== $previousDate
+            || $model->scheduled_time !== $previousTime
+            || $model->mode !== $previousMode;
+
+        if ($scheduleChanged && $applicant?->email) {
+            try {
+                Mail::to($applicant->email)->send(new InterviewRescheduledMail(
+                    recipientEmail: $applicant->email,
+                    applicantName: $applicant->name,
+                    position: $applicant->jobPost?->title ?? 'Position',
+                    interviewDate: $model->scheduled_date,
+                    interviewTime: $model->scheduled_time,
+                    interviewMode: $model->mode,
+                    previousDate: $previousDate,
+                    previousTime: $previousTime
+                ));
+            } catch (\Throwable $e) {
+                Log::warning("Failed to send reschedule notice to {$applicant->email}: " . $e->getMessage());
+            }
+        }
+
+        AuditLogger::log(
+            action: 'Interview Updated / Rescheduled',
+            module: 'Applicant Management',
+            severity: 'Info',
+            targetType: 'Interview',
+            targetId: (string) $model->interview_id,
+            details: "Updated interview for {$model->applicant?->name} on {$model->scheduled_date} at {$model->scheduled_time} ({$model->status})."
+        );
 
         return response()->json(new InterviewResource($model->load('applicant.jobPost.department')));
     }
@@ -108,7 +241,52 @@ class InterviewController extends Controller
 
     public function destroy(int $interview): JsonResponse
     {
-        Interview::findOrFail($interview)->delete();
-        return response()->json(['message' => 'Interview cancelled.']);
+        $model = Interview::with(['applicant.jobPost'])->findOrFail($interview);
+        $applicant = $model->applicant;
+        $applicantName = $applicant?->name ?? "Applicant #{$model->applicant_id}";
+
+        // Return the applicant to the "Screened" stage so they can be
+        // re-booked (otherwise a cancelled/deleted interview leaves them
+        // stranded at "Interview Scheduled" — e.g. still queued for assessment).
+        if ($applicant && in_array($applicant->stage, ['Interview Scheduled', 'Accepted'])) {
+            $applicant->update(['stage' => 'Screened']);
+        }
+
+        AuditLogger::log(
+            action: 'Interview Cancelled',
+            module: 'Applicant Management',
+            severity: 'Warning',
+            targetType: 'Interview',
+            targetId: (string) $model->interview_id,
+            details: "Cancelled interview for {$applicantName} scheduled on {$model->scheduled_date} {$model->scheduled_time}."
+        );
+
+        if ($applicant?->email) {
+            try {
+                Mail::to($applicant->email)->send(new InterviewCancelledMail(
+                    recipientEmail: $applicant->email,
+                    applicantName: $applicant->name,
+                    position: $applicant->jobPost?->title ?? 'Position',
+                    interviewDate: $model->scheduled_date,
+                    interviewTime: $model->scheduled_time,
+                    interviewMode: $model->mode
+                ));
+            } catch (\Throwable $e) {
+                Log::warning("Failed to send cancellation notice to {$applicant->email}: " . $e->getMessage());
+            }
+        }
+
+        NotificationService::send(
+            title: "Interview cancelled: {$applicantName}",
+            body: "Interview on {$model->scheduled_date} {$model->scheduled_time} was cancelled.",
+            module: 'Applicant Management',
+            type: 'warning',
+            targetType: 'Interview',
+            targetId: (string) $model->interview_id
+        );
+
+        $model->delete();
+
+        return response()->json(['message' => 'Interview deleted successfully.']);
     }
 }

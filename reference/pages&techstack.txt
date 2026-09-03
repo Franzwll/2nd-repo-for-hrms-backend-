@@ -1,0 +1,47 @@
+System Pages info:
+SUPER ADMIN NAVIGATION:
+Dashboard
+Recruitment & Onboarding
+    Applicant Management
+    Recruitment Management
+    New Hire Onboarding
+Core HCM
+Employee Records
+ESS Management
+User Management
+Audit Logs
+Settings
+
+ADMIN NAVIGATION:
+Dashboard
+Recruitment & Onboarding
+    Applicant Management
+    Recruitment Management
+    New Hire Onboarding
+Core HCM
+Employee Records
+ESS Management
+Settings
+
+EMPLOYEE NAVIGATION:
+Dashboard
+My Profile
+ESS (Employee Self-Service)
+Onboarding (Visible only if onboarding is not yet completed)
+Settings
+
+Public site:
+Home - home of job hiring sites focus and highlight of the client site
+about - client related info about
+faq - faq about related about job applying
+contact - the contact of the client
+jobs - this is list of job
+job details - this is a pages for where applicant apply in a specific job and upload their resume to be schedule their interview to be hired as employee.
+login - this is where the employee, admin, super admin login
+
+Tech stack:
+React + Vite + typescript
+Tailwind Css Shadcn 
+Php Laravel 
+Python Spacy
+Mysql

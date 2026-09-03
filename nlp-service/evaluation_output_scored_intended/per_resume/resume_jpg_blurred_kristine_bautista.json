@@ -1,0 +1,241 @@
+{
+  "resume_file": "resume_jpg_blurred_kristine_bautista.jpg",
+  "requirements_applied": false,
+  "result": {
+    "success": true,
+    "profile": {
+      "personal_information": {
+        "name": "Sections Barges cae",
+        "email": null,
+        "phone": null
+      },
+      "education": [],
+      "work_experience": [],
+      "skills": [],
+      "certifications": [
+        "+ Nerpnonitte Cohen Service Corum@Cataon (26275",
+        "+ Nese Bartercting Mc O L2G2O!",
+        "NESE Bartercting MC o"
+      ],
+      "unrecognized_certifications": [
+        "+ Nerpnonitte Cohen Service Corum@Cataon (26275",
+        "+ Nese Bartercting Mc O L2G2O!",
+        "NESE Bartercting MC o"
+      ],
+      "estimated_years_experience": 0.0,
+      "job_roles": {
+        "recognized": [
+          "Bartender"
+        ],
+        "unrecognized": [
+          "Borterder",
+          "Rertendes — Skyline"
+        ]
+      },
+      "unrecognized_skills": [
+        "Customer Serve",
+        "JOY BAUTISTA"
+      ]
+    },
+    "entities": [
+      {
+        "label": "PERSON",
+        "value": "Sections Barges cae",
+        "source": "custom_ner"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Borterder",
+        "source": "custom_ner"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Rertendes — Skyline",
+        "source": "custom_ner"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Bartender",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "JOY BAUTISTA",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Customer Serve",
+        "source": "custom_ner"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "NESE Bartercting MC o",
+        "source": "custom_ner"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "+ Nese Bartercting Mc O L2G2O!",
+        "source": "section_rule"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "+ Nerpnonitte Cohen Service Corum@Cataon (26275",
+        "source": "section_rule"
+      },
+      {
+        "label": "ORGANIZATION",
+        "value": "The Grond Terrace Hotel",
+        "source": "spacy_base"
+      }
+    ],
+    "sections_detected": [
+      "certifications",
+      "experience",
+      "summary"
+    ],
+    "estimated_years_experience": 0.0,
+    "validation": {
+      "missing_information": [
+        "phone"
+      ],
+      "invalid_format": [
+        "Malformed email address: Corum@cataon"
+      ],
+      "skill_analysis": {
+        "recognized": [],
+        "unrecognized": [
+          "Customer Serve",
+          "JOY BAUTISTA"
+        ]
+      },
+      "job_role_analysis": {
+        "recognized": [
+          "Bartender"
+        ],
+        "unrecognized": [
+          "Borterder",
+          "Rertendes — Skyline"
+        ]
+      },
+      "credential_analysis": [
+        {
+          "required": null,
+          "extracted": "+ Nerpnonitte Cohen Service Corum@Cataon (26275",
+          "status": "UNRECOGNIZED",
+          "note": "Invalid or requires verification based on system validation rules."
+        },
+        {
+          "required": null,
+          "extracted": "+ Nese Bartercting Mc O L2G2O!",
+          "status": "UNRECOGNIZED",
+          "note": "Invalid or requires verification based on system validation rules."
+        },
+        {
+          "required": null,
+          "extracted": "NESE Bartercting MC o",
+          "status": "UNRECOGNIZED",
+          "note": "Invalid or requires verification based on system validation rules."
+        }
+      ],
+      "credential_issues": [
+        {
+          "type": "INVALID_FORMAT",
+          "detail": "Malformed email address: Corum@cataon",
+          "note": "Value exists but fails expected format validation."
+        }
+      ],
+      "review_flags": [
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "Borterder",
+          "note": "Not found in system reference data; flagged for manual review only."
+        },
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "Rertendes — Skyline",
+          "note": "Not found in system reference data; flagged for manual review only."
+        }
+      ]
+    },
+    "requirements_applied": {
+      "job_post_id": null,
+      "title": "Unspecified Position",
+      "required_skills": [],
+      "preferred_skills": [],
+      "education_level": null,
+      "experience_level": null,
+      "min_years_experience": 0.0,
+      "required_certifications": [],
+      "required_information": [
+        "name",
+        "email",
+        "phone"
+      ]
+    },
+    "match_score": 100.0,
+    "score_breakdown": {
+      "skills": {
+        "weight": 0.4,
+        "earned": 40.0,
+        "max": 40.0,
+        "matched_required": [],
+        "missing_required": [],
+        "matched_preferred": [],
+        "missing_preferred": [],
+        "required_coverage": 1.0,
+        "preferred_coverage": 1.0
+      },
+      "experience": {
+        "weight": 0.3,
+        "earned": 30.0,
+        "max": 30.0,
+        "estimated_years": 0.0,
+        "min_years_required": 0.0,
+        "requirement_met": true
+      },
+      "education": {
+        "weight": 0.2,
+        "earned": 20.0,
+        "max": 20.0,
+        "applicant_highest_level": [],
+        "required_level": null,
+        "requirement_met": true
+      },
+      "certifications": {
+        "weight": 0.1,
+        "earned": 10.0,
+        "max": 10.0,
+        "matched": [],
+        "missing": [],
+        "no_requirements": true
+      }
+    },
+    "screening_status": "INVALID_CREDENTIAL",
+    "screening_reasons": [
+      "INVALID_FORMAT: Malformed email address: Corum@cataon (Value exists but fails expected format validation.)",
+      "Classification INVALID_CREDENTIAL means 'invalid or requires verification based on system validation rules'; it does not imply fraud."
+    ],
+    "matched_summary": "Education requirement satisfied; Experience requirement satisfied (0.0 yrs vs 0.0 yrs required); No certification requirements defined for this role — meets Unspecified Position requirements.",
+    "alternative_job": null,
+    "mandatory_requirements_met": false,
+    "model_info": {
+      "base_model": "en_core_web_sm",
+      "custom_ner_loaded": true,
+      "custom_ner_path": "C:\\Users\\PC\\Downloads\\Ferdi\\4TH_YR\\DEV\\v4\\2nd-repo-for-hrms-backend-LATEST\\2nd-repo-for-hrms-backend-\\nlp-service\\models_spacy\\role_specific_ner"
+    },
+    "_timing_seconds": 801.6378,
+    "processing_status": "PARTIALLY_PROCESSED",
+    "text_extraction": {
+      "method": "tesseract-ocr",
+      "pages": 1,
+      "extension": ".jpg",
+      "original_length": null,
+      "character_count": 1091,
+      "warnings": [
+        "Text extracted from image using OCR; accuracy may be lower."
+      ]
+    },
+    "parsed_successfully": true
+  }
+}

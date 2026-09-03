@@ -8,90 +8,122 @@ use Modules\NewHireOnboarding\Http\Controllers\NewHireController;
 
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
 
-    /* ------------------------------------------------------------------ */
-    /* Read-only endpoints (permission:New Hire Onboarding)                */
-    /* ------------------------------------------------------------------ */
+     /* ------------------------------------------------------------------ */
+     /* Read-only endpoints (permission:New Hire Onboarding)                */
+     /* ------------------------------------------------------------------ */
 
-    Route::middleware('permission:New Hire Onboarding')->group(function () {
-        Route::get('new-hires/stats', [NewHireController::class, 'stats'])
-             ->name('new-hires.stats');
+     Route::middleware('permission:New Hire Onboarding')->group(function () {
+          Route::get('new-hires/stats', [NewHireController::class, 'stats'])
+               ->name('new-hires.stats');
 
-        Route::get('new-hires', [NewHireController::class, 'index'])
-             ->name('new-hire.index');
+          Route::get('new-hires', [NewHireController::class, 'index'])
+               ->name('new-hire.index');
 
-        Route::get('new-hires/{new_hire}', [NewHireController::class, 'show'])
-             ->name('new-hire.show');
+          Route::get('new-hires/{new_hire}', [NewHireController::class, 'show'])
+               ->name('new-hire.show');
 
-        Route::get('new-hires/{new_hire}/onboarding-items', [EmployeeOnboardingItemController::class, 'index'])
-             ->name('new-hires.onboarding-items.index');
+          Route::get('new-hires/{new_hire}/onboarding-items', [EmployeeOnboardingItemController::class, 'index'])
+               ->name('new-hires.onboarding-items.index');
 
-        Route::get('checklist-templates', [ChecklistTemplateController::class, 'index'])
-             ->name('checklist-template.index');
+          Route::get('checklist-templates', [ChecklistTemplateController::class, 'index'])
+               ->name('checklist-template.index');
 
-        Route::get('checklist-templates/{template}', [ChecklistTemplateController::class, 'show'])
-             ->name('checklist-template.show');
+          Route::get('checklist-templates/{template}', [ChecklistTemplateController::class, 'show'])
+               ->name('checklist-template.show');
 
-        Route::get('checklist-requests', [ChecklistRequestController::class, 'index'])
-             ->name('checklist-request.index');
+          Route::get('checklist-requests', [ChecklistRequestController::class, 'index'])
+               ->name('checklist-request.index');
 
-        Route::get('checklist-requests/{checklistRequest}', [ChecklistRequestController::class, 'show'])
-             ->name('checklist-request.show');
-    });
+          Route::get('checklist-requests/{checklistRequest}', [ChecklistRequestController::class, 'show'])
+               ->name('checklist-request.show');
 
-    /* ------------------------------------------------------------------ */
-    /* Mutating endpoints (permission:New Hire Onboarding:Edit)            */
-    /* ------------------------------------------------------------------ */
+           /* ------------------------------------------------------------------ */
+           /* Employee self-service submission endpoints                        */
+           /* Employees (read-level "New Hire Onboarding" permission) must be   */
+           /* able to materialize, upload and view their OWN onboarding         */
+           /* documents — verification (toggle) stays Edit-only.               */
+           /* ------------------------------------------------------------------ */
 
-    Route::middleware('permission:New Hire Onboarding:Edit')->group(function () {
-        Route::post('new-hires', [NewHireController::class, 'store'])
-             ->name('new-hire.store');
+           Route::post('new-hires/{new_hire}/onboarding-items', [EmployeeOnboardingItemController::class, 'materialize'])
+                ->name('new-hires.onboarding-items.materialize');
 
-        Route::put('new-hires/{new_hire}', [NewHireController::class, 'update'])
-             ->name('new-hire.update');
+           Route::post('onboarding-items/{item}/upload', [EmployeeOnboardingItemController::class, 'upload'])
+                ->name('onboarding-items.upload');
 
-        Route::delete('new-hires/{new_hire}', [NewHireController::class, 'destroy'])
-             ->name('new-hire.destroy');
+       });
 
-        Route::post('new-hires/{new_hire}/promote-stage', [NewHireController::class, 'promoteStage'])
-             ->name('new-hires.promote-stage');
+      /* ------------------------------------------------------------------ */
+      /* Document preview (token auth, no auth:sanctum header required)       */
+      /* Employees preview files inside a browser <iframe>/<img> which cannot */
+      /* send an Authorization header, so this route authenticates directly  */
+      /* from the ?token= query param (Bearer fallback) instead of relying   */
+      /* on the auth:sanctum middleware. Permission is checked in the        */
+      /* controller.                                                        */
+      /* ------------------------------------------------------------------ */
 
-        Route::post('new-hires/{new_hire}/onboarding-items', [EmployeeOnboardingItemController::class, 'materialize'])
-             ->name('new-hires.onboarding-items.materialize');
+      Route::get('onboarding-items/{item}/document', [EmployeeOnboardingItemController::class, 'document'])
+           ->name('onboarding-items.document')
+           ->withoutMiddleware('auth:sanctum');
 
-        Route::post('new-hires/{new_hire}/onboarding-items/bulk', [EmployeeOnboardingItemController::class, 'bulkCreate'])
-             ->name('new-hires.onboarding-items.bulk');
+      /* ------------------------------------------------------------------ */
+      /* Mutating endpoints (permission:New Hire Onboarding:Edit)            */
+     /* ------------------------------------------------------------------ */
 
-        Route::patch('onboarding-items/{item}/toggle', [EmployeeOnboardingItemController::class, 'toggle'])
-             ->name('onboarding-items.toggle');
+     Route::middleware('permission:New Hire Onboarding:Edit')->group(function () {
+          Route::post('new-hires', [NewHireController::class, 'store'])
+               ->name('new-hire.store');
 
-        Route::post('checklist-templates', [ChecklistTemplateController::class, 'store'])
-             ->name('checklist-template.store');
+          Route::put('new-hires/{new_hire}', [NewHireController::class, 'update'])
+               ->name('new-hire.update');
 
-        Route::put('checklist-templates/{template}', [ChecklistTemplateController::class, 'update'])
-             ->name('checklist-template.update');
+          Route::delete('new-hires/{new_hire}', [NewHireController::class, 'destroy'])
+               ->name('new-hire.destroy');
 
-        Route::delete('checklist-templates/{template}', [ChecklistTemplateController::class, 'destroy'])
-             ->name('checklist-template.destroy');
+          // Advance: Pre-onboarding → Probationary → Regular
+          Route::post('new-hires/{new_hire}/promote-stage', [NewHireController::class, 'promoteStage'])
+               ->name('new-hire.promote-stage');
 
-        Route::post('checklist-templates/{template}/items', [ChecklistTemplateController::class, 'addItem'])
-             ->name('checklist-templates.items.store');
+           /* ------------------------------------------------------------------ */
+           /* Checklist Templates                                                  */
+           /* ------------------------------------------------------------------ */
+           Route::apiResource('checklist-templates', ChecklistTemplateController::class)
+                ->parameters(['checklist-templates' => 'template'])
+                ->names('checklist-template');
 
-        Route::put('checklist-items/{item}', [ChecklistTemplateController::class, 'updateItem'])
-             ->name('checklist-items.update');
+           Route::post('new-hires/{new_hire}/onboarding-items/bulk', [EmployeeOnboardingItemController::class, 'bulkCreate'])
+                ->name('new-hires.onboarding-items.bulk');
 
-        Route::delete('checklist-items/{item}', [ChecklistTemplateController::class, 'destroyItem'])
-             ->name('checklist-items.destroy');
+           Route::patch('onboarding-items/{item}/toggle', [EmployeeOnboardingItemController::class, 'toggle'])
+               ->name('onboarding-items.toggle');
 
-        Route::post('checklist-requests', [ChecklistRequestController::class, 'store'])
-             ->name('checklist-request.store');
+          Route::post('checklist-templates', [ChecklistTemplateController::class, 'store'])
+               ->name('checklist-template.store');
 
-        Route::put('checklist-requests/{checklistRequest}', [ChecklistRequestController::class, 'update'])
-             ->name('checklist-request.update');
+          Route::put('checklist-templates/{template}', [ChecklistTemplateController::class, 'update'])
+               ->name('checklist-template.update');
 
-        Route::post('checklist-requests/{checklistRequest}/approve', [ChecklistRequestController::class, 'approve'])
-             ->name('checklist-requests.approve');
+          Route::delete('checklist-templates/{template}', [ChecklistTemplateController::class, 'destroy'])
+               ->name('checklist-template.destroy');
 
-        Route::post('checklist-requests/{checklistRequest}/reject', [ChecklistRequestController::class, 'reject'])
-             ->name('checklist-requests.reject');
-    });
+          Route::post('checklist-templates/{template}/items', [ChecklistTemplateController::class, 'addItem'])
+               ->name('checklist-templates.items.store');
+
+          Route::put('checklist-items/{item}', [ChecklistTemplateController::class, 'updateItem'])
+               ->name('checklist-items.update');
+
+          Route::delete('checklist-items/{item}', [ChecklistTemplateController::class, 'destroyItem'])
+               ->name('checklist-items.destroy');
+
+          Route::post('checklist-requests', [ChecklistRequestController::class, 'store'])
+               ->name('checklist-request.store');
+
+          Route::put('checklist-requests/{checklistRequest}', [ChecklistRequestController::class, 'update'])
+               ->name('checklist-request.update');
+
+          Route::post('checklist-requests/{checklistRequest}/approve', [ChecklistRequestController::class, 'approve'])
+               ->name('checklist-requests.approve');
+
+          Route::post('checklist-requests/{checklistRequest}/reject', [ChecklistRequestController::class, 'reject'])
+               ->name('checklist-requests.reject');
+     });
 });

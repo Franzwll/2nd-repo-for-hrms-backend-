@@ -4,9 +4,15 @@ export const Route = createFileRoute("/admin/_applicant-management/applicants")(
   head: () => ({
     meta: [
       { title: "Applicant Management — Oxford Suites Makati HRMS" },
-      { name: "description", content: "NER resume screening, candidate ranking, interview scheduling and evaluation." },
+      {
+        name: "description",
+        content: "NER resume screening, candidate ranking, interview scheduling and evaluation.",
+      },
       { property: "og:title", content: "Applicant Management — Oxford Suites Makati HRMS" },
-      { property: "og:description", content: "NER resume screening, candidate ranking, interview scheduling and evaluation." },
+      {
+        property: "og:description",
+        content: "NER resume screening, candidate ranking, interview scheduling and evaluation.",
+      },
     ],
   }),
   component: () => <ApplicantManagement role="admin" />,

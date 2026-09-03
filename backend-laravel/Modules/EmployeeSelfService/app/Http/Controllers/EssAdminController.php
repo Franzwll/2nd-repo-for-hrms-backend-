@@ -296,7 +296,7 @@ class EssAdminController extends Controller
      */
     public function getAuditLogs(Request $request): JsonResponse
     {
-        $logs = AuditLog::with('systemUser')
+        $logs = AuditLog::with('user')
             ->whereIn('module_name', ['Employee Self-Service', 'ESS Management', 'ESS Administration', 'Attendance'])
             ->orderByDesc('occurred_at')
             ->take(50)
@@ -306,7 +306,7 @@ class EssAdminController extends Controller
             'logs' => $logs->map(fn ($l) => [
                 'id' => $l->audit_log_id,
                 'timestamp' => $l->occurred_at?->toIso8601String() ?? now()->toIso8601String(),
-                'user' => $l->systemUser?->full_name ?? ($l->actor_role ?: 'System'),
+                'user' => $l->user?->full_name ?? ($l->actor_role ?: 'System'),
                 'action' => $l->action,
                 'module' => $l->module_name,
                 'department' => $l->actor_department ?? 'HR Department',

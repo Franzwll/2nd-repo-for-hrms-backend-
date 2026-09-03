@@ -1,0 +1,591 @@
+{
+  "Customer Service": [
+    "customer service",
+    "guest service",
+    "customer assistance",
+    "client service",
+    "customer care"
+  ],
+  "Communication": [
+    "communication",
+    "communication skills",
+    "verbal communication",
+    "written communication",
+    "professional communication"
+  ],
+  "Coffee Preparation": [
+    "coffee preparation",
+    "coffee making",
+    "espresso making",
+    "espresso extraction",
+    "latte art",
+    "coffee brewing",
+    "coffee craft"
+  ],
+  "Barista Operations": [
+    "barista operations",
+    "barista",
+    "cafe service",
+    "coffee shop operations"
+  ],
+  "Mixology": [
+    "mixology",
+    "cocktail preparation",
+    "cocktail craft",
+    "drink mixing",
+    "beverage preparation",
+    "bar operations",
+    "beverage service"
+  ],
+  "Food Safety": [
+    "food safety",
+    "food safety compliance",
+    "food hygiene",
+    "sanitation",
+    "food sanitation",
+    "sanitation standards",
+    "food handling"
+  ],
+  "HACCP": [
+    "haccp",
+    "haccp compliance",
+    "food safety management",
+    "haccp protocols"
+  ],
+  "Knife Skills": [
+    "knife skills",
+    "knife handling"
+  ],
+  "Plating": [
+    "plating",
+    "food plating",
+    "plate presentation",
+    "presentation",
+    "dessert plating"
+  ],
+  "Mise en Place": [
+    "mise en place",
+    "mise-en-place",
+    "station setup",
+    "prep lists"
+  ],
+  "Hot Kitchen": [
+    "hot kitchen",
+    "hot line",
+    "line cooking",
+    "grill station",
+    "saute station",
+    "kitchen operations",
+    "food preparation"
+  ],
+  "Pastry and Baking": [
+    "pastry",
+    "baking",
+    "pastry arts",
+    "dessert preparation",
+    "breads and pastries",
+    "pastry preparation",
+    "basic baking",
+    "bread production"
+  ],
+  "Room Turnover": [
+    "room turnover",
+    "room cleaning",
+    "guestroom cleaning"
+  ],
+  "Linen Handling": [
+    "linen handling",
+    "linen management",
+    "laundry operations",
+    "laundry management"
+  ],
+  "Public Area Cleaning": [
+    "public area cleaning",
+    "public area maintenance"
+  ],
+  "Chemical Safety": [
+    "chemical safety",
+    "cleaning chemical handling"
+  ],
+  "Guest Relations": [
+    "guest relations",
+    "guest relations management",
+    "guest engagement",
+    "client relations"
+  ],
+  "Front Office Operations": [
+    "front office",
+    "front office operations",
+    "front desk",
+    "reception operations",
+    "hotel front office",
+    "front desk operations",
+    "front office procedures"
+  ],
+  "Check-in / Check-out": [
+    "check-in / check-out",
+    "check in check out",
+    "check-in",
+    "check-out",
+    "arrival and departure handling"
+  ],
+  "Reservations": [
+    "reservations",
+    "reservation management",
+    "booking management",
+    "reservation support",
+    "reservation updates",
+    "room inventory",
+    "ota coordination"
+  ],
+  "Night Audit Procedures": [
+    "night audit procedures",
+    "night audit",
+    "night auditing",
+    "daily audit",
+    "end-of-day reporting"
+  ],
+  "Property Management Systems": [
+    "opera pms",
+    "opera",
+    "property management system",
+    "pms systems",
+    "pms",
+    "opera cloud",
+    "ids next",
+    "siteminder"
+  ],
+  "POS Systems": [
+    "pos systems",
+    "pos",
+    "point of sale",
+    "point of sale systems",
+    "micros",
+    "micros pos",
+    "toast pos",
+    "pos operation",
+    "pos system operation"
+  ],
+  "Cash Handling": [
+    "cash handling",
+    "cashiering",
+    "billing",
+    "funds handling",
+    "cash reconciliation",
+    "cash drawer reconciliation"
+  ],
+  "Payment Processing": [
+    "payment processing",
+    "processing payments",
+    "credit card processing"
+  ],
+  "Upselling": [
+    "upselling",
+    "upsell techniques",
+    "suggestive selling",
+    "cross-selling",
+    "sales & upselling"
+  ],
+  "Table Service": [
+    "table service",
+    "food service",
+    "service sequence",
+    "dining room service",
+    "table setting"
+  ],
+  "Table Management": [
+    "table management",
+    "seating management",
+    "table turnover",
+    "hostess duties"
+  ],
+  "Order Taking": [
+    "order taking",
+    "taking orders",
+    "order processing"
+  ],
+  "Banquet Service": [
+    "banquet service",
+    "banquet operations",
+    "function service",
+    "banquet coordination"
+  ],
+  "Event Coordination": [
+    "event coordination",
+    "events coordination",
+    "event planning",
+    "event logistics",
+    "event setup",
+    "function coordination"
+  ],
+  "Inventory Control": [
+    "inventory control",
+    "inventory management",
+    "stock control",
+    "stocktaking",
+    "inventory checks",
+    "inventory support",
+    "stock monitoring",
+    "par-level tracking"
+  ],
+  "Inventory Counting": [
+    "inventory counting",
+    "physical inventory counting",
+    "perpetual inventory",
+    "stock reconciliation"
+  ],
+  "Cost Reporting": [
+    "cost reporting",
+    "cost control",
+    "f&b cost control",
+    "variance analysis",
+    "cost monitoring",
+    "waste tracking",
+    "waste reduction",
+    "spoilage tracking"
+  ],
+  "Procurement Support": [
+    "procurement",
+    "purchasing",
+    "purchase order processing",
+    "purchase orders",
+    "purchase order documentation",
+    "vendor coordination",
+    "supplier coordination",
+    "receiving & inspection"
+  ],
+  "Daily Sales Reporting": [
+    "daily sales reporting",
+    "daily sales reports",
+    "financial reporting",
+    "sales reports"
+  ],
+  "Spa Reception": [
+    "spa reception",
+    "spa operations",
+    "wellness reception"
+  ],
+  "Recreation Program Planning": [
+    "recreation program planning",
+    "guest recreation",
+    "activity scheduling",
+    "activity facilitation",
+    "leisure coordination"
+  ],
+  "Quality Assurance": [
+    "quality assurance",
+    "food quality control",
+    "qa inspections",
+    "internal audit",
+    "compliance monitoring"
+  ],
+  "Housekeeping Operations": [
+    "housekeeping",
+    "housekeeping operations",
+    "housekeeping procedures",
+    "housekeeping management"
+  ],
+  "Complaint Handling": [
+    "complaint handling",
+    "complaint resolution",
+    "guest complaint management",
+    "service recovery",
+    "guest recovery"
+  ],
+  "Telephone Etiquette": [
+    "telephone etiquette",
+    "phone etiquette",
+    "call handling",
+    "booking correspondence"
+  ],
+  "Teamwork": [
+    "teamwork",
+    "team collaboration",
+    "working with others"
+  ],
+  "Team Leadership": [
+    "team leadership",
+    "staff supervision",
+    "team supervision",
+    "leading teams",
+    "shift supervision",
+    "floor supervision"
+  ],
+  "Staff Training": [
+    "staff training",
+    "team training",
+    "new hire training",
+    "staff coaching",
+    "training & onboarding"
+  ],
+  "Scheduling": [
+    "scheduling",
+    "shift scheduling",
+    "staff scheduling",
+    "kitchen scheduling"
+  ],
+  "Time Management": [
+    "time management",
+    "prioritization",
+    "multitasking"
+  ],
+  "Attention to Detail": [
+    "attention to detail",
+    "detail oriented",
+    "detail-oriented"
+  ],
+  "Problem Solving": [
+    "problem solving",
+    "problem-solving",
+    "troubleshooting"
+  ],
+  "Hotel Operations": [
+    "hotel operations",
+    "property operations"
+  ],
+  "Facility Maintenance": [
+    "facility maintenance",
+    "maintenance support",
+    "electrical installation",
+    "plumbing basics",
+    "preventive maintenance",
+    "equipment maintenance",
+    "basic maintenance",
+    "building maintenance",
+    "repairs"
+  ],
+  "Records Documentation": [
+    "documentation",
+    "records management",
+    "file management",
+    "201 files",
+    "inventory documentation"
+  ],
+  "MS Office": [
+    "ms office",
+    "microsoft office",
+    "ms word",
+    "ms excel",
+    "excel",
+    "word processing",
+    "spreadsheets",
+    "office suite"
+  ],
+  "Confidentiality": [
+    "confidentiality",
+    "data privacy",
+    "records confidentiality"
+  ],
+  "Safety Compliance": [
+    "safety compliance",
+    "workplace safety",
+    "safety procedures",
+    "occupational safety",
+    "safety protocols"
+  ],
+  "Responsible Alcohol Service": [
+    "responsible alcohol service",
+    "responsible service of alcohol",
+    "alcohol awareness"
+  ],
+  "Cake Decoration": [
+    "cake decoration",
+    "cake decorating",
+    "cake design"
+  ],
+  "Revenue Management Support": [
+    "revenue management support",
+    "revenue management",
+    "rate parity",
+    "occupancy forecasting",
+    "rate monitoring"
+  ],
+  "Recruitment Support": [
+    "recruitment",
+    "recruitment support",
+    "sourcing and screening"
+  ],
+  "Payroll Support": [
+    "payroll support",
+    "payroll processing",
+    "payroll assistance"
+  ],
+  "Concierge Services": [
+    "concierge services",
+    "concierge",
+    "vip guest assistance",
+    "local area knowledge",
+    "area knowledge",
+    "transportation coordination",
+    "restaurant & activity reservations",
+    "restaurant reservations",
+    "activity reservations"
+  ],
+  "Fine Dining Service": [
+    "fine dining service",
+    "fine-dining service",
+    "fine dining",
+    "fine-dining",
+    "guest greeting",
+    "table management",
+    "dining room coordination"
+  ],
+  "Auditing and Compliance": [
+    "internal auditing",
+    "corrective action monitoring",
+    "restaurant compliance",
+    "compliance monitoring",
+    "quality audit",
+    "compliance auditing",
+    "safety audit"
+  ],
+  "Channel Management": [
+    "channel management",
+    "ota & distribution channel coordination",
+    "distribution channel coordination",
+    "channel manager",
+    "reservation auditing",
+    "group & fit booking processing",
+    "ota coordination"
+  ],
+  "Culinary Operations": [
+    "menu preparation",
+    "kitchen operations",
+    "prep schedules",
+    "culinary preparation",
+    "station preparation",
+    "line preparation"
+  ],
+  "CRM and Loyalty Management": [
+    "crm systems",
+    "customer feedback analysis",
+    "customer retention",
+    "loyalty program coordination",
+    "relationship management",
+    "guest preference management"
+  ],
+  "Recreation Management": [
+    "recreation equipment management",
+    "guest activities supervision",
+    "seasonal program development",
+    "vendor & entertainment coordination",
+    "activities supervision",
+    "resort recreation"
+  ],
+  "Restaurant Operations Management": [
+    "restaurant operations management",
+    "restaurant operations",
+    "inventory monitoring & ordering",
+    "service quality monitoring",
+    "f&b operations",
+    "food & beverage management"
+  ],
+  "Cost Accounting": [
+    "basic cost accounting",
+    "cost accounting",
+    "materials control software",
+    "materials control",
+    "marketman",
+    "supplier delivery verification"
+  ],
+  "Technical and Plumbing Maintenance": [
+    "basic plumbing repair",
+    "plumbing repair",
+    "emergency repair response",
+    "equipment inspection",
+    "maintenance supply inventory",
+    "electrical repair",
+    "plumbing maintenance"
+  ],
+  "Housekeeping and Room Inspection": [
+    "room inspection",
+    "sanitation protocols",
+    "guestroom inspection",
+    "housekeeping standards",
+    "cleaning inspection"
+  ],
+  "Laundry Operations and Quality Control": [
+    "laundry quality control",
+    "uniform management",
+    "linen inspection",
+    "equipment monitoring",
+    "laundry supervision"
+  ],
+  "Bar Operations": [
+    "bar operations",
+    "beverage service",
+    "drink preparation",
+    "cocktail service",
+    "bar setup",
+    "bar station management"
+  ],
+  "Beverage Operations Supervision": [
+    "beverage operations supervision"
+  ],
+  "Beverage Quality Standards": [
+    "beverage quality standards"
+  ],
+  "Booking Coordination & Confirmation": [
+    "booking coordination & confirmation",
+    "booking coordination and confirmation"
+  ],
+  "Budget & Supply Cost Awareness": [
+    "budget & supply cost awareness",
+    "budget and supply cost awareness"
+  ],
+  "Cleaning Standards & SOPs": [
+    "cleaning standards & sops",
+    "cleaning standards and sops"
+  ],
+  "Cost Tracking": [
+    "cost tracking"
+  ],
+  "Cross-Department Coordination": [
+    "cross-department coordination"
+  ],
+  "Delivery Monitoring": [
+    "delivery monitoring"
+  ],
+  "Guest Activities Coordination": [
+    "guest activities coordination"
+  ],
+  "Guest Feedback Management": [
+    "guest feedback management"
+  ],
+  "Linen & Amenity Coordination": [
+    "linen & amenity coordination",
+    "linen and amenity coordination"
+  ],
+  "Menu Knowledge & Pairing": [
+    "menu knowledge & pairing",
+    "menu knowledge and pairing"
+  ],
+  "OTA Extranet Management": [
+    "ota extranet management"
+  ],
+  "Operational Planning": [
+    "operational planning"
+  ],
+  "Problem Resolution": [
+    "problem resolution"
+  ],
+  "Recreation Safety Awareness": [
+    "recreation safety awareness"
+  ],
+  "Reservation Reporting & Forecasting": [
+    "reservation reporting & forecasting",
+    "reservation reporting and forecasting"
+  ],
+  "Resort Accommodation Services": [
+    "resort accommodation services"
+  ],
+  "Room Status Coordination": [
+    "room status coordination"
+  ],
+  "Tourism Services": [
+    "tourism services"
+  ],
+  "Training Program Development": [
+    "training program development"
+  ]
+}

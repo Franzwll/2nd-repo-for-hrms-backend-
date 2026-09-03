@@ -11,6 +11,7 @@ export interface AuthUser {
   status: string;
   role_id: number;
   role: string;
+  otp_enabled?: boolean;
   permissions: Record<string, string>;
   last_login_at: string | null;
 }

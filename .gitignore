@@ -2,6 +2,9 @@
 node_modules/
 npm-debug.log
 yarn-error.log
+.playwright-mcp/
+nlp-service/uvicorn_*.log
+
 
 # Laravel 4 specific
 bootstrap/compiled.php
@@ -28,3 +31,15 @@ Homestead.json
 .env.production
 .phpactor.json
 auth.json
+
+# Python / NLP
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+nlp-service/.venv/
+*.bak
+nlp-service/evaluation_new_resumes.json
+nlp-service/test_blur_enhance*.py
+TRASH/

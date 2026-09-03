@@ -21,8 +21,13 @@ class SystemUser extends Model
         'employee_id',
         'role_id',
         'status',
+        'otp_enabled',
         'last_login_at',
         'last_login_ip',
+    ];
+
+    protected $casts = [
+        'otp_enabled' => 'boolean',
     ];
 
     protected $hidden = [

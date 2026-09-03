@@ -19,27 +19,29 @@ export interface LandingJob {
   qualifications: string[];
   skills: string[];
   benefits: string[];
+  picture?: string | null;
 }
 
 export function mapJob(j: ApiLandingJob): LandingJob {
   return {
     id: String(j.job_post_id),
     title: j.title,
-    department: j.department_name,
-    employmentType: j.employment_type,
+    department: j.department_name ?? "",
+    employmentType: j.employment_type ?? "",
     schedule: j.schedule ?? "",
     salaryMin: Number(j.salary_min) || 0,
     salaryMax: Number(j.salary_max) || 0,
-    vacancies: j.vacancies,
-    filled: j.filled_count,
+    vacancies: j.vacancies ?? 0,
+    filled: j.filled_count ?? 0,
     experience: j.experience_level ?? "",
     education: j.education_level ?? "",
     summary: j.summary ?? "",
     description: j.description ?? "",
-    responsibilities: j.responsibilities,
-    qualifications: j.qualifications,
-    skills: j.skills,
-    benefits: j.benefits,
+    responsibilities: (j.responsibilities as any) ?? [],
+    qualifications: (j.qualifications as any) ?? [],
+    skills: (j.skills as any) ?? [],
+    benefits: (j.benefits as any) ?? [],
+    picture: j.picture_url ?? j.picture ?? null,
   };
 }
 
@@ -161,10 +163,14 @@ export function useLandingJobs(): { jobs: LandingJob[]; loading: boolean } {
 
 export const VALUE_BODIES: Record<string, string> = {
   Care: "We treat every guest and teammate with genuine warmth and empathy, anticipating needs before they are spoken.",
-  Integrity: "We act with honesty and accountability in every transaction, decision, and guest interaction.",
-  Excellence: "We take pride in the details, continually raising the standard of service across the property.",
-  Teamwork: "We succeed together — every department supports the other to deliver one seamless guest experience.",
-  Hospitality: "We welcome every guest as family, carrying the Filipino tradition of gracious service.",
+  Integrity:
+    "We act with honesty and accountability in every transaction, decision, and guest interaction.",
+  Excellence:
+    "We take pride in the details, continually raising the standard of service across the property.",
+  Teamwork:
+    "We succeed together — every department supports the other to deliver one seamless guest experience.",
+  Hospitality:
+    "We welcome every guest as family, carrying the Filipino tradition of gracious service.",
 };
 
 export const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;

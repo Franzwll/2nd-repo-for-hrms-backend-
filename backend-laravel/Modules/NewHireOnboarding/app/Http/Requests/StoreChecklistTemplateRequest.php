@@ -18,9 +18,12 @@ class StoreChecklistTemplateRequest extends FormRequest
             'phase'               => ['required', 'string', 'in:Pre-onboarding,Onboarding,Probationary,Regular'],
             'position_scope_json' => ['nullable', 'array'],
             'status'              => ['sometimes', 'string', 'in:Active,Inactive'],
-            'items'               => ['nullable', 'array'],
-            'items.*.item_text'   => ['required_with:items', 'string'],
-            'items.*.sort_order'  => ['required_with:items', 'integer', 'min:0'],
+            'items'                      => ['nullable', 'array'],
+            'items.*.item_text'          => ['required_with:items', 'string'],
+            'items.*.instructions'       => ['nullable', 'string'],
+            'items.*.requires_upload'    => ['nullable', 'boolean'],
+            'items.*.upload_placeholder' => ['nullable', 'string', 'max:255'],
+            'items.*.sort_order'         => ['required_with:items', 'integer', 'min:0'],
         ];
     }
 }

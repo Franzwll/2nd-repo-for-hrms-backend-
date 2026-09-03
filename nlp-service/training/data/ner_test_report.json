@@ -1,0 +1,36 @@
+{
+  "model": "C:\\Users\\Windows 10 Lite\\Downloads\\MUNJOR\\4TH YR\\DEV\\LATEST CLONE\\v4\\2nd-repo-for-hrms-backend-\\nlp-service\\models_spacy\\role_specific_ner",
+  "test_documents": 12,
+  "overall": {
+    "precision": 0.9896,
+    "recall": 1.0,
+    "f1": 0.9948
+  },
+  "per_entity": {
+    "CERTIFICATION": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "EDUCATION": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "JOB_TITLE": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "PERSON": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "SKILL": {
+      "precision": 0.9762,
+      "recall": 1.0,
+      "f1": 0.988
+    }
+  }
+}

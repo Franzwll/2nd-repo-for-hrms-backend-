@@ -74,6 +74,8 @@ export type Position = {
   salaryBand: string;
   /** Numeric id in the backend `positions` table (Core HCM). */
   dbId?: number;
+  /** Numeric department id (Core HCM) — set when positions come from the API. */
+  departmentId?: number | null;
 };
 
 export const positions: Position[] = [
@@ -212,6 +214,10 @@ export type NewHire = {
   departmentId?: number | null;
   stage: "Pre-onboarding" | "Probationary" | "Regular";
   startDate: string;
+  /** When HR requested the probationary performance evaluation (ISO timestamp
+   *  or null) — persisted on the new hire record so every admin session and
+   *  the DOLE auto-regularization rule share the same waiting state. */
+  evaluationRequestedAt?: string | null;
   initials: string;
   checklist: {
     item: string;
@@ -508,7 +514,15 @@ export type Employee = {
   email: string;
   phone: string;
   supervisor: string;
-  status: "Active" | "Probationary" | "Regular" | "Promoted" | "Resigned" | "Retired" | "Terminated" | "Inactive";
+  status:
+    | "Active"
+    | "Probationary"
+    | "Regular"
+    | "Promoted"
+    | "Resigned"
+    | "Retired"
+    | "Terminated"
+    | "Inactive";
   salaryGrade?: string;
   promotionHistory?: Array<{
     date: string;
@@ -740,7 +754,8 @@ export const hr3Recommendations: HR3Recommendation[] = [
     status: "Pending HR Action",
     suggestedPosition: "Guest Relations Officer",
     suggestedSalaryGrade: "SG-10 (₱26,000 – ₱32,000)",
-    comments: "Exceeded guest satisfaction metrics during 6-month evaluation window. Highly recommended for full regularization.",
+    comments:
+      "Exceeded guest satisfaction metrics during 6-month evaluation window. Highly recommended for full regularization.",
   },
   {
     id: "HR3-REC-02",
@@ -755,7 +770,8 @@ export const hr3Recommendations: HR3Recommendation[] = [
     status: "Pending HR Action",
     suggestedPosition: "Line Cook",
     suggestedSalaryGrade: "SG-05 (₱18,000 – ₱22,000)",
-    comments: "Punctual, excellent culinary prep speed and kitchen hygiene compliance. Recommended for regularization.",
+    comments:
+      "Punctual, excellent culinary prep speed and kitchen hygiene compliance. Recommended for regularization.",
   },
   {
     id: "HR3-REC-03",
@@ -770,7 +786,7 @@ export const hr3Recommendations: HR3Recommendation[] = [
     status: "Pending HR Action",
     suggestedPosition: "F&B Captain / Service Supervisor",
     suggestedSalaryGrade: "SG-10 (₱26,000 – ₱32,000)",
-    comments: "Demonstrated strong leadership during banquet events. Passed succession planning assessment with distinction.",
+    comments:
+      "Demonstrated strong leadership during banquet events. Passed succession planning assessment with distinction.",
   },
 ];
-

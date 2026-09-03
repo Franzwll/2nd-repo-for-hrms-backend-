@@ -47,6 +47,6 @@ class Hr3Recommendation extends Model
 
     public function evaluator(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'evaluator_user_id');
+        return $this->belongsTo(SystemUser::class, 'evaluator_user_id', 'system_user_id');
     }
 }

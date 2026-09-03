@@ -48,9 +48,7 @@ function Landing() {
           <h1 className="mt-3 max-w-3xl font-display text-5xl font-semibold text-primary-foreground md:text-7xl">
             A career worth checking into.
           </h1>
-          <p className="mt-5 max-w-xl text-base text-primary-foreground/80">
-            {company.overview}
-          </p>
+          <p className="mt-5 max-w-xl text-base text-primary-foreground/80">{company.overview}</p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg">
               <Link to="/jobs">

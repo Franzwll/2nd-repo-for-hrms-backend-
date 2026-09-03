@@ -1,0 +1,410 @@
+{
+  "resume_file": "Julian Rivera — Guest Services Professional.pdf",
+  "requirements_applied": false,
+  "result": {
+    "success": true,
+    "profile": {
+      "personal_information": {
+        "name": "Julian Rivera",
+        "email": "julian.rivera@email.com",
+        "phone": "1 (655) 342-8891"
+      },
+      "education": [
+        "Florida International University",
+        "Bachelor of Science in Hospitality Management"
+      ],
+      "work_experience": [],
+      "skills": [
+        "Cash Handling",
+        "Check-in / Check-out",
+        "Customer Service",
+        "Front Office Operations",
+        "Guest Recovery",
+        "Guest Relations",
+        "Housekeeping Operations",
+        "MS Office",
+        "Property Management Systems",
+        "Reservations",
+        "Upselling"
+      ],
+      "certifications": [],
+      "unrecognized_certifications": [],
+      "estimated_years_experience": 0.9,
+      "job_roles": {
+        "recognized": [],
+        "unrecognized": [
+          "Beach,",
+          "F&B team",
+          "Five-Diamond properties",
+          "Front Office Intern",
+          "Housekeeping and Engineering",
+          "ServSafe Food",
+          "The Ritz-Carlton,",
+          "Upselling Techniques"
+        ]
+      },
+      "unrecognized_skills": [
+        "CGarvicea Fyrallancea",
+        "Ciiide Stand",
+        "Hospitality Systems",
+        "Manager, First",
+        "Office Suite",
+        "Oracle Hosp",
+        "Professional Certifications",
+        "Service Excellence",
+        "stay surveys",
+        "the Night Audit"
+      ]
+    },
+    "entities": [
+      {
+        "label": "PERSON",
+        "value": "Julian Rivera",
+        "source": "custom_ner"
+      },
+      {
+        "label": "EDUCATION",
+        "value": "Florida International University",
+        "source": "custom_ner"
+      },
+      {
+        "label": "EDUCATION",
+        "value": "Bachelor of Science in Hospitality Management",
+        "source": "section_rule"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Five-Diamond properties",
+        "source": "custom_ner"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Front Office Intern",
+        "source": "custom_ner"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "The Ritz-Carlton,",
+        "source": "custom_ner"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Beach,",
+        "source": "custom_ner"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Housekeeping and Engineering",
+        "source": "custom_ner"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "F&B team",
+        "source": "custom_ner"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Upselling Techniques",
+        "source": "custom_ner"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "ServSafe Food",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Front Office Operations",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "the Night Audit",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Property Management Systems",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Reservations",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "stay surveys",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Oracle Hosp",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "MS Office",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "CGarvicea Fyrallancea",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Ciiide Stand",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Office Suite",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Service Excellence",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Guest Recovery",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Professional Certifications",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Hospitality Systems",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Manager, First",
+        "source": "custom_ner"
+      },
+      {
+        "label": "SKILL",
+        "value": "Upselling",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Customer Service",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Guest Relations",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Check-in / Check-out",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Cash Handling",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Housekeeping Operations",
+        "source": "reference_scan"
+      },
+      {
+        "label": "ORGANIZATION",
+        "value": "Biltmore Hotel",
+        "source": "spacy_base"
+      },
+      {
+        "label": "EMAIL",
+        "value": "julian.rivera@email.com",
+        "source": "regex"
+      },
+      {
+        "label": "PHONE",
+        "value": "1 (655) 342-8891",
+        "source": "regex"
+      }
+    ],
+    "sections_detected": [
+      "education",
+      "skills"
+    ],
+    "estimated_years_experience": 0.9,
+    "validation": {
+      "missing_information": [],
+      "invalid_format": [],
+      "skill_analysis": {
+        "recognized": [
+          "Cash Handling",
+          "Check-in / Check-out",
+          "Customer Service",
+          "Front Office Operations",
+          "Guest Recovery",
+          "Guest Relations",
+          "Housekeeping Operations",
+          "MS Office",
+          "Property Management Systems",
+          "Reservations",
+          "Upselling"
+        ],
+        "unrecognized": [
+          "CGarvicea Fyrallancea",
+          "Ciiide Stand",
+          "Hospitality Systems",
+          "Manager, First",
+          "Office Suite",
+          "Oracle Hosp",
+          "Professional Certifications",
+          "Service Excellence",
+          "stay surveys",
+          "the Night Audit"
+        ]
+      },
+      "job_role_analysis": {
+        "recognized": [],
+        "unrecognized": [
+          "Beach,",
+          "F&B team",
+          "Five-Diamond properties",
+          "Front Office Intern",
+          "Housekeeping and Engineering",
+          "ServSafe Food",
+          "The Ritz-Carlton,",
+          "Upselling Techniques"
+        ]
+      },
+      "credential_analysis": [],
+      "credential_issues": [],
+      "review_flags": [
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "Beach,",
+          "note": "Not found in system reference data; flagged for manual review only."
+        },
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "F&B team",
+          "note": "Not found in system reference data; flagged for manual review only."
+        },
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "Five-Diamond properties",
+          "note": "Not found in system reference data; flagged for manual review only."
+        },
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "Front Office Intern",
+          "note": "Not found in system reference data; flagged for manual review only."
+        },
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "Housekeeping and Engineering",
+          "note": "Not found in system reference data; flagged for manual review only."
+        },
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "ServSafe Food",
+          "note": "Not found in system reference data; flagged for manual review only."
+        },
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "The Ritz-Carlton,",
+          "note": "Not found in system reference data; flagged for manual review only."
+        },
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "Upselling Techniques",
+          "note": "Not found in system reference data; flagged for manual review only."
+        }
+      ]
+    },
+    "requirements_applied": {
+      "job_post_id": null,
+      "title": "Unspecified Position",
+      "required_skills": [],
+      "preferred_skills": [],
+      "education_level": null,
+      "experience_level": null,
+      "min_years_experience": 0.0,
+      "required_certifications": [],
+      "required_information": [
+        "name",
+        "email",
+        "phone"
+      ]
+    },
+    "match_score": 100.0,
+    "score_breakdown": {
+      "skills": {
+        "weight": 0.4,
+        "earned": 40.0,
+        "max": 40.0,
+        "matched_required": [],
+        "missing_required": [],
+        "matched_preferred": [],
+        "missing_preferred": [],
+        "required_coverage": 1.0,
+        "preferred_coverage": 1.0
+      },
+      "experience": {
+        "weight": 0.3,
+        "earned": 30.0,
+        "max": 30.0,
+        "estimated_years": 0.9,
+        "min_years_required": 0.0,
+        "requirement_met": true
+      },
+      "education": {
+        "weight": 0.2,
+        "earned": 20.0,
+        "max": 20.0,
+        "applicant_highest_level": [
+          "Florida International University",
+          "Bachelor of Science in Hospitality Management"
+        ],
+        "required_level": null,
+        "requirement_met": true
+      },
+      "certifications": {
+        "weight": 0.1,
+        "earned": 10.0,
+        "max": 10.0,
+        "matched": [],
+        "missing": [],
+        "no_requirements": true
+      }
+    },
+    "screening_status": "PERFECT_FOR_THE_JOB",
+    "screening_reasons": [
+      "Overall match score 100.0% reached the required threshold of 75.0% for Unspecified Position.",
+      "Education requirement met: True; experience requirement met: True (0.9 yrs vs 0.0 yrs minimum)."
+    ],
+    "matched_summary": "Education requirement satisfied; Experience requirement satisfied (0.9 yrs vs 0.0 yrs required); No certification requirements defined for this role — meets Unspecified Position requirements.",
+    "alternative_job": null,
+    "mandatory_requirements_met": true,
+    "model_info": {
+      "base_model": "en_core_web_sm",
+      "custom_ner_loaded": true,
+      "custom_ner_path": "C:\\Users\\PC\\Downloads\\Ferdi\\4TH_YR\\DEV\\v4\\2nd-repo-for-hrms-backend-LATEST\\2nd-repo-for-hrms-backend-\\nlp-service\\models_spacy\\role_specific_ner"
+    },
+    "_timing_seconds": 720.0231,
+    "processing_status": "PARTIALLY_PROCESSED",
+    "text_extraction": {
+      "method": "pdf-ocr (pypdfium2+tesseract)",
+      "pages": 2,
+      "extension": ".pdf",
+      "original_length": null,
+      "character_count": 3211,
+      "warnings": []
+    },
+    "parsed_successfully": true
+  }
+}

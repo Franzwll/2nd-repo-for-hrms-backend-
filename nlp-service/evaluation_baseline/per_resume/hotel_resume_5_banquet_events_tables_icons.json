@@ -1,0 +1,277 @@
+{
+  "resume_file": "hotel_resume_5_banquet_events_tables_icons.docx",
+  "requirements_applied": false,
+  "result": {
+    "success": true,
+    "profile": {
+      "personal_information": {
+        "name": "Sophia Anne Garcia",
+        "email": "sophia.garcia.events@example.com",
+        "phone": "+63 919 220 6734",
+        "address": "Manila, Philippines"
+      },
+      "education": [
+        "Bachelor of Science in Hospitality Management"
+      ],
+      "work_experience": [
+        {
+          "job_title": "Events Coordinator",
+          "company": "Harborview Hotel Manila",
+          "location": null,
+          "period": null,
+          "recognized_role": true
+        },
+        {
+          "job_title": "De La Salle–College of Saint Benilde",
+          "company": null,
+          "location": null,
+          "period": "2018 – 2022",
+          "recognized_role": false
+        }
+      ],
+      "skills": [
+        "Attention to Detail",
+        "Banquet Service",
+        "Cash Handling",
+        "Communication",
+        "Event Coordination",
+        "Food Safety",
+        "MS Office",
+        "Procurement Support",
+        "Scheduling"
+      ],
+      "certifications": [
+        "Food Safety and Hygiene Certification"
+      ],
+      "unrecognized_certifications": [],
+      "estimated_years_experience": 8.5,
+      "job_roles": {
+        "recognized": [
+          "Events Coordinator"
+        ],
+        "unrecognized": [
+          "De La Salle–College of Saint Benilde"
+        ]
+      },
+      "unrecognized_skills": [
+        "AT A GLANCE",
+        "★ Function Sheets"
+      ]
+    },
+    "entities": [
+      {
+        "label": "PERSON",
+        "value": "Sophia Anne Garcia",
+        "source": "rule"
+      },
+      {
+        "label": "EDUCATION",
+        "value": "Bachelor of Science in Hospitality Management",
+        "source": "section_rule"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "Events Coordinator",
+        "source": "section_rule"
+      },
+      {
+        "label": "JOB_TITLE",
+        "value": "De La Salle–College of Saint Benilde",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "AT A GLANCE",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Event Coordination",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Banquet Service",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Communication",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "★ Function Sheets",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Procurement Support",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "MS Office",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Scheduling",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Attention to Detail",
+        "source": "section_rule"
+      },
+      {
+        "label": "SKILL",
+        "value": "Food Safety",
+        "source": "reference_scan"
+      },
+      {
+        "label": "SKILL",
+        "value": "Cash Handling",
+        "source": "reference_scan"
+      },
+      {
+        "label": "CERTIFICATION",
+        "value": "Food Safety and Hygiene Certification",
+        "source": "reference_scan"
+      },
+      {
+        "label": "EMAIL",
+        "value": "sophia.garcia.events@example.com",
+        "source": "regex"
+      },
+      {
+        "label": "PHONE",
+        "value": "+63 919 220 6734",
+        "source": "regex"
+      }
+    ],
+    "sections_detected": [
+      "experience",
+      "skills",
+      "summary"
+    ],
+    "estimated_years_experience": 8.5,
+    "validation": {
+      "missing_information": [],
+      "invalid_format": [],
+      "skill_analysis": {
+        "recognized": [
+          "Attention to Detail",
+          "Banquet Service",
+          "Cash Handling",
+          "Communication",
+          "Event Coordination",
+          "Food Safety",
+          "MS Office",
+          "Procurement Support",
+          "Scheduling"
+        ],
+        "unrecognized": [
+          "AT A GLANCE",
+          "★ Function Sheets"
+        ]
+      },
+      "job_role_analysis": {
+        "recognized": [
+          "Events Coordinator"
+        ],
+        "unrecognized": [
+          "De La Salle–College of Saint Benilde"
+        ]
+      },
+      "credential_analysis": [],
+      "credential_issues": [],
+      "review_flags": [
+        {
+          "type": "UNRECOGNIZED_JOB_ROLE",
+          "detail": "De La Salle–College of Saint Benilde",
+          "note": "Not found in system reference data; flagged for manual review only."
+        }
+      ]
+    },
+    "requirements_applied": {
+      "job_post_id": null,
+      "title": "Unspecified Position",
+      "required_skills": [],
+      "preferred_skills": [],
+      "education_level": null,
+      "experience_level": null,
+      "min_years_experience": 0.0,
+      "required_certifications": [],
+      "required_information": [
+        "name",
+        "email",
+        "phone"
+      ]
+    },
+    "match_score": 100.0,
+    "score_breakdown": {
+      "skills": {
+        "weight": 0.4,
+        "earned": 40.0,
+        "max": 40.0,
+        "matched_required": [],
+        "missing_required": [],
+        "matched_preferred": [],
+        "missing_preferred": [],
+        "required_coverage": 1.0,
+        "preferred_coverage": 1.0
+      },
+      "experience": {
+        "weight": 0.3,
+        "earned": 30.0,
+        "max": 30.0,
+        "estimated_years": 8.5,
+        "min_years_required": 0.0,
+        "requirement_met": true
+      },
+      "education": {
+        "weight": 0.2,
+        "earned": 20.0,
+        "max": 20.0,
+        "applicant_highest_level": [
+          "Bachelor of Science in Hospitality Management"
+        ],
+        "required_level": null,
+        "requirement_met": true
+      },
+      "certifications": {
+        "weight": 0.1,
+        "earned": 10.0,
+        "max": 10.0,
+        "matched": [],
+        "missing": [],
+        "no_requirements": true
+      }
+    },
+    "screening_status": "PERFECT_FOR_THE_JOB",
+    "screening_reasons": [
+      "Overall match score 100.0% reached the required threshold of 75.0% for Unspecified Position.",
+      "Education requirement met: True; experience requirement met: True (8.5 yrs vs 0.0 yrs minimum)."
+    ],
+    "matched_summary": "Education requirement satisfied; Experience requirement satisfied (8.5 yrs vs 0.0 yrs required); No certification requirements defined for this role — meets Unspecified Position requirements.",
+    "alternative_job": null,
+    "mandatory_requirements_met": true,
+    "model_info": {
+      "base_model": "en_core_web_sm",
+      "custom_ner_loaded": true,
+      "custom_ner_path": "C:\\Users\\Windows 10 Lite\\Downloads\\MUNJOR\\4TH YR\\DEV\\LATEST CLONE\\v5\\2nd-repo-for-hrms-backend-\\nlp-service\\models_spacy\\role_specific_ner"
+    },
+    "_timing_seconds": 767.2894,
+    "processing_status": "PARTIALLY_PROCESSED",
+    "text_extraction": {
+      "method": "python-docx",
+      "pages": 1,
+      "extension": ".docx",
+      "original_length": null,
+      "character_count": 1347,
+      "warnings": []
+    },
+    "parsed_successfully": true
+  }
+}

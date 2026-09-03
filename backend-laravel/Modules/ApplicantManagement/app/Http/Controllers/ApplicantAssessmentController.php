@@ -68,6 +68,24 @@ class ApplicantAssessmentController extends Controller
             $model->update(['fit_score' => $data['total_score']]);
         }
 
+        \App\Services\AuditLogger::log(
+            action: 'Interview Assessment Completed',
+            module: 'Applicant Management',
+            severity: 'Info',
+            targetType: 'Assessment',
+            targetId: (string) $assessment->assessment_id,
+            details: "Recorded assessment for {$model->name} with total score {$assessment->total_score}% and outcome {$assessment->outcome}."
+        );
+
+        \App\Services\NotificationService::send(
+            title: "Assessment completed: {$model->name}",
+            body: "Scored {$assessment->total_score}% — Outcome: {$assessment->outcome}.",
+            module: 'Applicant Management',
+            type: 'info',
+            targetType: 'Assessment',
+            targetId: (string) $assessment->assessment_id
+        );
+
         return response()->json(new AssessmentResource($assessment), 201);
     }
 

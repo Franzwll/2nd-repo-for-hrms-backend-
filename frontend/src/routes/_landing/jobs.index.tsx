@@ -67,10 +67,12 @@ function FindJobs() {
   );
 
   // Reset page when filters change
-  const handleFilterChange = <T,>(setter: (v: T) => void) => (v: T) => {
-    setter(v);
-    setPage(1);
-  };
+  const handleFilterChange =
+    <T,>(setter: (v: T) => void) =>
+    (v: T) => {
+      setter(v);
+      setPage(1);
+    };
 
   const pageCount = Math.max(1, Math.ceil(results.length / JOBS_PER_PAGE));
   const safePage = Math.min(page, pageCount);
@@ -187,41 +189,58 @@ function FindJobs() {
 
           <div className="space-y-5">
             {pageItems.map((job) => (
-              <Card key={job.id} className="border-border/70">
-                <CardContent className="p-6">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <h2 className="font-display text-2xl font-semibold">{job.title}</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {job.department} · {job.employmentType} · {job.schedule}
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-primary">
-                        {peso(job.salaryMin)} – {peso(job.salaryMax)} per month
-                      </p>
+              <Card key={job.id} className="border-border/70 overflow-hidden">
+                <CardContent className="p-0">
+                  <div className="flex flex-col sm:flex-row gap-0">
+                    {/* Picture on the left — show whole poster, never crop */}
+                    {job.picture && (
+                      <div className="flex w-full shrink-0 items-center justify-center overflow-hidden bg-white sm:w-48 md:w-56">
+                        <img
+                          src={job.picture}
+                          alt={`${job.title} hiring poster`}
+                          className="h-auto max-h-72 w-full object-contain sm:h-full sm:max-h-none sm:w-full"
+                          loading="lazy"
+                        />
+                      </div>
+                    )}
+
+                    {/* Content on the right */}
+                    <div className="flex-1 p-6">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h2 className="font-display text-2xl font-semibold">{job.title}</h2>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {job.department} · {job.employmentType} · {job.schedule}
+                          </p>
+                          <p className="mt-1 text-sm font-medium text-primary">
+                            {peso(job.salaryMin)} – {peso(job.salaryMax)} per month
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="border-success/40 text-success">
+                          {job.vacancies - job.filled} vacancies open
+                        </Badge>
+                      </div>
+
+                      <p className="mt-4 text-sm text-muted-foreground">{job.description}</p>
+
+                      <div className="mt-4 flex flex-wrap gap-1.5">
+                        {job.skills.map((s) => (
+                          <span
+                            key={s}
+                            className="rounded border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+                          >
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+
+                      <Button asChild className="mt-5 w-full sm:w-auto">
+                        <Link to="/jobs/$jobId" params={{ jobId: job.id }}>
+                          Apply Now
+                        </Link>
+                      </Button>
                     </div>
-                    <Badge variant="outline" className="border-success/40 text-success">
-                      {job.vacancies - job.filled} vacancies open
-                    </Badge>
                   </div>
-
-                  <p className="mt-4 text-sm text-muted-foreground">{job.description}</p>
-
-                  <div className="mt-4 flex flex-wrap gap-1.5">
-                    {job.skills.map((s) => (
-                      <span
-                        key={s}
-                        className="rounded border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-                      >
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-
-                  <Button asChild className="mt-5 w-full sm:w-auto">
-                    <Link to="/jobs/$jobId" params={{ jobId: job.id }}>
-                      Apply Now
-                    </Link>
-                  </Button>
                 </CardContent>
               </Card>
             ))}

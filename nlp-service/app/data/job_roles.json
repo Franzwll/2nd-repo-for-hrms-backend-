@@ -1,0 +1,594 @@
+{
+  "Bartender": [
+    "bartender",
+    "bar tender",
+    "barman",
+    "barkeep",
+    "mixologist"
+  ],
+  "Barista": [
+    "barista",
+    "coffee shop staff",
+    "cafe barista",
+    "coffee attendant"
+  ],
+  "Line Cook": [
+    "line cook",
+    "cook",
+    "station cook",
+    "hot kitchen cook",
+    "commis chef",
+    "kitchen cook",
+    "senior line cook"
+  ],
+  "Chef": [
+    "chef",
+    "sous chef",
+    "head chef",
+    "executive chef",
+    "chef de partie",
+    "executive sous chef",
+    "banquet chef",
+    "demi chef"
+  ],
+  "Pastry Chef": [
+    "pastry chef",
+    "baker",
+    "pastry cook",
+    "baker chef"
+  ],
+  "Kitchen Helper": [
+    "kitchen helper",
+    "dishwasher",
+    "kitchen aide",
+    "steward",
+    "kitchen steward",
+    "kitchen staff"
+  ],
+  "Housekeeping Attendant": [
+    "housekeeping attendant",
+    "room attendant",
+    "housekeeper",
+    "chambermaid",
+    "roomboy",
+    "public area attendant"
+  ],
+  "Laundry Attendant": [
+    "laundry attendant",
+    "laundry staff"
+  ],
+  "Restaurant Server": [
+    "restaurant server",
+    "waiter",
+    "waitress",
+    "food server",
+    "server",
+    "food and beverage attendant",
+    "f&b attendant",
+    "service crew",
+    "restaurant crew member"
+  ],
+  "Hostess": [
+    "hostess",
+    "food host",
+    "restaurant host",
+    "fine dining restaurant host",
+    "host"
+  ],
+  "Front Desk Receptionist": [
+    "front desk agent",
+    "front desk officer",
+    "front desk receptionist",
+    "front desk staff",
+    "front office associate",
+    "guest service agent",
+    "receptionist"
+  ],
+  "Front Desk Associate": [
+    "front desk associate",
+    "front office associate",
+    "front desk representative",
+    "guest service representative",
+    "front desk clerk",
+    "front office intern"
+  ],
+  "Guest Relations Officer": [
+    "gro",
+    "guest relations coordinator",
+    "guest relations officer",
+    "guest service officer",
+    "guest relations associate"
+  ],
+  "Concierge": [
+    "concierge",
+    "hotel concierge",
+    "bell captain",
+    "bellman"
+  ],
+  "Hotel Night Auditor": [
+    "night auditor",
+    "hotel night auditor",
+    "night audit associate",
+    "night audit supervisor"
+  ],
+  "Kitchen Supervisor": [
+    "kitchen supervisor",
+    "restaurant kitchen supervisor",
+    "culinary supervisor",
+    "chef supervisor"
+  ],
+  "Restaurant Supervisor": [
+    "restaurant supervisor",
+    "floor supervisor",
+    "service supervisor",
+    "senior server lead",
+    "food and beverage supervisor",
+    "f&b supervisor"
+  ],
+  "Bar Operations Supervisor": [
+    "bar operations supervisor",
+    "restaurant bar operations supervisor",
+    "bar supervisor",
+    "bar manager",
+    "bar lead",
+    "bar team leader"
+  ],
+  "Laundry Supervisor": [
+    "laundry supervisor",
+    "hotel laundry supervisor",
+    "laundry team leader"
+  ],
+  "Spa Receptionist": [
+    "spa receptionist",
+    "hotel spa and wellness receptionist",
+    "wellness receptionist",
+    "spa front desk",
+    "spa and wellness receptionist"
+  ],
+  "Revenue Management Assistant": [
+    "revenue management assistant",
+    "hotel revenue management assistant",
+    "revenue assistant",
+    "pricing assistant"
+  ],
+  "Purchasing Coordinator": [
+    "purchasing coordinator",
+    "procurement coordinator",
+    "hotel purchasing and procurement coordinator",
+    "purchasing and inventory assistant",
+    "purchasing assistant",
+    "procurement assistant"
+  ],
+  "Inventory Supervisor": [
+    "inventory supervisor",
+    "cost control supervisor",
+    "restaurant inventory and cost control supervisor",
+    "inventory and cost control supervisor",
+    "stock controller",
+    "inventory clerk",
+    "restaurant stock controller"
+  ],
+  "Restaurant Cashier": [
+    "restaurant cashier",
+    "cashier",
+    "cashier and customer service associate",
+    "dining cashier",
+    "customer service associate"
+  ],
+  "Events Coordinator": [
+    "sales and events coordinator",
+    "hotel sales and events coordinator",
+    "events coordinator",
+    "banquet coordinator",
+    "event coordinator",
+    "catering assistant",
+    "events and catering assistant",
+    "banquet sales assistant",
+    "banquet server"
+  ],
+  "Recreation Supervisor": [
+    "recreation supervisor",
+    "resort recreation and activities supervisor",
+    "activities supervisor",
+    "recreation coordinator",
+    "activities coordinator",
+    "hotel recreation and activities coordinator",
+    "resort activities assistant"
+  ],
+  "Beverage Service Specialist": [
+    "beverage service specialist",
+    "restaurant beverage service specialist",
+    "beverage specialist",
+    "bar specialist",
+    "beverage attendant"
+  ],
+  "Quality Assurance Officer": [
+    "quality assurance officer",
+    "restaurant quality assurance and food safety officer",
+    "food safety officer",
+    "qa officer",
+    "qa and food safety officer",
+    "qa assistant",
+    "restaurant compliance officer"
+  ],
+  "Reservations Coordinator": [
+    "reservations coordinator",
+    "hotel reservations and distribution coordinator",
+    "reservations and distribution coordinator",
+    "reservations officer",
+    "reservations assistant",
+    "hotel reservations assistant",
+    "hotel reservations officer"
+  ],
+  "Guest Experience Coordinator": [
+    "guest experience coordinator",
+    "guest experience and loyalty coordinator",
+    "hotel guest experience and loyalty coordinator",
+    "loyalty coordinator"
+  ],
+  "Maintenance Technician": [
+    "maintenance technician",
+    "hotel maintenance technician",
+    "maintenance staff",
+    "handyman",
+    "building maintenance staff",
+    "facilities assistant"
+  ],
+  "Accounts Assistant": [
+    "accounts assistant",
+    "accounting assistant",
+    "finance assistant",
+    "bookkeeper"
+  ],
+  "HR Assistant": [
+    "hr assistant",
+    "human resource assistant",
+    "human resources assistant",
+    "hr staff",
+    "recruitment assistant"
+  ],
+  "HR Manager": [
+    "hr manager",
+    "human resources manager",
+    "hr administration manager"
+  ],
+  "General Manager": [
+    "general manager",
+    "gm",
+    "property manager"
+  ],
+  "Supervisor": [
+    "supervisor",
+    "shift supervisor",
+    "team leader"
+  ],
+  "Housekeeping Supervisor": [
+    "housekeeping supervisor",
+    "hotel housekeeping supervisor",
+    "floor housekeeper",
+    "executive housekeeper"
+  ],
+  "Pastry and Bakery Assistant": [
+    "pastry assistant",
+    "bakery assistant",
+    "bakery trainee",
+    "pastry cook"
+  ],
+  "Resort Housekeeping Operations Manager": [
+    "resort housekeeping operations manager",
+    "housekeeping operations manager",
+    "resort housekeeping manager",
+    "housekeeping manager",
+    "housekeeping operations supervisor",
+    "resort housekeeping operations"
+  ],
+  "Hotel Revenue Analyst": [
+    "hotel revenue analyst",
+    "revenue analyst",
+    "revenue management analyst",
+    "hotel revenue management analyst",
+    "pricing analyst",
+    "revenue analyst hotel"
+  ],
+  "Restaurant Guest Relations Supervisor": [
+    "restaurant guest relations supervisor",
+    "guest relations supervisor",
+    "restaurant guest relations coordinator",
+    "guest relations supervisor restaurant"
+  ],
+  "Restaurant Customer Experience Coordinator": [
+    "restaurant customer experience coordinator",
+    "customer experience coordinator",
+    "cx coordinator",
+    "guest experience coordinator restaurant",
+    "customer experience coordinator restaurant"
+  ],
+  "Dining Service Supervisor": [
+    "dining service supervisor",
+    "restaurant service supervisor",
+    "dining supervisor",
+    "service supervisor dining",
+    "dining room supervisor"
+  ],
+  "Guest Experience Officer": [
+    "guest experience officer",
+    "guest experience coordinator",
+    "guest experience specialist",
+    "gxo",
+    "guest experience officer hotel"
+  ],
+  "Restaurant Relations Coordinator": [
+    "restaurant relations coordinator",
+    "guest relations coordinator",
+    "relations coordinator",
+    "restaurant guest relations coordinator"
+  ],
+  "Restaurant Service Team Leader": [
+    "restaurant service team leader",
+    "service team leader",
+    "restaurant team leader",
+    "service supervisor",
+    "restaurant service supervisor"
+  ],
+  "Restaurant Beverage Supervisor": [
+    "restaurant beverage supervisor",
+    "beverage supervisor",
+    "bar supervisor",
+    "beverage service supervisor",
+    "restaurant bar supervisor"
+  ],
+  "Restaurant Events and Banquet Coordinator": [
+    "restaurant events and banquet coordinator",
+    "events and banquet coordinator",
+    "restaurant events coordinator",
+    "banquet coordinator",
+    "events coordinator restaurant"
+  ],
+  "Hotel Sales and Events Supervisor": [
+    "hotel sales and events supervisor",
+    "sales and events supervisor",
+    "hotel sales supervisor",
+    "sales events supervisor",
+    "hotel sales and events coordinator"
+  ],
+  "Hospitality Corporate Sales Coordinator": [
+    "hospitality corporate sales coordinator",
+    "corporate sales coordinator",
+    "corporate sales officer",
+    "sales coordinator corporate",
+    "hospitality sales coordinator"
+  ],
+  "Hotel Events Sales Officer": [
+    "hotel events sales officer",
+    "events sales officer",
+    "event sales officer",
+    "hotel sales officer",
+    "events officer hotel"
+  ],
+  "Catering and Banquet Sales Coordinator": [
+    "catering and banquet sales coordinator",
+    "catering sales coordinator",
+    "banquet sales coordinator",
+    "catering coordinator",
+    "banquet sales assistant"
+  ],
+  "Hospitality Client Relations Team Leader": [
+    "hospitality client relations team leader",
+    "client relations team leader",
+    "client relations supervisor",
+    "hospitality client relations supervisor"
+  ],
+  "Hotel Business Development Coordinator": [
+    "hotel business development coordinator",
+    "business development coordinator",
+    "business development officer",
+    "hotel sales development coordinator",
+    "business development coordinator hotel"
+  ],
+  "Hospitality Facilities Team Leader": [
+    "hospitality facilities team leader",
+    "facilities team leader",
+    "facilities supervisor",
+    "hospitality facilities supervisor"
+  ],
+  "Hospitality Maintenance Coordinator": [
+    "hospitality maintenance coordinator",
+    "maintenance coordinator",
+    "facilities maintenance coordinator",
+    "hospitality maintenance supervisor"
+  ],
+  "Hotel Engineering Operations Assistant": [
+    "hotel engineering operations assistant",
+    "engineering operations assistant",
+    "hotel engineering assistant",
+    "engineering assistant hotel"
+  ],
+  "Hotel Facilities Supervisor": [
+    "hotel facilities supervisor",
+    "facilities supervisor",
+    "property maintenance supervisor",
+    "hotel facilities manager"
+  ],
+  "Hotel Property Maintenance Supervisor": [
+    "hotel property maintenance supervisor",
+    "property maintenance supervisor",
+    "maintenance supervisor hotel",
+    "property maintenance manager"
+  ],
+  "Resort Property Operations Coordinator": [
+    "resort property operations coordinator",
+    "property operations coordinator",
+    "property coordinator",
+    "resort operations coordinator"
+  ],
+  "Restaurant Procurement and Purchasing Coordinator": [
+    "restaurant procurement and purchasing coordinator",
+    "procurement and purchasing coordinator",
+    "restaurant procurement coordinator",
+    "purchasing coordinator",
+    "procurement coordinator"
+  ],
+  "Guest Booking Team Leader": [
+    "guest booking team leader",
+    "booking team leader",
+    "reservations team leader",
+    "booking services team leader"
+  ],
+  "Hospitality Reservations Specialist": [
+    "hospitality reservations specialist",
+    "reservations specialist",
+    "hospitality reservations officer",
+    "reservations officer hospitality"
+  ],
+  "Hotel Booking Services Officer": [
+    "hotel booking services officer",
+    "booking services officer",
+    "hotel booking officer",
+    "booking officer hotel"
+  ],
+  "Hotel Reservations Sales Coordinator": [
+    "hotel reservations sales coordinator",
+    "reservations sales coordinator",
+    "hotel reservations sales",
+    "reservations coordinator sales"
+  ],
+  "Hotel Reservations Supervisor": [
+    "hotel reservations supervisor",
+    "reservations supervisor",
+    "hotel reservations manager",
+    "reservations manager hotel"
+  ],
+  "Reservations Booking Coordinator": [
+    "reservations booking coordinator",
+    "booking coordinator",
+    "reservations coordinator",
+    "hotel booking coordinator"
+  ],
+  "Resort Recreation and Activities Manager": [
+    "resort recreation and activities manager",
+    "recreation and activities manager",
+    "resort recreation manager",
+    "activities manager",
+    "recreation supervisor resort"
+  ],
+  "Banquet Operations Supervisor": [
+    "banquet operations supervisor",
+    "banquet supervisor",
+    "banquet operations manager",
+    "banquet manager"
+  ],
+  "Banquet Service Team Leader": [
+    "banquet service team leader",
+    "banquet team leader",
+    "banquet service supervisor",
+    "banquet team supervisor"
+  ],
+  "Catering Operations Coordinator": [
+    "catering operations coordinator",
+    "catering coordinator",
+    "banquet catering coordinator",
+    "catering operations"
+  ],
+  "Events Catering Supervisor": [
+    "events catering supervisor",
+    "catering supervisor",
+    "event catering coordinator",
+    "banquet catering supervisor"
+  ],
+  "Food Beverage Events Supervisor": [
+    "food beverage events supervisor",
+    "food and beverage events supervisor",
+    "f&b events supervisor",
+    "food beverage supervisor"
+  ],
+  "Hotel Banquet Coordinator": [
+    "hotel banquet coordinator",
+    "banquet coordinator",
+    "hotel banquet",
+    "banquet events coordinator"
+  ],
+  "Resort Guest Experience Manager": [
+    "resort guest experience manager",
+    "guest experience manager",
+    "guest experience supervisor",
+    "resort guest relations manager"
+  ],
+  "Hotel Reservations Manager": [
+    "hotel reservations manager",
+    "reservations manager",
+    "hotel reservations supervisor",
+    "reservations manager hotel"
+  ],
+  "Culinary Production Coordinator": [
+    "culinary production coordinator",
+    "kitchen production coordinator",
+    "culinary coordinator",
+    "culinary production"
+  ],
+  "Food Production Supervisor": [
+    "food production supervisor",
+    "kitchen production supervisor",
+    "food production coordinator",
+    "culinary production supervisor"
+  ],
+  "Hospitality Kitchen Coordinator": [
+    "hospitality kitchen coordinator",
+    "kitchen coordinator",
+    "hospitality kitchen",
+    "culinary coordinator"
+  ],
+  "Kitchen Operations Supervisor": [
+    "kitchen operations supervisor",
+    "culinary operations supervisor",
+    "kitchen supervisor operations",
+    "kitchen operations manager"
+  ],
+  "Restaurant Culinary Operations Officer": [
+    "restaurant culinary operations officer",
+    "culinary operations officer",
+    "restaurant culinary officer",
+    "culinary officer restaurant"
+  ],
+  "Restaurant Kitchen Team Leader": [
+    "restaurant kitchen team leader",
+    "kitchen team leader",
+    "restaurant kitchen team",
+    "kitchen supervisor team leader"
+  ],
+  "Hotel Front Office Supervisor": [
+    "hotel front office supervisor",
+    "front office supervisor",
+    "front desk supervisor",
+    "hotel front office manager",
+    "front office lead"
+  ],
+  "Food and Beverage Manager": [
+    "food and beverage manager",
+    "f&b manager",
+    "restaurant manager",
+    "food & beverage manager"
+  ],
+  "Executive Housekeeper": [
+    "executive housekeeper",
+    "housekeeping manager",
+    "housekeeping executive",
+    "head housekeeper"
+  ],
+  "Resort Operations Manager": [
+    "resort operations manager",
+    "hotel operations manager",
+    "resort manager",
+    "operations manager resort"
+  ],
+  "Front Office Manager": [
+    "front office manager",
+    "front desk manager",
+    "front office lead",
+    "guest services manager"
+  ],
+  "Reservations Manager": [
+    "reservations manager",
+    "reservation manager",
+    "booking manager"
+  ]
+}

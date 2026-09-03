@@ -5,7 +5,11 @@ export const Route = createFileRoute("/admin/_corehcm/dept-pos")({
   head: () => ({
     meta: [
       { title: "Department, Positions & Salary Grades — Oxford Suites HRMS" },
-      { name: "description", content: "Departments, position master list, salary grade management and vacancy requisitions." },
+      {
+        name: "description",
+        content:
+          "Departments, position master list, salary grade management and vacancy requisitions.",
+      },
     ],
   }),
   component: () => <DeptPosModule role="admin" />,

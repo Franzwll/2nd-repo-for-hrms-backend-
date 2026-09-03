@@ -12,6 +12,7 @@ import {
   Calendar,
   Layers,
   Loader2,
+  Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,40 @@ export function EssOverviewTab({
   const [raSort, setRaSort] = useState("date-desc");
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
+
+  // Dynamic Social Recognition Stats
+  const [recStats, setRecStats] = useState({ received: 4, given: 2, topPillar: "Guest Delight" });
+
+  useEffect(() => {
+    const updateStats = () => {
+      try {
+        const raw = localStorage.getItem("oxford_social_recognitions");
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            const userName = overview?.employee?.name || "Kevin Dela Cruz";
+            const received = list.filter((p: any) =>
+              p.recipientName?.toLowerCase().includes(userName.toLowerCase())
+            ).length;
+            const given = list.filter((p: any) =>
+              p.senderName?.toLowerCase().includes(userName.toLowerCase())
+            ).length;
+            setRecStats({
+              received: Math.max(0, received),
+              given: Math.max(0, given),
+              topPillar: "Guest Delight",
+            });
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    updateStats();
+    window.addEventListener("recognition_updated", updateStats);
+    return () => window.removeEventListener("recognition_updated", updateStats);
+  }, [overview]);
 
   useEffect(() => {
     const loadOverviewData = async () => {
@@ -140,8 +175,8 @@ export function EssOverviewTab({
 
   return (
     <div className="space-y-6">
-      {/* 4 Feature Stat Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* 5 Feature Stat Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {/* Attendance Card */}
         <Card className="border-border/70 flex flex-col justify-between hover:border-primary/50 transition-all shadow-xs">
           <CardContent className="p-5">
@@ -152,22 +187,22 @@ export function EssOverviewTab({
               </div>
             </div>
             <div className="mt-3">
-              <p className="text-2xl font-bold font-display text-foreground">
-                {myAttendance.monthly.present} Present <span className="text-sm font-normal text-muted-foreground">· {myAttendance.monthly.late} Late</span>
+              <p className="text-xl font-bold font-display text-foreground">
+                {myAttendance.monthly.present} Present <span className="text-xs font-normal text-muted-foreground">· {myAttendance.monthly.late} Late</span>
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Today Time In: <strong className="text-foreground">{todayTimeIn}</strong> ({attendanceStatus})
+              <p className="text-xs text-muted-foreground mt-1 truncate">
+                In: <strong className="text-foreground">{todayTimeIn}</strong> ({attendanceStatus})
               </p>
             </div>
             <Button
               asChild
               variant="ghost"
               size="sm"
-              className="mt-4 w-full justify-between p-0 h-auto font-medium text-primary hover:bg-transparent hover:text-primary/80"
+              className="mt-4 w-full justify-between p-0 h-auto font-medium text-primary hover:bg-transparent hover:text-primary/80 text-xs"
             >
               <Link to="/employee/ess" search={{ category: "Attendance" }}>
-                <span>View Attendance Log →</span>
-                <ArrowRight className="h-4 w-4" />
+                <span>Attendance Log →</span>
+                <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
           </CardContent>
@@ -183,20 +218,20 @@ export function EssOverviewTab({
               </div>
             </div>
             <div className="mt-3">
-              <p className="text-2xl font-bold font-display text-emerald-600 dark:text-emerald-400">
+              <p className="text-xl font-bold font-display text-emerald-600 dark:text-emerald-400">
                 ₱{myPayroll.net.toLocaleString()}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">Next Payout: <strong className="text-foreground">{myPayroll.nextPayout}</strong></p>
+              <p className="text-xs text-muted-foreground mt-1 truncate">Payout: <strong className="text-foreground">{myPayroll.nextPayout}</strong></p>
             </div>
             <Button
               asChild
               variant="ghost"
               size="sm"
-              className="mt-4 w-full justify-between p-0 h-auto font-medium text-primary hover:bg-transparent hover:text-primary/80"
+              className="mt-4 w-full justify-between p-0 h-auto font-medium text-primary hover:bg-transparent hover:text-primary/80 text-xs"
             >
               <Link to="/employee/ess" search={{ category: "Payroll" }}>
-                <span>View Pay Breakdown →</span>
-                <ArrowRight className="h-4 w-4" />
+                <span>Pay Breakdown →</span>
+                <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
           </CardContent>
@@ -212,22 +247,22 @@ export function EssOverviewTab({
               </div>
             </div>
             <div className="mt-3">
-              <p className="text-2xl font-bold font-display text-foreground">
+              <p className="text-xl font-bold font-display text-foreground">
                 {myPerformance.lmsCoursesCompleted}/{myPerformance.lmsCoursesAssigned} Courses
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Avg Score: <strong className="text-foreground">{myPerformance.averageScore || "90%"}</strong> · {myPerformance.competencyLevel}
+              <p className="text-xs text-muted-foreground mt-1 truncate">
+                Score: <strong className="text-foreground">{myPerformance.averageScore || "90%"}</strong> · {myPerformance.competencyLevel}
               </p>
             </div>
             <Button
               asChild
               variant="ghost"
               size="sm"
-              className="mt-4 w-full justify-between p-0 h-auto font-medium text-primary hover:bg-transparent hover:text-primary/80"
+              className="mt-4 w-full justify-between p-0 h-auto font-medium text-primary hover:bg-transparent hover:text-primary/80 text-xs"
             >
               <Link to="/employee/ess" search={{ category: "Performance" }}>
                 <span>LMS &amp; Scores →</span>
-                <ArrowRight className="h-4 w-4" />
+                <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
           </CardContent>
@@ -243,10 +278,10 @@ export function EssOverviewTab({
               </div>
             </div>
             <div className="mt-3">
-              <p className="text-2xl font-bold font-display text-foreground">
+              <p className="text-xl font-bold font-display text-foreground">
                 {myEmployeeDocuments.filter((d) => d.status === "Submitted" || d.status === "Available" || d.status === "Released").length} Verified
               </p>
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium">
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium truncate">
                 {myEmployeeDocuments.filter((d) => d.status === "Missing").length} Action Item Required
               </p>
             </div>
@@ -254,11 +289,42 @@ export function EssOverviewTab({
               asChild
               variant="ghost"
               size="sm"
-              className="mt-4 w-full justify-between p-0 h-auto font-medium text-primary hover:bg-transparent hover:text-primary/80"
+              className="mt-4 w-full justify-between p-0 h-auto font-medium text-primary hover:bg-transparent hover:text-primary/80 text-xs"
             >
               <Link to="/employee/ess" search={{ category: "Documents" }}>
-                <span>Manage Documents →</span>
-                <ArrowRight className="h-4 w-4" />
+                <span>Documents →</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Recognition Card (5th Card from Spec) */}
+        <Card className="border-border/70 flex flex-col justify-between hover:border-primary/50 transition-all shadow-xs bg-gradient-to-br from-amber-500/5 via-card to-card">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Recognition</span>
+              <div className="rounded-md bg-amber-500/15 p-2 text-amber-600 dark:text-amber-400">
+                <Sparkles className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <p className="text-xl font-bold font-display text-amber-600 dark:text-amber-400">
+                {recStats.received} Received <span className="text-xs font-normal text-muted-foreground">· {recStats.given} Given</span>
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 truncate">
+                Top Pillar: <strong className="text-foreground">⭐ {recStats.topPillar}</strong>
+              </p>
+            </div>
+            <Button
+              asChild
+              variant="ghost"
+              size="sm"
+              className="mt-4 w-full justify-between p-0 h-auto font-medium text-primary hover:bg-transparent hover:text-primary/80 text-xs"
+            >
+              <Link to="/employee/ess" search={{ category: "Recognition" }}>
+                <span>Wall of Fame →</span>
+                <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
           </CardContent>

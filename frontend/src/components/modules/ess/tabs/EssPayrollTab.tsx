@@ -1,5 +1,25 @@
-import { useState, useMemo } from "react";
-import { FileText, Download, Eye, Send, Search, ArrowUpDown, HelpCircle, Building2, CheckCircle2 } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import {
+  FileText,
+  Download,
+  Eye,
+  Send,
+  Search,
+  ArrowUpDown,
+  HelpCircle,
+  Building2,
+  CheckCircle2,
+  Wallet,
+  TrendingUp,
+  Receipt,
+  FileSpreadsheet,
+  ShieldCheck,
+  HeartHandshake,
+  Building,
+  Stethoscope,
+  Landmark,
+  MessageSquareText,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,22 +38,59 @@ import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { myPayroll } from "@/data/ess";
+import { essApi, type ApiPayrollData } from "@/lib/api";
 import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewerModal";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
 import { toast } from "sonner";
 
 export function EssPayrollTab() {
-  const [selectedPayslipPeriod, setSelectedPayslipPeriod] = useState<string>("2026-07-01 – 07-15");
-  const [selectedPayslipNet, setSelectedPayslipNet] = useState<number>(myPayroll.net);
+  const [payrollData, setPayrollData] = useState<ApiPayrollData | null>(null);
+  const [selectedPayslipPeriod, setSelectedPayslipPeriod] = useState<string>("Aug 01 - Aug 15, 2026");
+  const [selectedPayslipNet, setSelectedPayslipNet] = useState<number>(28080);
   const [payslipModalOpen, setPayslipModalOpen] = useState(false);
 
-  const [payRequests, setPayRequests] = useState([
-    { id: "REQ-4407", date: "Jul 28, 2026", isoDate: "2026-07-28", type: "Overtime Request (4 hrs)", status: "Pending", statusRank: 0, details: "Kitchen prep for banquet event." },
-    { id: "REQ-4388", date: "Jun 18, 2026", isoDate: "2026-06-18", type: "Overtime Request (2 hrs)", status: "Approved", statusRank: 1, details: "Dinner service rush." },
-    { id: "REQ-4350", date: "Jun 01, 2026", isoDate: "2026-06-01", type: "Payslip Copy Request", status: "Released", statusRank: 1, details: "Certified copy for loan processing." },
-  ]);
+  useEffect(() => {
+    essApi
+      .myPayroll()
+      .then((res) => {
+        setPayrollData(res);
+        if (res.net) setSelectedPayslipNet(res.net);
+      })
+      .catch(() => {});
+
+    essApi
+      .myRequests()
+      .then((res) => {
+        if (res?.requests?.length) {
+          const payItems = res.requests
+            .filter((r) => r.category.toLowerCase().includes("pay") || r.type.toLowerCase().includes("overtime") || r.type.toLowerCase().includes("payslip"))
+            .map((r) => ({
+              id: r.id,
+              date: r.filed,
+              isoDate: r.date_from || r.filed,
+              type: r.type,
+              status: r.status,
+              statusRank: r.status === "Approved" || r.status === "Completed" ? 1 : 0,
+              details: r.details,
+            }));
+          if (payItems.length > 0) {
+            setPayRequests(payItems);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const currentNet = payrollData?.net ?? 28080;
+  const currentGross = payrollData?.gross ?? 32500;
+  const currentDeductions = payrollData?.deductions?.total ?? 4420;
+  const nextPayout = payrollData?.nextPayout ?? "August 31, 2026";
+  const payslipsList = payrollData?.payslips?.length ? payrollData.payslips : [];
+
+  const [payRequests, setPayRequests] = useState<any[]>([]);
 
   const [paySearch, setPaySearch] = useState("");
+  const [payFilterType, setPayFilterType] = useState("all");
   const [paySort, setPaySort] = useState("date-desc");
   const [payType, setPayType] = useState("Payroll Clarification");
   const [payPeriod, setPayPeriod] = useState("");
@@ -44,14 +101,18 @@ export function EssPayrollTab() {
 
   const filteredPayRequests = useMemo(() => {
     return payRequests
-      .filter((r) => !paySearch || r.type.toLowerCase().includes(paySearch.toLowerCase()) || r.status.toLowerCase().includes(paySearch.toLowerCase()))
+      .filter((r) => {
+        const matchesSearch = !paySearch || r.type.toLowerCase().includes(paySearch.toLowerCase()) || r.status.toLowerCase().includes(paySearch.toLowerCase());
+        const matchesType = payFilterType === "all" || r.type.toLowerCase().includes(payFilterType.toLowerCase());
+        return matchesSearch && matchesType;
+      })
       .sort((a, b) => {
         if (paySort === "date-desc") return b.isoDate.localeCompare(a.isoDate);
         if (paySort === "date-asc") return a.isoDate.localeCompare(b.isoDate);
         if (paySort === "status") return a.statusRank - b.statusRank;
         return 0;
       });
-  }, [payRequests, paySearch, paySort]);
+  }, [payRequests, paySearch, payFilterType, paySort]);
 
   const payPage = usePagination(filteredPayRequests);
 
@@ -97,27 +158,42 @@ export function EssPayrollTab() {
     <div className="space-y-6">
       {/* 3 Main Payroll Cards */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
-            <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Net Pay (Latest Cut-off)</p>
-            <p className="mt-1 text-3xl font-bold font-display text-emerald-600 dark:text-emerald-400">₱{myPayroll.net.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-1">Next payout date: <strong className="text-foreground">{myPayroll.nextPayout}</strong></p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Net Pay (Latest Cut-off)</p>
+              <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600 dark:text-emerald-400">
+                <Wallet className="h-4 w-4" />
+              </div>
+            </div>
+            <p className="mt-1 text-3xl font-bold font-display text-emerald-600 dark:text-emerald-400">₱{currentNet.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground mt-1">Next payout date: <strong className="text-foreground">{nextPayout}</strong></p>
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
-            <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Gross Earnings</p>
-            <p className="mt-1 text-2xl font-bold font-display text-foreground">₱{myPayroll.gross.toLocaleString()}</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Gross Earnings</p>
+              <div className="rounded-lg bg-primary/10 p-2 text-primary">
+                <TrendingUp className="h-4 w-4" />
+              </div>
+            </div>
+            <p className="mt-1 text-2xl font-bold font-display text-foreground">₱{currentGross.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground mt-1">Includes basic pay, OT &amp; allowances</p>
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
           <CardContent className="p-4">
-            <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Total Deductions</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Total Deductions</p>
+              <div className="rounded-lg bg-rose-500/10 p-2 text-rose-600 dark:text-rose-400">
+                <Receipt className="h-4 w-4" />
+              </div>
+            </div>
             <p className="mt-1 text-2xl font-bold font-display text-rose-600 dark:text-rose-400">
-              -₱{(myPayroll.gross - myPayroll.net).toLocaleString()}
+              -₱{currentDeductions.toLocaleString()}
             </p>
             <p className="text-xs text-muted-foreground mt-1">SSS, PhilHealth, Pag-IBIG &amp; Tax</p>
           </CardContent>
@@ -185,7 +261,10 @@ export function EssPayrollTab() {
         {/* Current Period Breakdown */}
         <Card className="border-border/70 shadow-xs">
           <CardHeader className="pb-3">
-            <CardTitle className="font-display text-xl font-semibold">Latest Pay Stub Breakdown</CardTitle>
+            <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5 text-primary" />
+              Latest Pay Stub Breakdown
+            </CardTitle>
             <p className="text-xs text-muted-foreground">Itemized item distribution for current period.</p>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -216,11 +295,114 @@ export function EssPayrollTab() {
         </Card>
       </div>
 
+      {/* Statutory Benefits & Company Loans Section */}
+      <Card className="border-border/70 shadow-xs">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3">
+          <div>
+            <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-primary" />
+              Statutory Benefits &amp; Active Loans
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Official government identification numbers, healthcare coverage, and active salary loan deduction schedules.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs shadow-xs gap-1.5"
+            onClick={() => toast.info("Quarterly company salary loan application window opens next month.")}
+          >
+            <Landmark className="h-3.5 w-3.5 text-emerald-600" /> Apply for Salary Loan
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-xl border border-border/70 p-4 space-y-1.5 shadow-xs bg-muted/10">
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5 text-primary" /> SSS Number
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/30">Active</span>
+              </div>
+              <p className="text-base font-mono font-bold text-foreground">34-5678901-2</p>
+              <p className="text-xs text-muted-foreground">Monthly Contribution: ₱950.00</p>
+            </div>
+
+            <div className="rounded-xl border border-border/70 p-4 space-y-1.5 shadow-xs bg-muted/10">
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-1.5">
+                  <HeartHandshake className="h-3.5 w-3.5 text-emerald-600" /> PhilHealth
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/30">Active</span>
+              </div>
+              <p className="text-base font-mono font-bold text-foreground">12-345678901-2</p>
+              <p className="text-xs text-muted-foreground">Monthly Premium: ₱450.00</p>
+            </div>
+
+            <div className="rounded-xl border border-border/70 p-4 space-y-1.5 shadow-xs bg-muted/10">
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-1.5">
+                  <Building className="h-3.5 w-3.5 text-blue-600" /> Pag-IBIG (HDMF)
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/30">Active</span>
+              </div>
+              <p className="text-base font-mono font-bold text-foreground">1234-5678-9012</p>
+              <p className="text-xs text-muted-foreground">Monthly Savings: ₱200.00</p>
+            </div>
+
+            <div className="rounded-xl border border-border/70 p-4 space-y-1.5 shadow-xs bg-muted/10">
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-1.5">
+                  <Stethoscope className="h-3.5 w-3.5 text-purple-600" /> HMO Healthcare
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 font-semibold border border-purple-500/30">Maxicare</span>
+              </div>
+              <p className="text-base font-mono font-bold text-foreground">MX-8892014</p>
+              <p className="text-xs text-muted-foreground">MBL Coverage: ₱150,000 / yr</p>
+            </div>
+          </div>
+
+          {/* Active Loans & Amortization Sub-card */}
+          <div className="rounded-xl border border-border/70 p-4 bg-muted/20 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                  <Landmark className="h-4 w-4 text-emerald-600" /> Active Company / SSS Salary Loan
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Outstanding Balance: <strong className="text-foreground">₱5,400.00</strong> · Deduction: <strong className="text-rose-600">-₱450.00 / cut-off</strong> (12 of 24 terms completed)
+                </p>
+              </div>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-background border border-border/80 self-start sm:self-auto">
+                Next Deduction: {nextPayout}
+              </span>
+            </div>
+
+            <div className="space-y-1.5 pt-1 border-t border-border/60">
+              <div className="flex justify-between text-xs font-semibold">
+                <span className="text-muted-foreground">Amortization Payoff Completion</span>
+                <span className="text-primary font-mono">12 / 24 terms (50%)</span>
+              </div>
+              <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                <div className="bg-primary h-2 rounded-full transition-all" style={{ width: "50%" }} />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Projected final amortization payoff date: December 15, 2026.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Inquiry Form & Requests Table */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="border-border/70 shadow-xs">
           <CardHeader>
-            <CardTitle className="font-display text-xl font-semibold">Submit Payroll Inquiry / OT Request</CardTitle>
+            <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+              <HelpCircle className="h-5 w-5 text-primary" />
+              Submit Payroll Inquiry / OT Request
+            </CardTitle>
             <p className="text-xs text-muted-foreground">Report discrepancy or request certified copy.</p>
           </CardHeader>
           <CardContent>
@@ -269,18 +451,34 @@ export function EssPayrollTab() {
         <Card className="border-border/70 shadow-xs">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
             <div>
-              <CardTitle className="font-display text-xl font-semibold">My Payroll Requests</CardTitle>
+              <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+                <MessageSquareText className="h-5 w-5 text-primary" />
+                My Payroll Requests
+              </CardTitle>
               <p className="text-xs text-muted-foreground">Click row to track audit status.</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Input
                 placeholder="Search..."
                 value={paySearch}
                 onChange={(e) => setPaySearch(e.target.value)}
-                className="h-8 w-[120px]"
+                className="h-8 w-[100px] sm:w-[120px]"
               />
+              <Select value={payFilterType} onValueChange={setPayFilterType}>
+                <SelectTrigger className="h-8 w-[125px]">
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="Overtime">Overtime</SelectItem>
+                  <SelectItem value="Clarification">Clarification</SelectItem>
+                  <SelectItem value="Dispute">Dispute</SelectItem>
+                  <SelectItem value="Payslip">Payslip Copy</SelectItem>
+                  <SelectItem value="Loan">Loan Request</SelectItem>
+                </SelectContent>
+              </Select>
               <Select value={paySort} onValueChange={setPaySort}>
-                <SelectTrigger className="h-8 w-[130px]">
+                <SelectTrigger className="h-8 w-[125px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
