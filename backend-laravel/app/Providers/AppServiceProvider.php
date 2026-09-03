@@ -12,7 +12,9 @@ use App\Models\SalaryGrade;
 use App\Models\SystemRole;
 use App\Models\SystemUser;
 use App\Observers\ActivityObserver;
+use Illuminate\Http\Request;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Sanctum\Sanctum;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -38,5 +40,13 @@ class AppServiceProvider extends ServiceProvider
         SystemRole::observe(ActivityObserver::class);
         Announcement::observe(ActivityObserver::class);
         ChatbotFaq::observe(ActivityObserver::class);
+
+        // Allow onboarding document downloads (and any token auth) to read the
+        // bearer token from a ?token= query parameter. This lets a plain browser
+        // navigation (window.open) to a protected file endpoint authenticate
+        // without an Authorization header, avoiding the /login redirect.
+        Sanctum::getAccessTokenFromRequestUsing(function (Request $request) {
+            return $request->bearerToken() ?? $request->query('token');
+        });
     }
 }

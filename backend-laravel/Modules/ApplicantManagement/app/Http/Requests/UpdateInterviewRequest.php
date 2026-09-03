@@ -19,7 +19,7 @@ class UpdateInterviewRequest extends FormRequest
             'mode'                    => ['sometimes', 'string', 'in:On-site,Virtual'],
             'interviewer_employee_id' => ['nullable', 'integer', 'exists:employees,employee_id'],
             'interviewer_name'        => ['nullable', 'string', 'max:160'],
-            'status'                  => ['sometimes', 'string', 'in:Scheduled,Completed,No Show'],
+            'status'                  => ['sometimes', 'string', 'in:Scheduled,Completed,Cancelled,No Show'],
         ];
     }
 }

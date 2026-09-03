@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Check,
   CheckCircle2,
   ChevronDown,
   Circle,
+  Download,
   ClipboardCheck,
   ClipboardList,
   Eye,
@@ -15,6 +15,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  RefreshCw,
   Save,
   Search,
   Send,
@@ -68,6 +69,12 @@ import {
 import { TablePagination } from "@/components/ui/table-pagination";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { usePagination } from "@/hooks/usePagination";
 import { type NewHire } from "@/data/hr";
 import { myProfile } from "@/data/ess";
@@ -91,6 +98,7 @@ import {
   type ApiChecklistRequest,
   type ApiNewHire,
 } from "@/lib/api";
+import { exportReport, type ReportFormat } from "@/lib/report-export";
 import { getUser } from "@/lib/auth";
 import {
   isValidEmail,
@@ -102,6 +110,106 @@ import {
 
 /** Today's date in yyyy-mm-dd, used as the default start date for new hires. */
 const todayIso = new Date().toISOString().slice(0, 10);
+
+/** Whole calendar days between two yyyy-mm-dd dates (b - a). */
+function daysBetweenIso(a: string, b: string): number {
+  const dateA = new Date(`${a}T00:00:00`);
+  const dateB = new Date(`${b}T00:00:00`);
+  if (Number.isNaN(dateA.getTime()) || Number.isNaN(dateB.getTime())) return 0;
+  return Math.round((dateB.getTime() - dateA.getTime()) / 86_400_000);
+}
+
+/**
+ * Days of work — calendar days elapsed since the hire's start date, counting
+ * the start date itself as day 1 (DOLE convention: the first day of work
+ * counts). Negative results (future start dates) clamp to 0.
+ */
+function daysOfWork(startDate: string): number {
+  return Math.max(0, daysBetweenIso(startDate, todayIso) + 1);
+}
+
+/**
+ * Inline document preview modal. The document endpoint is protected by
+ * auth:sanctum, so instead of a new-tab navigation (which has no Authorization
+ * header and bounces to /login) we fetch the file with the Bearer token, build
+ * a blob URL, and preview images/PDFs inline. DOCX/other show a download link.
+ */
+function DocumentPreviewModal({
+  fileUrl,
+  fileName,
+  open,
+  onOpenChange,
+}: {
+  fileUrl: string;
+  fileName?: string | undefined;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const ext = (fileName || fileUrl).split(".").pop()?.toLowerCase() ?? "";
+  const kind: "image" | "pdf" | "other" = ["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(ext)
+    ? "image"
+    : ext === "pdf"
+      ? "pdf"
+      : "other";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 truncate">
+            <FileText className="h-4 w-4 shrink-0" />
+            <span className="truncate">{fileName || "Document Preview"}</span>
+          </DialogTitle>
+        </DialogHeader>
+        <div className="flex max-h-[70vh] min-h-[200px] items-center justify-center overflow-auto rounded-md border bg-muted/30 p-2">
+          {kind === "image" && (
+            <img
+              src={fileUrl}
+              alt={fileName || "document"}
+              className="max-h-[68vh] w-auto object-contain"
+            />
+          )}
+          {kind === "pdf" && (
+            <iframe
+              title={fileName || "document"}
+              src={fileUrl}
+              className="h-[68vh] w-full border-0"
+            />
+          )}
+          {kind === "other" && (
+            <div className="space-y-2 p-6 text-center text-sm text-muted-foreground">
+              <FileText className="mx-auto h-10 w-10 opacity-40" />
+              <p>This file type can&apos;t be previewed in the browser.</p>
+              <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+                <Button size="sm" variant="outline">
+                  <Download className="mr-1 h-3.5 w-3.5" /> Open / Download
+                </Button>
+              </a>
+            </div>
+          )}
+        </div>
+        <DialogFooter className="flex items-center justify-between gap-2">
+          {kind !== "other" && (
+            <a
+              href={fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              download={fileName}
+              className="mr-auto"
+            >
+              <Button size="sm" variant="outline">
+                <Download className="mr-1 h-3.5 w-3.5" /> Download
+              </Button>
+            </a>
+          )}
+          <Button size="sm" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 /** Onboarding only tracks these two stages — regularization is handled in Employee Records. */
 type Stage = "Pre-onboarding" | "Probationary";
@@ -172,17 +280,26 @@ type EmployeeSubmission = {
 /** Checklist items from the mock store and the API share the same text. */
 const normalizeChecklistKey = (text: string) => text.trim().toLowerCase();
 
-/** Renders the employee's submission (uploaded document + note) for admins. */
-function EmployeeSubmissionDetails({ submission }: { submission: EmployeeSubmission }) {
+/** Renders the employee's submission (uploaded document + note) for admins.
+ *  `done` is the row's live (toggled) state, so unchecking a verified item
+ *  immediately flips the file name red instead of staying green. */
+function EmployeeSubmissionDetails({
+  submission,
+  done,
+}: {
+  submission: EmployeeSubmission;
+  done: boolean;
+}) {
+  const [docOpen, setDocOpen] = useState(false);
   return (
     <div className="mb-1 mt-1 space-y-1 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
       <p
         className={cn(
           "flex items-center gap-1.5 text-xs font-medium",
-          submission.done ? "text-success" : "text-caution-foreground",
+          done ? "text-success" : "text-destructive",
         )}
       >
-        {submission.done ? (
+        {done ? (
           <>
             <ShieldCheck className="h-3.5 w-3.5" /> Verified by HR
             {submission.completedAt &&
@@ -211,9 +328,16 @@ function EmployeeSubmissionDetails({ submission }: { submission: EmployeeSubmiss
         </p>
       )}
       {submission.fileName && (
-        <div className="flex items-center justify-between gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2 py-1.5">
+        <div
+          className={cn(
+            "flex items-center justify-between gap-2 rounded-md border px-2 py-1.5",
+            done ? "border-success/30 bg-success/5" : "border-destructive/30 bg-destructive/5",
+          )}
+        >
           <span className="flex min-w-0 items-center gap-1.5 text-xs text-foreground">
-            <FileCheck2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+            <FileCheck2
+              className={cn("h-3.5 w-3.5 shrink-0", done ? "text-success" : "text-destructive")}
+            />
             <span className="truncate" title={submission.fileName}>
               {submission.fileName}
             </span>
@@ -223,7 +347,7 @@ function EmployeeSubmissionDetails({ submission }: { submission: EmployeeSubmiss
               size="sm"
               variant="ghost"
               className="h-6 shrink-0 cursor-pointer px-2 text-[11px]"
-              onClick={() => window.open(submission.fileUrl, "_blank")}
+              onClick={() => setDocOpen(true)}
             >
               <ExternalLink className="mr-1 h-3 w-3" /> View
             </Button>
@@ -236,6 +360,12 @@ function EmployeeSubmissionDetails({ submission }: { submission: EmployeeSubmiss
           {submission.notes}
         </p>
       )}
+      <DocumentPreviewModal
+        open={docOpen}
+        onOpenChange={setDocOpen}
+        fileUrl={submission.fileUrl as string}
+        fileName={submission.fileName}
+      />
     </div>
   );
 }
@@ -257,7 +387,7 @@ function AdminChecklistRow({
   label: string;
   disabled: boolean;
   onClick: () => void;
-  submission?: EmployeeSubmission;
+  submission?: EmployeeSubmission | undefined;
 }) {
   const hasSubmission = Boolean(
     submission && (submission.submittedAt || submission.fileName || submission.notes),
@@ -288,7 +418,7 @@ function AdminChecklistRow({
           ) : submitted ? (
             <Hourglass className="h-4 w-4 shrink-0 text-destructive" />
           ) : (
-            <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <Circle className="h-4 w-4 shrink-0 text-caution" />
           )}
           <span
             className={cn("min-w-0", !done && submitted ? "text-destructive" : "text-foreground")}
@@ -304,6 +434,14 @@ function AdminChecklistRow({
             Submitted · pending review
           </Badge>
         )}
+        {!done && !submitted && (
+          <Badge
+            variant="outline"
+            className="shrink-0 border-caution/40 bg-caution/10 text-[10px] text-caution"
+          >
+            Pending
+          </Badge>
+        )}
         {hasSubmission && (
           <CollapsibleTrigger
             title="View employee submission"
@@ -317,7 +455,7 @@ function AdminChecklistRow({
       {hasSubmission && submission && (
         <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
           <div className="pb-1 pt-1">
-            <EmployeeSubmissionDetails submission={submission} />
+            <EmployeeSubmissionDetails submission={submission} done={done} />
           </div>
         </CollapsibleContent>
       )}
@@ -342,18 +480,23 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const [showAllStages, setShowAllStages] = useState(false);
   /** Metric-card view: only hires whose performance evaluation was requested. */
   const [awaitingOnly, setAwaitingOnly] = useState(false);
-  /** Hire ids whose evaluation has been requested (waiting on results). */
-  const [evaluationRequested, setEvaluationRequested] = useState<string[]>([]);
-  /** When each hire's evaluation was requested — drives auto-regularization. */
-  const [evaluationRequestedAt, setEvaluationRequestedAt] = useState<Record<string, number>>({});
+  /** Hire ids whose evaluation has been requested and is still pending —
+   *  DERIVED from each hire record's persisted evaluation_requested_at so
+   *  every admin / superadmin session sees the same waiting list. */
+  const evaluationRequested = useMemo(
+    () =>
+      hires.filter((h) => h.stage === "Probationary" && h.evaluationRequestedAt).map((h) => h.id),
+    [hires],
+  );
+  /** How many days worked a probationary hire may reach before they are
+   *  regularized automatically by operation of law (default 180 = 6 months).
+   *  Read from system_settings (onboarding.auto_regularize_days) so every
+   *  role follows the same threshold. */
+  const [autoRegularizeDays, setAutoRegularizeDays] = useState(180);
+  const [autoRegOpen, setAutoRegOpen] = useState(false);
+  const [autoRegDraft, setAutoRegDraft] = useState(180);
   /** Hire ids whose checklist edit was explicitly saved — gates advancing. */
   const [checklistSaved, setChecklistSaved] = useState<string[]>([]);
-  /** How long to wait on a 100%-complete + evaluation-requested hire before auto-regularizing. */
-  const [autoRegMonths, setAutoRegMonths] = useState(0);
-  const [autoRegDays, setAutoRegDays] = useState(14);
-  const [autoRegOpen, setAutoRegOpen] = useState(false);
-  const [autoRegDraft, setAutoRegDraft] = useState({ months: 0, days: 14 });
-  const autoRegularizeDays = autoRegMonths * 30 + autoRegDays;
   /** Reference-only checklist items requested by Performance, scoped to a position. */
   const [requestedItems, setRequestedItems] = useState<RequestedChecklistItem[]>([]);
 
@@ -387,6 +530,18 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
         if (pw) setDefaultPassword(pw);
       })
       .catch((err) => console.warn("Could not fetch default password from database:", err));
+    // Auto-regularization threshold (days worked, default 180 = 6 months) —
+    // shared through system_settings so every admin session follows the
+    // same DOLE cap. Readable by all roles with Settings:View.
+    settingsApi
+      .get("onboarding.auto_regularize_days")
+      .then((res) => {
+        const days = Number(res?.setting_value);
+        if (Number.isFinite(days) && days >= 1) setAutoRegularizeDays(days);
+      })
+      .catch(() => {
+        // setting not created yet — keep the 6-month default
+      });
     coreHcmApi
       .departments({ per_page: 100 })
       .then((res) => {
@@ -852,21 +1007,16 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     toast.success("Checklist deleted");
   };
 
-  /** Hands a probationary hire over for performance evaluation. */
+  /** Hands a probationary hire over for performance evaluation — persisted on
+   *  the hire record (evaluation_requested_at) so every admin session sees it. */
   const requestEvaluation = (hire: NewHire) => {
-    setEvaluationRequested((prev) => (prev.includes(hire.id) ? prev : [...prev, hire.id]));
-    setEvaluationRequestedAt((prev) => ({ ...prev, [hire.id]: Date.now() }));
+    hireStore.requestEvaluation(hire.id);
     toast.success(`Evaluation requested for ${hire.name}`);
   };
 
   /** Restores the checklist card / list row to its normal state. */
   const cancelEvaluationRequest = (hire: NewHire) => {
-    setEvaluationRequested((prev) => prev.filter((id) => id !== hire.id));
-    setEvaluationRequestedAt((prev) => {
-      const next = { ...prev };
-      delete next[hire.id];
-      return next;
-    });
+    hireStore.cancelEvaluationRequest(hire.id);
   };
 
   const progress = (h: NewHire) => {
@@ -877,41 +1027,90 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     return Math.round((pool.filter((c) => c.done).length / pool.length) * 100);
   };
 
+  const handleExportOnboardingReport = (format: ReportFormat) => {
+    const rowsData = hires.map((h) => ({
+      name: h.name,
+      position: h.position,
+      department: h.department,
+      stage: h.stage,
+      daysOfWork: daysOfWork(h.startDate),
+      progress: `${progress(h)}%`,
+      startDate: h.startDate,
+    }));
+    exportReport(
+      {
+        title: "New Hire Onboarding Report",
+        subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })}`,
+        columns: [
+          { header: "New Hire", key: "name", width: "17%" },
+          { header: "Position", key: "position", width: "17%" },
+          { header: "Department", key: "department", width: "15%" },
+          { header: "Stage", key: "stage", width: "13%" },
+          { header: "Days of Work", key: "daysOfWork", width: "11%" },
+          { header: "Progress", key: "progress", width: "11%" },
+          { header: "Start Date", key: "startDate", width: "16%" },
+        ],
+        rows: rowsData,
+        summary: [
+          { label: "Total Hires", value: hires.length },
+          {
+            label: "Pre-onboarding",
+            value: hires.filter((h) => h.stage === "Pre-onboarding").length,
+          },
+          {
+            label: "Probationary",
+            value: hires.filter((h) => h.stage === "Probationary").length,
+          },
+        ],
+      },
+      format,
+    );
+    toast.success(`Onboarding report exported as ${format.toUpperCase()}`);
+  };
+
   /**
-   * Evaluation cycles can drag on — if a hire's checklist is fully complete
-   * and evaluation was requested more than `autoRegularizeDays` ago, they are
-   * regularized automatically instead of being stuck waiting.
+   * Automatic regularization by operation of law (Art. 296, Labor Code; DOLE
+   * 6-month rule). When a probationary hire is allowed to keep working past
+   * the maximum probationary period without a completed evaluation, the law
+   * deems them a regular employee — no HR action required.
+   *
+   * Trigger conditions (all must hold):
+   *  1. stage is Probationary,
+   *  2. days of work (counted from the start date, first day inclusive) have
+   *     reached the configured threshold (default 180 days ≈ 6 months),
+   *  3. every probationary requirement is complete, and
+   *  4. the evaluation was requested but no result has come back.
+   *
+   * The promotion runs through promoteHire() so the stage change, audit log,
+   * portal account and Core HCM hand-over all persist in the database — and
+   * the hire leaves the probationary list immediately.
    */
   useEffect(() => {
     const tick = () => {
-      const now = Date.now();
-      const dueIds = hires
-        .filter(
-          (h) =>
-            h.stage === "Probationary" &&
-            evaluationRequested.includes(h.id) &&
-            progress(h) === 100 &&
-            evaluationRequestedAt[h.id] !== undefined &&
-            now - evaluationRequestedAt[h.id]! >= autoRegularizeDays * 24 * 60 * 60 * 1000,
-        )
-        .map((h) => h.id);
-      if (dueIds.length === 0) return;
-      setHires((prev) => prev.map((h) => (dueIds.includes(h.id) ? { ...h, stage: "Regular" } : h)));
-      setEvaluationRequested((prev) => prev.filter((id) => !dueIds.includes(id)));
-      setEvaluationRequestedAt((prev) => {
-        const next = { ...prev };
-        dueIds.forEach((id) => delete next[id]);
-        return next;
-      });
-      dueIds.forEach((id) => {
-        const h = hires.find((x) => x.id === id);
-        if (h) toast.success(`${h.name} auto-regularized and handed to Core HCM`);
+      const dueHires = hires.filter(
+        (h) =>
+          h.stage === "Probationary" &&
+          Boolean(h.evaluationRequestedAt) &&
+          progress(h) === 100 &&
+          daysOfWork(h.startDate) >= autoRegularizeDays,
+      );
+      if (dueHires.length === 0) return;
+      // Promote each due hire — promoteHire persists the stage change (with
+      // audit log, portal account + Core HCM hand-over) and clears them from
+      // the probationary list, while cancelEvaluationRequest clears the
+      // pending request flag so they leave the waiting list too.
+      dueHires.forEach((h) => {
+        toast.success(
+          `${h.name} auto-regularized by operation of law — ${daysOfWork(h.startDate)} days worked without a completed evaluation`,
+        );
+        hireStore.cancelEvaluationRequest(h.id);
+        hireStore.promoteHire(h.id);
       });
     };
     const interval = setInterval(tick, 2000);
     tick();
     return () => clearInterval(interval);
-  }, [hires, evaluationRequested, evaluationRequestedAt, autoRegularizeDays]);
+  }, [hires, autoRegularizeDays]);
 
   /** Onboarding tracks pre-onboarding and probationary hires only. */
   const onboardingHires = hires.filter((h) => h.stage !== "Regular");
@@ -935,13 +1134,17 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     sort,
     toggle: onSort,
     sorted: visible,
-  } = useSort<NewHire, "name" | "position" | "startDate" | "requirements" | "stage">(filtered, {
-    name: (h) => h.name,
-    position: (h) => h.position,
-    startDate: (h) => h.startDate,
-    requirements: (h) => progress(h),
-    stage: (h) => h.stage,
-  });
+  } = useSort<NewHire, "name" | "position" | "startDate" | "daysOfWork" | "requirements" | "stage">(
+    filtered,
+    {
+      name: (h) => h.name,
+      position: (h) => h.position,
+      startDate: (h) => h.startDate,
+      daysOfWork: (h) => daysOfWork(h.startDate),
+      requirements: (h) => progress(h),
+      stage: (h) => h.stage,
+    },
+  );
 
   const hirePage = usePagination(visible);
   const reqPage = usePagination(requestedItems, 6);
@@ -1077,6 +1280,26 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
         eyebrow={role === "superadmin" ? "Super Admin · Recruitment" : "Admin · Recruitment"}
         title="New Hire Onboarding"
         description="Track hires from pre-onboarding through probation to regularization."
+        actions={
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <Download className="h-4 w-4" /> Generate Report
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={() => handleExportOnboardingReport("pdf")}>
+                <FileText className="mr-2 h-4 w-4" /> Export as PDF
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportOnboardingReport("docx")}>
+                <FileText className="mr-2 h-4 w-4" /> Export as DOCX
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportOnboardingReport("excel")}>
+                <Download className="mr-2 h-4 w-4" /> Export as Excel
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
       />
 
       <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -1269,7 +1492,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                       title="Auto-regularization settings"
                       className="h-9 w-9 shrink-0 cursor-pointer border-border bg-card text-foreground hover:bg-muted"
                       onClick={() => {
-                        setAutoRegDraft({ months: autoRegMonths, days: autoRegDays });
+                        setAutoRegDraft(autoRegularizeDays);
                         setAutoRegOpen(true);
                       }}
                     >
@@ -1294,6 +1517,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                           </SortHead>
                           <SortHead sortKey="startDate" sort={sort} onSort={onSort}>
                             Start Date
+                          </SortHead>
+                          <SortHead sortKey="daysOfWork" sort={sort} onSort={onSort}>
+                            Days of Work
                           </SortHead>
                           <SortHead sortKey="requirements" sort={sort} onSort={onSort}>
                             Requirements
@@ -1343,6 +1569,38 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                               <TableCell className="text-sm">{h.position}</TableCell>
                               <TableCell className="text-xs text-muted-foreground">
                                 {h.startDate}
+                              </TableCell>
+                              <TableCell>
+                                {(() => {
+                                  const worked = daysOfWork(h.startDate);
+                                  const remaining = autoRegularizeDays - worked;
+                                  const isProbationary = h.stage === "Probationary";
+                                  return (
+                                    <div className="text-xs">
+                                      <span
+                                        className={cn(
+                                          "font-medium",
+                                          isProbationary &&
+                                            remaining <= 0 &&
+                                            "text-gold-foreground",
+                                        )}
+                                      >
+                                        {worked} {worked === 1 ? "day" : "days"}
+                                      </span>
+                                      {isProbationary && remaining > 0 && (
+                                        <span className="block text-[0.65rem] text-muted-foreground">
+                                          {remaining} {remaining === 1 ? "day" : "days"} to
+                                          auto-regularization
+                                        </span>
+                                      )}
+                                      {isProbationary && remaining <= 0 && (
+                                        <span className="block text-[0.65rem] font-medium text-gold-foreground">
+                                          Probation cap reached — regularization due
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </TableCell>
                               <TableCell className="w-48">
                                 <Progress
@@ -1430,7 +1688,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                         })}
                         {visible.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={6} className="py-8">
+                            <TableCell colSpan={7} className="py-8">
                               <ListEmptyState placeholder="Search name, position..." />
                             </TableCell>
                           </TableRow>
@@ -1441,13 +1699,13 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                 </div>
                 <div className="shrink-0 border-t border-border/60 pt-3">
                   <TablePagination
-                  page={hirePage.page}
-                  pageCount={hirePage.pageCount}
-                  from={hirePage.from}
-                  to={hirePage.to}
-                  total={hirePage.total}
-                  label="hires"
-                  onPageChange={hirePage.setPage}
+                    page={hirePage.page}
+                    pageCount={hirePage.pageCount}
+                    from={hirePage.from}
+                    to={hirePage.to}
+                    total={hirePage.total}
+                    label="hires"
+                    onPageChange={hirePage.setPage}
                   />
                 </div>
               </CardContent>
@@ -1557,117 +1815,153 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
 
                             <>
                               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
-                              <ul className="mt-3 space-y-1.5">
-                                {[...selected.checklist]
-                                  .filter(
-                                    (c) =>
-                                      ((c.phase ?? "Probationary") === "Pre-onboarding") ===
-                                      (selected.stage === "Pre-onboarding"),
-                                  )
-                                  .map((c, i) => ({ ...c, i }))
-                                  .sort((a, b) => Number(a.done) - Number(b.done) || a.i - b.i)
-                                  .map((c) => {
-                                    const isEditingThis = editingId === selected.id && !isWaiting;
-                                    const submission =
-                                      selectedSubmissions[normalizeChecklistKey(c.item)];
-                                    return (
-                                      <li
-                                        key={c.item}
-                                        className="rounded-md transition-all duration-300 ease-in-out"
-                                      >
-                                        <AdminChecklistRow
-                                          done={Boolean(c.done)}
-                                          submitted={Boolean(
-                                            submission &&
-                                            (submission.submittedAt ||
-                                              submission.fileName ||
-                                              submission.notes),
-                                          )}
-                                          label={c.item}
-                                          disabled={!isEditingThis}
-                                          onClick={() => toggleItem(selected.id, c.item)}
-                                          submission={submission}
-                                        />
-                                      </li>
-                                    );
-                                  })}
-                              </ul>
+                                <ul className="mt-3 space-y-1.5">
+                                  {[...selected.checklist]
+                                    .filter(
+                                      (c) =>
+                                        ((c.phase ?? "Probationary") === "Pre-onboarding") ===
+                                        (selected.stage === "Pre-onboarding"),
+                                    )
+                                    .map((c, i) => ({
+                                      ...c,
+                                      i,
+                                      submission:
+                                        selectedSubmissions[normalizeChecklistKey(c.item)],
+                                    }))
+                                    .sort((a, b) => {
+                                      const rank = (x: {
+                                        done: boolean;
+                                        submission: EmployeeSubmission | undefined;
+                                      }) =>
+                                        x.done
+                                          ? 2
+                                          : x.submission &&
+                                              (x.submission.submittedAt ||
+                                                x.submission.fileName ||
+                                                x.submission.notes)
+                                            ? 1
+                                            : 0;
+                                      return rank(a) - rank(b) || a.i - b.i;
+                                    })
+                                    .map((c) => {
+                                      const isEditingThis = editingId === selected.id && !isWaiting;
+                                      const submission =
+                                        selectedSubmissions[normalizeChecklistKey(c.item)];
+                                      return (
+                                        <li
+                                          key={c.item}
+                                          className="rounded-md transition-all duration-300 ease-in-out"
+                                        >
+                                          <AdminChecklistRow
+                                            done={Boolean(c.done)}
+                                            submitted={Boolean(
+                                              submission &&
+                                              (submission.submittedAt ||
+                                                submission.fileName ||
+                                                submission.notes),
+                                            )}
+                                            label={c.item}
+                                            disabled={!isEditingThis}
+                                            onClick={() => toggleItem(selected.id, c.item)}
+                                            submission={submission}
+                                          />
+                                        </li>
+                                      );
+                                    })}
+                                </ul>
 
-                              {selected.checklist.some(
-                                (c) =>
-                                  ((c.phase ?? "Probationary") === "Pre-onboarding") !==
-                                  (selected.stage === "Pre-onboarding"),
-                              ) && (
-                                <Collapsible className="mt-3">
-                                  <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium transition-colors hover:bg-muted/50">
-                                    <span className="flex items-center gap-1.5">
-                                      <ChevronDown className="h-3.5 w-3.5" />
-                                      {selected.stage === "Pre-onboarding"
-                                        ? "Probationary tasks"
-                                        : "Finished pre-onboarding checklist"}
-                                    </span>
-                                    <span className="text-muted-foreground">
-                                      {
-                                        selected.checklist.filter(
-                                          (c) =>
-                                            ((c.phase ?? "Probationary") === "Pre-onboarding") !==
-                                              (selected.stage === "Pre-onboarding") && c.done,
-                                        ).length
-                                      }
-                                      /
-                                      {
-                                        selected.checklist.filter(
-                                          (c) =>
-                                            ((c.phase ?? "Probationary") === "Pre-onboarding") !==
-                                            (selected.stage === "Pre-onboarding"),
-                                        ).length
-                                      }{" "}
-                                      done
-                                    </span>
-                                  </CollapsibleTrigger>
-                                  <CollapsibleContent className="overflow-hidden transition-all data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
-                                    <ul className="mt-2 space-y-1.5 pl-1.5">
-                                      {[...selected.checklist]
-                                        .filter(
-                                          (c) =>
-                                            ((c.phase ?? "Probationary") === "Pre-onboarding") !==
-                                            (selected.stage === "Pre-onboarding"),
-                                        )
-                                        .map((c, i) => ({ ...c, i }))
-                                        .sort(
-                                          (a, b) => Number(a.done) - Number(b.done) || a.i - b.i,
-                                        )
-                                        .map((c) => {
-                                          const isEditingThis =
-                                            editingId === selected.id && !isWaiting;
-                                          const submission =
-                                            selectedSubmissions[normalizeChecklistKey(c.item)];
-                                          return (
-                                            <li
-                                              key={c.item}
-                                              className="rounded-md transition-all duration-300 ease-in-out"
-                                            >
-                                              <AdminChecklistRow
-                                                done={Boolean(c.done)}
-                                                submitted={Boolean(
-                                                  submission &&
-                                                  (submission.submittedAt ||
-                                                    submission.fileName ||
-                                                    submission.notes),
-                                                )}
-                                                label={c.item}
-                                                disabled={!isEditingThis}
-                                                onClick={() => toggleItem(selected.id, c.item)}
-                                                submission={submission}
-                                              />
-                                            </li>
-                                          );
-                                        })}
-                                    </ul>
-                                  </CollapsibleContent>
-                                </Collapsible>
-                              )}
-                            </div>
+                                {selected.checklist.some(
+                                  (c) =>
+                                    ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                    (selected.stage === "Pre-onboarding"),
+                                ) && (
+                                  <Collapsible className="mt-3">
+                                    <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium transition-colors hover:bg-muted/50">
+                                      <span className="flex items-center gap-1.5">
+                                        <ChevronDown className="h-3.5 w-3.5" />
+                                        {selected.stage === "Pre-onboarding"
+                                          ? "Probationary tasks"
+                                          : "Finished pre-onboarding checklist"}
+                                      </span>
+                                      <span className="text-muted-foreground">
+                                        {
+                                          selected.checklist.filter(
+                                            (c) =>
+                                              ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                                (selected.stage === "Pre-onboarding") && c.done,
+                                          ).length
+                                        }
+                                        /
+                                        {
+                                          selected.checklist.filter(
+                                            (c) =>
+                                              ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                              (selected.stage === "Pre-onboarding"),
+                                          ).length
+                                        }{" "}
+                                        done
+                                      </span>
+                                    </CollapsibleTrigger>
+                                    <CollapsibleContent className="overflow-hidden transition-all data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+                                      <ul className="mt-2 space-y-1.5 pl-1.5">
+                                        {[...selected.checklist]
+                                          .filter(
+                                            (c) =>
+                                              ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                              (selected.stage === "Pre-onboarding"),
+                                          )
+                                          .map((c, i) => ({
+                                            ...c,
+                                            i,
+                                            submission:
+                                              selectedSubmissions[normalizeChecklistKey(c.item)],
+                                          }))
+                                          .sort((a, b) => {
+                                            const rank = (x: {
+                                              done: boolean;
+                                              submission: EmployeeSubmission | undefined;
+                                            }) =>
+                                              x.done
+                                                ? 2
+                                                : x.submission &&
+                                                    (x.submission.submittedAt ||
+                                                      x.submission.fileName ||
+                                                      x.submission.notes)
+                                                  ? 1
+                                                  : 0;
+                                            return rank(a) - rank(b) || a.i - b.i;
+                                          })
+                                          .map((c) => {
+                                            const isEditingThis =
+                                              editingId === selected.id && !isWaiting;
+                                            const submission =
+                                              selectedSubmissions[normalizeChecklistKey(c.item)];
+                                            return (
+                                              <li
+                                                key={c.item}
+                                                className="rounded-md transition-all duration-300 ease-in-out"
+                                              >
+                                                <AdminChecklistRow
+                                                  done={Boolean(c.done)}
+                                                  submitted={Boolean(
+                                                    submission &&
+                                                    (submission.submittedAt ||
+                                                      submission.fileName ||
+                                                      submission.notes),
+                                                  )}
+                                                  label={c.item}
+                                                  disabled={!isEditingThis}
+                                                  onClick={() => toggleItem(selected.id, c.item)}
+                                                  submission={submission}
+                                                />
+                                              </li>
+                                            );
+                                          })}
+                                      </ul>
+                                    </CollapsibleContent>
+                                  </Collapsible>
+                                )}
+                              </div>
                             </>
 
                             {progress(selected) === 100 && !isWaiting && (
@@ -1677,7 +1971,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             )}
 
                             {!isWaiting && (
-                                  <div className="mt-auto flex flex-wrap items-stretch gap-2 pt-4">
+                              <div className="mt-auto flex flex-wrap items-stretch gap-2 pt-4">
                                 {editingId === selected.id ? (
                                   <>
                                     <Button
@@ -1744,7 +2038,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                 </div>
                               ))}
 
-                              {selected.stage === "Probationary" && (
+                            {selected.stage === "Probationary" && (
                               <div className="mt-4">
                                 {isWaiting ? (
                                   <div className="animate-in overflow-hidden rounded-xl border border-gold/40 bg-gold/5 fade-in duration-500">
@@ -1770,15 +2064,37 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                     <div className="space-y-3 p-4">
                                       <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-card px-3 py-2 text-xs">
                                         <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold-foreground" />
-                                        <span className="text-muted-foreground">
-                                          Auto-regularization in{" "}
-                                          <span className="font-medium text-foreground">
-                                            {autoRegMonths > 0
-                                              ? `${autoRegMonths} month${autoRegMonths === 1 ? "" : "s"}${autoRegDays > 0 ? ` and ${autoRegDays} day${autoRegDays === 1 ? "" : "s"}` : ""}`
-                                              : `${autoRegDays} day${autoRegDays === 1 ? "" : "s"}`}
-                                          </span>{" "}
-                                          if no evaluation result comes back.
-                                        </span>
+                                        {(() => {
+                                          const worked = daysOfWork(selected.startDate);
+                                          const remaining = autoRegularizeDays - worked;
+                                          return (
+                                            <span className="text-muted-foreground">
+                                              {remaining > 0 ? (
+                                                <>
+                                                  Regularized by operation of law after{" "}
+                                                  <span className="font-medium text-foreground">
+                                                    {autoRegularizeDays} days of work
+                                                  </span>{" "}
+                                                  — {worked} worked,{" "}
+                                                  <span className="font-medium text-foreground">
+                                                    {remaining} {remaining === 1 ? "day" : "days"}{" "}
+                                                    remaining
+                                                  </span>{" "}
+                                                  if no evaluation result comes back.
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <span className="font-medium text-gold-foreground">
+                                                    {worked} days of work
+                                                  </span>{" "}
+                                                  — the probation cap of {autoRegularizeDays} days
+                                                  has been reached. Regularization fires as soon as
+                                                  all requirements are complete.
+                                                </>
+                                              )}
+                                            </span>
+                                          );
+                                        })()}
                                       </div>
                                       <Button
                                         variant="outline"
@@ -2620,49 +2936,44 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Auto-Regularization</DialogTitle>
             <DialogDescription>
-              Set how long a hire waits on an evaluation result before they are regularized
-              automatically. This applies to every probationary hire.
+              Set the maximum probationary period in days of work. A probationary hire who keeps
+              working past this many days without a completed evaluation is regularized
+              automatically by operation of law. This applies to every probationary hire and is
+              shared across all admin sessions.
             </DialogDescription>
           </DialogHeader>
-          <div className="rounded-lg border border-gold/40 bg-gold/5 p-4 text-sm">
+          <div className="space-y-3 rounded-lg border border-gold/40 bg-gold/5 p-4 text-sm">
             <p className="text-muted-foreground">
-              Auto-regularization after{" "}
+              Legal basis — Art. 296 of the Labor Code (DOLE 6-month rule): an employee allowed to
+              work past the maximum probationary period without a formal evaluation, notice of
+              termination or extension is{" "}
               <span className="font-medium text-foreground">
-                {autoRegDraft.months} month{autoRegDraft.months === 1 ? "" : "s"} and{" "}
-                {autoRegDraft.days} day{autoRegDraft.days === 1 ? "" : "s"}
-              </span>{" "}
-              of waiting on evaluation.
+                deemed a regular employee by operation of law
+              </span>
+              , even for a single day past the cap.
+            </p>
+            <p className="text-muted-foreground">
+              Current threshold:{" "}
+              <span className="font-medium text-foreground">
+                {autoRegDraft} days of work
+                {autoRegDraft === 180 ? " (6-month statutory default)" : ""}
+              </span>
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Months</Label>
-              <Input
-                type="number"
-                min={0}
-                value={autoRegDraft.months}
-                onChange={(e) =>
-                  setAutoRegDraft((p) => ({
-                    ...p,
-                    months: Math.max(0, Number(e.target.value) || 0),
-                  }))
-                }
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Days</Label>
-              <Input
-                type="number"
-                min={0}
-                value={autoRegDraft.days}
-                onChange={(e) =>
-                  setAutoRegDraft((p) => ({
-                    ...p,
-                    days: Math.max(0, Number(e.target.value) || 0),
-                  }))
-                }
-              />
-            </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">
+              Maximum probationary period (days of work from the start date)
+            </Label>
+            <Input
+              type="number"
+              min={1}
+              value={autoRegDraft}
+              onChange={(e) => setAutoRegDraft(Math.max(1, Number(e.target.value) || 1))}
+            />
+            <p className="text-[0.7rem] text-muted-foreground">
+              The probationary hire's checklist must also be 100% complete with a requested
+              evaluation before auto-regularization fires.
+            </p>
           </div>
           <DialogFooter>
             <Button
@@ -2675,16 +2986,32 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
             <Button
               className="cursor-pointer"
               onClick={() => {
-                if (autoRegDraft.months === 0 && autoRegDraft.days === 0) {
+                if (!Number.isFinite(autoRegDraft) || autoRegDraft < 1) {
                   toast.error("Set at least 1 day");
                   return;
                 }
-                setAutoRegMonths(autoRegDraft.months);
-                setAutoRegDays(autoRegDraft.days);
+                setAutoRegularizeDays(autoRegDraft);
                 setAutoRegOpen(false);
-                toast.success(
-                  `Auto-regularization set to ${autoRegDraft.months} month(s) and ${autoRegDraft.days} day(s)`,
-                );
+                settingsApi
+                  .upsert("onboarding.auto_regularize_days", autoRegDraft)
+                  .then(() =>
+                    toast.success(
+                      `Auto-regularization saved — ${autoRegDraft} days of work (shared across all admins)`,
+                    ),
+                  )
+                  .catch((e: unknown) => {
+                    const status = (e as { status?: number } | null)?.status;
+                    if (status === 403) {
+                      toast.error(
+                        `${autoRegDraft} days applies to this session only — only a Super Admin can change the shared threshold.`,
+                      );
+                    } else {
+                      toast.success(
+                        `Auto-regularization set to ${autoRegDraft} days for this session`,
+                      );
+                      console.warn("Could not persist auto-regularization setting to database.");
+                    }
+                  });
               }}
             >
               Save setting
@@ -2913,6 +3240,8 @@ function EmployeeChecklistRow({
   isSelected?: boolean;
   onView: (i: EmployeeChecklistItem) => void;
 }) {
+  const submitted = Boolean(item.submittedAt || item.fileName || item.notes);
+
   return (
     <div
       onClick={() => onView(item)}
@@ -2929,24 +3258,18 @@ function EmployeeChecklistRow({
     >
       <div className="flex items-start gap-3">
         {item.done ? (
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white mt-0.5 shadow-xs">
-            <Check className="h-4 w-4 stroke-[3]" />
-          </div>
-        ) : item.submittedAt ? (
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-destructive text-destructive mt-0.5">
-            <Hourglass className="h-3 w-3" />
-          </div>
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-success mt-0.5" />
+        ) : submitted ? (
+          <Hourglass className="h-4 w-4 shrink-0 text-destructive mt-0.5" />
         ) : (
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-amber-500 text-amber-500 mt-0.5">
-            <Circle className="h-3 w-3 fill-amber-500" />
-          </div>
+          <Circle className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
         )}
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p
               className={cn(
                 "text-sm font-semibold",
-                !item.done && item.submittedAt ? "text-destructive" : "text-foreground",
+                !item.done && submitted ? "text-destructive" : "text-foreground",
               )}
             >
               {item.title}
@@ -2955,17 +3278,13 @@ function EmployeeChecklistRow({
               variant="outline"
               className={
                 item.done
-                  ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[11px]"
-                  : item.submittedAt
-                    ? "bg-destructive/10 text-destructive border-destructive/30 text-[11px]"
-                    : "bg-amber-500/10 text-amber-600 border-amber-500/30 text-[11px]"
+                  ? "bg-success/10 text-success border-success/30 text-[10px]"
+                  : submitted
+                    ? "bg-destructive/10 text-destructive border-destructive/30 text-[10px]"
+                    : "bg-caution/10 text-caution border-caution/30 text-[10px]"
               }
             >
-              {item.done
-                ? "Verified by HR"
-                : item.submittedAt
-                  ? "Submitted · pending review"
-                  : "Pending"}
+              {item.done ? "Verified by HR" : submitted ? "Submitted · pending review" : "Pending"}
             </Badge>
             {item.fileName && (
               <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -3003,8 +3322,10 @@ export function EmployeeOnboarding() {
   const [uploadNotes, setUploadNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [docOpen, setDocOpen] = useState(false);
 
-  useEffect(() => {
+  const loadOnboarding = useCallback(() => {
+    setLoading(true);
     // Resolve the signed-in portal user from the auth session (NOT the mock
     // profile) so the checklist always reflects the logged-in employee's own
     // new-hire record from the database.
@@ -3079,6 +3400,23 @@ export function EmployeeOnboarding() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadOnboarding();
+  }, [loadOnboarding]);
+
+  // Keep the employee view in sync with HR actions (verification, reviews) and
+  // with the employee's own latest uploads/notes — re-fetch whenever the tab
+  // regains focus or becomes visible again.
+  useEffect(() => {
+    const sync = () => loadOnboarding();
+    window.addEventListener("focus", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      window.removeEventListener("focus", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [loadOnboarding]);
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("recent");
@@ -3172,12 +3510,20 @@ export function EmployeeOnboarding() {
 
       toast.success(res.message);
     } catch (e) {
-      console.warn("Upload/submission error:", e);
-      toast.error("Could not save task submission — please retry.");
+      const err = e as Error & { status?: number; errors?: Record<string, string[]> };
+      console.warn("Upload/submission error:", err);
+      const detail = err.status
+        ? ` (HTTP ${err.status}${err.errors ? ": " + Object.values(err.errors).flat().join("; ") : ""})`
+        : "";
+      toast.error(`${err.message || "Could not save task submission"}${detail} — please retry.`);
     } finally {
       setSubmitting(false);
     }
   };
+
+  /** Status ordering: completed first, then submitted (pending review), then pending. */
+  const statusPriority = (i: EmployeeChecklistItem) =>
+    i.done ? 0 : i.submittedAt || i.fileName || i.notes ? 1 : 2;
 
   const filteredItems = useMemo(() => {
     return items
@@ -3188,6 +3534,9 @@ export function EmployeeOnboarding() {
         return true;
       })
       .sort((a, b) => {
+        // Status order is always the primary sort (completed → submitted → pending).
+        const byStatus = statusPriority(a) - statusPriority(b);
+        if (byStatus !== 0) return byStatus;
         if (filter === "recent") return b.isoDate.localeCompare(a.isoDate);
         if (filter === "pending") return a.rank - b.rank;
         return 0;
@@ -3239,17 +3588,73 @@ export function EmployeeOnboarding() {
     };
   }, [syncListHeight, filteredItems, viewingItem]);
 
+  const handleExportEmployeeReport = (format: ReportFormat) => {
+    if (!newHire) {
+      toast.error("Your onboarding record is still loading.");
+      return;
+    }
+    const rowsData = items.map((i) => ({
+      requirement: i.title,
+      status: i.done ? "Verified" : i.submittedAt ? "Submitted · pending review" : "Pending",
+      notes: i.notes ?? "—",
+    }));
+    exportReport(
+      {
+        title: "My Onboarding Checklist",
+        subtitle: `Oxford Suites Makati HRMS · ${newHire.name} · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })}`,
+        columns: [
+          { header: "Requirement", key: "requirement", width: "46%" },
+          { header: "Status", key: "status", width: "30%" },
+          { header: "Notes", key: "notes", width: "24%" },
+        ],
+        rows: rowsData,
+        summary: [
+          { label: "Verified Progress", value: `${pct}%` },
+          { label: "Items Verified", value: items.filter((i) => i.done).length },
+          { label: "Awaiting HR", value: items.filter((i) => !i.done).length },
+        ],
+      },
+      format,
+    );
+    toast.success(`Onboarding checklist exported as ${format.toUpperCase()}`);
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Employee Portal"
         title="New Hire Onboarding"
         description="Complete these probationary requirements to finish your onboarding. This menu disappears once HR marks onboarding as complete."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" className="gap-2" onClick={loadOnboarding} disabled={loading}>
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /> Refresh
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Download className="h-4 w-4" /> Generate Report
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onClick={() => handleExportEmployeeReport("pdf")}>
+                  <FileText className="mr-2 h-4 w-4" /> Export as PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportEmployeeReport("docx")}>
+                  <FileText className="mr-2 h-4 w-4" /> Export as DOCX
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportEmployeeReport("excel")}>
+                  <Download className="mr-2 h-4 w-4" /> Export as Excel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        }
       />
 
       {/* Yellow HR Notice Alert */}
-      <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-amber-800 dark:text-amber-300">
-        <Info className="h-5 w-5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+      <div className="flex items-start gap-3 rounded-lg border border-caution/30 bg-caution/10 p-4 text-caution">
+        <Info className="h-5 w-5 shrink-0 mt-0.5 text-caution" />
         <p className="text-sm">
           Employee regularization and full activation is performed by HR Admin after all
           probationary requirements below have been verified.
@@ -3261,10 +3666,8 @@ export function EmployeeOnboarding() {
         <CardContent className="p-6 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <p className="eyebrow text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                NEW HIRE ONBOARDING
-              </p>
-              <h2 className="text-2xl font-bold font-display text-foreground mt-1">
+              <p className="eyebrow">NEW HIRE ONBOARDING</p>
+              <h2 className="text-2xl font-semibold font-display text-foreground mt-1">
                 {newHire?.name ?? getUser()?.full_name ?? myProfile.name}
               </h2>
               <p className="text-sm font-medium text-muted-foreground mt-0.5">
@@ -3281,7 +3684,7 @@ export function EmployeeOnboarding() {
             <div className="flex flex-col sm:items-end gap-1.5">
               <Badge
                 variant="outline"
-                className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40 text-base sm:text-lg px-4 py-1.5 font-bold uppercase tracking-widest self-start sm:self-auto shadow-xs"
+                className="border-gold/40 bg-gold/10 text-gold text-xs px-3 py-1 font-semibold uppercase tracking-wider self-start sm:self-auto"
               >
                 PROBATIONARY
               </Badge>
@@ -3314,9 +3717,9 @@ export function EmployeeOnboarding() {
           <Card className="border-border/70 shadow-sm">
             <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
               <div>
-                <CardTitle className="font-display text-xl font-semibold">
-                  ONBOARDING CHECKLIST
-                </CardTitle>
+                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                  <ClipboardList className="h-5 w-5 text-primary" /> Onboarding Checklist
+                </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Probationary checklist requirements
                 </p>
@@ -3386,8 +3789,8 @@ export function EmployeeOnboarding() {
                       variant="outline"
                       className={
                         viewingItem.done
-                          ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 font-semibold"
-                          : "bg-amber-500/10 text-amber-600 border-amber-500/30 font-semibold"
+                          ? "bg-success/10 text-success border-success/30 font-semibold"
+                          : "bg-caution/10 text-caution border-caution/30 font-semibold"
                       }
                     >
                       {viewingItem.done ? "Completed" : "Pending Action"}
@@ -3396,7 +3799,7 @@ export function EmployeeOnboarding() {
                       Probationary
                     </Badge>
                   </div>
-                  <CardTitle className="font-display text-lg font-bold leading-tight">
+                  <CardTitle className="font-display text-lg font-semibold leading-tight">
                     {viewingItem.title}
                   </CardTitle>
                 </div>
@@ -3424,9 +3827,9 @@ export function EmployeeOnboarding() {
 
                 {/* Existing Uploaded Document */}
                 {viewingItem.fileName && (
-                  <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/5 p-3">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <FileCheck2 className="h-5 w-5 text-emerald-600 shrink-0" />
+                      <FileCheck2 className="h-5 w-5 text-success shrink-0" />
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-foreground truncate">
                           {viewingItem.fileName}
@@ -3439,13 +3842,20 @@ export function EmployeeOnboarding() {
                         size="sm"
                         variant="ghost"
                         className="h-8 text-xs cursor-pointer"
-                        onClick={() => window.open(viewingItem.fileUrl, "_blank")}
+                        onClick={() => setDocOpen(true)}
                       >
                         <ExternalLink className="mr-1 h-3.5 w-3.5" /> View
                       </Button>
                     )}
                   </div>
                 )}
+
+                <DocumentPreviewModal
+                  open={docOpen}
+                  onOpenChange={setDocOpen}
+                  fileUrl={viewingItem.fileUrl as string}
+                  fileName={viewingItem.fileName}
+                />
 
                 {/* Upload Dropzone / Placeholder — only when the checklist
                     item requires an upload; stretches to fill leftover

@@ -1,11 +1,51 @@
 {
-  "TESDA Cookery NC II": ["tesda cookery nc ii", "cookery nc ii", "tesda cookery nc 2", "commercial cooking nc ii", "tesda nc ii in cookery", "tesda cookery"],
-  "TESDA Bartending NC II": ["tesda bartending nc ii", "bartending nc ii", "bartending nc 2", "tesda nc ii in bartending"],
-  "TESDA Housekeeping NC II": ["tesda housekeeping nc ii", "housekeeping nc ii", "housekeeping nc 2", "tesda nc ii in housekeeping"],
-  "TESDA Front Office NC II": ["tesda front office nc ii", "front office nc ii", "front office services nc ii", "tesda front office services nc ii"],
-  "TESDA Food and Beverage Services NC II": ["food and beverage services nc ii", "f&b services nc ii", "fb services nc ii", "food and beverage nc ii", "tesda food and beverage services nc ii", "food & beverage services nc ii"],
-  "TESDA Bread and Pastry Production NC II": ["bread and pastry production nc ii", "baking nc ii", "pastry production nc ii", "tesda bread and pastry production nc ii", "bread and pastry nc ii"],
-  "TESDA Electrical Installation and Maintenance NC II": ["electrical installation and maintenance nc ii", "tesda electrical installation and maintenance nc ii", "electrical installation nc ii", "electrical installation & maintenance nc ii"],
+  "TESDA Cookery NC II": [
+    "tesda cookery nc ii",
+    "cookery nc ii",
+    "tesda cookery nc 2",
+    "commercial cooking nc ii",
+    "tesda nc ii in cookery",
+    "tesda cookery"
+  ],
+  "TESDA Bartending NC II": [
+    "tesda bartending nc ii",
+    "bartending nc ii",
+    "bartending nc 2",
+    "tesda nc ii in bartending"
+  ],
+  "TESDA Housekeeping NC II": [
+    "tesda housekeeping nc ii",
+    "housekeeping nc ii",
+    "housekeeping nc 2",
+    "tesda nc ii in housekeeping"
+  ],
+  "TESDA Front Office NC II": [
+    "tesda front office nc ii",
+    "front office nc ii",
+    "front office services nc ii",
+    "tesda front office services nc ii"
+  ],
+  "TESDA Food and Beverage Services NC II": [
+    "food and beverage services nc ii",
+    "f&b services nc ii",
+    "fb services nc ii",
+    "food and beverage nc ii",
+    "tesda food and beverage services nc ii",
+    "food & beverage services nc ii"
+  ],
+  "TESDA Bread and Pastry Production NC II": [
+    "bread and pastry production nc ii",
+    "baking nc ii",
+    "pastry production nc ii",
+    "tesda bread and pastry production nc ii",
+    "bread and pastry nc ii"
+  ],
+  "TESDA Electrical Installation and Maintenance NC II": [
+    "electrical installation and maintenance nc ii",
+    "tesda electrical installation and maintenance nc ii",
+    "electrical installation nc ii",
+    "electrical installation & maintenance nc ii"
+  ],
   "Food Safety and Hygiene Certification": [
     "food safety and hygiene certification",
     "food safety and hygiene training",
@@ -18,7 +58,13 @@
     "restaurant operations and food safety orientation",
     "hygiene and sanitation training"
   ],
-  "Food Handler Certificate": ["food handler certificate", "food handler's certificate", "food handlers certificate", "food safety certificate", "food handler card"],
+  "Food Handler Certificate": [
+    "food handler certificate",
+    "food handler's certificate",
+    "food handlers certificate",
+    "food safety certificate",
+    "food handler card"
+  ],
   "Customer Service Excellence Training": [
     "customer service excellence training",
     "customer service excellence certification",
@@ -200,7 +246,125 @@
     "cash handling & pos training",
     "cash handling and pos system operation"
   ],
-  "Culinary Diploma": ["culinary diploma", "diploma in culinary arts", "culinary arts diploma", "culinary arts"],
-  "Driver's License": ["driver's license", "drivers license", "professional driver license", "non-professional driver license"],
-  "Barista NC II": ["barista nc ii", "tesda barista nc ii", "coffee academy certificate"]
+  "Culinary Diploma": [
+    "culinary diploma",
+    "diploma in culinary arts",
+    "culinary arts diploma",
+    "culinary arts"
+  ],
+  "Driver's License": [
+    "driver's license",
+    "drivers license",
+    "professional driver license",
+    "non-professional driver license"
+  ],
+  "Barista NC II": [
+    "barista nc ii",
+    "tesda barista nc ii",
+    "coffee academy certificate"
+  ],
+  "Advanced Negotiation Skills for Sales Professionals, 2022": [
+    "advanced negotiation skills for sales professionals, 2022",
+    "advanced negotiation skills for sales professionals,"
+  ],
+  "Banquet and Event Service Excellence Training - Philippine Hotel Owners Association (2022)": [
+    "banquet and event service excellence training - philippine hotel owners association (2022)",
+    "banquet and event service excellence training - philippine hotel owners association",
+    "banquet and event service excellence training"
+  ],
+  "Basic Electrical Systems Maintenance Certificate - TESDA (2013)": [
+    "basic electrical systems maintenance certificate - tesda (2013)",
+    "basic electrical systems maintenance certificate - tesda",
+    "basic electrical systems maintenance certificate"
+  ],
+  "Business Development Fundamentals for Hospitality, 2024": [
+    "business development fundamentals for hospitality, 2024",
+    "business development fundamentals for hospitality,"
+  ],
+  "Catering Sales Fundamentals Training, 2023": [
+    "catering sales fundamentals training, 2023",
+    "catering sales fundamentals training,"
+  ],
+  "Client Relations Leadership Workshop, 2024": [
+    "client relations leadership workshop, 2024",
+    "client relations leadership workshop,"
+  ],
+  "Culinary Production Training, 2023": [
+    "culinary production training, 2023",
+    "culinary production training,"
+  ],
+  "Facilities Management Training - Philippine Society of Ventilating, Air-Conditioning and Refrigerating Engineers (2020)": [
+    "facilities management training - philippine society of ventilating, air-conditioning and refrigerating engineers (2020)",
+    "facilities management training - philippine society of ventilating, air-conditioning and refrigerating engineers",
+    "facilities management training - philippine society of ventilating, air"
+  ],
+  "Food Safety Awareness Certification, 2021": [
+    "food safety awareness certification, 2021",
+    "food safety awareness certification,"
+  ],
+  "Front Office & Reservation Systems Training, 2022": [
+    "front office & reservation systems training, 2022",
+    "front office & reservation systems training,"
+  ],
+  "Front Office Team Leadership Workshop, 2024": [
+    "front office team leadership workshop, 2024",
+    "front office team leadership workshop,"
+  ],
+  "Guest Communication Standards Workshop, 2021": [
+    "guest communication standards workshop, 2021",
+    "guest communication standards workshop,"
+  ],
+  "Hospitality Leadership Training - Hotel and Restaurant Association of the Philippines (2020)": [
+    "hospitality leadership training - hotel and restaurant association of the philippines (2020)",
+    "hospitality leadership training - hotel and restaurant association of the philippines",
+    "hospitality leadership training"
+  ],
+  "Hospitality Sales Support Fundamentals, 2022": [
+    "hospitality sales support fundamentals, 2022",
+    "hospitality sales support fundamentals,"
+  ],
+  "Hospitality Sales Training, Philippine Hotel Sales Association, 2021": [
+    "hospitality sales training, philippine hotel sales association, 2021",
+    "hospitality sales training, philippine hotel sales association,"
+  ],
+  "Hotel Reservation Systems Training – Opera PMS Certification, 2021": [
+    "hotel reservation systems training – opera pms certification, 2021",
+    "hotel reservation systems training – opera pms certification,"
+  ],
+  "Kitchen Inventory & Cost Control Basics, 2023": [
+    "kitchen inventory & cost control basics, 2023",
+    "kitchen inventory & cost control basics,"
+  ],
+  "Kitchen Operations Training, Philippine Culinary Federation, 2022": [
+    "kitchen operations training, philippine culinary federation, 2022",
+    "kitchen operations training, philippine culinary federation,"
+  ],
+  "Reservation & Rate Management Training, 2023": [
+    "reservation & rate management training, 2023",
+    "reservation & rate management training,"
+  ],
+  "Reservation & Sales Coordination Training, 2024": [
+    "reservation & sales coordination training, 2024",
+    "reservation & sales coordination training,"
+  ],
+  "Reservation Documentation & Booking Systems Training, 2023": [
+    "reservation documentation & booking systems training, 2023",
+    "reservation documentation & booking systems training,"
+  ],
+  "Restaurant Service Standards Training, 2023": [
+    "restaurant service standards training, 2023",
+    "restaurant service standards training,"
+  ],
+  "Sales and Client Relations Training, 2023": [
+    "sales and client relations training, 2023",
+    "sales and client relations training,"
+  ],
+  "Service Recovery and Complaint Handling Workshop (2019)": [
+    "service recovery and complaint handling workshop (2019)",
+    "service recovery and complaint handling workshop"
+  ],
+  "Team Leadership for Front Office Supervisors, 2022": [
+    "team leadership for front office supervisors, 2022",
+    "team leadership for front office supervisors,"
+  ]
 }

@@ -118,7 +118,6 @@ import {
   coreHcmApi,
   interviewsApi,
   jobPostsApi,
-  resolveStorageUrl,
   screeningApi,
   settingsApi,
   type ApiApplicant,
@@ -158,7 +157,12 @@ function transformApiApplicant(a: ApiApplicant): Applicant {
     flags: a.flags_json || [],
     summary: a.summary || "",
     screening_detail: (a.latest_screening as Applicant["screening_detail"]) ?? null,
-    resumeUrl: resolveStorageUrl(a.resume_url),
+    // Stream the resume through the API (same-origin, ?token= auth) instead of
+    // the cross-origin /storage URL — browsers refuse to render cross-origin
+    // files inside the review dialog's preview <iframe>/<img>, which showed
+    // a blank white panel. resume_original_name keeps the file-type branches
+    // (.pdf/.docx/.doc/.png) working since this URL has no extension.
+    resumeUrl: a.resume_url ? applicantsApi.resumeDocumentUrl(a.applicant_id) : null,
     resumeOriginalName: (a as any).resume_original_name ?? null,
   };
 }
@@ -228,7 +232,7 @@ const tooltipStyle = {
 };
 
 /** Keyword library suggested per job position for the screening setup checklist. */
-const keywordLibrary: Record<string, string[]> = {
+export const keywordLibrary: Record<string, string[]> = {
   "Front Desk Receptionist": [
     "Guest Relations",
     "Opera PMS",
@@ -382,7 +386,7 @@ const monthNames = [
 
 const yearOptions = Array.from({ length: 11 }, (_, i) => 2021 + i);
 
-/** Default interview slot configuration � 14 interviewers / rooms, 14 time slots, on-site. */
+/** Default interview slot configuration — 14 interviewers / rooms, 14 time slots, on-site. */
 const DEFAULT_SLOT_SETTINGS = {
   capacityPerSlot: 14,
   interviewersAvailable: 14,
@@ -1000,7 +1004,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [rows, setRows] = useState<Applicant[]>([]);
 
   useEffect(() => {
-    const excludeStages = role === "admin" ? "Hired,Rejected" : "Hired";
+    // Hired applicants leave the pipeline (they move to New Hire Onboarding);
+    // rejected applicants stay in the list, only labelled as "Rejected".
+    const excludeStages = "Hired";
     Promise.allSettled([
       applicantsApi.list({ per_page: 100, exclude_stages: excludeStages }),
       interviewsApi.list({ per_page: 100 }),
@@ -1089,6 +1095,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     r: AssessmentResult;
     kind: "accept" | "reject";
   } | null>(null);
+  /** Saved assessment result being viewed (View button in the assessment list). */
+  const [viewingAssessment, setViewingAssessment] = useState<AssessmentResult | null>(null);
   const [assessmentSearch, setAssessmentSearch] = useState("");
   const [assessmentDept, setAssessmentDept] = useState<string>("all");
   const [assessmentOutcome, setAssessmentOutcome] = useState<string>("all");
@@ -1096,7 +1104,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [evalRemarks, setEvalRemarks] = useState("");
   const [evalAssessor, setEvalAssessor] = useState("");
   const [evalDateTime, setEvalDateTime] = useState(() => isoOf(new Date()));
-  const [viewMonth, setViewMonth] = useState<Date>(new Date(2026, 7, 1));
+  const [viewMonth, setViewMonth] = useState<Date>(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [reportsOpen, setReportsOpen] = useState(false);
   const [screeningOpen, setScreeningOpen] = useState(false);
   const [interviewSearch, setInterviewSearch] = useState("");
@@ -1111,7 +1122,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [cancelInterview, setCancelInterview] = useState<Interview | null>(null);
   const [schedule, setSchedule] = useState({
     applicant: "",
-    date: "2026-08-03",
+    date: TODAY_ISO,
     time: buildTimeSlots(
       DEFAULT_SLOT_SETTINGS.startTime,
       DEFAULT_SLOT_SETTINGS.intervalMinutes,
@@ -1122,6 +1133,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   });
   const [scheduleDept, setScheduleDept] = useState<string>("all");
   const [schedulePosition, setSchedulePosition] = useState<string>("all");
+
+  // Always keep the interview calendar anchored to the current month/date on mount.
+  useEffect(() => {
+    const now = new Date();
+    setViewMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+    setSchedule((prev) => ({ ...prev, date: TODAY_ISO }));
+  }, []);
   /** DB-backed lookups for departments / positions / job-posts (with fallback to static hr.ts). */
   const [dbDepartments, setDbDepartments] = useState<ApiDepartment[]>([]);
   const [dbPositions, setDbPositions] = useState<ApiPosition[]>([]);
@@ -1164,8 +1182,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         department:
           (p as any).department_name ??
           (p as any).department ??
-          dbDepartments.find((d) => String(d.department_id) === String((p as any).department_id))?.name ??
-          departments.find((d) => String((d as any).department_id) === String((p as any).department_id))?.name ??
+          dbDepartments.find((d) => String(d.department_id) === String((p as any).department_id))
+            ?.name ??
+          departments.find(
+            (d) => String((d as any).department_id) === String((p as any).department_id),
+          )?.name ??
           "General",
       }));
     }
@@ -1175,14 +1196,22 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const activeJobTitles = useMemo(() => {
     const s = new Set<string>();
     dbJobPosts.forEach((j: any) => {
-      const isActive = j.active !== false && (j.status === "Open" || j.status === "Published" || j.status === "published");
+      const isActive =
+        j.active !== false &&
+        (j.status === "Open" || j.status === "Published" || j.status === "published");
       if (isActive && j.title) s.add(j.title);
     });
     return s;
   }, [dbJobPosts]);
 
   const deptHasPosting = useCallback(
-    (deptName: string) => dbJobPosts.some((j: any) => (j.department ?? j.department_name) === deptName && j.active !== false && (j.status === "Open" || j.status === "Published" || j.status === "published")),
+    (deptName: string) =>
+      dbJobPosts.some(
+        (j: any) =>
+          (j.department ?? j.department_name) === deptName &&
+          j.active !== false &&
+          (j.status === "Open" || j.status === "Published" || j.status === "published"),
+      ),
     [dbJobPosts],
   );
 
@@ -1196,6 +1225,44 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [auditActionFilter, setAuditActionFilter] = useState<string>("all");
   const [auditDeptFilter, setAuditDeptFilter] = useState<string>("all");
   const [auditActorFilter, setAuditActorFilter] = useState<string>("all");
+
+  // Latest rows / interviews / assessments for resolving audit targets to
+  // human-readable applicant names (audit rows only persist a target id).
+  const auditDataRef = useRef({ rows, interviews, assessments });
+  auditDataRef.current = { rows, interviews, assessments };
+
+  /** Resolves an audit entry's target id into the applicant's name — via the
+   *  Applicant/Interview records when possible, otherwise by matching a known
+   *  applicant name inside the entry details. Falls back to the raw id. */
+  const auditTargetLabel = (a: any): string => {
+    const raw = a.target_id ?? a.target;
+    const id = raw == null ? "—" : String(raw);
+    const details: string = a.details ?? "";
+    const targetType: string = a.target_type ?? "";
+    const { rows: r, interviews: iv, assessments: asm } = auditDataRef.current;
+    if (/applicant/i.test(targetType)) {
+      const match = r.find((x) => String(x.dbId) === id);
+      if (match) return match.name;
+    }
+    if (/interview/i.test(targetType)) {
+      const match = iv.find((x) => String(x.dbId) === id);
+      if (match) return match.applicant;
+    }
+    if (/assessment/i.test(targetType)) {
+      const match = asm.find((x) => x.name && details.includes(x.name));
+      if (match) return match.name;
+    }
+    // Fall back to any known applicant name mentioned in the details text
+    const knownNames = [
+      ...new Set([
+        ...r.map((x) => x.name),
+        ...iv.map((x) => x.applicant),
+        ...asm.map((x) => x.name),
+      ]),
+    ].filter((n): n is string => !!n && n.length > 2);
+    const mentioned = knownNames.find((n) => details.includes(n));
+    return mentioned ?? id;
+  };
 
   const refreshAuditLog = () => {
     setAuditLoading(true);
@@ -1224,7 +1291,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             actorPosition: a.role ?? a.actor_role ?? "—",
             actorDepartment: a.department ?? a.actor_department ?? "—",
             actionType: (a.action ?? "Activity") as AuditEntry["actionType"],
-            target: a.target_id ?? a.target ?? "—",
+            target: auditTargetLabel(a),
             module: a.module ?? a.module_name ?? "Applicant Management",
             details: a.details ?? "",
           };
@@ -1271,9 +1338,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }, 800);
   };
 
-  // Report format state
-  const [reportFormat, setReportFormat] = useState<ReportFormat>("pdf");
-
   const handleExportAuditReport = (format: ReportFormat) => {
     const rowsForReport = auditSort.sorted.length ? auditSort.sorted : auditFiltered;
     if (rowsForReport.length === 0) {
@@ -1301,7 +1365,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       details: e.details,
     }));
     const filterSummary =
-      auditSearch || auditActionFilter !== "all" || auditDeptFilter !== "all" || auditActorFilter !== "all"
+      auditSearch ||
+      auditActionFilter !== "all" ||
+      auditDeptFilter !== "all" ||
+      auditActorFilter !== "all"
         ? `Filters — Action: ${auditActionFilter} | Dept: ${auditDeptFilter} | User: ${auditActorFilter}${auditSearch ? ` | Search: "${auditSearch}"` : ""}`
         : "All audit entries (no filters)";
     exportReport(
@@ -1321,245 +1388,78 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     toast.success(`Audit report exported as ${format.toUpperCase()}`);
   };
 
-  // Add-applicant flow
-  const [addOpen, setAddOpen] = useState(false);
-  const [addStep, setAddStep] = useState<1 | 2 | 3>(1);
-  const [addMethod, setAddMethod] = useState<"file" | "image">("file");
-  const [addFileName, setAddFileName] = useState("");
-  const [addResumeFile, setAddResumeFile] = useState<File | null>(null);
-  /** True while a file is being dragged over the resume drop zone. */
-  const [resumeDragActive, setResumeDragActive] = useState(false);
-  /** Pending upload awaiting user confirmation to replace existing details. */
-  const [pendingResume, setPendingResume] = useState<File | null>(null);
-  const [replaceOpen, setReplaceOpen] = useState(false);
-  const [addDept, setAddDept] = useState<string>(positions[0]!.department);
-  useEffect(() => {
-    if (displayPositions.length && !displayPositions.some((p) => p.department === addDept)) {
-      const firstDept = displayPositions[0]?.department;
-      if (firstDept) {
-        setAddDept(firstDept);
-        const firstPos = displayPositions.find((p) => p.department === firstDept);
-        if (firstPos) setAddForm((f) => ({ ...f, position: firstPos.title }));
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayPositions]);
-  const [addForm, setAddForm] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    address: "",
-    position: positions[0]!.title,
-  });
-  const [screenResult, setScreenResult] = useState<{
-    score: number;
-    status: ApplicantStatus;
-    entities: { label: string; value: string }[];
-    detail?: ApiScreeningPreview | null;
-  } | null>(null);
-  const [screeningLoading, setScreeningLoading] = useState(false);
-
-  /** Maps the NLP service's official status codes to the UI status values. */
-  const toUiStatus = (code: unknown): ApplicantStatus => {
-    switch (code) {
-      case "PERFECT_FOR_THE_JOB":
-        return "fit";
-      case "INVALID_CREDENTIAL":
-        return "credential";
-      case "FIT_FOR_OTHER_JOB":
-        return "other-role";
-      default:
-        return "not-fit";
-    }
-  };
-
-  /** Validates type/size, then routes through the replacement-confirmation
-   *  rules: if the form already holds any applicant details (typed or
-   *  extracted from a previous resume), a confirm modal protects them;
-   *  an empty form accepts the new resume silently. */
-  const handleResumeFile = (file: File | null | undefined) => {
-    if (!file) return;
-    const isImage = addMethod === "image";
-    const name = file.name.toLowerCase();
-    const okType = isImage
-      ? /\.(jpe?g|png)$/.test(name) || file.type === "image/jpeg" || file.type === "image/png"
-      : /\.(pdf|docx?)$/.test(name);
-    if (!okType) {
-      toast.error(
-        isImage
-          ? "Unsupported image — please use a JPG or PNG file."
-          : "Unsupported file — please use a PDF or DOCX resume.",
-      );
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("File is larger than the 10 MB limit.");
-      return;
-    }
-    const hasExistingDetails = [addForm.name, addForm.email, addForm.phone, addForm.address].some(
-      (v) => v.trim().length > 0,
+  const handleExportApplicantReport = (r: (typeof reportOptions)[number], format: ReportFormat) => {
+    const cols =
+      r.id === "interview"
+        ? [
+            { header: "Applicant", key: "applicant" },
+            { header: "Position", key: "position" },
+            { header: "Date", key: "date" },
+            { header: "Time", key: "time" },
+            { header: "Mode", key: "mode" },
+            { header: "Interviewer", key: "interviewer" },
+            { header: "Status", key: "status" },
+          ]
+        : r.id === "screening"
+          ? [
+              { header: "ID", key: "id" },
+              { header: "Name", key: "name" },
+              { header: "Position", key: "position" },
+              { header: "Email", key: "email" },
+              { header: "Score", key: "score" },
+              { header: "Status", key: "status" },
+              { header: "Stage", key: "stage" },
+            ]
+          : [
+              { header: "ID", key: "id" },
+              { header: "Name", key: "name" },
+              { header: "Email", key: "email" },
+              { header: "Position", key: "position" },
+              { header: "Score", key: "score" },
+              { header: "Status", key: "status" },
+              { header: "Stage", key: "stage" },
+              { header: "Applied", key: "appliedAt" },
+            ];
+    const data =
+      r.id === "interview"
+        ? interviews
+        : rows.filter((a) =>
+            r.id === "passed"
+              ? a.score >= passing
+              : r.id === "position" || r.id === "status"
+                ? true
+                : true,
+          );
+    exportReport(
+      {
+        title: `Applicant Management — ${r.title}`,
+        subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()}`,
+        columns: cols,
+        rows: data as any,
+        summary: [
+          { label: "Total Applicants", value: rows.length },
+          {
+            label: "Passed Screening",
+            value: rows.filter((a) => a.score >= passing).length,
+          },
+          { label: "Interviews Scheduled", value: interviews.length },
+        ],
+      },
+      format,
     );
-    if (hasExistingDetails) {
-      setPendingResume(file);
-      setReplaceOpen(true);
-      return;
-    }
-    applyResumeFile(file);
+    toast.success(`${r.title} report exported as ${format.toUpperCase()}`);
   };
-
-  /** Applies the file unconditionally and runs the extraction auto-fill
-   *  in replace mode (values overwrite whatever the form held). */
-  const applyResumeFile = (file: File) => {
-    setAddResumeFile(file);
-    setAddFileName(file.name);
-    void autofillFromResume(file, { overwrite: true });
-  };
-
-  /** Latest-request guard so a quick re-upload never applies stale results. */
-  const autofillSeq = useRef(0);
-  const [resumeAutofilling, setResumeAutofilling] = useState(false);
-
-  const autofillFromResume = async (
-    file: File,
-    opts: { overwrite: boolean } = { overwrite: false },
-  ) => {
-    const seq = ++autofillSeq.current;
-    setResumeAutofilling(true);
-    try {
-      const fd = new FormData();
-      fd.append("resume", file);
-      const res = await applicantsApi.extractResume(fd);
-      if (seq !== autofillSeq.current || !res.success) return;
-      const pi = res.personal_information ?? {};
-      const filled: string[] = [];
-      setAddForm((prev) => {
-        const next = { ...prev };
-        const put = (key: "name" | "email" | "phone" | "address", raw?: string | null) => {
-          const value = key === "phone" ? (normalizePHPhone(raw) ?? "") : (raw?.trim() ?? "");
-          if (!value) return;
-          if (!opts.overwrite && next[key].trim()) return; // merge mode: keep user input
-          if (next[key].trim() === value) return; // nothing to change
-          next[key] = value;
-          filled.push(key);
-        };
-        put("name", pi.name);
-        put("email", pi.email);
-        put("phone", pi.phone);
-        put("address", pi.address);
-        return next;
-      });
-      if (filled.length) {
-        toast.info(
-          `${opts.overwrite ? "Replaced" : "Auto-filled"} ${filled.length} field${filled.length === 1 ? "" : "s"} from "${file.name}" — review before continuing.`,
-        );
-      }
-    } catch (e) {
-      console.warn("Resume auto-fill failed:", e);
-      if (seq === autofillSeq.current) {
-        toast.error("Could not read contact details from this resume.");
-      }
-    } finally {
-      if (seq === autofillSeq.current) setResumeAutofilling(false);
-    }
-  };
-
-  /** Blob URL for previewing the selected resume; revoked on change/unmount. */
-  const [resumePreviewUrl, setResumePreviewUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!addResumeFile) {
-      setResumePreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(addResumeFile);
-    setResumePreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [addResumeFile]);
-
-  /** Zoom levels for resume previews (50-300%, default 100% centered per requirement). */
-  const [addPreviewZoom, setAddPreviewZoom] = useState(100);
-  const [reviewPreviewZoom, setReviewPreviewZoom] = useState(100);
-  useEffect(() => setAddPreviewZoom(100), [addResumeFile]);
-  useEffect(() => setReviewPreviewZoom(100), [review?.id]);
-
-  /** DOCX HTML preview for local file (Add Applicant) */
-  const addDocxContainerRef = useRef<HTMLDivElement>(null);
-  const [addDocxLoading, setAddDocxLoading] = useState(false);
-  const [addDocxError, setAddDocxError] = useState<string | null>(null);
-  useEffect(() => {
-    if (!addResumeFile || !/\.docx$/i.test(addResumeFile.name)) {
-      if (addDocxContainerRef.current) addDocxContainerRef.current.innerHTML = "";
-      setAddDocxError(null);
-      setAddDocxLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setAddDocxLoading(true);
-    setAddDocxError(null);
-    const render = async () => {
-      // Wait for container to mount (docx branch is conditional on resumePreviewUrl)
-      for (let i = 0; i < 20; i++) {
-        if (cancelled) return;
-        if (addDocxContainerRef.current) break;
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      const el = addDocxContainerRef.current;
-      if (!el || cancelled) {
-        setAddDocxLoading(false);
-        return;
-      }
-      el.innerHTML = "";
-      try {
-        const { renderAsync } = await import("docx-preview");
-        const ab = await addResumeFile.arrayBuffer();
-        if (cancelled || !addDocxContainerRef.current) return;
-        await renderAsync(ab, addDocxContainerRef.current, undefined, {
-          className: "docx",
-          inWrapper: false,
-          ignoreWidth: false,
-          ignoreHeight: false,
-          ignoreFonts: false,
-          breakPages: true,
-          ignoreLastRenderedPageBreak: true,
-          experimental: false,
-        } as any);
-      } catch (e) {
-        // Fallback: try mammoth to convert docx -> HTML (covers many docx that docx-preview cannot render)
-        try {
-          const mammoth = await import("mammoth");
-          const ab2 = await addResumeFile.arrayBuffer();
-          if (cancelled || !addDocxContainerRef.current) return;
-          const result = await mammoth.convertToHtml({ arrayBuffer: ab2 });
-          if (result.value) {
-            addDocxContainerRef.current.innerHTML = `<div class="p-4 text-sm leading-relaxed">${result.value}</div>`;
-            if (!cancelled) setAddDocxError(null);
-          } else {
-            throw e;
-          }
-        } catch (e2) {
-          if (!cancelled) setAddDocxError(String(e2));
-        }
-      } finally {
-        if (!cancelled) setAddDocxLoading(false);
-      }
-    };
-    render();
-    return () => {
-      cancelled = true;
-    };
-  }, [addResumeFile, resumePreviewUrl]);
-
-  useEffect(() => {
-    if (!addResumeFile && addDocxContainerRef.current) {
-      addDocxContainerRef.current.innerHTML = "";
-    }
-  }, [addResumeFile]);
 
   /** DOCX preview for server file (Review) — actual Word rendering */
   const reviewDocxContainerRef = useRef<HTMLDivElement>(null);
   const [reviewDocxLoading, setReviewDocxLoading] = useState(false);
+  /** Zoom level for the review dialog's resume preview (50–300%). */
+  const [reviewPreviewZoom, setReviewPreviewZoom] = useState(100);
+  useEffect(() => setReviewPreviewZoom(100), [review?.id]);
   const [reviewDocxError, setReviewDocxError] = useState<string | null>(null);
   useEffect(() => {
-    const isDocx = /\.docx$/i.test(review?.resumeUrl || "") || /\.docx$/i.test(review?.resumeOriginalName || "");
+    const isDocx =
+      /\.docx$/i.test(review?.resumeUrl || "") || /\.docx$/i.test(review?.resumeOriginalName || "");
     if (!review?.resumeUrl || !isDocx) {
       if (reviewDocxContainerRef.current) reviewDocxContainerRef.current.innerHTML = "";
       setReviewDocxError(null);
@@ -1624,17 +1524,47 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     };
   }, [review?.resumeUrl, review?.resumeOriginalName]);
 
-  /** Opens the selected resume in a new tab (images/PDFs render natively). */
-  const openResumePreview = () => {
-    if (resumePreviewUrl) window.open(resumePreviewUrl, "_blank", "noopener");
-  };
+  /**
+   * PDF previews render in an <iframe>, which shows a blank white box when the
+   * file URL is unavailable (e.g. the storage file is missing or the upload
+   * failed). Verify the URL actually serves a PDF before rendering so a broken
+   * preview surfaces a clear error with an "Open file" fallback instead.
+   */
+  const [reviewPdfStatus, setReviewPdfStatus] = useState<"loading" | "ok" | "error">("loading");
+  useEffect(() => {
+    const url = review?.resumeUrl;
+    const isPdf =
+      !!url && (/\.pdf$/i.test(url) || /\.pdf$/i.test(review?.resumeOriginalName || ""));
+    if (!url || !isPdf) {
+      setReviewPdfStatus("loading");
+      return;
+    }
+    let cancelled = false;
+    setReviewPdfStatus("loading");
+    fetch(url)
+      .then((res) => {
+        const type = res.headers.get("content-type") ?? "";
+        if (!res.ok || !/pdf|octet-stream/i.test(type)) {
+          throw new Error(`Unreadable resume file (HTTP ${res.status} ${type || "unknown type"})`);
+        }
+        if (!cancelled) setReviewPdfStatus("ok");
+      })
+      .catch((e) => {
+        console.warn("Resume PDF preview could not be loaded:", e);
+        if (!cancelled) setReviewPdfStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [review?.resumeUrl, review?.resumeOriginalName]);
 
   /**
    * Stages hidden from the active pipeline lists.
-   * Hired applicants move to New Hire Onboarding and are no longer shown;
-   * rejected applicants stay visible to the super admin only.
+   * Hired applicants move to New Hire Onboarding and are no longer shown.
+   * Rejected applicants REMAIN visible in the list — they are simply labelled
+   * as "Rejected" (with their decision actions locked).
    */
-  const hiddenStages = role === "admin" ? ["Hired", "Rejected"] : ["Hired"];
+  const hiddenStages = ["Hired"];
   const isHiddenStage = (a: Applicant) => hiddenStages.includes(a.stage);
 
   /** Stages where the hiring decision is already made — these applicants can
@@ -1651,9 +1581,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
   /** Interviews can only be rescheduled / cancelled while the applicant is
    *  still within the interview phase (not yet assessed / accepted / offered /
-   *  hired / rejected) and the interview itself has not been completed. */
+   *  hired / rejected) and the interview itself has not been completed.
+   *  Cancelled interviews stay re-bookable (reschedule reactivates them). */
   const isInterviewLocked = (i: { status: string; applicant: string }): boolean => {
     if (i.status === "Completed") return true;
+    if (i.status === "Cancelled") return false;
     const src = rows.find((r) => r.name === i.applicant);
     if (!src) return false;
     return ["Assessed", "Accepted", "Offer", "Hired", "Rejected"].includes(src.stage);
@@ -1783,7 +1715,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     navigate({ to: `/${role}/onboarding` });
   };
 
-  /** Rejecting an assessment drops the row from the list. */
+  /** Rejecting an assessment keeps the record in the list, only labelled as
+   *  "Rejected" — the assessment history must remain visible. */
   const rejectAssessment = async (r: AssessmentResult) => {
     const applicant = rows.find((a) => a.id === r.applicantId);
     setStage(r.applicantId, "Rejected");
@@ -1793,7 +1726,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       module: "Applicant Management",
       details: `Rejected after assessment (${r.total}%)`,
     });
-    setAssessments((prev) => prev.filter((a) => a.applicantId !== r.applicantId));
     toast.success(`${r.name} rejected after assessment`);
 
     try {
@@ -1805,13 +1737,18 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }
   };
 
-  /** Accept ? prefill the scheduler and jump to the Interview Scheduling tab. */
+  /** Accept → prefill the scheduler and jump to the Interview Scheduling tab. */
   const acceptAndSchedule = (a: Applicant) => {
-    if (isActionLocked(a)) return;
+    // "Accepted" applicants are exactly the ones this action is for — only
+    // block stages past the decision point (assessed, offered, hired, rejected).
+    if (a.stage !== "Accepted" && isActionLocked(a)) return;
+    // Prefer DB-backed positions so the department filter matches the
+    // "1. Select Applicant" list; fall back to the static lookups.
     const dept =
+      displayPositions.find((p) => p.title === a.position)?.department ??
       positions.find((p) => p.title === a.position)?.department ??
       jobs.find((j) => j.id === a.jobId)?.department;
-    const known = dept && departments.some((d) => d.name === dept) ? dept : "all";
+    const known = dept && displayDepartments.some((d) => d.name === dept) ? dept : "all";
     setScheduleDept(known);
     setSchedule((s) => ({ ...s, applicant: a.name }));
     // Accepted applicants (stage) become selectable for interview booking
@@ -1836,10 +1773,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     if (isInterviewLocked(i)) return;
     const src = rows.find((r) => r.name === i.applicant);
     const dept = src
-      ? (positions.find((p) => p.title === src.position)?.department ??
+      ? (displayPositions.find((p) => p.title === src.position)?.department ??
+        positions.find((p) => p.title === src.position)?.department ??
         jobs.find((j) => j.id === src.jobId)?.department)
       : undefined;
-    const known = dept && departments.some((d) => d.name === dept) ? dept : "all";
+    const known = dept && displayDepartments.some((d) => d.name === dept) ? dept : "all";
     const slotTime = slotsForSelected.includes(i.time) ? i.time : slotsForSelected[0]!;
     setScheduleDept(known);
     setSchedule({
@@ -1851,6 +1789,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         ? i.interviewer
         : (scheduleInterviewers[0]?.name ?? i.interviewer),
     });
+    // Point the interview calendar at the month of the scheduled date so the
+    // booked day is immediately visible/highlighted.
+    const d = new Date(`${i.date}T00:00:00`);
+    if (!Number.isNaN(d.getTime())) {
+      setViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    }
     setRescheduling(i);
     setTab("scheduling");
     toast.success(`Rescheduling ${i.applicant}`, {
@@ -1863,9 +1807,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       toast.error("Select an applicant first");
       return;
     }
-    // When the applicant already has an interview booked, this booking acts
+    // When the applicant already has a live interview booked, this booking acts
     // as a reschedule of that interview instead of blocking the action.
-    const existingInterview = interviews.find((i) => i.applicant === schedule.applicant);
+    // Cancelled interviews don't count — they're re-bookable.
+    const existingInterview = interviews.find(
+      (i) => i.applicant === schedule.applicant && i.status !== "Cancelled",
+    );
     const updateTarget = rescheduling ?? existingInterview ?? null;
     const taken = interviews.filter(
       (i) => i.date === schedule.date && i.time === schedule.time && i.id !== updateTarget?.id,
@@ -2051,7 +1998,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       `Applied   : ${a.appliedAt}`,
       `Source    : ${a.source}`,
       `Stage     : ${a.stage}`,
-      `Match     : ${a.score}% � ${statusMeta[a.status].label}`,
+      `Match     : ${a.score}% — ${statusMeta[a.status].label}`,
       "",
       "EXTRACTED DETAILS",
       ...a.entities.map((e) => `- ${e.label}: ${e.value}`),
@@ -2069,27 +2016,37 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     toast.success("Screening result downloaded");
   };
 
-  /** Cancels an interview after the user confirms in the modal. */
-
+  /** Marks an interview as Cancelled (the record is kept and labelled) after
+   *  the user confirms in the modal. The applicant returns to the "Screened"
+   *  stage so they can be re-booked; the database record is updated too. */
   const performCancelInterview = async () => {
     const i = cancelInterview;
-    if (!i || isInterviewLocked(i)) return;
-    setInterviews((prev) => prev.filter((x) => x.id !== i.id));
+    if (!i) return;
+    if (i.status === "Completed") {
+      toast.error("Completed interviews can no longer be cancelled.");
+      setCancelInterview(null);
+      return;
+    }
+    // Keep the record, but flag it as Cancelled so it stays visible in the
+    // Scheduled Interviews list / calendar with its label.
+    setInterviews((prev) => prev.map((x) => (x.id === i.id ? { ...x, status: "Cancelled" } : x)));
     const src = rows.find((a) => a.name === i.applicant);
     if (src) setStage(src.id, "Screened");
     addAudit({
       actionType: "Interview Cancelled",
       target: i.applicant,
       module: "Interview Scheduling",
-      details: `Interview on ${i.date} � ${i.time} cancelled.`,
+      details: `Interview on ${i.date} — ${i.time} cancelled.`,
     });
     setCancelInterview(null);
-    toast(`Interview cancelled � ${i.applicant}`);
+    toast(`Interview cancelled — ${i.applicant}`, {
+      description: "The record is kept and labelled as Cancelled.",
+    });
 
     try {
-      if (i.dbId) await interviewsApi.delete(i.dbId);
+      if (i.dbId) await interviewsApi.update(i.dbId, { status: "Cancelled" });
     } catch (e) {
-      console.warn("Could not remove interview from database API:", e);
+      console.warn("Could not mark the interview as cancelled on the database API:", e);
     }
   };
 
@@ -2146,7 +2103,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       details: `Assessment saved with a total score of ${total}%`,
     });
     setEvaluating(null);
-    toast.success(`Assessment saved � ${total}%`);
+    toast.success(`Assessment saved — ${total}%`);
 
     try {
       if (evaluating.dbId) {
@@ -2226,188 +2183,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }
   };
 
-  const totalWeight = criteria.reduce((t, c) => t + (c.enabled ? c.weight : 0), 0);
-
-  /** Runs the real spaCy NLP screening through the Laravel backend.
-   *  The uploaded resume is analyzed against the selected job post and all
-   *  other open positions; the full result payload is kept so saving the
-   *  applicant can reuse it (no second NLP call). */
-  const runScreening = async () => {
-    if (!addResumeFile) {
-      toast.error("Upload a resume file first.");
-      return;
-    }
-    setScreeningLoading(true);
-    try {
-      let jobPostId: number | undefined;
-      try {
-        const jobsRes = await jobPostsApi.list({ per_page: 100 });
-        jobPostId = jobsRes?.data?.find((j) => j.title === addForm.position)?.job_post_id;
-      } catch {
-        // job post lookup failed — backend will reject without a valid id
-      }
-      if (!jobPostId) {
-        toast.error("No job post found for the selected position.");
-        return;
-      }
-      const fd = new FormData();
-      fd.append("resume", addResumeFile);
-      fd.append("job_post_id", String(jobPostId));
-      const result = await applicantsApi.screenResume(fd);
-      if (!result.success) {
-        throw new Error(result.error_message || "The resume could not be processed.");
-      }
-      setScreenResult({
-        score: Number((result.match_score ?? 0).toFixed(2)),
-        status: toUiStatus(result.screening_status),
-        entities:
-          result.entities?.map((e) => ({
-            label:
-              e.label === "EDUCATION"
-                ? "EDU"
-                : e.label === "ORGANIZATION"
-                  ? "ORG"
-                  : e.label === "CERTIFICATION"
-                    ? "CERT"
-                    : e.label,
-            value: e.value,
-          })) ?? [],
-        detail: result,
-      });
-      toast.success(
-        `Screening complete — ${result.match_score ?? 0}% (${statusMeta[toUiStatus(result.screening_status)].label})`,
-      );
-      setAddStep(3);
-    } catch (e) {
-      console.warn("Resume screening failed:", e);
-      toast.error(
-        "Could not screen the resume. Make sure the NLP service is running on port 8001, then retry.",
-      );
-    } finally {
-      setScreeningLoading(false);
-    }
-  };
-
-  const saveNewApplicant = async () => {
-    if (!addForm.name || !addForm.email || !addForm.phone || !addForm.address) {
-      toast.error("Complete name, email, phone number and address.");
-      return;
-    }
-
-    if (!isValidName(addForm.name)) {
-      toast.error("Please enter a valid full name (letters only, no numbers).");
-      return;
-    }
-
-    if (!isValidEmail(addForm.email)) {
-      toast.error("Please enter a valid email address (e.g. name@domain.com).");
-      return;
-    }
-
-    if (!isValidPhone(addForm.phone)) {
-      toast.error("Please enter a valid contact number (7 to 15 digits).");
-      return;
-    }
-
-    const res = screenResult!;
-    const now = new Date();
-    const newApp: Applicant = {
-      id: `APP-${1042 + rows.length}`,
-      name: addForm.name.trim(),
-      email: addForm.email.trim(),
-      phone: addForm.phone.trim(),
-      position: addForm.position,
-      jobId: addForm.position.toLowerCase().replace(/[^a-z]+/g, "-"),
-      appliedAt: `${isoOf(now)} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
-      score: res.score,
-      status: res.status,
-      stage: "Screened",
-      source: addMethod === "image" ? "Walk-in" : "Online Portal",
-      entities: res.entities,
-      breakdown: [
-        { criterion: "Skills", score: Math.round(res.score * 0.4) },
-        { criterion: "Work Experience", score: Math.round(res.score * 0.3) },
-        {
-          criterion: "Educational Background",
-          score: Math.round(res.score * 0.2),
-        },
-        { criterion: "Certifications", score: Math.round(res.score * 0.1) },
-      ],
-      flags: res.status === "credential" ? ["Manual credential verification required"] : [],
-      summary: `Added via ${addMethod === "image" ? "image (OCR)" : "document"} screening — ${addFileName || "uploaded resume"}.`,
-      screening_detail: (res.detail as unknown as Applicant["screening_detail"]) ?? null,
-    };
-    setRows((prev) => [newApp, ...prev]);
-    addAudit({
-      actionType: "Applicant Added",
-      target: newApp.name,
-      module: "Screening",
-      details: `Added via ${addMethod === "image" ? "image (OCR)" : "document"} screening — ${addFileName || "uploaded resume"}, scored ${res.score}%.`,
-    });
-    toast.success(`${addForm.name} added to the applicant list`);
-    setAddOpen(false);
-    setAddStep(1);
-    setScreenResult(null);
-    setAddFileName("");
-    setAddResumeFile(null);
-    setAddForm({
-      name: "",
-      email: "",
-      phone: "",
-      address: "",
-      position: positions[0]!.title,
-    });
-
-    try {
-      let jobPostId = 1;
-      try {
-        const jobsRes = await jobPostsApi.list({ per_page: 100 });
-        jobPostId = jobsRes?.data?.find((j) => j.title === newApp.position)?.job_post_id ?? 1;
-      } catch {
-        // fall back to the first job post when the lookup fails
-      }
-      const base = {
-        job_post_id: jobPostId,
-        name: newApp.name,
-        email: newApp.email,
-        phone: newApp.phone,
-        source: newApp.source,
-        summary: newApp.summary,
-        status: newApp.status,
-        stage: newApp.stage,
-        flags_json: newApp.flags,
-        // persist the screening score so it isn't 0% after a refresh
-        fit_score: res.score,
-      };
-      let payload: FormData | Record<string, any> = base;
-      if (addResumeFile) {
-        const fd = new FormData();
-        Object.entries(base).forEach(([k, v]) => {
-          if (k === "flags_json") {
-            fd.append(k, JSON.stringify(v ?? []));
-          } else {
-            fd.append(k, String(v));
-          }
-        });
-        fd.append("resume", addResumeFile);
-        // Reuse the preview's NLP result server-side (no second screening run).
-        if (res.detail) {
-          fd.append("screening_payload", JSON.stringify(res.detail));
-        }
-        payload = fd;
-      }
-      const created = await applicantsApi.create(payload);
-      setRows((prev) =>
-        prev.map((x) => (x.id === newApp.id ? { ...x, dbId: created.applicant_id } : x)),
-      );
-    } catch (e) {
-      console.warn("Could not persist applicant to database API:", e);
-      toast.error(
-        `${addForm.name} was added locally, but could not be saved to the database — interview scheduling may not work for this applicant until the record is re-saved.`,
-      );
-    }
-  };
-
   const monthCells = useMemo(() => {
     const first = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
     const start = new Date(first);
@@ -2439,13 +2214,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     ],
   );
 
-  /** Bookable slot labels � excludes any slot that overlaps the configured break window. */
+  /** Bookable slot labels — excludes any slot that overlaps the configured break window. */
   const slotsForSelected = useMemo(
     () => dailySchedule.filter((s) => !s.isBreak).map((s) => s.label),
     [dailySchedule],
   );
 
-  /** Maximum concurrent interviews per slot � limited by whichever is scarcer, interviewers or rooms. */
+  /** Maximum concurrent interviews per slot — limited by whichever is scarcer, interviewers or rooms. */
   const capacityPerSlot = Math.max(
     1,
     Math.min(
@@ -2460,7 +2235,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     interviews.filter((i) => i.date === date && i.time === time).length;
 
   const readyToAssess = rows.filter(
-    (a) => a.stage === "Interview Scheduled" && !assessments.some((x) => x.applicantId === a.id),
+    (a) =>
+      a.stage === "Interview Scheduled" &&
+      !assessments.some((x) => x.applicantId === a.id) &&
+      // An interview that was cancelled must never leave the candidate in the
+      // assessment queue — there must be a live (non-cancelled) booking.
+      interviews.some((i) => i.applicant === a.name && i.status !== "Cancelled"),
   );
 
   /** Accepted applicants that passed screening but have no interview booked yet. */
@@ -2481,7 +2261,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       (a) =>
         a.stage === "Accepted" &&
         a.status === "fit" &&
-        !interviews.some((i) => i.applicant === a.name),
+        // Cancelled interviews don't count as booked — the applicant can be
+        // re-scheduled and remains a "Need to Schedule" row.
+        !interviews.some((i) => i.applicant === a.name && i.status !== "Cancelled"),
     )
     .map((a) => ({
       id: `NS-${a.id}`,
@@ -2489,8 +2271,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       position: a.position,
       date: "",
       time: "",
-      mode: "�",
-      interviewer: "�",
+      mode: "—",
+      interviewer: "—",
       status: "Need to Schedule",
       pending: true,
     }));
@@ -2537,7 +2319,15 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       };
 
   const deptForPosition = (position: string) =>
-    displayPositions.find((p) => p.title === position)?.department ?? "�";
+    displayPositions.find((p) => p.title === position)?.department ?? "—";
+
+  /** Outcome label for an assessment row — a candidate rejected after the
+   *  assessment stays in the list, only labelled "Rejected". */
+  const assessmentRowOutcome = (row: AssessmentRow): string => {
+    if (row.kind === "ready") return "Ready for Assessment";
+    const src = rows.find((a) => a.id === row.r.applicantId);
+    return src?.stage === "Rejected" ? "Rejected" : row.r.outcome;
+  };
 
   const assessmentRowsAll: AssessmentRow[] = [
     ...(assessmentFilter !== "completed"
@@ -2554,8 +2344,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           .filter((r) => {
             const src = rows.find((a) => a.id === r.applicantId);
             if (!src) return true;
-            // Applicants who already reached Offer / Accepted / Hired /
-            // Rejected no longer belong in the assessment list.
+            // A candidate rejected after the assessment STAYS in the list
+            // (labelled "Rejected"); the other past-decision stages don't.
+            if (src.stage === "Rejected") return true;
             return !isHiddenStage(src) && !noLongerAssessable(src);
           })
           .map((r) => ({
@@ -2570,7 +2361,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const name = row.kind === "ready" ? row.a.name : row.r.name;
     const position = row.kind === "ready" ? row.a.position : row.r.position;
     const dept = deptForPosition(position);
-    const outcome = row.kind === "ready" ? "Ready for Assessment" : row.r.outcome;
+    const outcome = assessmentRowOutcome(row);
     const q = assessmentSearch.trim().toLowerCase();
     return (
       (!q || `${name} ${position} ${dept} ${outcome}`.toLowerCase().includes(q)) &&
@@ -2584,13 +2375,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     position: (row) => (row.kind === "ready" ? row.a.position : row.r.position),
     department: (row) => deptForPosition(row.kind === "ready" ? row.a.position : row.r.position),
     score: (row) => (row.kind === "ready" ? row.a.score : row.r.total),
-    status: (row) => (row.kind === "ready" ? "Ready for Assessment" : row.r.outcome),
+    status: (row) => assessmentRowOutcome(row),
     details: (row) =>
       row.kind === "ready"
         ? row.iv
-          ? `Interviewed ${row.iv.date} � ${row.iv.time}`
+          ? `Interviewed ${row.iv.date} — ${row.iv.time}`
           : "Interview not booked"
-        : `Assessed ${row.r.date} � ${row.r.remarks}`,
+        : `Assessed ${row.r.date} — ${row.r.remarks}`,
   });
 
   const auditFiltered = auditLog
@@ -2629,16 +2420,20 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    * only accepted ones (Accept &amp; Schedule), no applicant that is already
    * booked, and none that moved past the interview stage (assessment etc.).
    */
+  const scheduleApplicantsBase = rows.filter(
+    (a) =>
+      a.stage === "Accepted" &&
+      // Cancelled interviews don't count as booked — the applicant is
+      // selectable again for re-booking.
+      !interviews.some((i) => i.applicant === a.name && i.status !== "Cancelled") &&
+      !["Assessed", "Offer", "Hired", "Rejected"].includes(a.stage) &&
+      (scheduleDept === "all" ||
+        displayPositions.find((p) => p.title === a.position)?.department === scheduleDept) &&
+      (schedulePosition === "all" || a.position === schedulePosition),
+  );
+
   const scheduleApplicants = [
-    ...rows.filter(
-      (a) =>
-        a.stage === "Accepted" &&
-        !interviews.some((i) => i.applicant === a.name) &&
-        !["Assessed", "Offer", "Hired", "Rejected"].includes(a.stage) &&
-        (scheduleDept === "all" ||
-          displayPositions.find((p) => p.title === a.position)?.department === scheduleDept) &&
-        (schedulePosition === "all" || a.position === schedulePosition),
-    ),
+    ...scheduleApplicantsBase,
     // While rescheduling, the applicant being moved stays selectable even
     // though they already have a booked interview.
     ...(rescheduling
@@ -2650,7 +2445,19 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             (schedulePosition === "all" || a.position === schedulePosition),
         )
       : []),
-  ];
+    // Safety net: the applicant preselected via "Accept & Schedule" (or the
+    // Schedule action) must always be selectable, even when the department /
+    // position filter or the booked-interview check would otherwise exclude
+    // them (e.g. DB/department name mismatches).
+    ...(schedule.applicant
+      ? rows.filter(
+          (a) =>
+            a.name === schedule.applicant &&
+            a.stage === "Accepted" &&
+            !scheduleApplicantsBase.some((b) => b.id === a.id),
+        )
+      : []),
+  ].filter((a, idx, arr) => arr.findIndex((x) => x.id === a.id) === idx);
   const scheduleInterviewers = interviewers.filter(
     (s) => scheduleDept === "all" || s.department === scheduleDept,
   );
@@ -2658,22 +2465,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   return (
     <div>
       <PageHeader
-        eyebrow={role === "superadmin" ? "Super Admin � Recruitment" : "Admin � Recruitment"}
+        eyebrow={role === "superadmin" ? "Super Admin — Recruitment" : "Admin — Recruitment"}
         title="Applicant Management"
         description="spaCy NER resume screening, candidate ranking, interview scheduling and evaluation."
         actions={
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" onClick={() => setReportsOpen(true)}>
-              <FileText className="mr-2 h-4 w-4" /> Reports
-            </Button>
-            <Button
-              size="icon"
-              variant="outline"
-              aria-label="Screening setup"
-              title="Screening setup"
-              onClick={() => setScreeningOpen(true)}
-            >
-              <Settings2 className="h-4 w-4" />
+              <Download className="mr-2 h-4 w-4" /> Generate Report
             </Button>
           </div>
         }
@@ -2761,7 +2559,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       Candidate Ranking
                     </h2>
                     <p className="text-xs text-muted-foreground">
-                      Resume screening results � {screenedTotal} resume
+                      Resume screening results — {screenedTotal} resume
                       {screenedTotal === 1 ? "" : "s"} processed
                       {positionFilter !== "all"
                         ? ` for ${positionFilter}`
@@ -2929,7 +2727,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </span>
                       </div>
 
-                      {/* Review button � full width, matches photo */}
+                      {/* Review button — full width, matches photo */}
                       <Button
                         size="sm"
                         variant="outline"
@@ -2955,7 +2753,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   </h2>
                   <p className="text-xs text-muted-foreground">
                     Based on the applied job position
-                    {positionFilter !== "all" ? ` � ${positionFilter}` : " � all positions"}.
+                    {positionFilter !== "all" ? ` — ${positionFilter}` : " — all positions"}.
                   </p>
                   {rankingFilter !== "all" && (
                     <Badge
@@ -2976,7 +2774,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Input
-                    placeholder="Search applicant�"
+                    placeholder="Search applicant—"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     className="w-56"
@@ -3028,10 +2826,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       ))}
                     </SelectContent>
                   </Select>
-
-                  <Button size="sm" onClick={() => setAddOpen(true)}>
-                    <UserPlus className="mr-2 h-4 w-4" /> Add applicant
-                  </Button>
                 </div>
               </div>
 
@@ -3320,7 +3114,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <div className="grid flex-1 grid-cols-7 grid-rows-6 overflow-hidden rounded-lg border border-border">
                   {monthCells.map((cell) => {
                     const iso = isoOf(cell.date);
-                    const count = interviews.filter((i) => i.date === iso).length;
+                    // Cancelled bookings don't make a day "Booked/Full".
+                    const count = interviews.filter(
+                      (i) => i.date === iso && i.status !== "Cancelled",
+                    ).length;
                     // A day is free only if the setter says it is schedulable;
                     // full once every slot is booked.
                     const dayName = DAY_NAMES[cell.date.getDay()]!;
@@ -3349,10 +3146,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           isToday &&
                             !selected &&
                             "bg-gold/30 ring-1 ring-inset ring-gold hover:bg-gold/40 hover:shadow-sm",
-                          !selected &&
-                            !free &&
-                            !full &&
-                            "hover:bg-muted/50 hover:shadow-sm",
+                          !selected && !free && !full && "hover:bg-muted/50 hover:shadow-sm",
                           count === 0 &&
                             !schedulable &&
                             (cell.inMonth
@@ -3444,6 +3238,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           <SelectItem value="all">All status</SelectItem>
                           <SelectItem value="Scheduled">Scheduled</SelectItem>
                           <SelectItem value="Completed">Completed</SelectItem>
+                          <SelectItem value="Cancelled">Cancelled</SelectItem>
                           <SelectItem value="No Show">No Show</SelectItem>
                         </SelectContent>
                       </Select>
@@ -3469,12 +3264,18 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             key={i.id}
                             role="button"
                             tabIndex={0}
-                            onClick={() => toast(`Viewing interview � ${i.applicant}`)}
+                            onClick={() => toast(`Viewing interview — ${i.applicant}`)}
                             className="grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border/70 bg-muted/20 p-2.5 text-left transition-colors hover:bg-muted/40"
                           >
-                            <span className="shrink-0 rounded-md bg-card px-2.5 py-1.5 text-xs font-semibold text-primary shadow-sm">
-                              {i.time}
-                            </span>
+                            {i.status === "Cancelled" ? (
+                              <span className="shrink-0 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs font-semibold text-destructive line-through">
+                                {i.time}
+                              </span>
+                            ) : (
+                              <span className="shrink-0 rounded-md bg-card px-2.5 py-1.5 text-xs font-semibold text-primary shadow-sm">
+                                {i.time}
+                              </span>
+                            )}
                             <span className="grid min-w-0 gap-1 sm:grid-cols-2">
                               <span className="min-w-0">
                                 <span className="block truncate text-sm font-medium">
@@ -3494,25 +3295,37 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               </span>
                             </span>
                             <span className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                aria-label={`Delete interview for ${i.applicant}`}
-                                title="Delete interview"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setCancelInterview(interviews.find((x) => x.id === i.id) ?? null);
-                                }}
-                                className="rounded-md p-1 text-destructive transition-colors hover:bg-destructive/10"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+                              {i.status === "Cancelled" && (
+                                <Badge
+                                  variant="outline"
+                                  className="shrink-0 border-destructive/40 bg-destructive/10 text-destructive"
+                                >
+                                  Cancelled
+                                </Badge>
+                              )}
+                              {i.status !== "Cancelled" && (
+                                <button
+                                  type="button"
+                                  aria-label={`Delete interview for ${i.applicant}`}
+                                  title="Delete interview"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCancelInterview(
+                                      interviews.find((x) => x.id === i.id) ?? null,
+                                    );
+                                  }}
+                                  className="rounded-md p-1 text-destructive transition-colors hover:bg-destructive/10"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                             </span>
                           </div>
                         ))}
                       {interviews.filter((i) => i.date === schedule.date).length === 0 && (
                         <p className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
-                          No interviews booked � the whole day is free.
+                          No interviews booked — the whole day is free.
                         </p>
                       )}
                     </div>
@@ -3544,490 +3357,458 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <div className="mt-4 flex flex-1 flex-col">
                   <div className="flex-1 space-y-4">
                     <Dialog open={slotDialogOpen} onOpenChange={setSlotDialogOpen}>
-                    <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-[min(1400px,95vw)]">
-                      <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 font-display text-2xl">
-                          <Settings2 className="h-5 w-5 text-primary" /> Slot Settings
-                        </DialogTitle>
-                        <DialogDescription>
-                          Customize how interview slots are generated and managed.
-                        </DialogDescription>
-                      </DialogHeader>
+                      <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-[min(1400px,95vw)]">
+                        <DialogHeader>
+                          <DialogTitle className="flex items-center gap-2 font-display text-2xl">
+                            <Settings2 className="h-5 w-5 text-primary" /> Slot Settings
+                          </DialogTitle>
+                          <DialogDescription>
+                            Customize how interview slots are generated and managed.
+                          </DialogDescription>
+                        </DialogHeader>
 
-                      <div className="grid gap-6 lg:grid-cols-2">
-                        {/* ?? Left column: configuration ??????????????? */}
-                        <div className="max-h-[58vh] space-y-5 overflow-y-auto pr-1">
-                          <div className="space-y-3">
-                            <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground">
-                              <Users className="h-3.5 w-3.5" /> CAPACITY (PER TIME SLOT)
-                            </p>
-                            <p className="text-[0.7rem] text-muted-foreground">
-                              The number of interviews that can happen at the same time based on
-                              available interviewers and rooms.
-                            </p>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <div className="space-y-1">
-                                <Label className="text-xs">Available Interviewers</Label>
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  max={100}
-                                  value={slotSettings.interviewersAvailable}
-                                  onChange={(e) =>
-                                    setSlotSettings((p) => ({
-                                      ...p,
-                                      interviewersAvailable: Math.max(
-                                        1,
-                                        Number(e.target.value) || 1,
-                                      ),
-                                    }))
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Available Rooms</Label>
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  max={100}
-                                  value={slotSettings.roomsAvailable}
-                                  onChange={(e) =>
-                                    setSlotSettings((p) => ({
-                                      ...p,
-                                      roomsAvailable: Math.max(1, Number(e.target.value) || 1),
-                                    }))
-                                  }
-                                />
-                              </div>
-                            </div>
-                            <div className="rounded-lg border border-primary/30 bg-primary/10 p-3">
-                              <p className="text-xs font-medium text-foreground">
-                                Maximum Concurrent Interviews
-                              </p>
-                              <div className="mt-1 flex items-baseline gap-2">
-                                <span className="font-display text-3xl font-bold text-primary">
-                                  {capacityPerSlot}
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  interviews per time slot
-                                </span>
-                              </div>
-                              <p className="text-[0.65rem] text-muted-foreground">
-                                (Limited by available interviewers and rooms)
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="space-y-3 border-t border-border/70 pt-4">
-                            <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground">
-                              <CalendarClock className="h-3.5 w-3.5" /> TIME CONFIGURATION
-                            </p>
-                            <div className="grid gap-3 sm:grid-cols-3">
-                              <div className="space-y-1">
-                                <Label className="text-xs">First slot starts</Label>
-                                <Input
-                                  type="time"
-                                  value={slotSettings.startTime}
-                                  onChange={(e) =>
-                                    setSlotSettings((p) => ({
-                                      ...p,
-                                      startTime: e.target.value || "08:00",
-                                    }))
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Slot duration</Label>
-                                <Select
-                                  value={String(slotSettings.intervalMinutes)}
-                                  onValueChange={(v) =>
-                                    setSlotSettings((p) => ({
-                                      ...p,
-                                      intervalMinutes: Number(v),
-                                    }))
-                                  }
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {[15, 20, 30, 45, 60].map((m) => (
-                                      <SelectItem key={m} value={String(m)}>
-                                        {m} minutes
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Number of time slots</Label>
-                                <Select
-                                  value={String(slotSettings.slotCount)}
-                                  onValueChange={(v) =>
-                                    setSlotSettings((p) => ({
-                                      ...p,
-                                      slotCount: Number(v),
-                                    }))
-                                  }
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {[6, 8, 10, 12, 14, 16, 18, 20].map((n) => (
-                                      <SelectItem key={n} value={String(n)}>
-                                        {n} slots
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="space-y-3 border-t border-border/70 pt-4">
-                            <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground">
-                              <CalendarDays className="h-3.5 w-3.5" /> SCHEDULABLE DAYS
-                            </p>
-                            <p className="text-[0.7rem] text-muted-foreground">
-                              Free-day indicators on the interview calendar only apply to the days
-                              selected here.
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {DAY_NAMES.map((day) => {
-                                const active = schedulableDaysDraft.includes(day);
-                                return (
-                                  <button
-                                    key={day}
-                                    type="button"
-                                    onClick={() =>
-                                      setSchedulableDaysDraft((prev) =>
-                                        active ? prev.filter((d) => d !== day) : [...prev, day],
-                                      )
-                                    }
-                                    className={cn(
-                                      "h-8 rounded-md border px-3 text-xs font-medium transition-colors",
-                                      active
-                                        ? "border-primary/40 bg-primary/10 text-primary"
-                                        : "border-border bg-muted/20 text-muted-foreground",
-                                    )}
-                                  >
-                                    {day.slice(0, 3).toUpperCase()}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
-                            <div className="flex items-center justify-between">
+                        <div className="grid gap-6 lg:grid-cols-2">
+                          {/* ?? Left column: configuration ??????????????? */}
+                          <div className="max-h-[58vh] space-y-5 overflow-y-auto pr-1">
+                            <div className="space-y-3">
                               <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground">
-                                <CalendarDays className="h-3.5 w-3.5" /> BREAK SLOT (UNAVAILABLE
-                                TIME)
+                                <Users className="h-3.5 w-3.5" /> CAPACITY (PER TIME SLOT)
                               </p>
-                              <Switch
-                                checked={slotSettings.breakEnabled}
-                                onCheckedChange={(v) =>
-                                  setSlotSettings((p) => ({
-                                    ...p,
-                                    breakEnabled: v,
-                                  }))
-                                }
-                              />
+                              <p className="text-[0.7rem] text-muted-foreground">
+                                The number of interviews that can happen at the same time based on
+                                available interviewers and rooms.
+                              </p>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Available Interviewers</Label>
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    max={100}
+                                    value={slotSettings.interviewersAvailable}
+                                    onChange={(e) =>
+                                      setSlotSettings((p) => ({
+                                        ...p,
+                                        interviewersAvailable: Math.max(
+                                          1,
+                                          Number(e.target.value) || 1,
+                                        ),
+                                      }))
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Available Rooms</Label>
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    max={100}
+                                    value={slotSettings.roomsAvailable}
+                                    onChange={(e) =>
+                                      setSlotSettings((p) => ({
+                                        ...p,
+                                        roomsAvailable: Math.max(1, Number(e.target.value) || 1),
+                                      }))
+                                    }
+                                  />
+                                </div>
+                              </div>
+                              <div className="rounded-lg border border-primary/30 bg-primary/10 p-3">
+                                <p className="text-xs font-medium text-foreground">
+                                  Maximum Concurrent Interviews
+                                </p>
+                                <div className="mt-1 flex items-baseline gap-2">
+                                  <span className="font-display text-3xl font-bold text-primary">
+                                    {capacityPerSlot}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    interviews per time slot
+                                  </span>
+                                </div>
+                                <p className="text-[0.65rem] text-muted-foreground">
+                                  (Limited by available interviewers and rooms)
+                                </p>
+                              </div>
                             </div>
-                            <p className="text-[0.7rem] text-muted-foreground">
-                              Time within this range will not be available for interviews.
-                            </p>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <div className="space-y-1">
-                                <Label className="text-xs">Break start</Label>
-                                <Input
-                                  type="time"
-                                  disabled={!slotSettings.breakEnabled}
-                                  value={slotSettings.breakStart}
-                                  onChange={(e) =>
+
+                            <div className="space-y-3 border-t border-border/70 pt-4">
+                              <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground">
+                                <CalendarClock className="h-3.5 w-3.5" /> TIME CONFIGURATION
+                              </p>
+                              <div className="grid gap-3 sm:grid-cols-3">
+                                <div className="space-y-1">
+                                  <Label className="text-xs">First slot starts</Label>
+                                  <Input
+                                    type="time"
+                                    value={slotSettings.startTime}
+                                    onChange={(e) =>
+                                      setSlotSettings((p) => ({
+                                        ...p,
+                                        startTime: e.target.value || "08:00",
+                                      }))
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Slot duration</Label>
+                                  <Select
+                                    value={String(slotSettings.intervalMinutes)}
+                                    onValueChange={(v) =>
+                                      setSlotSettings((p) => ({
+                                        ...p,
+                                        intervalMinutes: Number(v),
+                                      }))
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {[15, 20, 30, 45, 60].map((m) => (
+                                        <SelectItem key={m} value={String(m)}>
+                                          {m} minutes
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Number of time slots</Label>
+                                  <Select
+                                    value={String(slotSettings.slotCount)}
+                                    onValueChange={(v) =>
+                                      setSlotSettings((p) => ({
+                                        ...p,
+                                        slotCount: Number(v),
+                                      }))
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {[6, 8, 10, 12, 14, 16, 18, 20].map((n) => (
+                                        <SelectItem key={n} value={String(n)}>
+                                          {n} slots
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="space-y-3 border-t border-border/70 pt-4">
+                              <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground">
+                                <CalendarDays className="h-3.5 w-3.5" /> SCHEDULABLE DAYS
+                              </p>
+                              <p className="text-[0.7rem] text-muted-foreground">
+                                Free-day indicators on the interview calendar only apply to the days
+                                selected here.
+                              </p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {DAY_NAMES.map((day) => {
+                                  const active = schedulableDaysDraft.includes(day);
+                                  return (
+                                    <button
+                                      key={day}
+                                      type="button"
+                                      onClick={() =>
+                                        setSchedulableDaysDraft((prev) =>
+                                          active ? prev.filter((d) => d !== day) : [...prev, day],
+                                        )
+                                      }
+                                      className={cn(
+                                        "h-8 rounded-md border px-3 text-xs font-medium transition-colors",
+                                        active
+                                          ? "border-primary/40 bg-primary/10 text-primary"
+                                          : "border-border bg-muted/20 text-muted-foreground",
+                                      )}
+                                    >
+                                      {day.slice(0, 3).toUpperCase()}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                              <div className="flex items-center justify-between">
+                                <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground">
+                                  <CalendarDays className="h-3.5 w-3.5" /> BREAK SLOT (UNAVAILABLE
+                                  TIME)
+                                </p>
+                                <Switch
+                                  checked={slotSettings.breakEnabled}
+                                  onCheckedChange={(v) =>
                                     setSlotSettings((p) => ({
                                       ...p,
-                                      breakStart: e.target.value || "12:00",
+                                      breakEnabled: v,
                                     }))
                                   }
                                 />
                               </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Break end</Label>
-                                <Input
-                                  type="time"
-                                  disabled={!slotSettings.breakEnabled}
-                                  value={slotSettings.breakEnd}
-                                  onChange={(e) =>
-                                    setSlotSettings((p) => ({
-                                      ...p,
-                                      breakEnd: e.target.value || "13:00",
-                                    }))
-                                  }
-                                />
+                              <p className="text-[0.7rem] text-muted-foreground">
+                                Time within this range will not be available for interviews.
+                              </p>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Break start</Label>
+                                  <Input
+                                    type="time"
+                                    disabled={!slotSettings.breakEnabled}
+                                    value={slotSettings.breakStart}
+                                    onChange={(e) =>
+                                      setSlotSettings((p) => ({
+                                        ...p,
+                                        breakStart: e.target.value || "12:00",
+                                      }))
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Break end</Label>
+                                  <Input
+                                    type="time"
+                                    disabled={!slotSettings.breakEnabled}
+                                    value={slotSettings.breakEnd}
+                                    onChange={(e) =>
+                                      setSlotSettings((p) => ({
+                                        ...p,
+                                        breakEnd: e.target.value || "13:00",
+                                      }))
+                                    }
+                                  />
+                                </div>
                               </div>
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-7 border-primary/40 bg-primary/10 text-xs text-primary"
-                                disabled={!slotSettings.breakEnabled}
-                                onClick={() =>
-                                  setSlotSettings((p) => ({
-                                    ...p,
-                                    breakStart: "12:00",
-                                    breakEnd: "13:00",
-                                  }))
-                                }
-                              >
-                                Lunch Break
-                              </Button>
-                              {[15, 30, 60].map((mins) => (
+                              <div className="flex flex-wrap gap-1.5">
                                 <Button
-                                  key={mins}
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  className="h-7 text-xs"
+                                  className="h-7 border-primary/40 bg-primary/10 text-xs text-primary"
                                   disabled={!slotSettings.breakEnabled}
                                   onClick={() =>
-                                    setSlotSettings((p) => {
-                                      const startMin = parseTimeToMinutes(p.breakStart);
-                                      const endMin =
-                                        (((startMin + mins) % (24 * 60)) + 24 * 60) % (24 * 60);
-                                      const eh = String(Math.floor(endMin / 60)).padStart(2, "0");
-                                      const em = String(endMin % 60).padStart(2, "0");
-                                      return { ...p, breakEnd: `${eh}:${em}` };
-                                    })
+                                    setSlotSettings((p) => ({
+                                      ...p,
+                                      breakStart: "12:00",
+                                      breakEnd: "13:00",
+                                    }))
                                   }
                                 >
-                                  {mins === 60 ? "1 hour" : `${mins} min`}
+                                  Lunch Break
                                 </Button>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="space-y-3 border-t border-border/70 pt-4">
-                            <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground">
-                              <Sliders className="h-3.5 w-3.5" /> OTHER OPTIONS
-                            </p>
-                            <div className="flex items-center justify-between rounded-md border border-border/70 bg-muted/20 px-3 py-2">
-                              <div>
-                                <p className="text-xs font-medium">Walk-in applicants</p>
-                                <p className="text-[0.7rem] text-muted-foreground">
-                                  Allow applicants without a scheduled appointment.
-                                </p>
+                                {[15, 30, 60].map((mins) => (
+                                  <Button
+                                    key={mins}
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs"
+                                    disabled={!slotSettings.breakEnabled}
+                                    onClick={() =>
+                                      setSlotSettings((p) => {
+                                        const startMin = parseTimeToMinutes(p.breakStart);
+                                        const endMin =
+                                          (((startMin + mins) % (24 * 60)) + 24 * 60) % (24 * 60);
+                                        const eh = String(Math.floor(endMin / 60)).padStart(2, "0");
+                                        const em = String(endMin % 60).padStart(2, "0");
+                                        return { ...p, breakEnd: `${eh}:${em}` };
+                                      })
+                                    }
+                                  >
+                                    {mins === 60 ? "1 hour" : `${mins} min`}
+                                  </Button>
+                                ))}
                               </div>
-                              <Switch
-                                checked={slotSettings.allowWalkIn}
-                                onCheckedChange={(v) =>
-                                  setSlotSettings((p) => ({
-                                    ...p,
-                                    allowWalkIn: v,
-                                  }))
-                                }
-                              />
                             </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Default interview type</Label>
-                              <Select
-                                value={slotSettings.defaultMode}
-                                onValueChange={(v) =>
-                                  setSlotSettings((p) => ({
-                                    ...p,
-                                    defaultMode: v as typeof p.defaultMode,
-                                  }))
-                                }
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="On-site">On-site</SelectItem>
-                                  <SelectItem value="Virtual">Virtual</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                        </div>
 
-                        {/* ?? Right column: preview ???????????????????? */}
-                        <div className="max-h-[58vh] space-y-4 overflow-y-auto pl-0 lg:border-l lg:border-border/70 lg:pl-6">
-                          <div>
-                            <div className="flex items-center justify-between gap-2">
+                            <div className="space-y-3 border-t border-border/70 pt-4">
                               <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground">
-                                <CalendarDays className="h-3.5 w-3.5" /> DAILY SCHEDULE PREVIEW
+                                <Sliders className="h-3.5 w-3.5" /> OTHER OPTIONS
                               </p>
-                              <Badge
-                                variant="outline"
-                                className="border-primary/30 bg-primary/10 text-primary"
-                              >
-                                {slotsForSelected.length} slots available
-                              </Badge>
-                            </div>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {dailySchedule[0]?.label} �{" "}
-                              {dailySchedule[dailySchedule.length - 1]?.endLabel}
-                            </p>
-                            <div className="mt-2 space-y-1.5 rounded-lg border border-border/70 p-2">
-                              {dailySchedule.map((slot, idx) => (
-                                <div
-                                  key={idx}
-                                  className={cn(
-                                    "flex items-center justify-between rounded-md px-2.5 py-1.5 text-xs",
-                                    slot.isBreak
-                                      ? "border border-primary/30 bg-primary/10 font-medium text-primary"
-                                      : "bg-muted/20",
-                                  )}
-                                >
-                                  <span>
-                                    {slot.label} � {slot.endLabel}
-                                  </span>
-                                  {slot.isBreak ? (
-                                    <Badge className="border-primary/30 bg-primary/15 text-primary">
-                                      Break
-                                    </Badge>
-                                  ) : (
-                                    <Badge className="border-success/30 bg-success/10 text-success">
-                                      Available
-                                    </Badge>
-                                  )}
+                              <div className="flex items-center justify-between rounded-md border border-border/70 bg-muted/20 px-3 py-2">
+                                <div>
+                                  <p className="text-xs font-medium">Walk-in applicants</p>
+                                  <p className="text-[0.7rem] text-muted-foreground">
+                                    Allow applicants without a scheduled appointment.
+                                  </p>
                                 </div>
-                              ))}
+                                <Switch
+                                  checked={slotSettings.allowWalkIn}
+                                  onCheckedChange={(v) =>
+                                    setSlotSettings((p) => ({
+                                      ...p,
+                                      allowWalkIn: v,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Default interview type</Label>
+                                <Select
+                                  value={slotSettings.defaultMode}
+                                  onValueChange={(v) =>
+                                    setSlotSettings((p) => ({
+                                      ...p,
+                                      defaultMode: v as typeof p.defaultMode,
+                                    }))
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="On-site">On-site</SelectItem>
+                                    <SelectItem value="Virtual">Virtual</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
                             </div>
                           </div>
 
-                          <div className="rounded-lg border border-border/70 bg-muted/10 p-3">
-                            <p className="text-xs font-semibold tracking-wide text-muted-foreground">
-                              SUMMARY
-                            </p>
-                            <div className="mt-2 grid gap-1.5 text-xs sm:grid-cols-2">
-                              {[
-                                `${capacityPerSlot} interviews per slot`,
-                                `${slotSettings.interviewersAvailable} interviewers`,
-                                `${slotSettings.roomsAvailable} rooms`,
-                                `${slotSettings.slotCount} slots per day`,
-                                `${slotSettings.intervalMinutes} minutes duration`,
-                                slotSettings.breakEnabled
-                                  ? `Break window (${dailySchedule.find((s) => s.isBreak)?.label ?? slotSettings.breakStart} � ${slotSettings.breakEnd})`
-                                  : "No break configured",
-                                slotSettings.allowWalkIn
-                                  ? "Walk-ins allowed"
-                                  : "Walk-ins not allowed",
-                                `Default type: ${slotSettings.defaultMode}`,
-                                `Schedulable days: ${
-                                  schedulableDays.length
-                                    ? schedulableDays.map((d) => d.slice(0, 3)).join(", ")
-                                    : "None"
-                                }`,
-                              ].map((line) => (
-                                <span key={line} className="flex items-center gap-1.5">
-                                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" />
-                                  {line}
-                                </span>
-                              ))}
+                          {/* ?? Right column: preview ???????????????????? */}
+                          <div className="max-h-[58vh] space-y-4 overflow-y-auto pl-0 lg:border-l lg:border-border/70 lg:pl-6">
+                            <div>
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground">
+                                  <CalendarDays className="h-3.5 w-3.5" /> DAILY SCHEDULE PREVIEW
+                                </p>
+                                <Badge
+                                  variant="outline"
+                                  className="border-primary/30 bg-primary/10 text-primary"
+                                >
+                                  {slotsForSelected.length} slots available
+                                </Badge>
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {dailySchedule[0]?.label} —{" "}
+                                {dailySchedule[dailySchedule.length - 1]?.endLabel}
+                              </p>
+                              <div className="mt-2 space-y-1.5 rounded-lg border border-border/70 p-2">
+                                {dailySchedule.map((slot, idx) => (
+                                  <div
+                                    key={idx}
+                                    className={cn(
+                                      "flex items-center justify-between rounded-md px-2.5 py-1.5 text-xs",
+                                      slot.isBreak
+                                        ? "border border-primary/30 bg-primary/10 font-medium text-primary"
+                                        : "bg-muted/20",
+                                    )}
+                                  >
+                                    <span>
+                                      {slot.label} — {slot.endLabel}
+                                    </span>
+                                    {slot.isBreak ? (
+                                      <Badge className="border-primary/30 bg-primary/15 text-primary">
+                                        Break
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="border-success/30 bg-success/10 text-success">
+                                        Available
+                                      </Badge>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="rounded-lg border border-border/70 bg-muted/10 p-3">
+                              <p className="text-xs font-semibold tracking-wide text-muted-foreground">
+                                SUMMARY
+                              </p>
+                              <div className="mt-2 grid gap-1.5 text-xs sm:grid-cols-2">
+                                {[
+                                  `${capacityPerSlot} interviews per slot`,
+                                  `${slotSettings.interviewersAvailable} interviewers`,
+                                  `${slotSettings.roomsAvailable} rooms`,
+                                  `${slotSettings.slotCount} slots per day`,
+                                  `${slotSettings.intervalMinutes} minutes duration`,
+                                  slotSettings.breakEnabled
+                                    ? `Break window (${dailySchedule.find((s) => s.isBreak)?.label ?? slotSettings.breakStart} — ${slotSettings.breakEnd})`
+                                    : "No break configured",
+                                  slotSettings.allowWalkIn
+                                    ? "Walk-ins allowed"
+                                    : "Walk-ins not allowed",
+                                  `Default type: ${slotSettings.defaultMode}`,
+                                  `Schedulable days: ${
+                                    schedulableDays.length
+                                      ? schedulableDays.map((d) => d.slice(0, 3)).join(", ")
+                                      : "None"
+                                  }`,
+                                ].map((line) => (
+                                  <span key={line} className="flex items-center gap-1.5">
+                                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" />
+                                    {line}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                           </div>
                         </div>
+
+                        <DialogFooter className="gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setSlotSettings(DEFAULT_SLOT_SETTINGS);
+                              setSchedulableDaysDraft(DEFAULT_SCHEDULABLE_DAYS);
+                            }}
+                          >
+                            Reset to default
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              setSchedulableDays(schedulableDaysDraft);
+                              setSlotDialogOpen(false);
+                              settingsApi
+                                .upsert("interview.schedulable_days", schedulableDaysDraft)
+                                .then(() =>
+                                  toast.success("Slot settings saved — schedulable days updated"),
+                                )
+                                .catch(() => {
+                                  toast.success("Slot settings saved");
+                                });
+                            }}
+                          >
+                            Save settings
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+
+                    {rescheduling && (
+                      <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground">
+                        <Repeat2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>
+                          Rescheduling <b>{rescheduling.applicant}</b> from {rescheduling.date} ·{" "}
+                          {rescheduling.time} — confirm to update their existing interview.
+                        </span>
                       </div>
+                    )}
 
-                      <DialogFooter className="gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            setSlotSettings(DEFAULT_SLOT_SETTINGS);
-                            setSchedulableDaysDraft(DEFAULT_SCHEDULABLE_DAYS);
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label className="text-sm">Filter by Department</Label>
+                        <Select
+                          value={scheduleDept}
+                          onValueChange={(v) => {
+                            setScheduleDept(v);
+                            setSchedulePosition("all");
+                            setSchedule((p) => ({ ...p, applicant: "" }));
+                            setRescheduling(null);
                           }}
                         >
-                          Reset to default
-                        </Button>
-                        <Button
-                          onClick={() => {
-                            setSchedulableDays(schedulableDaysDraft);
-                            setSlotDialogOpen(false);
-                            settingsApi
-                              .upsert("interview.schedulable_days", schedulableDaysDraft)
-                              .then(() =>
-                                toast.success("Slot settings saved — schedulable days updated"),
-                              )
-                              .catch(() => {
-                                toast.success("Slot settings saved");
-                              });
-                          }}
-                        >
-                          Save settings
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-
-                  {rescheduling && (
-                    <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground">
-                      <Repeat2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                      <span>
-                        Rescheduling <b>{rescheduling.applicant}</b> from {rescheduling.date} ·{" "}
-                        {rescheduling.time} — confirm to update their existing interview.
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label className="text-sm">Filter by Department</Label>
-                      <Select
-                        value={scheduleDept}
-                        onValueChange={(v) => {
-                          setScheduleDept(v);
-                          setSchedulePosition("all");
-                          setSchedule((p) => ({ ...p, applicant: "" }));
-                          setRescheduling(null);
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="All departments" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All departments</SelectItem>
-                          {displayDepartments.map((d) => (
-                            <SelectItem key={d.code} value={d.name}>
-                              <span className="flex items-center gap-2">
-                                {d.name}
-                                {deptHasPosting(d.name) && (
-                                  <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
-                                    Posting
-                                  </span>
-                                )}
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm">Position</Label>
-                      <Select
-                        value={schedulePosition}
-                        onValueChange={(v) => {
-                          setSchedulePosition(v);
-                          setSchedule((p) => ({ ...p, applicant: "" }));
-                          setRescheduling(null);
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="All positions" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All positions</SelectItem>
-                          {displayPositions
-                            .filter((p) => scheduleDept === "all" || p.department === scheduleDept)
-                            .map((p) => (
-                              <SelectItem key={p.id} value={p.title}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="All departments" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All departments</SelectItem>
+                            {displayDepartments.map((d) => (
+                              <SelectItem key={d.code} value={d.name}>
                                 <span className="flex items-center gap-2">
-                                  {p.title}
-                                  {activeJobTitles.has(p.title) && (
+                                  {d.name}
+                                  {deptHasPosting(d.name) && (
                                     <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
                                       Posting
                                     </span>
@@ -4035,134 +3816,167 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 </span>
                               </SelectItem>
                             ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm">Position</Label>
+                        <Select
+                          value={schedulePosition}
+                          onValueChange={(v) => {
+                            setSchedulePosition(v);
+                            setSchedule((p) => ({ ...p, applicant: "" }));
+                            setRescheduling(null);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="All positions" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All positions</SelectItem>
+                            {displayPositions
+                              .filter(
+                                (p) => scheduleDept === "all" || p.department === scheduleDept,
+                              )
+                              .map((p) => (
+                                <SelectItem key={p.id} value={p.title}>
+                                  <span className="flex items-center gap-2">
+                                    {p.title}
+                                    {activeJobTitles.has(p.title) && (
+                                      <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
+                                        Posting
+                                      </span>
+                                    )}
+                                  </span>
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm">
+                        <span className="text-primary">1.</span> Select Applicant
+                      </Label>
+                      <Select
+                        value={schedule.applicant}
+                        onValueChange={(v) => {
+                          setSchedule({ ...schedule, applicant: v });
+                          if (v !== rescheduling?.applicant) setRescheduling(null);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select applicant" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {scheduleApplicants.length === 0 && (
+                            <div className="px-2 py-3 text-xs text-muted-foreground">
+                              No accepted applicants available in this department.
+                            </div>
+                          )}
+                          {scheduleApplicants.map((a) => (
+                            <SelectItem key={a.id} value={a.name}>
+                              {a.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <Label className="text-sm">
-                      <span className="text-primary">1.</span> Select Applicant
-                    </Label>
-                    <Select
-                      value={schedule.applicant}
-                      onValueChange={(v) => {
-                        setSchedule({ ...schedule, applicant: v });
-                        if (v !== rescheduling?.applicant) setRescheduling(null);
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select applicant" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {scheduleApplicants.length === 0 && (
-                          <div className="px-2 py-3 text-xs text-muted-foreground">
-                            No accepted applicants available in this department.
-                          </div>
-                        )}
-                        {scheduleApplicants.map((a) => (
-                          <SelectItem key={a.id} value={a.name}>
-                            {a.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-sm">
-                      <span className="text-primary">2.</span> Interview Date
-                    </Label>
-                    <Input
-                      type="date"
-                      value={schedule.date}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (!val) return;
-                        setSchedule((p) => ({ ...p, date: val }));
-                        // Sync calendar view to the selected date
-                        const d = new Date(val);
-                        if (!isNaN(d.getTime())) {
-                          setViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
-                        }
-                      }}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="space-y-2">
                       <Label className="text-sm">
-                        <span className="text-primary">3.</span> Select Time Slot
+                        <span className="text-primary">2.</span> Interview Date
                       </Label>
-                      <span className="text-[0.7rem] text-muted-foreground">
-                        {slotSettings.slotCount} slots � {capacityPerSlot} applicants each
-                      </span>
+                      <Input
+                        type="date"
+                        value={schedule.date}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (!val) return;
+                          setSchedule((p) => ({ ...p, date: val }));
+                          // Sync calendar view to the selected date
+                          const d = new Date(val);
+                          if (!isNaN(d.getTime())) {
+                            setViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+                          }
+                        }}
+                      />
                     </div>
-                    <Select
-                      value={schedule.time}
-                      onValueChange={(v) => setSchedule((p) => ({ ...p, time: v }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a time slot" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {slotsForSelected.map((t) => {
-                          const used = bookedInSlot(schedule.date, t);
-                          const remaining = capacityPerSlot - used;
-                          const full = remaining <= 0;
-                          return (
-                            <SelectItem key={t} value={t} disabled={full}>
-                              {t}
-                              <span className="ml-1.5 text-xs text-muted-foreground">
-                                {full ? "(full)" : `(${remaining} left)`}
-                              </span>
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
-                  </div>
 
-                  <div className="space-y-2">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <Label className="text-sm">
-                          <span className="text-primary">4.</span> Interview Details
+                          <span className="text-primary">3.</span> Select Time Slot
                         </Label>
-                        <Select
-                          value={schedule.mode}
-                          onValueChange={(v) => setSchedule({ ...schedule, mode: v })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="On-site">On-site</SelectItem>
-                            <SelectItem value="Virtual">Virtual</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <span className="text-[0.7rem] text-muted-foreground">
+                          {slotSettings.slotCount} slots — {capacityPerSlot} applicants each
+                        </span>
                       </div>
-                      <div className="space-y-2">
-                        <Label className="text-sm">Interviewer</Label>
-                        <Select
-                          value={schedule.interviewer}
-                          onValueChange={(v) => setSchedule({ ...schedule, interviewer: v })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {scheduleInterviewers.map((s) => (
-                              <SelectItem key={s.id} value={s.name}>
-                                {s.name} � {s.role}
+                      <Select
+                        value={schedule.time}
+                        onValueChange={(v) => setSchedule((p) => ({ ...p, time: v }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a time slot" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {slotsForSelected.map((t) => {
+                            const used = bookedInSlot(schedule.date, t);
+                            const remaining = capacityPerSlot - used;
+                            const full = remaining <= 0;
+                            return (
+                              <SelectItem key={t} value={t} disabled={full}>
+                                {t}
+                                <span className="ml-1.5 text-xs text-muted-foreground">
+                                  {full ? "(full)" : `(${remaining} left)`}
+                                </span>
                               </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label className="text-sm">
+                            <span className="text-primary">4.</span> Interview Details
+                          </Label>
+                          <Select
+                            value={schedule.mode}
+                            onValueChange={(v) => setSchedule({ ...schedule, mode: v })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="On-site">On-site</SelectItem>
+                              <SelectItem value="Virtual">Virtual</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-sm">Interviewer</Label>
+                          <Select
+                            value={schedule.interviewer}
+                            onValueChange={(v) => setSchedule({ ...schedule, interviewer: v })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {scheduleInterviewers.map((s) => (
+                                <SelectItem key={s.id} value={s.name}>
+                                  {s.name} — {s.role}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                     </div>
-                  </div>
-
                   </div>
                   <div className="mt-auto space-y-3 border-t border-border/30 pt-4">
                     <div className="flex items-start gap-3 rounded-lg border border-border/70 bg-muted/25 p-4">
@@ -4181,15 +3995,15 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             {schedule.applicant || "No applicant selected"}
                           </span>
                           {schedule.date && schedule.time
-                            ? ` � ${new Date(`${schedule.date}T00:00:00`).toLocaleDateString(
+                            ? ` — ${new Date(`${schedule.date}T00:00:00`).toLocaleDateString(
                                 "en-US",
                                 {
                                   month: "short",
                                   day: "numeric",
                                 },
                               )} at ${schedule.time}`
-                            : " � pick a date and time"}
-                          {schedule.interviewer ? ` � ${schedule.interviewer}` : ""}
+                            : " — pick a date and time"}
+                          {schedule.interviewer ? ` — ${schedule.interviewer}` : ""}
                         </p>
                       </div>
                     </div>
@@ -4199,9 +4013,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       size="lg"
                       disabled={!schedule.applicant || !schedule.date || !schedule.time}
                       onClick={confirmSchedule}
+                      title={
+                        !schedule.applicant
+                          ? "Select an applicant first"
+                          : !schedule.date || !schedule.time
+                            ? "Pick a date and time"
+                            : undefined
+                      }
                     >
                       <Mail className="mr-2 h-4 w-4" /> Confirm &amp; Send Invitation
                     </Button>
+                    {!schedule.applicant && (
+                      <p className="text-center text-xs text-muted-foreground">
+                        Select an applicant in <span className="font-medium">1. Select Applicant</span> to enable.
+                      </p>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -4219,7 +4045,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      placeholder="Search applicant�"
+                      placeholder="Search applicant—"
                       value={interviewSearch}
                       onChange={(e) => setInterviewSearch(e.target.value)}
                       className="w-52 pl-8"
@@ -4233,6 +4059,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       <SelectItem value="all">All statuses</SelectItem>
                       <SelectItem value="Scheduled">Scheduled</SelectItem>
                       <SelectItem value="Need to Schedule">Need to Schedule</SelectItem>
+                      <SelectItem value="Completed">Completed</SelectItem>
+                      <SelectItem value="Cancelled">Cancelled</SelectItem>
+                      <SelectItem value="No Show">No Show</SelectItem>
                     </SelectContent>
                   </Select>
                   <Select value={interviewModeFilter} onValueChange={setInterviewModeFilter}>
@@ -4303,7 +4132,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           <TableCell className="text-sm font-medium">{i.applicant}</TableCell>
                           <TableCell className="text-sm">{i.position}</TableCell>
                           <TableCell className="text-xs">
-                            {i.pending ? "�" : `${i.date} � ${i.time}`}
+                            {i.pending ? "—" : `${i.date} — ${i.time}`}
                           </TableCell>
                           <TableCell className="text-xs">
                             <Badge variant="outline">{i.mode}</Badge>
@@ -4315,7 +4144,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               className={
                                 i.pending
                                   ? "border-caution/30 bg-caution/10 text-caution"
-                                  : "border-primary/30 bg-primary/10 text-primary"
+                                  : i.status === "Cancelled"
+                                    ? "border-destructive/40 bg-destructive/10 text-destructive"
+                                    : i.status === "Completed"
+                                      ? "border-success/30 bg-success/10 text-success"
+                                      : "border-primary/30 bg-primary/10 text-primary"
                               }
                             >
                               {i.status}
@@ -4350,21 +4183,23 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                     }}
                                   >
                                     <CalendarPlus className="mr-1.5 h-3.5 w-3.5" />
-                                    Reschedule
+                                    {i.status === "Cancelled" ? "Re-book" : "Reschedule"}
                                   </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                                    onClick={() =>
-                                      setCancelInterview(
-                                        interviews.find((x) => x.id === i.id) ?? null,
-                                      )
-                                    }
-                                  >
-                                    <X className="mr-1.5 h-3.5 w-3.5" />
-                                    Cancel
-                                  </Button>
+                                  {i.status !== "Cancelled" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                                      onClick={() =>
+                                        setCancelInterview(
+                                          interviews.find((x) => x.id === i.id) ?? null,
+                                        )
+                                      }
+                                    >
+                                      <X className="mr-1.5 h-3.5 w-3.5" />
+                                      Cancel
+                                    </Button>
+                                  )}
                                 </>
                               )}
                             </div>
@@ -4408,7 +4243,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <Input
                       value={assessmentSearch}
                       onChange={(e) => setAssessmentSearch(e.target.value)}
-                      placeholder="Search candidate, position�"
+                      placeholder="Search candidate, position—"
                       className="w-56 pl-8"
                     />
                   </div>
@@ -4448,6 +4283,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       <SelectItem value="Recommended">Recommended</SelectItem>
                       <SelectItem value="Hold">Hold</SelectItem>
                       <SelectItem value="Not Recommended">Not Recommended</SelectItem>
+                      <SelectItem value="Rejected">Rejected</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -4547,7 +4383,19 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                     Object.fromEntries(assessmentCriteria.map((c) => [c, 4])),
                                   );
                                   setEvalRemarks("");
-                                  setEvalAssessor("");
+                                  // The interviewer who handled the interview is
+                                  // also the assessor — preselect them when the
+                                  // system user can be matched by name.
+                                  const ivAssessor = row.iv
+                                    ? assessors.find(
+                                        (u) =>
+                                          (u.full_name ?? "").trim().toLowerCase() ===
+                                          row.iv!.interviewer.trim().toLowerCase(),
+                                      )
+                                    : undefined;
+                                  setEvalAssessor(
+                                    ivAssessor ? String(ivAssessor.system_user_id) : "",
+                                  );
                                   setEvalDateTime(isoOf(new Date()));
                                 }}
                               >
@@ -4571,52 +4419,66 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               <Badge
                                 variant="outline"
                                 className={
-                                  row.r.outcome === "Recommended"
+                                  assessmentRowOutcome(row) === "Recommended"
                                     ? "border-success/30 bg-success/15 text-success"
-                                    : row.r.outcome === "Hold"
+                                    : assessmentRowOutcome(row) === "Hold"
                                       ? "border-warning/40 bg-warning/20 text-warning-foreground"
                                       : "border-destructive/30 bg-destructive/10 text-destructive"
                                 }
                               >
-                                {row.r.outcome}
+                                {assessmentRowOutcome(row)}
                               </Badge>
                             </TableCell>
                             <TableCell
                               className="max-w-[260px] truncate text-xs text-muted-foreground"
                               title={row.r.remarks}
                             >
-                              Assessed {row.r.date} � {row.r.remarks}
+                              Assessed {row.r.date} — {row.r.remarks}
                             </TableCell>
                             <TableCell className="text-xs">{row.iv?.date ?? "—"}</TableCell>
                             <TableCell className="text-xs">{row.iv?.time ?? "—"}</TableCell>
                             <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  size="sm"
-                                  className="cursor-pointer"
-                                  onClick={() =>
-                                    setAssessDecision({
-                                      r: row.r,
-                                      kind: "accept",
-                                    })
-                                  }
-                                >
-                                  <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Accept
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="cursor-pointer border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                  onClick={() =>
-                                    setAssessDecision({
-                                      r: row.r,
-                                      kind: "reject",
-                                    })
-                                  }
-                                >
-                                  <XCircle className="mr-1.5 h-3.5 w-3.5" /> Reject
-                                </Button>
-                              </div>
+                              {assessmentRowOutcome(row) === "Rejected" ? (
+                                <span className="text-[0.7rem] italic text-muted-foreground">
+                                  Candidate rejected — decision locked
+                                </span>
+                              ) : (
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="cursor-pointer"
+                                    onClick={() => setViewingAssessment(row.r)}
+                                  >
+                                    <Eye className="mr-1.5 h-3.5 w-3.5" /> View
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    className="cursor-pointer"
+                                    onClick={() =>
+                                      setAssessDecision({
+                                        r: row.r,
+                                        kind: "accept",
+                                      })
+                                    }
+                                  >
+                                    <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Accept
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="cursor-pointer border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    onClick={() =>
+                                      setAssessDecision({
+                                        r: row.r,
+                                        kind: "reject",
+                                      })
+                                    }
+                                  >
+                                    <XCircle className="mr-1.5 h-3.5 w-3.5" /> Reject
+                                  </Button>
+                                </div>
+                              )}
                             </TableCell>
                           </TableRow>
                         ),
@@ -4655,7 +4517,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <History className="h-5 w-5 text-primary" /> History &amp; Audit
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    Complete trail of applicant activity � screening, transfers, interview booking,
+                    Complete trail of applicant activity — screening, transfers, interview booking,
                     completion and cancellation, assessments and hiring decisions.
                   </p>
                 </div>
@@ -4666,7 +4528,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <Input
                       value={auditSearch}
                       onChange={(e) => setAuditSearch(e.target.value)}
-                      placeholder="Search activity�"
+                      placeholder="Search activity—"
                       className="w-56 pl-8"
                     />
                   </div>
@@ -4830,7 +4692,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       ))}
                       {auditLoading && (
                         <TableRow>
-                          <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
+                          <TableCell
+                            colSpan={8}
+                            className="py-10 text-center text-sm text-muted-foreground"
+                          >
                             <span className="inline-flex items-center gap-2">
                               <Loader2 className="h-4 w-4 animate-spin" /> Loading audit history…
                             </span>
@@ -4839,8 +4704,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       )}
                       {!auditLoading && auditLog.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
-                            No audit history yet. Activity will appear here as you screen applicants, book interviews, and complete assessments.
+                          <TableCell
+                            colSpan={8}
+                            className="py-10 text-center text-sm text-muted-foreground"
+                          >
+                            No audit history yet. Activity will appear here as you screen
+                            applicants, book interviews, and complete assessments.
                           </TableCell>
                         </TableRow>
                       )}
@@ -4878,29 +4747,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Generate Report</DialogTitle>
             <DialogDescription>
-              Choose a report type and output format from current applicant data.
+              Choose a report type, then use the Generate menu to export as PDF, DOCX or Excel.
             </DialogDescription>
           </DialogHeader>
-
-          {/* Format selector */}
-          <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 p-2.5">
-            <span className="text-xs font-medium text-muted-foreground">Format:</span>
-            {(["pdf", "docx", "excel"] as ReportFormat[]).map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setReportFormat(f)}
-                className={cn(
-                  "rounded px-2.5 py-1 text-xs font-semibold transition-colors",
-                  reportFormat === f
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-muted text-muted-foreground",
-                )}
-              >
-                {f.toUpperCase()}
-              </button>
-            ))}
-          </div>
 
           <div className="space-y-2">
             {reportOptions.map((r) => (
@@ -4912,291 +4761,31 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   <p className="text-sm font-medium">{r.title}</p>
                   <p className="text-xs text-muted-foreground">{r.description}</p>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    const cols =
-                      r.id === "interview"
-                        ? [
-                            { header: "Applicant", key: "applicant" },
-                            { header: "Position", key: "position" },
-                            { header: "Date", key: "date" },
-                            { header: "Time", key: "time" },
-                            { header: "Mode", key: "mode" },
-                            { header: "Interviewer", key: "interviewer" },
-                            { header: "Status", key: "status" },
-                          ]
-                        : r.id === "screening"
-                          ? [
-                              { header: "ID", key: "id" },
-                              { header: "Name", key: "name" },
-                              { header: "Position", key: "position" },
-                              { header: "Email", key: "email" },
-                              { header: "Score", key: "score" },
-                              { header: "Status", key: "status" },
-                              { header: "Stage", key: "stage" },
-                            ]
-                          : [
-                              { header: "ID", key: "id" },
-                              { header: "Name", key: "name" },
-                              { header: "Email", key: "email" },
-                              { header: "Position", key: "position" },
-                              { header: "Score", key: "score" },
-                              { header: "Status", key: "status" },
-                              { header: "Stage", key: "stage" },
-                              { header: "Applied", key: "appliedAt" },
-                            ];
-                    const data =
-                      r.id === "interview"
-                        ? interviews
-                        : rows.filter((a) =>
-                            r.id === "passed"
-                              ? a.score >= passing
-                              : r.id === "position" || r.id === "status"
-                                ? true
-                                : true,
-                          );
-                    exportReport(
-                      {
-                        title: `Applicant Management — ${r.title}`,
-                        subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()}`,
-                        columns: cols,
-                        rows: data as any,
-                        summary: [
-                          { label: "Total Applicants", value: rows.length },
-                          {
-                            label: "Passed Screening",
-                            value: rows.filter((a) => a.score >= passing).length,
-                          },
-                          { label: "Interviews Scheduled", value: interviews.length },
-                        ],
-                      },
-                      reportFormat,
-                    );
-                    toast.success(`${r.title} report exported as ${reportFormat.toUpperCase()}`);
-                  }}
-                >
-                  <Download className="mr-2 h-4 w-4" /> {reportFormat.toUpperCase()}
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="outline">
+                      <Download className="mr-2 h-4 w-4" /> Generate
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "pdf")}>
+                      <FileText className="mr-2 h-4 w-4" /> Export as PDF
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "docx")}>
+                      <FileText className="mr-2 h-4 w-4" /> Export as DOCX
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "excel")}>
+                      <Download className="mr-2 h-4 w-4" /> Export as Excel
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             ))}
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* REPLACE DETAILS CONFIRMATION (resume upload over existing data) */}
-      <Dialog
-        open={replaceOpen}
-        onOpenChange={(o) => {
-          if (!o) {
-            setPendingResume(null);
-            setReplaceOpen(false);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Replace applicant details?</DialogTitle>
-            <DialogDescription>
-              The form already has details{addResumeFile ? ` from "${addFileName}"` : " you"}{" "}
-              entered. Uploading "{pendingResume?.name ?? "this resume"}" will overwrite Full name,
-              Email, Contact number and Address with the values extracted from it.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setPendingResume(null);
-                setReplaceOpen(false);
-              }}
-            >
-              Keep current details
-            </Button>
-            <Button
-              onClick={() => {
-                const file = pendingResume;
-                setPendingResume(null);
-                setReplaceOpen(false);
-                if (file) applyResumeFile(file);
-              }}
-            >
-              Replace details
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* SCREENING SETUP DIALOG */}
-      <Dialog open={screeningOpen} onOpenChange={setScreeningOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-4xl">
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Screening Setup</DialogTitle>
-            <DialogDescription>
-              Configure screening criteria weights, keyword libraries and the DB-managed reference
-              vocabulary used by the spaCy NER model.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card className="border-border/70">
-              <CardContent className="space-y-5 p-6">
-                <div>
-                  <h2 className="font-display text-2xl font-semibold">
-                    Resume Screening Customization
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Tune the criteria weights used by the spaCy NER scoring model.
-                  </p>
-                </div>
-                {criteria.map((c, idx) => (
-                  <div key={c.name} className="rounded-md border border-border p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={c.enabled}
-                          onCheckedChange={(v) =>
-                            setCriteria((prev) =>
-                              prev.map((x, i) => (i === idx ? { ...x, enabled: v } : x)),
-                            )
-                          }
-                        />
-                        <span className="text-sm font-medium">{c.name}</span>
-                      </div>
-                      <span className="font-display text-lg font-semibold text-primary">
-                        {c.weight}%
-                      </span>
-                    </div>
-                    <Slider
-                      className="mt-3"
-                      value={[c.weight]}
-                      max={60}
-                      step={5}
-                      onValueChange={(v) =>
-                        setCriteria((prev) =>
-                          prev.map((x, i) => (i === idx ? { ...x, weight: v[0] ?? x.weight } : x)),
-                        )
-                      }
-                    />
-                  </div>
-                ))}
-                <p
-                  className={cn(
-                    "text-xs",
-                    totalWeight === 100 ? "text-success" : "text-destructive",
-                  )}
-                >
-                  Total weight: {totalWeight}% {totalWeight === 100 ? "?" : "(should equal 100%)"}
-                </p>
-                <div className="space-y-2">
-                  <Label>Passing score � {passing}%</Label>
-                  <Slider
-                    value={[passing]}
-                    max={100}
-                    step={1}
-                    onValueChange={(v) => setPassing(v[0] ?? passing)}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/70">
-              <CardContent className="space-y-5 p-6">
-                <div>
-                  <h2 className="font-display text-2xl font-semibold">
-                    Skill &amp; Certification Keywords
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Pick a job position to load its suggested keyword checklist, then add any
-                    extras.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Job position</Label>
-                  <Select
-                    value={keywordPosition}
-                    onValueChange={(v) => {
-                      setKeywordPosition(v);
-                      setSelectedKeywords(keywordLibrary[v] ?? []);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {positions.map((p) => (
-                        <SelectItem key={p.id} value={p.title}>
-                          {p.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Additional keywords (comma separated)</Label>
-                  <Textarea
-                    rows={3}
-                    value={keywords}
-                    onChange={(e) => setKeywords(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Entity labels captured</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {["PERSON", "EMAIL", "PHONE", "SKILL", "ORG", "EDU", "CERT", "DATE"].map(
-                      (l) => (
-                        <Badge key={l} variant="secondary">
-                          {l}
-                        </Badge>
-                      ),
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-md border border-border p-4">
-                  <p className="text-sm font-medium">NER training data</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Model v2.3 � 1,248 annotated resumes � last trained 2026-07-20
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => toast("Annotation set uploaded")}
-                    >
-                      <Upload className="mr-2 h-4 w-4" /> Upload training set
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => toast.success("Screening batch re-queued")}
-                    >
-                      <ScanLine className="mr-2 h-4 w-4" /> Re-run screening
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        toast.success(
-                          `Configuration saved � ${selectedKeywords.length} keywords active for ${keywordPosition}`,
-                        )
-                      }
-                    >
-                      <Sliders className="mr-2 h-4 w-4" /> Save configuration
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <ScreeningReferenceManager />
-        </DialogContent>
-      </Dialog>
-
-      {/* REVIEW DIALOG � resume screening result */}
+      {/* REVIEW DIALOG — resume screening result */}
       {/* Assessment decision confirmation */}
       <Dialog open={!!assessDecision} onOpenChange={(o) => !o && setAssessDecision(null)}>
         <DialogContent className="sm:max-w-md">
@@ -5229,6 +4818,76 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         </DialogContent>
       </Dialog>
 
+      {/* VIEW SAVED ASSESSMENT RESULT */}
+      <Dialog open={!!viewingAssessment} onOpenChange={(o) => !o && setViewingAssessment(null)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          {viewingAssessment && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="font-display text-2xl">
+                  Assessment Result — {viewingAssessment.name}
+                </DialogTitle>
+                <DialogDescription>
+                  {viewingAssessment.position} — assessed {viewingAssessment.date}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
+                  <div>
+                    <p className="eyebrow">Total score</p>
+                    <p className="font-display text-3xl font-semibold text-primary">
+                      {viewingAssessment.total}%
+                    </p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={
+                      viewingAssessment.outcome === "Recommended"
+                        ? "border-success/30 bg-success/15 text-success"
+                        : viewingAssessment.outcome === "Hold"
+                          ? "border-warning/40 bg-warning/20 text-warning-foreground"
+                          : "border-destructive/30 bg-destructive/10 text-destructive"
+                    }
+                  >
+                    {viewingAssessment.outcome}
+                  </Badge>
+                </div>
+
+                <div className="space-y-3">
+                  <p className="eyebrow">Criteria scores</p>
+                  {assessmentCriteria.map((c) => {
+                    const score = viewingAssessment.scores[c];
+                    return (
+                      <div key={c} className="space-y-1">
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span>{c}</span>
+                          <span className="font-medium">
+                            {score != null ? `${score} / 5` : "—"}
+                          </span>
+                        </div>
+                        <Progress value={((score ?? 0) / 5) * 100} className="h-1.5" />
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="rounded-md border border-border p-3">
+                  <p className="eyebrow">Remarks</p>
+                  <p className="text-sm text-muted-foreground">{viewingAssessment.remarks}</p>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setViewingAssessment(null)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Interview cancellation confirmation */}
       <Dialog open={!!cancelInterview} onOpenChange={(o) => !o && setCancelInterview(null)}>
         <DialogContent className="sm:max-w-md">
@@ -5236,7 +4895,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             <DialogTitle>Cancel this interview?</DialogTitle>
             <DialogDescription>
               {cancelInterview
-                ? `${cancelInterview.applicant}'s interview on ${cancelInterview.date} � ${cancelInterview.time} will be removed from the schedule list.`
+                ? `${cancelInterview.applicant}'s interview on ${cancelInterview.date} — ${cancelInterview.time} will be marked as Cancelled and kept in the schedule list with its label.`
                 : ""}
             </DialogDescription>
           </DialogHeader>
@@ -5257,10 +4916,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             <>
               <DialogHeader>
                 <DialogTitle className="font-display text-2xl">
-                  Resume Screening Result � {review.name}
+                  Resume Screening Result — {review.name}
                 </DialogTitle>
                 <DialogDescription>
-                  {review.position} � applied {review.appliedAt} � source {review.source} �{" "}
+                  {review.position} — applied {review.appliedAt} — source {review.source} —{" "}
                   {review.id}
                 </DialogDescription>
               </DialogHeader>
@@ -5287,7 +4946,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       >
                         {review.resumeOriginalName ||
                           (review.resumeUrl
-                            ? review.resumeUrl.split("/").pop() || `${review.name.replace(/\s+/g, "_")}_Resume.pdf`
+                            ? review.resumeUrl.split("/").pop() ||
+                              `${review.name.replace(/\s+/g, "_")}_Resume.pdf`
                             : `${review.name.replace(/\s+/g, "_")}_Resume.pdf`)}
                       </span>
                     </span>
@@ -5302,7 +4962,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       >
                         <ZoomOut className="h-3.5 w-3.5" />
                       </Button>
-                      <span className="w-8 text-center text-[0.65rem] text-muted-foreground">{reviewPreviewZoom}%</span>
+                      <span className="w-8 text-center text-[0.65rem] text-muted-foreground">
+                        {reviewPreviewZoom}%
+                      </span>
                       <Button
                         size="icon"
                         variant="ghost"
@@ -5324,27 +4986,56 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             src={review.resumeUrl}
                             alt={`Resume: ${review.name}`}
                             className="max-h-full max-w-full rounded-sm border border-border object-contain shadow-sm transition-transform"
-                            style={{ transform: `scale(${reviewPreviewZoom / 100})`, transformOrigin: "center center" }}
+                            style={{
+                              transform: `scale(${reviewPreviewZoom / 100})`,
+                              transformOrigin: "center center",
+                            }}
                           />
                         </div>
                       ) : /\.pdf$/i.test(review.resumeUrl) ||
                         /\.pdf$/i.test(review.resumeOriginalName || "") ? (
-                        <div className="h-full w-full overflow-auto">
-                          <div
-                            style={{
-                              transform: `scale(${reviewPreviewZoom / 100})`,
-                              transformOrigin: "top center",
-                              height: reviewPreviewZoom !== 100 ? `${(100 / reviewPreviewZoom) * 100}%` : "100%",
-                            }}
-                            className="h-full w-full"
-                          >
-                            <iframe
-                              src={review.resumeUrl}
-                              title={`Resume: ${review.name}`}
-                              className="h-full w-full rounded-sm border border-border bg-white"
-                            />
+                        reviewPdfStatus === "loading" ? (
+                          <div className="flex h-full w-full items-center justify-center gap-2 text-xs text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" /> Loading PDF preview...
                           </div>
-                        </div>
+                        ) : reviewPdfStatus === "error" ? (
+                          <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center">
+                            <FileText className="h-10 w-10 text-muted-foreground" />
+                            <p className="text-xs font-medium">PDF preview isn&apos;t available</p>
+                            <p className="text-xs text-muted-foreground">
+                              The file could not be loaded for preview. It may have been moved or
+                              the upload didn&apos;t complete — you can still open the original
+                              file.
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => window.open(review.resumeUrl!, "_blank", "noopener")}
+                            >
+                              <ExternalLink className="mr-2 h-3.5 w-3.5" /> Open file
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="h-full w-full overflow-auto">
+                            <div
+                              style={{
+                                transform: `scale(${reviewPreviewZoom / 100})`,
+                                transformOrigin: "top center",
+                                height:
+                                  reviewPreviewZoom !== 100
+                                    ? `${(100 / reviewPreviewZoom) * 100}%`
+                                    : "100%",
+                              }}
+                              className="h-full w-full"
+                            >
+                              <iframe
+                                src={review.resumeUrl}
+                                title={`Resume: ${review.name}`}
+                                className="h-full w-full rounded-sm border border-border bg-white"
+                              />
+                            </div>
+                          </div>
+                        )
                       ) : /\.docx$/i.test(review.resumeUrl || "") ||
                         /\.docx$/i.test(review.resumeOriginalName || "") ? (
                         <div className="h-full w-full overflow-auto rounded-sm border border-border bg-white p-2">
@@ -5390,10 +5081,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               <div className="space-y-1">
                                 <p className="text-sm font-medium">Legacy .doc format</p>
                                 <p className="mx-auto max-w-[36ch] text-xs leading-relaxed text-muted-foreground">
-                                  .doc preview needs a public URL for Office Online Viewer. On localhost it can’t be rendered. Your file will still be screened correctly — open it in Word or save as <b>.docx</b> for full in-browser preview.
+                                  .doc preview needs a public URL for Office Online Viewer. On
+                                  localhost it can’t be rendered. Your file will still be screened
+                                  correctly — open it in Word or save as <b>.docx</b> for full
+                                  in-browser preview.
                                 </p>
                               </div>
-                              <Button size="sm" onClick={() => window.open(review.resumeUrl!, "_blank", "noopener")}>
+                              <Button
+                                size="sm"
+                                onClick={() => window.open(review.resumeUrl!, "_blank", "noopener")}
+                              >
                                 <ExternalLink className="mr-2 h-3.5 w-3.5" /> Open in Word
                               </Button>
                             </div>
@@ -5407,12 +5104,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 />
                               </div>
                               <div className="flex items-center justify-center gap-2 border-t border-border bg-muted/20 px-2 py-1.5 text-[0.65rem] text-muted-foreground">
-                                <span className="text-center">Legacy .doc — via Office Online Viewer</span>
+                                <span className="text-center">
+                                  Legacy .doc — via Office Online Viewer
+                                </span>
                                 <Button
                                   size="sm"
                                   variant="ghost"
                                   className="h-6 shrink-0 px-2 text-[0.65rem]"
-                                  onClick={() => window.open(review.resumeUrl!, "_blank", "noopener")}
+                                  onClick={() =>
+                                    window.open(review.resumeUrl!, "_blank", "noopener")
+                                  }
                                 >
                                   <ExternalLink className="mr-1 h-3 w-3" /> Open
                                 </Button>
@@ -5424,7 +5125,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center">
                           <FileText className="h-10 w-10 text-muted-foreground" />
                           <p className="text-xs text-muted-foreground">
-                            Preview isn&apos;t available for .doc files. Please convert to PDF or DOCX for in-browser preview. You can still open the file.
+                            Preview isn&apos;t available for .doc files. Please convert to PDF or
+                            DOCX for in-browser preview. You can still open the file.
                           </p>
                           <Button
                             size="sm"
@@ -5439,7 +5141,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center">
                         <FileText className="h-8 w-8 text-muted-foreground" />
                         <p className="text-xs text-muted-foreground">No resume file available</p>
-                        <p className="text-[0.65rem] text-muted-foreground">Uploaded via {review.source}</p>
+                        <p className="text-[0.65rem] text-muted-foreground">
+                          Uploaded via {review.source}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -5448,7 +5152,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <div className="space-y-4 lg:overflow-y-auto lg:pr-2">
                   {(() => {
                     const verdictCopy: Record<string, string> = {
-                      fit: "Strong match � meets or exceeds the requirements for this role.",
+                      fit: "Strong match — meets or exceeds the requirements for this role.",
                       "other-role":
                         "Not the strongest fit here, but the profile suggests they'd do well in a different role.",
                       credential:
@@ -5569,7 +5273,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               {experience.length > 0 ? (
                                 experience.join(", ")
                               ) : (
-                                <span className="text-muted-foreground">No employer history detected</span>
+                                <span className="text-muted-foreground">
+                                  No employer history detected
+                                </span>
                               )}
                             </p>
                           </div>
@@ -5601,8 +5307,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
                               <AlertTriangle className="h-3.5 w-3.5" /> Red flags
                             </p>
-                            <p className={cn("text-sm leading-relaxed", review.flags.length > 0 ? "text-amber-600" : "text-muted-foreground")}>
-                              {review.flags.length > 0 ? review.flags.join(" • ") : "None detected — clean"}
+                            <p
+                              className={cn(
+                                "text-sm leading-relaxed",
+                                review.flags.length > 0
+                                  ? "text-amber-600"
+                                  : "text-muted-foreground",
+                              )}
+                            >
+                              {review.flags.length > 0
+                                ? review.flags.join(" • ")
+                                : "None detected — clean"}
                             </p>
                           </div>
                         </div>
@@ -5649,7 +5364,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         >
                           <p className="font-medium">
                             {passed
-                              ? "Recommendation: Move forward � accept and schedule an interview."
+                              ? "Recommendation: Move forward — accept and schedule an interview."
                               : "Recommendation: Reject or refer to a better-matching role."}
                           </p>
                         </div>
@@ -5661,12 +5376,25 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
               <DialogFooter className="flex-wrap gap-2">
                 {isActionLocked(review) ? (
-                  <p className="flex w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
-                    <Info className="h-4 w-4 shrink-0" />
-                    This applicant is already at the{" "}
-                    <span className="font-semibold text-foreground">{review.stage}</span> stage — no
-                    further accept, reject or referral actions can be taken here.
-                  </p>
+                  <>
+                    {review.stage === "Accepted" && (
+                      <Button
+                        variant="outline"
+                        className="w-full justify-center sm:ml-auto sm:w-auto"
+                        onClick={() => acceptAndSchedule(review)}
+                      >
+                        <CalendarPlus className="mr-2 h-4 w-4" /> Schedule interview
+                      </Button>
+                    )}
+                    <p className="flex w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+                      <Info className="h-4 w-4 shrink-0" />
+                      This applicant is already at the{" "}
+                      <span className="font-semibold text-foreground">{review.stage}</span> stage —
+                      {review.stage === "Accepted"
+                        ? " use Schedule interview to book them in."
+                        : " no further accept, reject or referral actions can be taken here."}
+                    </p>
+                  </>
                 ) : (
                   <>
                     <Button variant="outline" onClick={() => openRefer(review)}>
@@ -5728,7 +5456,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             )}
                           </span>
                           <span className="block text-xs text-muted-foreground">
-                            {p.department} � {p.headcount - p.filled} seat(s) open � {p.salaryBand}
+                            {p.department} — {p.headcount - p.filled} seat(s) open — {p.salaryBand}
                           </span>
                         </span>
                       </label>
@@ -5751,13 +5479,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
       {/* EVALUATION DIALOG */}
       <Dialog open={!!evaluating} onOpenChange={(o) => !o && setEvaluating(null)}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-h-[85vh] overflow-y-auto overflow-x-hidden">
           {evaluating && (
             <>
-              <DialogHeader>
+              <DialogHeader className="min-w-0">
                 <DialogTitle className="font-display text-2xl">Interview Assessment</DialogTitle>
-                <DialogDescription>
-                  {evaluating.name} � {evaluating.position}
+                <DialogDescription
+                  className="min-w-0 max-w-full break-words"
+                  style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+                >
+                  {evaluating.name} — {evaluating.position}
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -5776,7 +5507,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       {assessors.map((u) => (
                         <SelectItem key={u.system_user_id} value={String(u.system_user_id)}>
                           {u.full_name}
-                          {u.department_name ? ` � ${u.department_name}` : ""}
+                          {u.department_name ? ` — ${u.department_name}` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -5829,718 +5560,31 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     rows={3}
                     value={evalRemarks}
                     onChange={(e) => setEvalRemarks(e.target.value)}
-                    placeholder="Observations and recommendation�"
+                    placeholder="Observations and recommendation—"
                   />
                 </div>
               </div>
-              <DialogFooter className="flex-col gap-2 sm:flex-row">
+              <DialogFooter className="flex-col gap-2 sm:flex-row sm:flex-wrap sm:space-x-0">
                 <Button
                   variant="outline"
                   onClick={() => downloadEvaluationForm(evaluating)}
-                  className="sm:mr-auto"
+                  className="w-full justify-center sm:mr-auto sm:w-auto"
                 >
-                  <Download className="mr-2 h-4 w-4" /> Evaluation form
-                </Button>
-                <Button variant="outline" onClick={() => downloadScreeningResult(evaluating)}>
-                  <Download className="mr-2 h-4 w-4" /> Screening result
-                </Button>
-
-                <Button onClick={saveAssessment}>Save assessment</Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ADD APPLICANT DIALOG */}
-      <Dialog
-        open={addOpen}
-        onOpenChange={(o) => {
-          setAddOpen(o);
-          if (!o) {
-            setAddStep(1);
-            setScreenResult(null);
-            setAddResumeFile(null);
-            setPendingResume(null);
-            setReplaceOpen(false);
-          }
-        }}
-      >
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[95vw] w-[95vw] lg:max-w-[1500px]">
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Add Applicant</DialogTitle>
-            <DialogDescription>
-              Step {addStep} of 3 �{" "}
-              {addStep === 1
-                ? "choose how the resume will be screened"
-                : addStep === 2
-                  ? "upload the resume and enter applicant details"
-                  : "review the screening result"}
-            </DialogDescription>
-          </DialogHeader>
-
-          {addStep === 1 && (
-            <div className="space-y-3">
-              {[
-                {
-                  id: "file" as const,
-                  icon: FileText,
-                  title: "Through file",
-                  body: "PDF or DOCX resume � text is parsed directly by the NER model.",
-                },
-                {
-                  id: "image" as const,
-                  icon: ImageIcon,
-                  title: "Through image",
-                  body: "Photo or scan of a walk-in resume � OCR first, then NER screening.",
-                },
-              ].map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setAddMethod(m.id)}
-                  className={cn(
-                    "flex w-full items-start gap-3 rounded-md border p-4 text-left transition-colors",
-                    addMethod === m.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/40",
-                  )}
-                >
-                  <m.icon className="mt-0.5 h-5 w-5 text-primary" />
-                  <span>
-                    <span className="block text-sm font-medium">{m.title}</span>
-                    <span className="block text-xs text-muted-foreground">{m.body}</span>
-                  </span>
-                </button>
-              ))}
-              <DialogFooter>
-                <Button onClick={() => setAddStep(2)}>Continue</Button>
-              </DialogFooter>
-            </div>
-          )}
-
-          {addStep === 2 && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Department</Label>
-                <Select
-                  value={addDept}
-                  onValueChange={(v) => {
-                    setAddDept(v);
-                    const first = displayPositions.find((p) => p.department === v);
-                    if (first) setAddForm((f) => ({ ...f, position: first.title }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[...new Set(displayPositions.map((p) => p.department))].map((d) => (
-                      <SelectItem key={d} value={d}>
-                        <span className="flex items-center gap-2">
-                          {d}
-                          {deptHasPosting(d) && (
-                            <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
-                              Posting
-                            </span>
-                          )}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Applying for</Label>
-                <Select
-                  value={addForm.position}
-                  onValueChange={(v) => setAddForm({ ...addForm, position: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {displayPositions
-                      .filter((p) => p.department === addDept)
-                      .map((p) => (
-                        <SelectItem key={p.id} value={p.title}>
-                          <span className="flex items-center gap-2">
-                            {p.title}
-                            {activeJobTitles.has(p.title) && (
-                              <span className="rounded bg-success/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-success">
-                                Posting
-                              </span>
-                            )}
-                          </span>
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label>Full name</Label>
-                  <Input
-                    value={addForm.name}
-                    placeholder="e.g. Maria Clara Santos"
-                    onChange={(e) => setAddForm({ ...addForm, name: sanitizeName(e.target.value) })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Email</Label>
-                  <Input
-                    type="email"
-                    placeholder="e.g. maria.santos@gmail.com"
-                    value={addForm.email}
-                    onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Contact number</Label>
-                  <Input
-                    placeholder="e.g. 0917 123 4567"
-                    value={addForm.phone}
-                    onChange={(e) =>
-                      setAddForm({ ...addForm, phone: sanitizePhone(e.target.value) })
-                    }
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Address</Label>
-                  <Input
-                    placeholder="e.g. Makati City, Metro Manila"
-                    value={addForm.address}
-                    onChange={(e) => setAddForm({ ...addForm, address: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <label
-                className={cn(
-                  "flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed p-8 text-center transition-colors",
-                  resumeDragActive
-                    ? "border-primary bg-primary/10"
-                    : "border-border bg-muted/40 hover:bg-muted/60",
-                )}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setResumeDragActive(true);
-                }}
-                onDragEnter={(e) => {
-                  e.preventDefault();
-                  setResumeDragActive(true);
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault();
-                  setResumeDragActive(false);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setResumeDragActive(false);
-                  handleResumeFile(e.dataTransfer.files?.[0]);
-                }}
-              >
-                {addMethod === "image" ? (
-                  <ImageIcon
-                    className={cn(
-                      "h-9 w-9",
-                      resumeDragActive ? "text-primary" : "text-muted-foreground",
-                    )}
-                  />
-                ) : (
-                  <FileText
-                    className={cn(
-                      "h-9 w-9",
-                      resumeDragActive ? "text-primary" : "text-muted-foreground",
-                    )}
-                  />
-                )}
-                {addFileName ? (
-                  <span
-                    className="mt-3 inline-flex max-w-full items-center gap-1.5 text-sm font-medium text-primary underline underline-offset-2"
-                    title="Click to open a preview of this file"
-                    onClick={(e) => {
-                      // open the preview instead of triggering the file picker
-                      e.preventDefault();
-                      e.stopPropagation();
-                      openResumePreview();
-                    }}
-                  >
-                    <span className="truncate">{addFileName}</span>
-                    <Eye className="h-3.5 w-3.5 shrink-0" />
-                  </span>
-                ) : (
-                  <span className="mt-3 text-sm font-medium">
-                    {`Choose resume ${addMethod === "image" ? "photo / scan" : "file"}`}
-                  </span>
-                )}
-                <span className="text-xs text-muted-foreground">
-                  {resumeAutofilling
-                    ? "Reading resume — filling contact fields…"
-                    : addMethod === "image"
-                      ? "JPG or PNG up to 10 MB — click to browse or drag & drop here"
-                      : "PDF or DOCX up to 10 MB — click to browse or drag & drop here"}
-                </span>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept={
-                    addMethod === "image"
-                      ? ".jpg,.jpeg,.png,image/jpeg,image/png"
-                      : ".pdf,.doc,.docx"
-                  }
-                  onChange={(e) => {
-                    handleResumeFile(e.target.files?.[0]);
-                    // allow re-selecting the same file after a failed pick
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-
-              <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={() => setAddStep(1)}>
-                  Back
+                  <Download className="mr-2 h-4 w-4 shrink-0" /> Evaluation form
                 </Button>
                 <Button
-                  onClick={() => {
-                    if (!addForm.name.trim()) {
-                      toast.error("Full name is required.");
-                      return;
-                    }
-                    if (!isValidName(addForm.name)) {
-                      toast.error(
-                        "Full name must contain letters only (no numbers or special symbols).",
-                      );
-                      return;
-                    }
-                    if (!addForm.email.trim()) {
-                      toast.error("Email address is required.");
-                      return;
-                    }
-                    if (!isValidEmail(addForm.email)) {
-                      toast.error(
-                        "Please enter a valid formal email address (e.g. name@domain.com).",
-                      );
-                      return;
-                    }
-                    if (!addForm.phone.trim()) {
-                      toast.error("Contact number is required.");
-                      return;
-                    }
-                    if (!isValidPhone(addForm.phone)) {
-                      toast.error("Please enter a valid phone number (7 to 15 digits).");
-                      return;
-                    }
-                    if (!addForm.address.trim()) {
-                      toast.error("Address is required.");
-                      return;
-                    }
-                    if (!addFileName && !addResumeFile) {
-                      toast.error("Please upload or choose a resume file.");
-                      return;
-                    }
-                    runScreening();
-                  }}
+                  variant="outline"
+                  onClick={() => downloadScreeningResult(evaluating)}
+                  className="w-full justify-center sm:w-auto"
                 >
-                  {screeningLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Screening resume...
-                    </>
-                  ) : (
-                    <>
-                      <ScanLine className="mr-2 h-4 w-4" /> Run resume screening
-                    </>
-                  )}
+                  <Download className="mr-2 h-4 w-4 shrink-0" /> Screening result
+                </Button>
+
+                <Button onClick={saveAssessment} className="w-full justify-center sm:w-auto">
+                  Save assessment
                 </Button>
               </DialogFooter>
-            </div>
-          )}
-
-          {addStep === 3 && screenResult && (
-            <div className="space-y-4">
-              <div className="grid gap-6 lg:grid-cols-[460px_1fr] lg:items-start">
-                <div className="flex h-full flex-col overflow-hidden rounded-md border border-border bg-card lg:sticky lg:top-0">
-                  <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2">
-                    <span className="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-medium">
-                      {addMethod === "image" ? (
-                        <ImageIcon className="h-3.5 w-3.5 shrink-0 text-primary" />
-                      ) : (
-                        <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
-                      )}
-                      <span
-                        className="flex-1 break-all whitespace-normal text-primary underline underline-offset-2"
-                        title={addFileName || `${addForm.name || "applicant"}_Resume`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          openResumePreview();
-                        }}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            openResumePreview();
-                          }
-                        }}
-                      >
-                        {addFileName || `${addForm.name || "applicant"}_Resume`}
-                      </span>
-                    </span>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        onClick={() => setAddPreviewZoom((z) => Math.max(50, z - 10))}
-                        disabled={addPreviewZoom <= 50}
-                        aria-label="Zoom out"
-                      >
-                        <ZoomOut className="h-3.5 w-3.5" />
-                      </Button>
-                      <span className="w-8 text-center text-[0.65rem] text-muted-foreground">{addPreviewZoom}%</span>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        onClick={() => setAddPreviewZoom((z) => Math.min(300, z + 10))}
-                        disabled={addPreviewZoom >= 300}
-                        aria-label="Zoom in"
-                      >
-                        <ZoomIn className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="relative flex-1 min-h-[520px] overflow-auto bg-muted/30 p-3">
-                    {resumePreviewUrl && addResumeFile ? (
-                      /\.(jpe?g|png)$/i.test(addResumeFile.name) ||
-                      addResumeFile.type.startsWith("image/") ? (
-                        <div className="flex h-full w-full items-center justify-center">
-                          <img
-                            src={resumePreviewUrl}
-                            alt={`Uploaded resume: ${addFileName}`}
-                            className="max-h-full max-w-full rounded-sm border border-border object-contain shadow-sm transition-transform"
-                            style={{ transform: `scale(${addPreviewZoom / 100})`, transformOrigin: "center center" }}
-                          />
-                        </div>
-                      ) : /\.pdf$/i.test(addResumeFile.name) ||
-                        addResumeFile.type === "application/pdf" ? (
-                        <div className="h-full w-full overflow-auto">
-                          <div
-                            style={{
-                              transform: `scale(${addPreviewZoom / 100})`,
-                              transformOrigin: "top center",
-                              height: addPreviewZoom !== 100 ? `${(100 / addPreviewZoom) * 100}%` : "100%",
-                            }}
-                            className="h-full w-full"
-                          >
-                            <iframe
-                              src={resumePreviewUrl}
-                              title={`Uploaded resume: ${addFileName}`}
-                              className="h-full w-full rounded-sm border border-border bg-white"
-                            />
-                          </div>
-                        </div>
-                      ) : /\.docx$/i.test(addResumeFile.name) ? (
-                        <div className="h-full w-full overflow-auto rounded-sm border border-border bg-white p-2">
-                          {addDocxLoading ? (
-                            <div className="flex h-full min-h-[400px] w-full items-center justify-center gap-2 p-8 text-xs text-muted-foreground">
-                              <Loader2 className="h-4 w-4 animate-spin" /> Rendering DOCX...
-                            </div>
-                          ) : addDocxError ? (
-                            <div className="flex h-full min-h-[400px] w-full flex-col items-center justify-center gap-3 px-6 py-8 text-center">
-                              <FileText className="h-10 w-10 text-muted-foreground" />
-                              <p className="text-xs font-medium">Could not render Word document</p>
-                              <p className="text-xs text-muted-foreground">{addDocxError}</p>
-                              <Button size="sm" variant="outline" onClick={openResumePreview}>
-                                <ExternalLink className="mr-2 h-3.5 w-3.5" /> Open file
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex justify-center">
-                              <div
-                                ref={addDocxContainerRef}
-                                className="docx bg-white min-h-[500px] w-full max-w-[800px]"
-                                style={{
-                                  transform: `scale(${addPreviewZoom / 100})`,
-                                  transformOrigin: "top center",
-                                }}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      ) : /\.doc$/i.test(addResumeFile.name) ? (
-                        <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-white p-6 text-center">
-                          <div className="rounded-full bg-amber-50 p-3">
-                            <FileText className="h-8 w-8 text-amber-600" />
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-sm font-medium">Legacy .doc format</p>
-                            <p className="mx-auto max-w-[32ch] text-xs leading-relaxed text-muted-foreground">
-                              Your file will be screened correctly, but browsers can’t preview the old .doc format directly. Save as <b>.docx</b> in Word for a true preview, or open it now.
-                            </p>
-                          </div>
-                          <Button size="sm" onClick={openResumePreview}>
-                            <ExternalLink className="mr-2 h-3.5 w-3.5" /> Open in Word
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center">
-                          <FileText className="h-10 w-10 text-muted-foreground" />
-                          <p className="text-xs text-muted-foreground">
-                            Preview not available for this file type. Open the file to view it.
-                          </p>
-                          <Button size="sm" variant="outline" onClick={openResumePreview}>
-                            <ExternalLink className="mr-2 h-3.5 w-3.5" /> Open file
-                          </Button>
-                        </div>
-                      )
-                    ) : (
-                      <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center">
-                        {addMethod === "image" ? (
-                          <ImageIcon className="h-8 w-8 text-muted-foreground" />
-                        ) : (
-                          <FileText className="h-8 w-8 text-muted-foreground" />
-                        )}
-                        <p className="text-xs text-muted-foreground">
-                          {addFileName || "No file selected"}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-4 lg:overflow-y-auto lg:pr-2">
-                  {(() => {
-                    const verdictCopy: Record<string, string> = {
-                      fit: "Strong match � meets or exceeds the requirements for this role.",
-                      "other-role":
-                        "Not the strongest fit here, but the profile suggests they'd do well in a different role.",
-                      credential:
-                        "A credential issue was found (invalid format or unverifiable against system reference data). This does not imply fraud.",
-                      "not-fit":
-                        "Falls short of the core requirements and no open role matched strongly enough.",
-                    };
-                    const detail = screenResult.detail;
-                    const breakdown = detail?.score_breakdown;
-                    const passed = screenResult.score >= passing;
-                    const matched =
-                      breakdown?.["skills"]?.matched_required ??
-                      (keywordLibrary[addForm.position] ?? []).filter((k) =>
-                        screenResult.entities.some((e) =>
-                          e.value.toLowerCase().includes(k.toLowerCase().split(" ")[0]!),
-                        ),
-                      );
-                    const missing =
-                      breakdown?.["skills"]?.missing_required ??
-                      (keywordLibrary[addForm.position] ?? []).filter((k) => !matched.includes(k));
-                    const experience: string[] =
-                      (detail?.profile?.work_experience ?? [])
-                        .map((w) => w.job_title)
-                        .filter((t): t is string => Boolean(t)) ||
-                      screenResult.entities.filter((e) => e.label === "ORG").map((e) => e.value);
-                    const education: string[] =
-                      detail?.profile?.education ??
-                      screenResult.entities.filter((e) => e.label === "EDU").map((e) => e.value);
-                    const skills = screenResult.entities.filter((e) => e.label === "SKILL");
-                    const unrecognizedSkills =
-                      detail?.validation?.skill_analysis?.unrecognized ?? [];
-                    const alt = detail?.alternative_job;
-
-                    return (
-                      <>
-                        <p className="eyebrow">Resume Screening Result</p>
-                        {/* Score + verdict */}
-                        <div className="flex items-center gap-4 rounded-md border border-border p-4">
-                          <div className="text-center">
-                            <p className="font-display text-4xl font-semibold text-primary">
-                              {Math.round(screenResult.score)}%
-                            </p>
-                            <p className="eyebrow">Match score</p>
-                          </div>
-                          <div className="flex-1 space-y-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge
-                                variant="outline"
-                                className={statusMeta[screenResult.status].className}
-                              >
-                                {statusMeta[screenResult.status].label}
-                              </Badge>
-                              <Badge
-                                variant="outline"
-                                className={
-                                  passed
-                                    ? "border-success/30 bg-success/10 text-success"
-                                    : "border-destructive/30 bg-destructive/10 text-destructive"
-                                }
-                              >
-                                {passed ? "Passed threshold" : "Below threshold"}
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              {verdictCopy[screenResult.status]}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Keyword match */}
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-md border border-success/30 bg-success/5 p-3">
-                            <p className="eyebrow mb-2 text-success">
-                              Matched keywords ({matched.length})
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {matched.length === 0 && (
-                                <span className="text-xs text-muted-foreground">None found</span>
-                              )}
-                              {matched.map((k) => (
-                                <Badge
-                                  key={k}
-                                  variant="outline"
-                                  className="border-success/30 bg-success/10 text-success"
-                                >
-                                  ? {k}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="rounded-md border border-border p-3">
-                            <p className="eyebrow mb-2 text-muted-foreground">
-                              Missing keywords ({missing.length})
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {missing.length === 0 && (
-                                <span className="text-xs text-muted-foreground">
-                                  All keywords covered
-                                </span>
-                              )}
-                              {missing.map((k) => (
-                                <Badge key={k} variant="outline" className="text-muted-foreground">
-                                  ? {k}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Compact summary — 2×2 grid, easy to scan, no scroll needed */}
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-md border border-border bg-card p-3">
-                            <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                              <Briefcase className="h-3.5 w-3.5" /> Work experience
-                            </p>
-                            <p className="text-sm leading-relaxed">
-                              {experience.length > 0 ? (
-                                <>{experience.join(", ")}{detail?.profile?.estimated_years_experience ? ` (~${detail.profile.estimated_years_experience} yrs)` : ""}</>
-                              ) : (
-                                <span className="text-muted-foreground">No employer history detected</span>
-                              )}
-                            </p>
-                          </div>
-                          <div className="rounded-md border border-border bg-card p-3">
-                            <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                              <GraduationCap className="h-3.5 w-3.5" /> Education
-                            </p>
-                            <p className="text-sm leading-relaxed">
-                              {education.length > 0 ? (
-                                education.join(", ")
-                              ) : (
-                                <span className="text-muted-foreground">Not specified</span>
-                              )}
-                            </p>
-                          </div>
-                          <div className="rounded-md border border-border bg-card p-3">
-                            <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                              <Sparkles className="h-3.5 w-3.5" /> Key skills
-                            </p>
-                            <p className="text-sm leading-relaxed">
-                              {skills.length > 0 ? (
-                                skills.map((s) => s.value).join(", ")
-                              ) : (
-                                <span className="text-muted-foreground">None listed</span>
-                              )}
-                            </p>
-                          </div>
-                          <div className="rounded-md border border-border bg-card p-3">
-                            <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                              <AlertTriangle className="h-3.5 w-3.5" /> {unrecognizedSkills.length > 0 ? "Unrecognized skills" : "Skills note"}
-                            </p>
-                            <p className={cn("text-sm leading-relaxed", unrecognizedSkills.length > 0 ? "text-amber-600" : "text-muted-foreground")}>
-                              {unrecognizedSkills.length > 0 ? unrecognizedSkills.join(", ") : "All skills recognized — clean"}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Missing info / job-role / credential analysis (SOP 2) */}
-                        <ScreeningAnalysisSections detail={detail} />
-
-                        {/* Alternative job recommendation */}
-                        {alt && (
-                          <div className="rounded-md border border-warning/40 bg-warning/5 p-3 text-sm">
-                            <p className="font-medium text-warning">
-                              Recommended alternative: {alt.title} (
-                              {Math.round(alt.alternative_match_score ?? 0)}%)
-                            </p>
-                            {alt.reason && (
-                              <p className="mt-1 text-xs text-muted-foreground">{alt.reason}</p>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Screening explanation */}
-                        {(detail?.reasons?.length ?? 0) > 0 && (
-                          <div className="rounded-md border border-border p-3">
-                            <p className="eyebrow mb-2">Why this result (system explanation)</p>
-                            <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-                              {detail!.reasons!.map((r, i) => (
-                                <li key={i}>{r}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {/* Recommendation */}
-                        <div
-                          className={cn(
-                            "rounded-md border p-3 text-sm",
-                            passed
-                              ? "border-success/30 bg-success/10 text-success"
-                              : "border-destructive/30 bg-destructive/10 text-destructive",
-                          )}
-                        >
-                          <p className="font-medium">
-                            {passed
-                              ? "Recommendation: Move forward � accept and schedule an interview."
-                              : "Recommendation: Reject or refer to a better-matching role."}
-                          </p>
-                        </div>
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="cursor-pointer"
-                          onClick={() => {
-                            toast("Re-running resume analysis�");
-                            runScreening();
-                          }}
-                        >
-                          <ScanLine className="mr-2 h-4 w-4" /> Retry analysis
-                        </Button>
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={() => setAddStep(2)}>
-                  Back
-                </Button>
-                <Button onClick={saveNewApplicant}>Save applicant</Button>
-              </DialogFooter>
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>

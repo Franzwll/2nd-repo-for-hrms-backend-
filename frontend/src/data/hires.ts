@@ -63,6 +63,7 @@ function transformApiNewHire(h: ApiNewHire): NewHire {
     phone: h.phone || "",
     stage: h.stage as "Pre-onboarding" | "Probationary",
     startDate: h.start_date || new Date().toISOString().slice(0, 10),
+    evaluationRequestedAt: h.evaluation_requested_at ?? null,
     checklist: (h.onboarding_items || []).map((i) => ({
       item: i.item_text,
       done: i.done,
@@ -424,6 +425,36 @@ export const hireStore = {
       toast.error(
         `"${target.name}" could not be advanced in the database — latest state reloaded.`,
       );
+      await syncFromApi();
+    }
+  },
+  /** Marks the probationary performance evaluation as requested — persisted
+   *  on the new hire record so every admin session shares the same waiting
+   *  state and the auto-regularization countdown survives reloads. */
+  requestEvaluation: async (id: string) => {
+    const target = hires.find((h) => h.id === id);
+    if (!target?.dbId) return;
+    const at = new Date().toISOString();
+    hires = hires.map((h) => (h.id === id ? { ...h, evaluationRequestedAt: at } : h));
+    emit();
+    try {
+      await newHiresApi.update(target.dbId, { evaluation_requested_at: at });
+    } catch (e) {
+      console.warn("API evaluation request error:", e);
+      toast.error(`The evaluation request for "${target.name}" could not be saved.`);
+      await syncFromApi();
+    }
+  },
+  /** Clears the pending evaluation request (cancelled / handled manually). */
+  cancelEvaluationRequest: async (id: string) => {
+    const target = hires.find((h) => h.id === id);
+    if (!target?.dbId) return;
+    hires = hires.map((h) => (h.id === id ? { ...h, evaluationRequestedAt: null } : h));
+    emit();
+    try {
+      await newHiresApi.update(target.dbId, { evaluation_requested_at: null });
+    } catch (e) {
+      console.warn("API evaluation request cancel error:", e);
       await syncFromApi();
     }
   },

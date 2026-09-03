@@ -3,9 +3,11 @@
 namespace Modules\NewHireOnboarding\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\SystemUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Laravel\Sanctum\PersonalAccessToken;
 use Modules\NewHireOnboarding\Models\EmployeeOnboardingItem;
 use Modules\NewHireOnboarding\Models\NewHire;
 use App\Services\AuditLogger;
@@ -257,17 +259,100 @@ class EmployeeOnboardingItemController extends Controller
     /* public/storage symlink or host root changes.                        */
     /* ------------------------------------------------------------------ */
 
-    public function document(int $item): \Symfony\Component\HttpFoundation\BinaryFileResponse|\Symfony\Component\HttpFoundation\StreamedResponse|JsonResponse
+    public function document(Request $request, int $item): \Symfony\Component\HttpFoundation\BinaryFileResponse|\Symfony\Component\HttpFoundation\StreamedResponse|JsonResponse
     {
+        // Files are previewed inside a browser <iframe>/<img>, which cannot send
+        // an Authorization header, so authenticate directly from the ?token=
+        // query param (Bearer header accepted as a fallback) instead of relying
+        // on the auth:sanctum middleware. Permission is also enforced here.
+        $user = $this->resolveTokenUser($request);
+
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        if (! $this->hasOnboardingView($user)) {
+            return response()->json([
+                'message' => 'Access denied: you do not have permission to view this document.',
+            ], 403);
+        }
+
         $model = EmployeeOnboardingItem::findOrFail($item);
 
         if (! $model->file_path || ! \Illuminate\Support\Facades\Storage::disk('public')->exists($model->file_path)) {
             return response()->json(['message' => 'No document found for this checklist item.'], 404);
         }
 
-        return \Illuminate\Support\Facades\Storage::disk('public')->download(
-            $model->file_path,
-            $model->file_name ?: null,
-        );
+        $disk = \Illuminate\Support\Facades\Storage::disk('public');
+        $path = $disk->path($model->file_path);
+        $name = $model->file_name ?: 'document';
+
+        // Serve inline (not as an attachment) so browsers render PDFs/images in
+        // an <iframe>/<img> instead of triggering a download. DOCX/etc. can't be
+        // previewed in-browser and fall back to a Download action in the UI.
+        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        $mimeMap = [
+            'pdf'  => 'application/pdf',
+            'png'  => 'image/png',
+            'jpg'  => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'gif'  => 'image/gif',
+            'webp' => 'image/webp',
+            'bmp'  => 'image/bmp',
+            'doc'  => 'application/msword',
+            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'xls'  => 'application/vnd.ms-excel',
+            'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ];
+        $mime = $mimeMap[$ext]
+            ?? (function_exists('mime_content_type') ? @mime_content_type($path) : null)
+            ?? 'application/octet-stream';
+
+        return response()->file($path, [
+            'Content-Type'        => $mime,
+            'Content-Disposition' => 'inline; filename="' . $name . '"',
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Token-based authentication for direct browser previews              */
+    /* ------------------------------------------------------------------ */
+
+    private function resolveTokenUser(Request $request): ?SystemUser
+    {
+        $token = $request->query('token') ?? $request->bearerToken();
+
+        if (! $token) {
+            return null;
+        }
+
+        $pat = PersonalAccessToken::findToken($token);
+
+        if (! $pat || ! $pat->tokenable instanceof SystemUser) {
+            return null;
+        }
+
+        return $pat->tokenable;
+    }
+
+    private function hasOnboardingView(SystemUser $user): bool
+    {
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        $ranks = [
+            'Full'                => 3,
+            'Edit'                => 2,
+            'Write'               => 2,
+            'Approve / Reject Only' => 2,
+            'View'                => 1,
+            'Read'                => 1,
+            'None'                => 0,
+        ];
+
+        $level = $user->permissions->firstWhere('module_name', 'New Hire Onboarding')?->permission_level ?? 'None';
+
+        return ($ranks[$level] ?? 0) >= 1;
     }
 }

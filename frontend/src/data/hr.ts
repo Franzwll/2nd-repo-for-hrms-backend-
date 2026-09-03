@@ -74,6 +74,8 @@ export type Position = {
   salaryBand: string;
   /** Numeric id in the backend `positions` table (Core HCM). */
   dbId?: number;
+  /** Numeric department id (Core HCM) — set when positions come from the API. */
+  departmentId?: number | null;
 };
 
 export const positions: Position[] = [
@@ -212,6 +214,10 @@ export type NewHire = {
   departmentId?: number | null;
   stage: "Pre-onboarding" | "Probationary" | "Regular";
   startDate: string;
+  /** When HR requested the probationary performance evaluation (ISO timestamp
+   *  or null) — persisted on the new hire record so every admin session and
+   *  the DOLE auto-regularization rule share the same waiting state. */
+  evaluationRequestedAt?: string | null;
   initials: string;
   checklist: {
     item: string;

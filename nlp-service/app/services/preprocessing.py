@@ -54,6 +54,97 @@ _PLACE_REPAIRS = [
 # (e.g. date ranges "2020 ? 2022").
 _REPL_BETWEEN_DIGITS = re.compile(r"(?<=\d)\s*[\ufffd?]\s*(?=\d)")
 
+# OCR-garbled header correction (blurred scans produce PROPESSIONAL, SUMMART, SKLLS, etc.)
+_HEADER_CANONICALS = [
+    "PROFESSIONAL SUMMARY",
+    "WORK EXPERIENCE",
+    "PROFESSIONAL EXPERIENCE",
+    "CORE SKILLS",
+    "CORE COMPETENCIES",
+    "TECHNICAL SKILLS",
+    "EDUCATION",
+    "EDUCATIONAL BACKGROUND",
+    "CERTIFICATIONS",
+    "CERTIFICATIONS AND TRAINING",
+    "CERTIFICATES",
+    "TRAININGS AND SEMINARS",
+    "AWARDS",
+    "REFERENCES",
+    "ADDITIONAL INFORMATION",
+]
+
+# Common OCR token-level fixes for hospitality vocabulary (applied before header detection)
+_OCR_TOKEN_FIXES = {
+    "propessional": "professional",
+    "proffessional": "professional",
+    "propesional": "professional",
+    "summart": "summary",
+    "summay": "summary",
+    "exprience": "experience",
+    "experince": "experience",
+    "sklls": "skills",
+    "skils": "skills",
+    "houskeeping": "housekeeping",
+    "housekeepimg": "housekeeping",
+    "hospitalty": "hospitality",
+    "h0tel": "hotel",
+    "hote1": "hotel",
+    "recpetion": "reception",
+    "managment": "management",
+    "managemet": "management",
+    "supervsor": "supervisor",
+    "coordintor": "coordinator",
+    "certfication": "certification",
+    "certication": "certification",
+}
+
+def _correct_ocr_line(line: str) -> str:
+    """Corrects a single line that looks like a section header garbled by OCR.
+    Uses difflib against HEADER_CANONICALS and token fixes for common hospitality terms.
+    """
+    import difflib
+    stripped = line.strip()
+    if not stripped or len(stripped) > 60:
+        return line
+    # Token-level fixes first (case-insensitive)
+    tokens = stripped.split()
+    fixed_tokens = []
+    for tok in tokens:
+        clean = re.sub(r"[^A-Za-z]", "", tok)
+        low = clean.lower()
+        if low in _OCR_TOKEN_FIXES:
+            # preserve original casing: if tok is upper, upper the fix
+            fix = _OCR_TOKEN_FIXES[low]
+            if tok.isupper():
+                fix = fix.upper()
+            elif tok[0].isupper():
+                fix = fix.capitalize()
+            # keep punctuation around original token
+            prefix = tok[: len(tok) - len(tok.lstrip(".,;:-"))] if tok[0] in ".,;:-" else ""
+            suffix = tok[len(tok.rstrip(".,;:-")) :] if tok[-1] in ".,;:-" else ""
+            fixed_tokens.append(prefix + fix + suffix)
+        else:
+            fixed_tokens.append(tok)
+    maybe_fixed = " ".join(fixed_tokens)
+    # Header-level correction: if line looks like an all-caps header (≥50% caps) and fuzzy matches a canonical
+    upper_ratio = sum(1 for c in stripped if c.isupper()) / max(1, sum(1 for c in stripped if c.isalpha()))
+    if upper_ratio >= 0.6 or stripped.isupper():
+        # Try difflib against canonicals
+        best = difflib.get_close_matches(maybe_fixed.upper(), _HEADER_CANONICALS, n=1, cutoff=0.72)
+        if best:
+            # verify token overlap: at least half words share prefix
+            return best[0].title() if not stripped.isupper() else best[0]
+        # Also try against upper version of maybe_fixed
+        best2 = difflib.get_close_matches(stripped.upper(), _HEADER_CANONICALS, n=1, cutoff=0.70)
+        if best2:
+            return best2[0].title() if not stripped.isupper() else best2[0]
+    # Also correct the line if it contains a garbled header as substring
+    for canon in _HEADER_CANONICALS:
+        if difflib.SequenceMatcher(None, maybe_fixed.upper(), canon).ratio() >= 0.80:
+            # replace the fuzzy part with canonical but keep surrounding
+            return maybe_fixed  # already token-fixed, close enough
+    return maybe_fixed
+
 
 def preprocess(raw_text: str) -> Dict:
     """Cleans raw extracted text.
@@ -97,7 +188,7 @@ def preprocess(raw_text: str) -> Dict:
     )
     text = _MULTIPLE_SPACES.sub(" ", text)
 
-    # Process lines: strip trailing/leading spaces and bullet symbols
+    # Process lines: strip trailing/leading spaces and bullet symbols + OCR header correction
     cleaned_lines = []
     for line in text.split("\n"):
         line_str = line.strip()
@@ -105,6 +196,8 @@ def preprocess(raw_text: str) -> Dict:
             cleaned_lines.append("")
             continue
         line_clean = _BULLET_PREFIX.sub("", line_str).strip()
+        # OCR header/token correction for blurred scans
+        line_clean = _correct_ocr_line(line_clean)
         cleaned_lines.append(line_clean)
 
     text = "\n".join(cleaned_lines)
