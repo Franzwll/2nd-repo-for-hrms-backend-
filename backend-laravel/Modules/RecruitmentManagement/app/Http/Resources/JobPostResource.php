@@ -32,12 +32,13 @@ class JobPostResource extends JsonResource
             'responsibilities'      => $this->responsibilities_json ?? [],
             'qualifications'        => $this->qualifications_json ?? [],
             'skills'                => $this->skills_json ?? [],
-            'benefits'              => $this->benefits_json ?? [],
             'platforms'             => $this->whenLoaded('platforms',
                 fn () => $this->platforms->where('status', 'published')->pluck('platform')->values()
             ),
             'picture'               => $this->picture,
-            'picture_url'           => $this->picture ? 'storage/' . $this->picture : null,
+            'picture_url'           => $this->picture
+                ? $request->getSchemeAndHttpHost() . '/api/v1/job-posts/' . $this->job_post_id . '/picture'
+                : null,
             'applicants_count'      => $this->whenLoaded('applicants', fn () => $this->applicants->count()),
             'created_at'            => $this->created_at?->toISOString(),
             'updated_at'            => $this->updated_at?->toISOString(),

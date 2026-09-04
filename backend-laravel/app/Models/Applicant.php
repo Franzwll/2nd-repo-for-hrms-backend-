@@ -22,6 +22,7 @@ class Applicant extends Model
         'stage',
         'source',
         'resume_file_path',
+        'resume_original_name',
         'summary',
         'flags_json',
     ];

@@ -4,6 +4,13 @@ use Illuminate\Support\Facades\Route;
 use Modules\RecruitmentManagement\Http\Controllers\RecruitmentManagementController;
 use Modules\RecruitmentManagement\Http\Controllers\RequisitionController;
 
+Route::prefix('v1')->group(function () {
+     Route::get('job-posts/template-picture', [RecruitmentManagementController::class, 'templatePicture'])
+           ->name('job-post.template-picture');
+     Route::get('job-posts/{job_post}/picture', [RecruitmentManagementController::class, 'picture'])
+           ->name('job-post.picture');
+});
+
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
 
     /* ------------------------------------------------------------------ */

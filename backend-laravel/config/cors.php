@@ -21,7 +21,10 @@ return [
 
     'allowed_origins' => array_filter(array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS', 'http://localhost:8080,http://localhost:8081,http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:3000,http://127.0.0.1:8080,http://127.0.0.1:8081,http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:5175')))),
 
-    'allowed_origins_patterns' => ['#^http://(localhost|127\.0\.0\.1)(:\d+)?$#'],
+    // Allow any local dev origin (localhost / 127.0.0.1 on any port) so the
+    // frontend can fetch document blobs cross-origin for in-browser preview.
+    'allowed_origins_patterns' => ['/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/'],
+
 
     'allowed_headers' => ['*'],
 

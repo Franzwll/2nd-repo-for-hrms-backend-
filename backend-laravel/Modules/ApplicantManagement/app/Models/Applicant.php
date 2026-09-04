@@ -91,11 +91,22 @@ class Applicant extends Model
 
     /**
      * Generate the next applicant_code in the sequence APL-XXXXX.
+     *
+     * Uses the HIGHEST existing code number (not the last row's code) so
+     * seeded/imported records with high codes can never cause a duplicate,
+     * and retries forward until an unused code is found.
      */
     public static function generateCode(): string
     {
-        $last = static::orderByDesc('applicant_id')->value('applicant_code');
-        $next = $last ? ((int) substr($last, 4)) + 1 : 1;
+        $max = (int) static::query()
+            ->selectRaw("MAX(CAST(SUBSTRING(applicant_code, 5) AS UNSIGNED)) AS max_no")
+            ->value('max_no');
+
+        $next = $max + 1;
+        while (static::where('applicant_code', 'APL-' . str_pad($next, 5, '0', STR_PAD_LEFT))->exists()) {
+            $next++;
+        }
+
         return 'APL-' . str_pad($next, 5, '0', STR_PAD_LEFT);
     }
 }

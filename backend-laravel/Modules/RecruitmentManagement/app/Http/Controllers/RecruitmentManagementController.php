@@ -11,9 +11,44 @@ use Modules\RecruitmentManagement\Http\Requests\UpdateJobPostRequest;
 use Modules\RecruitmentManagement\Http\Resources\JobPostResource;
 use Modules\RecruitmentManagement\Models\JobPost;
 use Modules\RecruitmentManagement\Models\JobPostPlatform;
+use App\Services\AuditLogger;
 
 class RecruitmentManagementController extends Controller
 {
+    public function templatePicture()
+    {
+        $path = storage_path('jobpost_picture/template.png');
+        abort_unless(is_file($path), 404);
+
+        $title = htmlspecialchars(strtoupper(trim((string) request()->query('title', 'Position'))), ENT_XML1, 'UTF-8');
+        $imageData = base64_encode((string) file_get_contents($path));
+        $words = preg_split('/\s+/', $title) ?: ['POSITION'];
+        $lines = [];
+        $line = '';
+        foreach ($words as $word) {
+            $candidate = trim($line . ' ' . $word);
+            if ($line !== '' && strlen($candidate) > 18) {
+                $lines[] = $line;
+                $line = $word;
+            } else {
+                $line = $candidate;
+            }
+        }
+        if ($line !== '') $lines[] = $line;
+        $titleSvg = collect($lines)->map(fn ($lineText, $index) =>
+            '<tspan x="78" dy="' . ($index === 0 ? '0' : '62') . '">' . $lineText . '</tspan>'
+        )->implode('');
+        $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">'
+            . '<image href="data:image/png;base64,' . $imageData . '" width="1080" height="1080"/>'
+            . '<rect x="70" y="525" width="460" height="175" fill="white"/>'
+            . '<text x="78" y="585" font-family="Arial, sans-serif" font-size="48" font-weight="700" fill="black">'
+            . $titleSvg . '</text></svg>';
+
+        return response($svg, 200, ['Content-Type' => 'image/svg+xml', 'Cache-Control' => 'no-store']);
+
+        return response()->file($path);
+    }
+
     /* ------------------------------------------------------------------ */
     /* GET /api/v1/job-posts */
     /* ------------------------------------------------------------------ */
@@ -75,11 +110,10 @@ class RecruitmentManagementController extends Controller
         $data['responsibilities_json'] = $data['responsibilities'] ?? [];
         $data['qualifications_json'] = $data['qualifications'] ?? [];
         $data['skills_json'] = $data['skills'] ?? [];
-        $data['benefits_json'] = $data['benefits'] ?? [];
         $data['posted_date'] = $data['posted_date'] ?? now()->toDateString();
 
         $platforms = $data['platforms'] ?? [];
-        unset($data['responsibilities'], $data['qualifications'], $data['skills'], $data['benefits'], $data['platforms']);
+        unset($data['responsibilities'], $data['qualifications'], $data['skills'], $data['platforms']);
 
         // Handle poster picture upload
         if ($request->hasFile('picture')) {
@@ -88,6 +122,14 @@ class RecruitmentManagementController extends Controller
         unset($data['picture_file']);
 
         $jobPost = JobPost::create($data);
+
+        AuditLogger::log(
+            action: 'Job Post Created',
+            module: 'Recruitment Management',
+            targetType: 'Job Post',
+            targetId: (string) $jobPost->job_post_id,
+            details: "Created job post '{$jobPost->title}'.",
+        );
 
         // Write platform rows
         $this->syncPlatforms($jobPost, $platforms);
@@ -107,6 +149,35 @@ class RecruitmentManagementController extends Controller
         $model = JobPost::with(['department', 'platforms', 'applicants'])->findOrFail($job_post);
 
         return response()->json(new JobPostResource($model));
+    }
+
+    /** Serve legacy and current poster locations through one stable URL. */
+    public function picture(int $job_post)
+    {
+        $model = JobPost::findOrFail($job_post);
+        $storedPath = trim((string) $model->picture, '/');
+        abort_if($storedPath === '', 404);
+
+        $relativePath = preg_replace('#^(storage/|public/)#', '', $storedPath);
+        $fileName = basename($relativePath ?: $storedPath);
+        $candidates = [
+            $storedPath,
+            storage_path('app/public/' . $relativePath),
+            storage_path('app/' . $relativePath),
+            storage_path('jobpost_picture/' . $fileName),
+            public_path('storage/' . $relativePath),
+            public_path($relativePath),
+            base_path('../' . $relativePath),
+        ];
+
+        foreach ($candidates as $candidate) {
+            $realCandidate = realpath($candidate);
+            if ($realCandidate && is_file($realCandidate)) {
+                return response()->file($realCandidate);
+            }
+        }
+
+        abort(404);
     }
 
     /* ------------------------------------------------------------------ */
@@ -130,11 +201,6 @@ class RecruitmentManagementController extends Controller
             $data['skills_json'] = $data['skills'];
             unset($data['skills']);
         }
-        if (isset($data['benefits'])) {
-            $data['benefits_json'] = $data['benefits'];
-            unset($data['benefits']);
-        }
-
         $platforms = $data['platforms'] ?? null;
         unset($data['platforms']);
 
@@ -153,6 +219,14 @@ class RecruitmentManagementController extends Controller
             $this->syncPlatforms($model, $platforms);
         }
 
+        AuditLogger::log(
+            action: 'Job Post Updated',
+            module: 'Recruitment Management',
+            targetType: 'Job Post',
+            targetId: (string) $model->job_post_id,
+            details: "Updated job post '{$model->title}' (status: {$model->status}).",
+        );
+
         return response()->json(new JobPostResource($model->load(['department', 'platforms'])));
     }
 
@@ -170,6 +244,15 @@ class RecruitmentManagementController extends Controller
         }
 
         $model->delete();
+
+        AuditLogger::log(
+            action: 'Job Post Deleted',
+            module: 'Recruitment Management',
+            severity: 'Warning',
+            targetType: 'Job Post',
+            targetId: (string) $job_post,
+            details: "Deleted job post '{$model->title}'.",
+        );
 
         return response()->json(['message' => 'Job post deleted.']);
     }

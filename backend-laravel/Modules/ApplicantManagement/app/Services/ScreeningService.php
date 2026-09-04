@@ -145,6 +145,67 @@ class ScreeningService
     }
 
     /* ------------------------------------------------------------------ */
+    /* HR-configurable scoring settings (Screening Setup dialog)            */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * The screening scoring configuration persisted in system_settings under
+     * `screening.configuration`:
+     * {
+     *   "criteria": {"Skills": {"weight": 40, "enabled": true}, ...},
+     *   "passing_score": 75,
+     *   "required_skills_coverage_min": 0.60
+     * }
+     *
+     * Disabled criteria keep their row but contribute 0 weight, so HR can
+     * switch a criterion off without losing its value. Returns null when
+     * nothing was configured yet — the NLP service then uses its documented
+     * defaults (40/30/20/10, passing 75%, coverage 60%).
+     */
+    public static function screeningSettings(): ?array
+    {
+        try {
+            $raw = \Modules\Settings\Models\SystemSetting::where('setting_key', 'screening.configuration')->value('setting_value');
+            if (! is_array($raw) || empty($raw)) {
+                return null;
+            }
+
+            $criteria = $raw['criteria'] ?? [];
+            $weights = [];
+            $map = [
+                'Skills' => 'skills',
+                'Work Experience' => 'experience',
+                'Educational Background' => 'education',
+                'Certifications' => 'certifications',
+            ];
+            foreach ($map as $label => $key) {
+                $entry = $criteria[$label] ?? null;
+                if (! is_array($entry)) {
+                    continue; // incomplete config falls back to defaults
+                }
+                $weights[$key] = ($entry['enabled'] ?? true) ? (float) ($entry['weight'] ?? 0) : 0.0;
+            }
+            if (count($weights) !== 4) {
+                return null;
+            }
+
+            $settings = ['weights' => $weights];
+            if (isset($raw['passing_score'])) {
+                $settings['passing_score'] = (float) $raw['passing_score'];
+            }
+            if (isset($raw['required_skills_coverage_min'])) {
+                $settings['required_skills_coverage_min'] = (float) $raw['required_skills_coverage_min'];
+            }
+
+            return $settings;
+        } catch (\Throwable $e) {
+            Log::warning('Screening configuration unavailable, defaults will be used: ' . $e->getMessage());
+
+            return null;
+        }
+    }
+
+    /* ------------------------------------------------------------------ */
     /* Screening execution                                                 */
     /* ------------------------------------------------------------------ */
 
@@ -183,7 +244,8 @@ class ScreeningService
                 basename($applicant->resume_file_path),
                 $requirements,
                 $openJobs,
-                referenceData: $this->referenceData()
+                referenceData: $this->referenceData(),
+                screeningSettings: self::screeningSettings()
             );
 
             if ($response['ok']) {
@@ -214,7 +276,8 @@ class ScreeningService
             $originalName,
             $this->buildRequirements($jobPost),
             $this->buildOpenJobs($jobPost),
-            referenceData: $this->referenceData()
+            referenceData: $this->referenceData(),
+            screeningSettings: self::screeningSettings()
         );
 
         if (! $response['ok']) {

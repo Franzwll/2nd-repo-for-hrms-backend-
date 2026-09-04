@@ -115,8 +115,50 @@ def parse_requirements(
     }
 
 
-def match_profile_to_requirements(profile: Dict, validation: Dict, requirements: Dict) -> Dict:
-    """Component-by-component matching with full explanation data."""
+_WEIGHT_KEYS = ("skills", "experience", "education", "certifications")
+
+
+def _validated_weights(override: Optional[Dict]) -> Dict[str, float]:
+    """Clamps an HR-supplied weight override to safe values.
+
+    Accepts fractions (0.4) or percentages (40). Falls back to the
+    documented defaults when the payload is missing, malformed, or does
+    not include every component. Components the caller "disabled" by
+    zeroing are preserved (earned points scale to 0), so HR can genuinely
+    switch a criterion off from the Screening Setup dialog.
+    """
+    if not override:
+        return dict(config.SCORE_WEIGHTS)
+
+    cleaned: Dict[str, float] = {}
+    for key in _WEIGHT_KEYS:
+        raw = override.get(key)
+        if raw is None:
+            return dict(config.SCORE_WEIGHTS)
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            return dict(config.SCORE_WEIGHTS)
+        if value > 1.0:  # percentage form (40) -> fraction (0.4)
+            value = value / 100.0
+        cleaned[key] = min(max(value, 0.0), 1.0)
+
+    return cleaned
+
+
+def match_profile_to_requirements(
+    profile: Dict,
+    validation: Dict,
+    requirements: Dict,
+    weights_override: Optional[Dict] = None,
+) -> Dict:
+    """Component-by-component matching with full explanation data.
+
+    `weights_override` optionally carries per-request scoring weights
+    ({skills, experience, education, certifications} as fractions summing
+    to 1.0, sourced from the HR-configurable screening settings). When
+    omitted the documented defaults from app.config are used.
+    """
     recognized_skills = set(validation["skill_analysis"]["recognized"])
     required_skills = set(requirements["required_skills"])
     preferred_skills = set(requirements["preferred_skills"])
@@ -160,7 +202,7 @@ def match_profile_to_requirements(profile: Dict, validation: Dict, requirements:
         if requirements["required_certifications"] else None
     )
 
-    weights = config.SCORE_WEIGHTS
+    weights = _validated_weights(weights_override)
     breakdown = {
         "skills": {
             "weight": weights["skills"],

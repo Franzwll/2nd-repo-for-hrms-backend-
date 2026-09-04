@@ -5,6 +5,7 @@
 import { clearSession, getToken } from "./auth";
 
 const BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string) || "http://127.0.0.1:8000/api/v1";
+export const API_BASE_URL = BASE_URL;
 
 /* Lightweight GET cache: dedupes in-flight requests and caches responses for
    a short TTL so overlapping module fetches don't hit the server repeatedly. */
@@ -248,10 +249,11 @@ export function resolveStorageUrl(value: string | null): string | null {
   if (!value) return null;
   const origin = new URL(BASE_URL).origin;
   try {
-    const u = new URL(value, origin);
-    return `${origin}${u.pathname}`;
+    const normalized = value.replace(/\\/g, "/").replace(/^\.\//, "");
+    const u = new URL(normalized, origin);
+    return `${origin}${u.pathname}${u.search}`;
   } catch {
-    return value;
+    return value.replace(/\\/g, "/");
   }
 }
 
@@ -299,6 +301,25 @@ export const applicantsApi = {
       method: 'POST',
       body: formData,
     }),
+  screenResume: (formData: FormData) =>
+    request<ApiScreeningPreview>('/applicants/screen-resume', {
+      method: 'POST',
+      body: formData,
+    }),
+  getScreening: (id: number | string) =>
+    request<{ data: ApiScreening }>(`/applicants/${id}/screening`),
+  /** Streams the applicant's stored resume from the backend — always
+   *  accessible, independent of the public/storage symlink, and same-origin
+   *  (relative) so the review dialog's preview <iframe>/<img> renders PDFs
+   *  and images inline instead of a blank white box. The Vite dev proxy
+   *  forwards /api to Laravel. The auth token is appended as ?token= so the
+   *  request authenticates server-side without an Authorization header. */
+  resumeDocumentUrl: (applicantId: number | string) => {
+    const token = getToken();
+    return `/api/v1/applicants/${applicantId}/resume-document${
+      token ? `?token=${encodeURIComponent(token)}` : ""
+    }`;
+  },
   createAssessment: (applicantId: number | string, data: Record<string, any>) =>
     request<ApiAssessment>(`/applicants/${applicantId}/assessments`, {
       method: 'POST',
@@ -329,6 +350,16 @@ export type ScreeningReferencePayload = {
   aliases_json?: string[];
   active?: boolean;
 };
+
+/** HR-configurable screening scoring configuration (Screening Setup dialog). */
+export interface ScreeningConfiguration {
+  criteria: {
+    [label: string]: { weight: number; enabled: boolean };
+  };
+  passing_score: number;
+  /** 0–1 — minimum fraction of a job post's required skills that must match. */
+  required_skills_coverage_min: number;
+}
 
 /** DB-managed spaCy screening vocabulary (skills / job roles / certifications + aliases). */
 export const screeningApi = {
@@ -364,6 +395,35 @@ export const screeningApi = {
       request<{ success: boolean; data: ApiScreeningReference }>(
         `/screening/reference-data/${id}/toggle`,
         { method: "PATCH" },
+      ),
+  },
+
+  /** HR-configurable scoring configuration (Screening Setup dialog). */
+  configuration: {
+    /** NLP service health + saved / effective / default scoring settings. */
+    status: () =>
+      request<{
+        success: boolean;
+        data: {
+          nlp_service: {
+            online: boolean;
+            base_model: string | null;
+            custom_ner_loaded: boolean;
+            model_info: Record<string, any> | null;
+          };
+          saved: ScreeningConfiguration | null;
+          effective: ScreeningConfiguration;
+          service_defaults: {
+            weights: Record<string, number> | null;
+            thresholds: Record<string, number> | null;
+          } | null;
+        };
+      }>("/screening/status"),
+    /** Persists the configuration used by every new screening run. */
+    save: (configuration: ScreeningConfiguration) =>
+      request<{ success: boolean; data: ScreeningConfiguration; message: string }>(
+        "/screening/configuration",
+        { method: "PUT", body: JSON.stringify({ configuration }) },
       ),
   },
 };
@@ -414,7 +474,6 @@ export interface ApiJobPost {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
-  benefits: string[];
   platforms?: string[];
   picture: string | null;
   picture_url: string | null;
@@ -512,6 +571,8 @@ export interface ApiPosition {
   title: string;
   department_id: number;
   department?: string | null;
+  /** Department name — returned by PositionResource when the relation is loaded. */
+  department_name?: string | null;
   level: string;
   headcount: number;
   filled_count: number;
@@ -557,6 +618,9 @@ export interface ApiNewHire {
   position?: string;
   stage: "Pre-onboarding" | "Probationary" | "Regular";
   start_date: string;
+  /** When HR requested the probationary performance evaluation (ISO timestamp
+   *  or null) — drives the DOLE auto-regularization countdown. */
+  evaluation_requested_at?: string | null;
   completion_percent?: number;
   onboarding_items?: {
     employee_onboarding_item_id: number | null;
@@ -703,9 +767,17 @@ export const onboardingItemsApi = {
       message: string;
     }>(`/onboarding-items/${itemId}/upload`, { method: "POST", body: formData }),
   /** Streams the employee's uploaded document from the backend — always
-   *  accessible, independent of the public/storage symlink. */
-  documentUrl: (itemId: number | string) =>
-    `${BASE_URL}/onboarding-items/${itemId}/document`,
+   *  accessible, independent of the public/storage symlink. The URL is
+   *  same-origin (relative) so the preview <iframe>/<img> lets the browser
+   *  render PDFs/images inline instead of downloading them; the Vite dev proxy
+   *  forwards /api to Laravel. The auth token is appended as ?token= so the
+   *  request authenticates server-side without an Authorization header. */
+  documentUrl: (itemId: number | string) => {
+    const token = getToken();
+    return `/api/v1/onboarding-items/${itemId}/document${
+      token ? `?token=${encodeURIComponent(token)}` : ""
+    }`;
+  },
 };
 
 export const checklistRequestsApi = {
@@ -990,7 +1062,7 @@ export interface ApiPosition {
   position_code: string;
   title: string;
   department_id: number;
-  department_name?: string;
+  department_name?: string | null;
   department?: string | null;
   salary_grade_id: number;
   salary_grade?: string;
@@ -1302,6 +1374,8 @@ export interface ApiLandingJob {
   qualifications: string[];
   skills: string[];
   benefits: string[];
+  picture?: string | null;
+  picture_url?: string | null;
 }
 
 export interface ApiAnnouncement {
@@ -1411,14 +1485,16 @@ export const landingApi = {
       };
       error_message?: string;
     }>("/landing/extract-resume", { method: "POST", body: formData }),
-  apply: (data: Record<string, any>) =>
-    request<{
+  apply: (data: Record<string, any> | FormData) => {
+    const isForm = data instanceof FormData;
+    return request<{
       message: string;
       data: { applicant_id: number; applicant_code: string; job_title: string };
     }>("/landing/apply", {
       method: "POST",
-      body: JSON.stringify(data),
-    }),
+      body: isForm ? data : JSON.stringify(data),
+    });
+  },
 };
 
 /* ========================================================================= */

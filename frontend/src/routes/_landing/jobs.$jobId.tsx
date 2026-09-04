@@ -82,10 +82,10 @@ function JobDetail() {
     if (!file) return;
     setFileName(file.name);
     setResumeFile(file);
-    // Validate type/size before extraction
-    const okType = /\.(pdf|docx?)$/i.test(file.name);
+    // Validate type/size before extraction — same allow-list as Recruitment Management (add applicant)
+    const okType = /\.(pdf|docx?|png|jpe?g|webp|heic|heif|bmp|gif|tiff|tif|avif|svg)$/i.test(file.name);
     if (!okType) {
-      toast.error("Unsupported file — please use PDF or DOCX.");
+      toast.error("Unsupported file — please use PDF, DOC, DOCX, PNG, JPG or JPEG.");
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
@@ -126,7 +126,8 @@ function JobDetail() {
         setLocation(pi.address.trim());
         filled.push("Location");
       }
-      if (filled.length) toast.info(`Auto-filled ${filled.join(", ")} from resume — please review.`);
+      if (filled.length)
+        toast.info(`Auto-filled ${filled.join(", ")} from resume — please review.`);
     } catch (e) {
       // silent — extraction is optional, user can still type manually
       console.warn("Resume extraction failed", e);
@@ -156,69 +157,90 @@ function JobDetail() {
           <ArrowLeft className="h-4 w-4" /> Back to all jobs
         </Link>
 
-        <div className="mt-6 grid gap-8 lg:grid-cols-[1fr_400px]">
-          {/* Job details */}
-          <div>
-            <Badge variant="outline" className="border-gold/50 text-gold">
-              {job.department}
-            </Badge>
-            <h1 className="mt-3 font-display text-4xl font-semibold md:text-5xl">{job.title}</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {job.employmentType} · {job.schedule} · Makati City
-            </p>
-            <p className="mt-1 text-base font-medium text-primary">
-              {peso(job.salaryMin)} – {peso(job.salaryMax)} per month
-            </p>
-            <div className="gold-rule my-6" />
+        {/* Two-column layout — apply form on the right, top-aligned with the header */}
+        <div className="mt-6 grid gap-8 md:grid-cols-[1fr_400px]">
+          {/* Left column — poster header, gold rule, and job details */}
+          <div className="min-w-0">
+            {/* Header — poster on the left, vacancy info on the right */}
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+              {job.picture && (
+                <img
+                  src={job.picture}
+                  alt={`${job.title} hiring poster`}
+                  className="h-44 w-40 shrink-0 rounded-md border border-border bg-white object-contain shadow-sm"
+                />
+              )}
 
-            <section>
-              <h2 className="font-display text-2xl font-semibold">Job Description</h2>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                {job.description}
-              </p>
-            </section>
-
-            <section className="mt-8">
-              <h2 className="font-display text-2xl font-semibold">Responsibilities</h2>
-              <ul className="mt-3 space-y-2">
-                {(job.responsibilities ?? []).map((r: string) => (
-                  <li key={r} className="flex gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
-                    {r}
-                  </li>
-                ))}
-              </ul>
-            </section>
-
-            <section className="mt-8">
-              <h2 className="font-display text-2xl font-semibold">Qualifications</h2>
-              <ul className="mt-3 space-y-2">
-                {(job.qualifications ?? []).map((r: string) => (
-                  <li key={r} className="flex gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
-                    {r}
-                  </li>
-                ))}
-              </ul>
-            </section>
-
-            <section className="mt-8">
-              <h2 className="font-display text-2xl font-semibold">Benefits</h2>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {(job.benefits ?? []).map((b: string) => (
-                  <span
-                    key={b}
-                    className="rounded border border-border bg-muted px-2.5 py-1 text-xs text-muted-foreground"
-                  >
-                    {b}
-                  </span>
-                ))}
+              <div className="min-w-0 pt-1">
+                <Badge variant="outline" className="border-gold/50 text-gold">
+                  {job.department}
+                </Badge>
+                <h1 className="mt-3 font-display text-4xl font-semibold md:text-5xl">
+                  {job.title}
+                </h1>
+                <p className="mt-2.5 text-sm text-foreground/75">
+                  {job.employmentType} <span className="text-gold">·</span> {job.schedule}{" "}
+                  <span className="text-gold">·</span> Makati City
+                </p>
+                <p className="mt-1.5 text-base font-semibold text-primary">
+                  {peso(job.salaryMin)} — {peso(job.salaryMax)} per month
+                </p>
               </div>
-            </section>
+            </div>
+
+            <div className="gold-rule mt-6" />
+
+            {/* Job details */}
+            <div className="mt-8">
+              <section>
+                <h2 className="font-display text-2xl font-semibold">Job Description</h2>
+                <p className="mt-3 text-[15px] leading-relaxed text-foreground/75">
+                  {job.description}
+                </p>
+              </section>
+
+              <section className="mt-10">
+                <h2 className="font-display text-2xl font-semibold">Responsibilities</h2>
+                <ul className="mt-4 space-y-2.5">
+                  {(job.responsibilities ?? []).map((r: string) => (
+                    <li key={r} className="flex gap-2.5 text-[15px] text-foreground/75">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
+                      {r}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              <section className="mt-10">
+                <h2 className="font-display text-2xl font-semibold">Qualifications</h2>
+                <ul className="mt-4 space-y-2.5">
+                  {(job.qualifications ?? []).map((r: string) => (
+                    <li key={r} className="flex gap-2.5 text-[15px] text-foreground/75">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
+                      {r}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              <section className="mt-10">
+                <h2 className="font-display text-2xl font-semibold">Benefits</h2>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {(job.benefits ?? []).map((b: string) => (
+                    <span
+                      key={b}
+                      className="rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground/75"
+                    >
+                      {b}
+                    </span>
+                  ))}
+                </div>
+              </section>
+            </div>
           </div>
 
-          {/* Application form */}
-          <aside className="lg:sticky lg:top-24 lg:h-fit">
+          {/* Application form — top-aligned with the header, above the gold rule level */}
+          <aside className="h-fit md:sticky md:top-24">
             <Card className="border-border/70">
               <CardContent className="p-6">
                 {submitted ? (
@@ -251,7 +273,9 @@ function JobDetail() {
                         return;
                       }
                       if (!isValidName(n)) {
-                        toast.error("Enter a valid full name (letters, spaces, hyphen, apostrophe, ≥2 chars).");
+                        toast.error(
+                          "Enter a valid full name (letters, spaces, hyphen, apostrophe, ≥2 chars).",
+                        );
                         return;
                       }
                       if (!em) {
@@ -280,14 +304,27 @@ function JobDetail() {
                       }
                       setApplying(true);
                       try {
-                        const res = await landingApi.apply({
-                          job_post_id: Number(job.id),
-                          name: n,
-                          email: em,
-                          phone: ph,
-                          source: "Landing Page",
-                          summary: cover,
-                        });
+                        let res;
+                        if (resumeFile) {
+                          const fd = new FormData();
+                          fd.append("job_post_id", String(job.id));
+                          fd.append("name", n);
+                          fd.append("email", em);
+                          fd.append("phone", ph);
+                          fd.append("source", "Landing Page");
+                          fd.append("summary", cover);
+                          fd.append("resume", resumeFile);
+                          res = await landingApi.apply(fd);
+                        } else {
+                          res = await landingApi.apply({
+                            job_post_id: Number(job.id),
+                            name: n,
+                            email: em,
+                            phone: ph,
+                            source: "Landing Page",
+                            summary: cover,
+                          });
+                        }
                         setSubmitted(true);
                         toast.success("Application submitted", {
                           description: `Application ${res.data.applicant_code} for ${job.title} was received.`,
@@ -303,35 +340,72 @@ function JobDetail() {
                   >
                     <h2 className="font-display text-2xl font-semibold">Apply for this job</h2>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      No account needed. Fields marked * are required. {extracting && <span className="text-gold">Extracting from resume…</span>}
+                      No account needed. Fields marked * are required.{" "}
+                      {extracting && <span className="text-gold">Extracting from resume…</span>}
                     </p>
 
                     <div className="mt-5 space-y-4">
                       <div className="space-y-1.5">
                         <Label htmlFor="name">Full Name *</Label>
-                        <Input id="name" name="name" required placeholder="Juan Dela Cruz" value={name} onChange={(e) => setName(sanitizeName(e.target.value))} />
-                        <p className="text-[11px] text-muted-foreground">Letters, spaces, hyphen, apostrophe only (≥2 chars).</p>
+                        <Input
+                          id="name"
+                          name="name"
+                          required
+                          placeholder="Juan Dela Cruz"
+                          value={name}
+                          onChange={(e) => setName(sanitizeName(e.target.value))}
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          Letters, spaces, hyphen, apostrophe only (≥2 chars).
+                        </p>
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="email">Email Address *</Label>
-                        <Input id="email" name="email" type="email" required placeholder="juan@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                        <Input
+                          id="email"
+                          name="email"
+                          type="email"
+                          required
+                          placeholder="juan@email.com"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                        />
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="phone">Phone Number *</Label>
-                        <Input id="phone" name="phone" required placeholder="+63 917 000 0000" value={phone} onChange={(e) => setPhone(sanitizePhone(e.target.value))} />
+                        <Input
+                          id="phone"
+                          name="phone"
+                          required
+                          placeholder="+63 917 000 0000"
+                          value={phone}
+                          onChange={(e) => setPhone(sanitizePhone(e.target.value))}
+                        />
                         <p className="text-[11px] text-muted-foreground">Digits 7–15, + allowed.</p>
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="location">Location *</Label>
-                        <Input id="location" name="location" required placeholder="Makati City" value={location} onChange={(e) => setLocation(e.target.value)} />
+                        <Input
+                          id="location"
+                          name="location"
+                          required
+                          placeholder="Makati City"
+                          value={location}
+                          onChange={(e) => setLocation(e.target.value)}
+                        />
                       </div>
                       <div className="space-y-1.5">
-                        <Label htmlFor="resume">Resume / CV (optional) {extracting && <span className="text-xs text-gold">Extracting…</span>}</Label>
+                        <Label htmlFor="resume">
+                          Resume / CV (optional){" "}
+                          {extracting && <span className="text-xs text-gold">Extracting…</span>}
+                        </Label>
                         <label
                           htmlFor="resume"
                           className={cn(
                             "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed p-6 text-center transition-colors",
-                            resumeDragActive ? "border-primary bg-primary/10" : "border-border bg-muted/40 hover:bg-muted/60",
+                            resumeDragActive
+                              ? "border-primary bg-primary/10"
+                              : "border-border bg-muted/40 hover:bg-muted/60",
                           )}
                           onDragOver={(e) => {
                             e.preventDefault();
@@ -353,17 +427,32 @@ function JobDetail() {
                         >
                           {fileName ? (
                             <>
-                              <FileText className={cn("h-9 w-9", resumeDragActive ? "text-primary" : "text-gold")} />
-                              <span className="text-sm font-medium text-foreground">{fileName}</span>
+                              <FileText
+                                className={cn(
+                                  "h-9 w-9",
+                                  resumeDragActive ? "text-primary" : "text-gold",
+                                )}
+                              />
+                              <span className="text-sm font-medium text-foreground">
+                                {fileName}
+                              </span>
                               <span className="text-xs text-muted-foreground">
-                                {extracting ? "Extracting name, email, phone, location…" : "Drag a new file to replace or click to browse"}
+                                {extracting
+                                  ? "Extracting name, email, phone, location…"
+                                  : "Drag a new file to replace or click to browse"}
                               </span>
                             </>
                           ) : (
                             <>
-                              <Upload className={cn("h-9 w-9", resumeDragActive ? "text-primary" : "text-muted-foreground")} />
+                              <Upload
+                                className={cn(
+                                  "h-9 w-9",
+                                  resumeDragActive ? "text-primary" : "text-muted-foreground",
+                                )}
+                              />
                               <span className="text-sm text-muted-foreground">
-                                Drag a file here or click to upload — PDF, DOC, DOCX (max 5MB) — auto-fills name, email, phone, location
+                                Drag a file here or click to upload — PDF, DOC, DOCX, PNG, JPG (max 10MB) —
+                                auto-fills name, email, phone, location
                               </span>
                             </>
                           )}
@@ -372,7 +461,7 @@ function JobDetail() {
                           id="resume"
                           name="resume"
                           type="file"
-                          accept=".pdf,.doc,.docx"
+                          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,.heic,.heif,.bmp,.gif,.tiff,.tif,.avif,.svg"
                           className="sr-only"
                           onChange={(e) => handleResumeExtract(e.target.files?.[0] ?? null)}
                         />
@@ -404,7 +493,9 @@ function JobDetail() {
                                 setResumeFile(null);
                                 setFileName("");
                                 setResumePreviewUrl(null);
-                                const el = document.getElementById("resume") as HTMLInputElement | null;
+                                const el = document.getElementById(
+                                  "resume",
+                                ) as HTMLInputElement | null;
                                 if (el) el.value = "";
                               }}
                             >

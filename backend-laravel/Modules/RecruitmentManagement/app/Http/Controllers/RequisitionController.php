@@ -9,6 +9,7 @@ use Modules\RecruitmentManagement\Http\Requests\StoreRequisitionRequest;
 use Modules\RecruitmentManagement\Http\Requests\UpdateRequisitionRequest;
 use Modules\RecruitmentManagement\Http\Resources\RequisitionResource;
 use Modules\RecruitmentManagement\Models\Requisition;
+use App\Services\AuditLogger;
 
 class RequisitionController extends Controller
 {
@@ -68,6 +69,14 @@ class RequisitionController extends Controller
 
         $requisition = Requisition::create($data);
 
+        AuditLogger::log(
+            action: 'Requisition Created',
+            module: 'Recruitment Management',
+            targetType: 'Requisition',
+            targetId: (string) $requisition->getKey(),
+            details: "Created requisition {$requisition->requisition_code} (status: {$requisition->status}).",
+        );
+
         return response()->json(
             new RequisitionResource($requisition->load(['department', 'position'])),
             201
@@ -95,6 +104,14 @@ class RequisitionController extends Controller
         $model = Requisition::findOrFail($requisition);
         $model->update($request->validated());
 
+        AuditLogger::log(
+            action: 'Requisition Updated',
+            module: 'Recruitment Management',
+            targetType: 'Requisition',
+            targetId: (string) $model->getKey(),
+            details: "Updated requisition {$model->requisition_code} (status: {$model->status}).",
+        );
+
         return response()->json(new RequisitionResource($model->load(['department', 'position'])));
     }
 
@@ -114,6 +131,14 @@ class RequisitionController extends Controller
             'status'               => 'Converted',
             'converted_job_post_id'=> $data['job_post_id'] ?? null,
         ]);
+
+        AuditLogger::log(
+            action: 'Requisition Converted',
+            module: 'Recruitment Management',
+            targetType: 'Requisition',
+            targetId: (string) $model->getKey(),
+            details: "Converted requisition {$model->requisition_code} to a job post.",
+        );
 
         return response()->json(new RequisitionResource($model->load(['department', 'position', 'convertedJobPost'])));
     }

@@ -403,7 +403,7 @@ export type Interview = {
   time: string;
   mode: "On-site" | "Virtual";
   interviewer: string;
-  status: "Scheduled" | "Completed" | "No Show";
+  status: "Scheduled" | "Completed" | "Cancelled" | "No Show";
 };
 
 export const interviews: Interview[] = [

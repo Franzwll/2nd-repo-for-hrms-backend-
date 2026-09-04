@@ -20,6 +20,7 @@ class JobApplicationRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:40'],
             'source' => ['nullable', 'string', 'max:60'],
             'summary' => ['nullable', 'string', 'max:255'],
+            'resume' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp,heic,heif,bmp,gif,tiff,tif,avif,svg', 'max:20480'],
         ];
     }
 }

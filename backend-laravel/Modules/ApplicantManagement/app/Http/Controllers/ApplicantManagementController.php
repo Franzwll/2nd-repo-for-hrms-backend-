@@ -6,12 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Mail\ApplicantAcceptedMail;
 use App\Mail\ApplicantRejectedMail;
 use App\Mail\OfferNewJobMail;
+use App\Models\SystemUser;
 use App\Services\AuditLogger;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Laravel\Sanctum\PersonalAccessToken;
 use Modules\ApplicantManagement\Http\Requests\StoreApplicantRequest;
 use Modules\ApplicantManagement\Http\Requests\UpdateApplicantRequest;
 use Modules\ApplicantManagement\Http\Resources\ApplicantResource;
@@ -196,6 +198,114 @@ class ApplicantManagementController extends Controller
     }
 
     /* ------------------------------------------------------------------ */
+    /* GET /api/v1/applicants/{applicant}/resume-document                   */
+    /* Streams the stored resume inline for the review dialog's preview.   */
+    /* Used instead of the public /storage URL because that URL is         */
+    /* cross-origin (different host/port) in development, which browsers    */
+    /* refuse to render inside an <iframe>/<img> — the review preview      */
+    /* showed a blank white panel. This endpoint goes through the /api    */
+    /* proxy so the preview is same-origin, and authenticates from the     */
+    /* ?token= query param (iframe requests cannot send headers).          */
+    /* ------------------------------------------------------------------ */
+
+    public function resumeDocument(Request $request, int $applicant): \Symfony\Component\HttpFoundation\BinaryFileResponse|JsonResponse
+    {
+        // Resume files are previewed inside a browser <iframe>/<img>, which
+        // cannot send an Authorization header, so authenticate directly from
+        // the ?token= query param (Bearer header accepted as a fallback)
+        // instead of relying on the auth:sanctum middleware. Permission is
+        // also enforced here.
+        $user = $this->resolveTokenUser($request);
+
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        if (! $this->hasApplicantManagementView($user)) {
+            return response()->json([
+                'message' => 'Access denied: you do not have permission to view this resume.',
+            ], 403);
+        }
+
+        $model = Applicant::findOrFail($applicant);
+
+        if (! $model->resume_file_path || ! Storage::disk('public')->exists($model->resume_file_path)) {
+            return response()->json(['message' => 'No resume file found for this applicant.'], 404);
+        }
+
+        $disk = Storage::disk('public');
+        $path = $disk->path($model->resume_file_path);
+        $name = $model->resume_original_name ?: basename($model->resume_file_path);
+
+        // Serve inline (not as an attachment) so the browser renders PDFs and
+        // images inside the review dialog's <iframe>/<img> instead of forcing
+        // a download. Unknown extensions fall back to octet-stream, which the
+        // frontend routes to its "open file" fallback.
+        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        $mimeMap = [
+            'pdf'  => 'application/pdf',
+            'png'  => 'image/png',
+            'jpg'  => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'gif'  => 'image/gif',
+            'webp' => 'image/webp',
+            'bmp'  => 'image/bmp',
+            'doc'  => 'application/msword',
+            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
+        $mime = $mimeMap[$ext]
+            ?? (function_exists('mime_content_type') ? @mime_content_type($path) : null)
+            ?? 'application/octet-stream';
+
+        return response()->file($path, [
+            'Content-Type'        => $mime,
+            'Content-Disposition' => 'inline; filename="' . $name . '"',
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Token-based authentication for direct browser previews              */
+    /* ------------------------------------------------------------------ */
+
+    private function resolveTokenUser(Request $request): ?SystemUser
+    {
+        $token = $request->query('token') ?? $request->bearerToken();
+
+        if (! $token) {
+            return null;
+        }
+
+        $pat = PersonalAccessToken::findToken($token);
+
+        if (! $pat || ! $pat->tokenable instanceof SystemUser) {
+            return null;
+        }
+
+        return $pat->tokenable;
+    }
+
+    private function hasApplicantManagementView(SystemUser $user): bool
+    {
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        $ranks = [
+            'Full'                  => 3,
+            'Edit'                 => 2,
+            'Write'                 => 2,
+            'Approve / Reject Only' => 2,
+            'View'                  => 1,
+            'Read'                  => 1,
+            'None'                  => 0,
+        ];
+
+        $level = $user->permissions->firstWhere('module_name', 'Applicant Management')?->permission_level ?? 'None';
+
+        return ($ranks[$level] ?? 0) >= 1;
+    }
+
+    /* ------------------------------------------------------------------ */
     /* POST /api/v1/applicants/screen-resume                               */
     /* Preview screening for the Add Applicant wizard (no applicant row).   */
     /* ------------------------------------------------------------------ */
@@ -347,6 +457,7 @@ class ApplicantManagementController extends Controller
                     if ($newStage === 'Accepted' || $newStage === 'Interview Scheduled') {
                         $latestInterview = $model->interviews()->latest('scheduled_date')->first();
                         Mail::to($model->email)->send(new ApplicantAcceptedMail(
+                            recipientEmail: $model->email,
                             applicantName: $model->name,
                             position: $positionTitle,
                             interviewDate: $latestInterview?->scheduled_date,
@@ -355,11 +466,13 @@ class ApplicantManagementController extends Controller
                         ));
                     } elseif ($newStage === 'Rejected') {
                         Mail::to($model->email)->send(new ApplicantRejectedMail(
+                            recipientEmail: $model->email,
                             applicantName: $model->name,
                             position: $positionTitle
                         ));
                     } elseif ($newStage === 'Offer') {
                         Mail::to($model->email)->send(new OfferNewJobMail(
+                            recipientEmail: $model->email,
                             applicantName: $model->name,
                             offeredPosition: $positionTitle,
                             details: "Official job offer for {$positionTitle} at Oxford Suites Makati."
@@ -385,6 +498,7 @@ class ApplicantManagementController extends Controller
             if ($model->email) {
                 try {
                     Mail::to($model->email)->send(new OfferNewJobMail(
+                        recipientEmail: $model->email,
                         applicantName: $model->name,
                         offeredPosition: $positionTitle,
                         details: "Your profile has been referred and offered for the position of {$positionTitle}."
@@ -471,6 +585,7 @@ class ApplicantManagementController extends Controller
         if ($model->email && $nextStage === 'Offer') {
             try {
                 Mail::to($model->email)->send(new OfferNewJobMail(
+                    recipientEmail: $model->email,
                     applicantName: $model->name,
                     offeredPosition: $positionTitle,
                     details: "Formal offer extended for {$positionTitle}."
@@ -504,6 +619,7 @@ class ApplicantManagementController extends Controller
             if ($type === 'accept') {
                 $latestInterview = $model->interviews()->latest('scheduled_date')->first();
                 Mail::to($model->email)->send(new ApplicantAcceptedMail(
+                    recipientEmail: $model->email,
                     applicantName: $model->name,
                     position: $positionTitle,
                     interviewDate: $request->input('interview_date', $latestInterview?->scheduled_date),
@@ -512,11 +628,13 @@ class ApplicantManagementController extends Controller
                 ));
             } elseif ($type === 'reject') {
                 Mail::to($model->email)->send(new ApplicantRejectedMail(
+                    recipientEmail: $model->email,
                     applicantName: $model->name,
                     position: $positionTitle
                 ));
             } elseif ($type === 'offer') {
                 Mail::to($model->email)->send(new OfferNewJobMail(
+                    recipientEmail: $model->email,
                     applicantName: $model->name,
                     offeredPosition: $positionTitle,
                     details: $details

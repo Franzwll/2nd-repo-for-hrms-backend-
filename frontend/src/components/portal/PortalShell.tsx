@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Bell,
   Plus,
@@ -8,6 +8,7 @@ import {
   CheckCheck,
   ChevronDown,
   ChevronRight,
+  Clock3,
   LogOut,
   Megaphone,
   Menu,
@@ -105,7 +106,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
   const meta = roleMeta[role];
   const user = getUser();
   const displayName = user?.full_name || meta.user;
-  const nav = navForRole(role);
+  const nav = useMemo(() => navForRole(role), [role]);
   const location = useRouterState({ select: (s) => s.location });
   const pathname = location.pathname;
   const searchStr = location.searchStr || "";
@@ -113,6 +114,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
     nav.filter((i) => i.children?.length).map((i) => i.label),
   );
   const [announceOpen, setAnnounceOpen] = useState(false);
+  const lastActiveGroupRef = useRef<string | null>(null);
 
   const handleLogout = async () => {
     try {
@@ -139,7 +141,11 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
     return searchStr.includes(childQuery);
   };
 
-  // Auto-expand the group that contains the active route.
+  // Auto-expand the group that contains the active route, but respect manual collapse.
+  // Previously `nav` was recreated every render, so the effect fired on every render
+  // and immediately re-added the active group after the user collapsed it.
+  // Now `nav` is memoized and we only auto-expand when the active *group* changes,
+  // so closing "Recruitment & Onboarding" while on "/superadmin/onboarding" stays closed.
   useEffect(() => {
     const owner = nav.find((i) =>
       i.children?.some((c) => {
@@ -147,7 +153,11 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
         return cPath ? pathname === cPath || pathname.startsWith(cPath) : false;
       }),
     );
-    if (owner) setExpanded((prev) => (prev.includes(owner.label) ? prev : [...prev, owner.label]));
+    const ownerLabel = owner?.label ?? null;
+    if (ownerLabel && lastActiveGroupRef.current !== ownerLabel) {
+      setExpanded((prev) => (prev.includes(ownerLabel) ? prev : [...prev, ownerLabel]));
+    }
+    lastActiveGroupRef.current = ownerLabel;
   }, [pathname, nav]);
 
   return (
@@ -289,14 +299,25 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
           </div>
 
           <div className="flex items-center gap-3 sm:gap-4">
-            {/* Live Digital Clock & Date */}
-            <div className="flex flex-col items-end justify-center rounded-xl border border-border/80 bg-background/80 px-3 py-1.5 shadow-2xs">
-              <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider leading-none" suppressHydrationWarning>
-                {dateString}
-              </p>
-              <p className="font-mono text-sm sm:text-base font-bold text-primary leading-tight mt-0.5" suppressHydrationWarning>
-                {timeString}
-              </p>
+            {/* Live Digital Clock & Date — minimal, no border */}
+            <div className="flex items-center gap-2.5">
+              <div className="hidden sm:flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                <Clock3 className="h-4 w-4 text-primary" />
+              </div>
+              <div className="flex flex-col items-end leading-none sm:items-start">
+                <span
+                  className="font-mono text-sm font-semibold tabular-nums tracking-tight"
+                  suppressHydrationWarning
+                >
+                  {timeString}
+                </span>
+                <span
+                  className="text-[10px] font-medium tracking-wider text-muted-foreground sm:text-[11px] mt-1"
+                  suppressHydrationWarning
+                >
+                  {dateString}
+                </span>
+              </div>
             </div>
 
             <div className="flex items-center gap-2">

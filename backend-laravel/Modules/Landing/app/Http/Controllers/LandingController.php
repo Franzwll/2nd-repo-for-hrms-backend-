@@ -12,14 +12,18 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Modules\ApplicantManagement\Models\Applicant as ManagedApplicant;
+use Modules\ApplicantManagement\Services\ScreeningService;
 use Modules\Landing\Http\Requests\JobApplicationRequest;
 use Modules\Landing\Http\Resources\AnnouncementResource;
 use Modules\Landing\Http\Resources\JobPostResource;
 
 class LandingController extends Controller
 {
-    public function __construct(protected NlpService $nlp)
-    {
+    public function __construct(
+        protected NlpService $nlp,
+        protected ScreeningService $screening
+    ) {
     }
     public function company(): JsonResponse
     {
@@ -132,11 +136,12 @@ class LandingController extends Controller
     /**
      * Lightweight public resume extraction for the landing apply form.
      * Only returns full name, email, phone, location (address) for auto-fill.
+     * Supports same file types as Recruitment Management add applicant (OCR for images).
      */
     public function extractResume(Request $request): JsonResponse
     {
         $request->validate([
-            'resume' => ['required', 'file', 'max:10240'],
+            'resume' => ['required', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp,heic,heif,bmp,gif,tiff,tif,avif,svg', 'max:20480'],
         ]);
 
         $originalName = $request->file('resume')->getClientOriginalName() ?: 'resume';
@@ -180,7 +185,7 @@ class LandingController extends Controller
             return response()->json(['message' => 'This position is no longer accepting applications.'], 422);
         }
 
-        $applicant = Applicant::create([
+        $payload = [
             'applicant_code' => $this->nextApplicantCode(),
             'job_post_id' => $jobPost->job_post_id,
             'name' => $request->string('name'),
@@ -191,7 +196,30 @@ class LandingController extends Controller
             'stage' => 'Screened',
             'source' => $request->string('source', 'Landing Page'),
             'summary' => $request->string('summary'),
-        ]);
+        ];
+
+        // Store resume file if provided — same allow-list as Recruitment Management (add applicant)
+        if ($request->hasFile('resume')) {
+            $path = $request->file('resume')->store('resumes', 'public');
+            $payload['resume_file_path'] = $path;
+            $payload['resume_original_name'] = $request->file('resume')->getClientOriginalName();
+        }
+
+        $applicant = Applicant::create($payload);
+
+        // Run spaCy NLP screening when a resume is present — same pipeline as Recruitment Management
+        if (! empty($payload['resume_file_path'])) {
+            try {
+                $managed = ManagedApplicant::find($applicant->applicant_id);
+                if ($managed) {
+                    $this->screening->screenAndPersist($managed);
+                    $applicant->refresh();
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Landing apply screening failed for applicant '.$applicant->applicant_id.': '.$e->getMessage());
+                // keep applicant even if screening fails
+            }
+        }
 
         return response()->json([
             'message' => 'Application received. Our recruitment team will reach out soon.',

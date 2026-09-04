@@ -22,6 +22,9 @@ class UpdateNewHireRequest extends FormRequest
             'department_id' => ['nullable', 'integer', 'exists:departments,department_id'],
             'stage'         => ['sometimes', 'string', 'in:Pre-onboarding,Probationary,Regular'],
             'start_date'    => ['sometimes', 'date'],
+            // When HR requested the probationary performance evaluation.
+            // Null clears the pending request (cancelled / completed / regularized).
+            'evaluation_requested_at' => ['nullable', 'date'],
         ];
     }
 }

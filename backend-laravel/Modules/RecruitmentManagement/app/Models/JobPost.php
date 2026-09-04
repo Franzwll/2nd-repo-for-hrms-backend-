@@ -50,7 +50,6 @@ class JobPost extends Model
         'responsibilities_json',
         'qualifications_json',
         'skills_json',
-        'benefits_json',
         'picture',
     ];
 
@@ -58,7 +57,6 @@ class JobPost extends Model
         'responsibilities_json' => 'array',
         'qualifications_json' => 'array',
         'skills_json' => 'array',
-        'benefits_json' => 'array',
         'active' => 'boolean',
         'salary_min' => 'decimal:2',
         'salary_max' => 'decimal:2',

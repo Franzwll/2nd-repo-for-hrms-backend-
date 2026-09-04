@@ -1,0 +1,21 @@
+cd backend-laravel
+composer install # if doesn't install yet
+cp .env.example .env # if doesn't have env
+php artisan migrate --seed
+php artisan serve  
+
+
+cd frontend
+npm install  # if doesn't install yet
+npm run dev 
+
+
+cd nlp-service
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+python -m spacy download en_core_web_sm   # README OMITS this — required by config.py:10
+uvicorn app.main:app --reload --port 8001
+
+
+

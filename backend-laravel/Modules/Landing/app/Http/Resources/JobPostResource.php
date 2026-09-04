@@ -33,6 +33,10 @@ class JobPostResource extends JsonResource
             'qualifications' => $this->qualifications_json,
             'skills' => $this->skills_json,
             'benefits' => $this->benefits_json,
+            'picture' => $this->picture,
+            'picture_url' => $this->picture
+                ? $request->getSchemeAndHttpHost() . '/api/v1/job-posts/' . $this->job_post_id . '/picture'
+                : $request->getSchemeAndHttpHost() . '/api/v1/job-posts/template-picture?title=' . urlencode($this->title),
         ];
     }
 }

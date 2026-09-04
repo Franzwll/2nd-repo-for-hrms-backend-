@@ -188,8 +188,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
     sessionTimeout: "",
     maxLoginAttempts: "",
   });
-  const [securityOpen, setSecurityOpen] = useState(false);
-  const [securityDraft, setSecurityDraft] = useState(security);
+  const [securitySavedSnapshot, setSecuritySavedSnapshot] = useState("");
 
   // One-time password at login — per ACCOUNT. Each logged-in user toggles
   // their own requirement (system_users.otp_enabled). null = still loading.
@@ -235,7 +234,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
     }
     if (map["security"]) {
       setSecurity(map["security"]);
-      setSecurityDraft(map["security"]);
+      setSecuritySavedSnapshot(JSON.stringify(map["security"]));
     }
     if (map["notifications"]) {
       setNotify(map["notifications"]);
@@ -394,6 +393,20 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   };
 
   const isSuperAdmin = role === "superadmin";
+
+  const securityDirty =
+    securitySavedSnapshot !== "" && JSON.stringify(security) !== securitySavedSnapshot;
+
+  /** Persists the inline-edited login security policy to the database. */
+  const saveSecurity = async () => {
+    try {
+      await settingsApi.upsert("security", security);
+      setSecuritySavedSnapshot(JSON.stringify(security));
+      toast.success("System-wide login security policy saved to database");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save security policy");
+    }
+  };
 
   /** Changes the default password of ALL active system users, and persists it
    *  in the database so newly created accounts (new hires) start with it. */
@@ -565,59 +578,128 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
             icon={<Shield className="h-5 w-5" />}
             title="Login Security"
             subtitle="System-wide login security policy for all portals"
-            footer={{
-              label: "Manage security",
-              onClick: () => {
-                setSecurityDraft(security);
-                setSecurityOpen(true);
-              },
-            }}
           >
-            <div className="divide-y divide-border/60">
-              <InfoRow
-                label="Two-factor authentication"
-                value={security.twoFactor ? "Enabled" : "Disabled"}
-                tone={security.twoFactor ? "success" : "default"}
-              />
-              <InfoRow
-                label="Password policy"
-                value={`Min ${security.minLength ?? 8} characters, uppercase${
-                  security.requireUppercase ? "" : " not required"
-                }, lowercase${security.requireLowercase ? "" : " not required"}, number${
-                  security.requireNumber ? "" : " not required"
-                }${security.requireSymbol ? ", symbol" : ""}`}
-              />
-              <InfoRow label="Session timeout" value={security.sessionTimeout} />
-              <InfoRow label="Max login attempts" value={security.maxLoginAttempts} />
+            <div className="flex min-h-0 flex-1 flex-col">
+              {/* Editable security controls — kept inside a bounded scroll area
+                  so the card height never changes regardless of content. */}
+              <div className="max-h-[300px] min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+                <div className="flex items-center justify-between gap-4">
+                  <Label>Two-factor authentication</Label>
+                  <Switch
+                    checked={security.twoFactor}
+                    onCheckedChange={(v) => setSecurity((p) => ({ ...p, twoFactor: v }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="pw-min-length">Minimum password length</Label>
+                  <Input
+                    id="pw-min-length"
+                    type="number"
+                    min={6}
+                    max={32}
+                    value={security.minLength ?? 8}
+                    onChange={(e) =>
+                      setSecurity((p) => ({
+                        ...p,
+                        minLength: Math.max(6, Math.min(32, Number(e.target.value) || 8)),
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Password requirements</Label>
+                  {(
+                    [
+                      ["requireUppercase", "Require at least one uppercase letter (A–Z)"],
+                      ["requireLowercase", "Require at least one lowercase letter (a–z)"],
+                      ["requireNumber", "Require at least one number (0–9)"],
+                      ["requireSymbol", "Require at least one symbol (!@#$%…)"] as const,
+                    ] as const
+                  ).map(([key, label]) => (
+                    <div
+                      key={key}
+                      className="flex items-center justify-between gap-4 rounded-md border border-border/70 bg-muted/30 px-3 py-2"
+                    >
+                      <span className="text-sm text-muted-foreground">{label}</span>
+                      <Switch
+                        checked={security[key] ?? false}
+                        onCheckedChange={(v) => setSecurity((p) => ({ ...p, [key]: v }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <Label>Session timeout</Label>
+                  <Select
+                    value={security.sessionTimeout}
+                    onValueChange={(v) => setSecurity((p) => ({ ...p, sessionTimeout: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select timeout" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="15 minutes">15 minutes</SelectItem>
+                      <SelectItem value="30 minutes">30 minutes</SelectItem>
+                      <SelectItem value="60 minutes">60 minutes</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Max login attempts</Label>
+                  <Select
+                    value={security.maxLoginAttempts}
+                    onValueChange={(v) => setSecurity((p) => ({ ...p, maxLoginAttempts: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select attempts" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="3 attempts">3 attempts</SelectItem>
+                      <SelectItem value="5 attempts">5 attempts</SelectItem>
+                      <SelectItem value="10 attempts">10 attempts</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center justify-end gap-2 border-t border-border/60 pt-4">
+                {securityDirty && (
+                  <span className="mr-auto text-xs font-medium text-caution">Unsaved changes</span>
+                )}
+                <Button size="sm" disabled={!securityDirty} onClick={saveSecurity}>
+                  Save changes
+                </Button>
+              </div>
+
+              <Button
+                variant="outline"
+                className="mt-3 w-full"
+                onClick={() => {
+                  setResetPw("");
+                  setResetPwConfirm("");
+                  setResetPwOpen(true);
+                }}
+              >
+                <KeyRound className="mr-1.5 h-4 w-4" /> Change default password of all users
+              </Button>
             </div>
-            <Button
-              variant="outline"
-              className="mt-3 w-full"
-              onClick={() => {
-                setResetPw("");
-                setResetPwConfirm("");
-                setResetPwOpen(true);
-              }}
-            >
-              <KeyRound className="mr-1.5 h-4 w-4" /> Change default password of all users
-            </Button>
           </SettingsCard>
         )}
 
-        {/* Change Password + personal OTP toggle — every logged-in account */}
+        {/* Security — password + personal OTP toggle — every logged-in account */}
         <Card
-          id="change-password"
+          id="security"
           className="flex h-full flex-col scroll-mt-20 rounded-xl border-border/70 shadow-sm"
         >
           <CardContent className="flex flex-1 flex-col space-y-4 p-6">
             <div className="flex items-center gap-3">
               <span className="grid h-10 w-10 shrink-0 place-items-center text-primary">
-                <KeyRound className="h-5 w-5" />
+                <Shield className="h-5 w-5" />
               </span>
               <div>
-                <h2 className="font-display text-xl font-semibold">Change Password</h2>
+                <h2 className="font-display text-xl font-semibold">Security</h2>
                 <p className="text-xs text-muted-foreground">
-                  Update your account password and sign-in security.
+                  Manage your password and sign-in security.
                 </p>
               </div>
             </div>
@@ -747,110 +829,45 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
         </Card>
 
         {isSuperAdmin && (
-          <Dialog open={securityOpen} onOpenChange={setSecurityOpen}>
+          <Dialog open={resetPwOpen} onOpenChange={setResetPwOpen}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle className="font-display text-2xl">Manage security</DialogTitle>
+                <DialogTitle className="font-display text-2xl">
+                  Change default password of all users
+                </DialogTitle>
+                <DialogDescription>
+                  Sets the same default password for every active system user account, and saves it
+                  to the database so new user accounts are created with it. Users will need to log
+                  in with the new password.
+                </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4">
-                <div className="flex items-center justify-between gap-4">
-                  <Label>Two-factor authentication</Label>
-                  <Switch
-                    checked={securityDraft.twoFactor}
-                    onCheckedChange={(v) => setSecurityDraft((p) => ({ ...p, twoFactor: v }))}
-                  />
-                </div>
                 <div className="space-y-2">
-                  <Label htmlFor="pw-min-length">Minimum password length</Label>
+                  <Label htmlFor="reset-pw">New default password</Label>
                   <Input
-                    id="pw-min-length"
-                    type="number"
-                    min={6}
-                    max={32}
-                    value={securityDraft.minLength ?? 8}
-                    onChange={(e) =>
-                      setSecurityDraft((p) => ({
-                        ...p,
-                        minLength: Math.max(6, Math.min(32, Number(e.target.value) || 8)),
-                      }))
-                    }
+                    id="reset-pw"
+                    type="password"
+                    value={resetPw}
+                    onChange={(e) => setResetPw(e.target.value)}
+                    placeholder="At least 8 characters"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Password requirements</Label>
-                  {(
-                    [
-                      ["requireUppercase", "Require at least one uppercase letter (A–Z)"],
-                      ["requireLowercase", "Require at least one lowercase letter (a–z)"],
-                      ["requireNumber", "Require at least one number (0–9)"],
-                      ["requireSymbol", "Require at least one symbol (!@#$%…)"] as const,
-                    ] as const
-                  ).map(([key, label]) => (
-                    <div
-                      key={key}
-                      className="flex items-center justify-between gap-4 rounded-md border border-border/70 bg-muted/30 px-3 py-2"
-                    >
-                      <span className="text-sm text-muted-foreground">{label}</span>
-                      <Switch
-                        checked={securityDraft[key] ?? false}
-                        onCheckedChange={(v) => setSecurityDraft((p) => ({ ...p, [key]: v }))}
-                      />
-                    </div>
-                  ))}
-                </div>
                 <div className="space-y-2">
-                  <Label>Session timeout</Label>
-                  <Select
-                    value={securityDraft.sessionTimeout}
-                    onValueChange={(v) => setSecurityDraft((p) => ({ ...p, sessionTimeout: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="15 minutes">15 minutes</SelectItem>
-                      <SelectItem value="30 minutes">30 minutes</SelectItem>
-                      <SelectItem value="60 minutes">60 minutes</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Max login attempts</Label>
-                  <Select
-                    value={securityDraft.maxLoginAttempts}
-                    onValueChange={(v) => setSecurityDraft((p) => ({ ...p, maxLoginAttempts: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="3 attempts">3 attempts</SelectItem>
-                      <SelectItem value="5 attempts">5 attempts</SelectItem>
-                      <SelectItem value="10 attempts">10 attempts</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="reset-pw-confirm">Confirm new default password</Label>
+                  <Input
+                    id="reset-pw-confirm"
+                    type="password"
+                    value={resetPwConfirm}
+                    onChange={(e) => setResetPwConfirm(e.target.value)}
+                    placeholder="Repeat the new password"
+                  />
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setSecurityOpen(false)}>
+                <Button variant="outline" onClick={() => setResetPwOpen(false)}>
                   Cancel
                 </Button>
-                <Button
-                  onClick={async () => {
-                    setSecurity(securityDraft);
-                    setSecurityOpen(false);
-                    try {
-                      await settingsApi.upsert("security", securityDraft);
-                      toast.success("System-wide login security policy saved to database");
-                    } catch (e) {
-                      toast.error(
-                        e instanceof Error ? e.message : "Could not save security policy",
-                      );
-                    }
-                  }}
-                >
-                  Save changes
-                </Button>
+                <Button onClick={resetDefaultPassword}>Update all users</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -1024,7 +1041,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
 
         {/* Backup & Restore (superadmin only) */}
         {isSuperAdmin && (
-          <Card className="rounded-xl border-border/70 shadow-sm xl:col-span-2">
+          <Card className="flex h-full flex-col rounded-xl border-border/70 shadow-sm">
             <CardContent className="flex flex-1 flex-col space-y-4 p-6">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-3">

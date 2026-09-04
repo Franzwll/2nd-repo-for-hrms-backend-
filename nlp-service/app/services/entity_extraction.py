@@ -869,12 +869,19 @@ class EntityExtractor:
             "conducted", "operated", "processed", "resolved", "managed",
             "delivered", "performed", "created", "developed", "achieved",
             "recognized", "contributed", "worked", "collaborated", "led",
+            "oversee", "oversaw", "greeted", "supported", "coordinated", "designed",
+            "improved", "reduced", "increased", "tracked", "supervised", "directed",
         )
 
         def is_clean_title(candidate: str) -> bool:
             if not candidate or len(candidate) < 3 or len(candidate) > 50:
                 return False
             low = candidate.lower().strip()
+            # Reject obvious non-titles: sentences starting with and/or, containing review channels, key achievements, or ending with period
+            if low.startswith(("and ", "or ", "the ", "a ", "an ")) or low.startswith("and through") or "online review" in low or "key achievements" in low or "professional summary" in low:
+                return False
+            if candidate.strip().endswith(".") and len(candidate.split()) > 6:
+                return False
             if refdata.canonicalize(candidate, roles_ref):
                 return True
             words = set(re.findall(r"\w+", low))
@@ -882,7 +889,7 @@ class EntityExtractor:
                 return False
             if words and words.issubset(date_words):
                 return False
-            if any(bad in low for bad in ["increasing", "variances", "supporting", "chain", "restaurant —", "hotel —", "resort —", "deliver", "coordinate", "manage", "assist"]):
+            if any(bad in low for bad in ["increasing", "variances", "supporting", "chain", "restaurant —", "hotel —", "resort —", "deliver", "coordinate", "manage", "assist", "through online", "review channels", "guest relations across", "key achievements"]):
                 return False
             return True
 
@@ -910,20 +917,24 @@ class EntityExtractor:
             seg = seg.strip(" .,;-–—|•·")
             if not seg or len(seg) > 60 or "," in seg and len(seg.split(",")) > 2:
                 return False
+            # Reject known headers that look like capitalized companies
+            if seg.upper() in [h.upper() for h in ["PROFESSIONAL SUMMARY","WORK EXPERIENCE","CORE SKILLS","EDUCATION","CERTIFICATIONS","KEY ACHIEVEMENTS","PROFESSIONAL EXPERIENCE"]] or seg.lower() in ["key achievements","professional summary","work experience"]:
+                return False
             words = re.findall(r"[^\W\d_]+", seg, flags=re.UNICODE)
             if not (1 <= len(words) <= 7):
                 return False
             low_words = {w.lower() for w in words}
-            # Role phrases are never companies ("Senior Waiter").
             if low_words & set(_NAME_ROLE_WORDS) and not (low_words & _ORG_SUFFIX_WORDS):
                 return False
             if low_words & (city_or_place_words | date_words) and len(low_words) <= 2:
                 return False
             if low_words & _ORG_SUFFIX_WORDS:
                 return True
-            # 2+ capitalized words ("Café Luna", "Gather & Co.").
             cap_words = [w for w in seg.split() if w[:1].isalpha()]
             if len(cap_words) >= 2 and all(w[0].isupper() or not w[:1].isalpha() for w in cap_words):
+                # But reject if it's clearly a sentence fragment like "and through online review"
+                if seg.lower().startswith("and through") or "online review" in seg.lower():
+                    return False
                 return True
             return False
 
@@ -955,14 +966,104 @@ class EntityExtractor:
 
         pending_title: Optional[str] = None
         pending_date: Optional[str] = None
+        pending_company: Optional[str] = None
+        pending_location: Optional[str] = None
 
         for i, line in enumerate(exp_lines):
+            # --- Labeled format support (new dataset: "Job Title:", "Employer:", "Location:", "Employment Dates:") ---
+            low_labeled = line.strip().lower()
+            if low_labeled.startswith("job title:"):
+                val = line.split(":", 1)[1].strip()
+                if val:
+                    can = refdata.canonicalize(val, roles_ref)
+                    pending_title = can or val
+                    add_title(pending_title, "section_rule")
+                continue
+            if low_labeled.startswith("employer:"):
+                val = line.split(":", 1)[1].strip()
+                if val:
+                    pending_company = val
+                continue
+            if low_labeled.startswith("location:"):
+                val = line.split(":", 1)[1].strip()
+                if val:
+                    pending_location = val
+                continue
+            if low_labeled.startswith("employment dates:") or low_labeled.startswith("employment date:"):
+                val = line.split(":", 1)[1].strip()
+                dm = DATE_RANGE_RE.search(val)
+                effective = dm.group(0) if dm else val
+                if pending_title:
+                    job_title = pending_title
+                    company, loc = (pending_company, pending_location)
+                    # If company line had " - Location" suffix, split it
+                    if company and " - " in company:
+                        parts = company.split(" - ", 1)
+                        company = parts[0].strip()
+                        if not loc:
+                            loc = parts[1].strip()
+                    key = (job_title.lower(), (company or "").lower(), effective or "")
+                    if key not in history_keys:
+                        history_keys.add(key)
+                        history.append({
+                            "job_title": job_title,
+                            "company": company,
+                            "location": loc,
+                            "recognized_role": bool(refdata.canonicalize(job_title, roles_ref)),
+                            "period": effective,
+                            "raw_line": line.strip()[:160],
+                        })
+                    # Clear for next entry, but keep pending_title cleared; company/location cleared as well
+                    pending_title = None
+                    pending_company = None
+                    pending_location = None
+                    pending_date = None
+                    continue
+                else:
+                    # No title yet, store date for next title
+                    pending_date = effective
+                    continue
             line_clean = re.sub(r"^[\u2022\u25cf\u25aa\u2023\u2043\u25b8\u25b9\u25ba\u25c6\u25c7\u25a0\u25a1\u25cb\u25b6o\-–—*●•✓▸◆►▹\s]+", "", line).strip()
             if not line_clean or len(line_clean) < 4:
                 continue
 
             range_match = DATE_RANGE_RE.search(line_clean)
             segs = segments_without_date(line_clean, bool(range_match))
+
+            # Unlabeled 3-line pattern: Title (pending) -> Company -> Date
+            # If current line is a date and we have a pending title, complete the history now
+            if range_match and pending_title:
+                effective_date = range_match.group(0)
+                job_title = pending_title
+                company = pending_company
+                location = pending_location
+                if not company:
+                    tail = after_date_tail(line_clean, range_match)
+                    if tail:
+                        company, location = split_company_location(tail)
+                if company and " - " in company and not location:
+                    parts = company.split(" - ", 1)
+                    company = parts[0].strip()
+                    location = parts[1].strip()
+                canonical = refdata.canonicalize(job_title, roles_ref)
+                job_title = canonical or job_title
+                add_title(job_title, "section_rule")
+                key = (job_title.lower(), (company or "").lower(), effective_date or "")
+                if key not in history_keys:
+                    history_keys.add(key)
+                    history.append({
+                        "job_title": job_title,
+                        "company": company,
+                        "location": location,
+                        "recognized_role": bool(canonical),
+                        "period": effective_date,
+                        "raw_line": line_clean[:160],
+                    })
+                pending_title = None
+                pending_company = None
+                pending_location = None
+                pending_date = None
+                continue
 
             # Standalone date line preceding title/company
             if range_match and not segs:
@@ -1041,8 +1142,30 @@ class EntityExtractor:
             # No date range on this line.
             if segs:
                 first = segs[0]
+                # Pending title + company line should be treated as company before title check
+                if pending_title and (looks_like_company(first) or any(re.search(rf"\b{re.escape(c)}\b", first, re.I) for c in _PH_CITIES)):
+                    company, location = split_company_location(first)
+                    pending_company = company
+                    pending_location = location
+                    continue
                 canonical = refdata.canonicalize(first, roles_ref)
                 if canonical:
+                    if pending_title and pending_company:
+                        key = (pending_title.lower(), (pending_company or "").lower(), pending_date or "")
+                        if key not in history_keys:
+                            history_keys.add(key)
+                            history.append({
+                                "job_title": pending_title,
+                                "company": pending_company,
+                                "location": pending_location,
+                                "recognized_role": bool(refdata.canonicalize(pending_title, roles_ref)),
+                                "period": pending_date,
+                                "raw_line": line_clean[:160],
+                            })
+                        pending_title = None
+                        pending_company = None
+                        pending_location = None
+                        pending_date = None
                     add_title(canonical, "section_rule")
                     pending_title = canonical
                     continue
@@ -1054,26 +1177,42 @@ class EntityExtractor:
                     and len(words) <= 7
                     and len(first) <= 55
                 ):
-                    # Layout C: title on its own line, "Company | dates" next.
+                    if pending_title and pending_company:
+                        key = (pending_title.lower(), (pending_company or "").lower(), pending_date or "")
+                        if key not in history_keys:
+                            history_keys.add(key)
+                            history.append({
+                                "job_title": pending_title,
+                                "company": pending_company,
+                                "location": pending_location,
+                                "recognized_role": bool(refdata.canonicalize(pending_title, roles_ref)),
+                                "period": pending_date,
+                                "raw_line": line_clean[:160],
+                            })
+                        pending_title = None
+                        pending_company = None
+                        pending_location = None
+                        pending_date = None
                     pending_title = first
                     continue
 
-                # If pending title is active and current line looks like a company name:
-                if pending_title and (looks_like_company(first) or any(re.search(rf"\b{re.escape(c)}\b", first, re.I) for c in _PH_CITIES)):
-                    company, location = split_company_location(first)
-                    key = (pending_title.lower(), (company or "").lower(), "")
-                    if key not in history_keys:
-                        history_keys.add(key)
-                        history.append({
-                            "job_title": pending_title,
-                            "company": company,
-                            "location": location,
-                            "recognized_role": bool(refdata.canonicalize(pending_title, roles_ref)),
-                            "period": None,
-                            "raw_line": line_clean[:160],
-                        })
-                    pending_title = None
-                    continue
+        # Flush any remaining pending title/company (last entry without trailing date)
+        if pending_title:
+            key = (pending_title.lower(), (pending_company or "").lower(), pending_date or "")
+            if key not in history_keys:
+                history_keys.add(key)
+                history.append({
+                    "job_title": pending_title,
+                    "company": pending_company,
+                    "location": pending_location,
+                    "recognized_role": bool(refdata.canonicalize(pending_title, roles_ref)),
+                    "period": pending_date,
+                    "raw_line": pending_title[:160],
+                })
+            pending_title = None
+            pending_company = None
+            pending_location = None
+            pending_date = None
 
         # Organizations: companies captured from work history plus spaCy ORG
         # entities found in the experience section.

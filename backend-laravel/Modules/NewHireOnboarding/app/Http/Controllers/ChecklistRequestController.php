@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Modules\NewHireOnboarding\Http\Requests\StoreChecklistRequestRequest;
 use Modules\NewHireOnboarding\Http\Resources\ChecklistRequestResource;
 use Modules\NewHireOnboarding\Models\ChecklistRequest;
+use App\Services\AuditLogger;
 
 class ChecklistRequestController extends Controller
 {
@@ -56,6 +57,14 @@ class ChecklistRequestController extends Controller
 
         $cr = ChecklistRequest::create($data);
 
+        AuditLogger::log(
+            action: 'Checklist Request Created',
+            module: 'New Hire Onboarding',
+            targetType: 'Checklist Request',
+            targetId: (string) $cr->getKey(),
+            details: "Created onboarding checklist request {$cr->request_code} (status: {$cr->status}).",
+        );
+
         return response()->json(
             new ChecklistRequestResource($cr->load('template')),
             201
@@ -87,6 +96,14 @@ class ChecklistRequestController extends Controller
         ]);
 
         $model->update($data);
+
+        AuditLogger::log(
+            action: 'Checklist Request Updated',
+            module: 'New Hire Onboarding',
+            targetType: 'Checklist Request',
+            targetId: (string) $model->getKey(),
+            details: "Updated onboarding checklist request {$model->request_code} (status: {$model->status}).",
+        );
 
         return response()->json(new ChecklistRequestResource($model->load('template')));
     }

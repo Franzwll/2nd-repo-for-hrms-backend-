@@ -33,7 +33,6 @@ class UpdateJobPostRequest extends FormRequest
             'responsibilities' => ['nullable', 'array'],
             'qualifications' => ['nullable', 'array'],
             'skills' => ['nullable', 'array'],
-            'benefits' => ['nullable', 'array'],
             'platforms' => ['nullable', 'array'],
             'platforms.*' => ['string', 'in:Website,Facebook,Instagram,Indeed'],
             'picture' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],

@@ -49,12 +49,13 @@ def load_models() -> None:
 
 @app.get("/health")
 def health():
-    extractor_loaded = entity_extraction._extractor is not None
-    custom = bool(entity_extraction._extractor.model_info.get("custom_ner_loaded")) if extractor_loaded else False
+    # get_extractor() lazily loads the models, so health also warms them.
+    info = entity_extraction.get_extractor().model_info
     return {
         "status": "ok",
-        "base_model": config.BASE_SPACY_MODEL,
-        "custom_ner_loaded": custom,
+        "base_model": info.get("base_model"),
+        "custom_ner_loaded": bool(info.get("custom_ner_loaded")),
+        "model_info": info,
         "weights": config.SCORE_WEIGHTS,
         "thresholds": {
             "perfect": config.PERFECT_SCORE_THRESHOLD,
@@ -133,15 +134,23 @@ async def screening_score(
     requirements: str | None = Form(default=None),
     open_jobs: str | None = Form(default=None),
     reference_data: str | None = Form(default=None),
+    screening_settings: str | None = Form(default=None),
 ):
     """Contract kept compatible with Laravel App\\Services\\NlpService::screenResume().
 
     `reference_data` optionally carries DB-managed mappings
     ({skills|job_roles|certifications: {canonical: [aliases]}}) sourced from the
-    Laravel database; when absent the bundled seed reference data is used."""
+    Laravel database; when absent the bundled seed reference data is used.
+
+    `screening_settings` optionally carries the HR-configurable scoring
+    configuration from the Screening Setup dialog:
+    {weights: {skills, experience, education, certifications},
+     passing_score: 0-100, required_skills_coverage_min: 0-1}.
+    When absent the documented defaults in app.config apply."""
     requirements_payload = _parse_json_field(requirements, {})
     open_jobs_payload = _parse_json_field(open_jobs, [])
     reference_payload = _parse_json_field(reference_data, None)
+    settings_payload = _parse_json_field(screening_settings, None)
 
     suffix = Path(file.filename or "").suffix or ".tmp"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
@@ -149,7 +158,8 @@ async def screening_score(
         tmp_path = Path(tmp.name)
     try:
         result = _safe(lambda: pipeline.analyze_resume_file(
-            tmp_path, file.filename or "", requirements_payload, open_jobs_payload, reference_payload
+            tmp_path, file.filename or "", requirements_payload, open_jobs_payload,
+            reference_payload, settings_payload
         ))
     finally:
         tmp_path.unlink(missing_ok=True)
