@@ -18,6 +18,8 @@ import {
   ChevronRight,
   HeartHandshake,
   CheckCircle2,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   HelpCircle,
 } from "lucide-react";
@@ -30,8 +32,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import { getUser } from "@/lib/auth";
+import { renderRichText } from "@/lib/rich-text";
 import { myProfile, myPayroll } from "@/data/ess";
-import { essApi, type ApiEssOverview } from "@/lib/api";
+import {
+  chatbotApi,
+  chatbotFaqApi,
+  essApi,
+  type ApiChatbotSource,
+  type ApiEssOverview,
+} from "@/lib/api";
 
 interface Message {
   id: string;
@@ -45,6 +54,10 @@ interface Message {
     linkTo?: string;
     category?: string;
   };
+  /** DB id of the stored exchange (bot replies) — used for thumbs feedback. */
+  serverId?: number | null;
+  sources?: ApiChatbotSource[];
+  feedback?: 1 | -1 | null;
 }
 
 const STORAGE_KEY = "oxford_ess_ai_fullpage_history";
@@ -128,126 +141,80 @@ export function EmployeeAiPage() {
     }
   }, [messages, isThinking]);
 
-  const generateAnswer = (query: string): Message => {
-    const q = query.toLowerCase().trim();
+  /**
+   * Live AI answer via backend Gemini proxy (role=employee, HRMS-scoped).
+   * Falls back to a local greeting/leave summary when the server is
+   * unreachable so the concierge never goes blank.
+   */
+  const actionCardFor = (
+    query: string,
+  ): Message["actionCard"] | undefined => {
+    const q = query.toLowerCase();
+    if (q.includes("leave") || q.includes("vacation") || q.includes("sick"))
+      return {
+        title: "File a Leave Request",
+        description: "Submit vacation, sick, or emergency leave for supervisor review.",
+        buttonText: "Go to Leave Application →",
+        category: "Attendance",
+      };
+    if (q.includes("pay") || q.includes("salary") || q.includes("payslip"))
+      return {
+        title: "View Payslips & Breakdown",
+        description: "Inspect net earnings, allowances, and statutory deductions.",
+        buttonText: "View Payslips in ESS →",
+        category: "Payroll",
+      };
+    if (q.includes("coe") || q.includes("certificate") || q.includes("document") || q.includes("2316"))
+      return {
+        title: "Request Official Document / COE",
+        description: "Submit a signed document request to HR Administration.",
+        buttonText: "Open Document Requests in ESS →",
+        category: "Documents",
+      };
+    if (q.includes("promotion"))
+      return {
+        title: "Request a Promotion",
+        description: "File a promotion request for HR review in Core HCM.",
+        buttonText: "Open Promotion Requests →",
+        category: "Promotion",
+      };
+    if (q.includes("attendance") || q.includes("clock") || q.includes("shift") || q.includes("dtr"))
+      return {
+        title: "Attendance & Web Clocking",
+        description: "View daily logs, biometrics history, and submit punch corrections.",
+        buttonText: "Open Web Clocking in ESS →",
+        category: "Attendance",
+      };
+    if (q.includes("recognition") || q.includes("kudos") || q.includes("wall"))
+      return {
+        title: "Social Recognition Wall of Fame",
+        description: "Recognize a fellow teammate or view recent department shoutouts.",
+        buttonText: "Open Recognition Wall in ESS →",
+        category: "Recognition",
+      };
+    return undefined;
+  };
+
+  const fallbackAnswer = (query: string): Message => {
     const timeStr = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-
-    // 1. LEAVE & BALANCES
-    if (q.includes("leave") || q.includes("vacation") || q.includes("sick") || q.includes("vl") || q.includes("sl") || q.includes("credit")) {
-      const balances = overview?.leave_balances?.length
-        ? overview.leave_balances.map((b) => `• **${b.type}**: ${b.available} days remaining (out of ${b.total} days)`).join("\n")
-        : `• **Vacation Leave (VL)**: 12 days remaining\n• **Sick Leave (SL)**: 10 days remaining\n• **Emergency Leave**: 3 days remaining`;
-
-      return {
-        id: `bot-${Date.now()}`,
-        sender: "bot",
-        text: `Here is your current leave entitlement breakdown for Oxford Suites Makati:\n\n${balances}\n\n**Filing Policy:**\n• **Vacation Leave (VL)**: Must be filed at least 3 days in advance.\n• **Sick Leave (SL)**: A medical certificate is required for leaves exceeding 2 consecutive days.`,
-        timestamp: timeStr,
-        actionCard: {
-          title: "File a Leave Request",
-          description: "Submit vacation, sick, or emergency leave for supervisor review.",
-          buttonText: "Go to Leave Application →",
-          category: "Attendance",
-        },
-      };
-    }
-
-    // 2. PAYROLL & PAYDAY
-    if (q.includes("pay") || q.includes("salary") || q.includes("payslip") || q.includes("payout") || q.includes("cut off") || q.includes("dispute") || q.includes("13th")) {
-      return {
-        id: `bot-${Date.now()}`,
-        sender: "bot",
-        text: `**Oxford Suites Makati Payroll Schedule & Guidelines:**\n\n• **Payout Dates**: 15th and 30th/31st of each month.\n• **Cut-off Periods**:\n  - 1st–15th: Paid on the 30th.\n  - 16th–end of month: Paid on the 15th of the following month.\n• **Next Upcoming Payout**: **${overview?.payroll_summary?.next_payout || "August 30, 2026"}**.\n• **Night Differential**: 10% premium for hotel shifts rendered between 10:00 PM and 6:00 AM.\n• **13th Month Pay**: Disbursed on or before December 15 annually.`,
-        timestamp: timeStr,
-        actionCard: {
-          title: "View Payslips & Breakdown",
-          description: "Inspect net earnings, allowances, and statutory deductions.",
-          buttonText: "View Payslips in ESS →",
-          category: "Payroll",
-        },
-      };
-    }
-
-    // 3. COE & CERTIFICATES & DOCUMENTS
-    if (q.includes("coe") || q.includes("certificate") || q.includes("document") || q.includes("2316") || q.includes("clearance") || q.includes("employment certificate")) {
-      return {
-        id: `bot-${Date.now()}`,
-        sender: "bot",
-        text: `You can request official company certificates and documents directly through the **Company Documents** section:\n\n• **Certificate of Employment (COE)**: Available with or without compensation breakdown (Turnaround: 2–3 business days).\n• **BIR Form 2316**: Certificate of Compensation Payment & Tax Withheld (Issued annually every January).\n• **HR Clearances & Approvals**: Processed upon departmental verification.`,
-        timestamp: timeStr,
-        actionCard: {
-          title: "Request Official Document / COE",
-          description: "Submit a signed document request to HR Administration.",
-          buttonText: "Open Document Requests in ESS →",
-          category: "Documents",
-        },
-      };
-    }
-
-    // 4. ATTENDANCE, SHIFTS, TIME IN / DTR
-    if (q.includes("attendance") || q.includes("time in") || q.includes("time out") || q.includes("clock") || q.includes("dtr") || q.includes("late") || q.includes("shift") || q.includes("schedule")) {
-      return {
-        id: `bot-${Date.now()}`,
-        sender: "bot",
-        text: `**Hotel Work Schedule & Timekeeping Guidelines:**\n\n• **Standard Hotel Shifts**:\n  - Morning: 07:00 AM – 04:00 PM (1 hr meal break)\n  - Mid Shift: 02:00 PM – 11:00 PM\n  - Night Audit: 10:00 PM – 07:00 AM\n• **Grace Period**: 15 minutes for biometrics time-in.\n• **DTR Corrections**: If you missed a punch-in or punch-out, file an Attendance Correction under the Web Clocking tab within 48 hours for supervisor sign-off.`,
-        timestamp: timeStr,
-        actionCard: {
-          title: "Attendance & Web Clocking",
-          description: "View daily logs, biometrics history, and submit punch corrections.",
-          buttonText: "Open Web Clocking in ESS →",
-          category: "Attendance",
-        },
-      };
-    }
-
-    // 5. BENEFITS, HMO, LOANS & SSS
-    if (q.includes("hmo") || q.includes("benefit") || q.includes("loan") || q.includes("sss") || q.includes("philhealth") || q.includes("pag-ibig") || q.includes("insurance") || q.includes("hospital") || q.includes("clinic")) {
-      return {
-        id: `bot-${Date.now()}`,
-        sender: "bot",
-        text: `**Employee Benefits & Statutory Support:**\n\n• **HMO Healthcare (Maxicare)**:\n  - Comprehensive Inpatient & Outpatient medical coverage.\n  - Annual Physical Examination (APE) scheduled every Q1.\n  - Dependent enrollment window is open during regularization or annual renewal.\n• **Statutory Government Contributions**:\n  - SSS, PhilHealth, and Pag-IBIG are automatically computed and remitted.\n• **Salary & Calamity Loans**:\n  - Apply directly on Member SSS / Virtual Pag-IBIG portals; HR verifies billing statements within 3 working days.`,
-        timestamp: timeStr,
-      };
-    }
-
-    // 6. SOCIAL RECOGNITION & KUDOS
-    if (q.includes("recognition") || q.includes("kudos") || q.includes("shoutout") || q.includes("wall") || q.includes("praise") || q.includes("award") || q.includes("values")) {
-      return {
-        id: `bot-${Date.now()}`,
-        sender: "bot",
-        text: `**Oxford Suites Social Recognition:**\n\nCelebrate your colleagues by sending kudos on the **Public Wall of Fame** tied to our 5 Service Values:\n1. ⭐ **Guest Delight** (Exceeding guest expectations)\n2. 🤝 **Teamwork & Malasakit** (Cross-department care)\n3. 🚀 **Going the Extra Mile** (Initiative & urgency)\n4. ⚙️ **Operational Excellence** (Safety & quality)\n5. 🛡️ **Integrity & Trust** (Accountability)\n\nRecognitions directly count toward monthly **Employee of the Month** awards!`,
-        timestamp: timeStr,
-        actionCard: {
-          title: "Social Recognition Wall of Fame",
-          description: "Recognize a fellow teammate or view recent department shoutouts.",
-          buttonText: "Open Recognition Wall in ESS →",
-          category: "Recognition",
-        },
-      };
-    }
-
-    // 7. GREETINGS
-    if (q.includes("hello") || q.includes("hi") || q.includes("hey") || q.includes("good morning") || q.includes("good afternoon") || q.includes("good day")) {
-      return {
-        id: `bot-${Date.now()}`,
-        sender: "bot",
-        text: `Hello ${firstName}! 👋 I am your Oxford Suites Makati HR AI Concierge.\n\nI can help you with:\n• Leave requests & remaining balances\n• Payroll cut-offs & payslip copies\n• Official COE & BIR 2316 requests\n• HMO insurance & government statutory benefits\n• Hotel policies, shifts & biometrics timekeeping\n\nWhat would you like to explore today?`,
-        timestamp: timeStr,
-      };
-    }
-
-    // DEFAULT FALLBACK
+    const balances = overview?.leave_balances?.length
+      ? overview.leave_balances
+          .map((b) => `• ${b.type}: ${b.available} days remaining`)
+          .join("\n")
+      : "• Vacation Leave: 12 days remaining\n• Sick Leave: 10 days remaining";
+    const card = actionCardFor(query);
     return {
       id: `bot-${Date.now()}`,
       sender: "bot",
-      text: `I understand you are asking about *"query"*. \n\nHere are some of the most common topics I can help with:\n• **Leaves & Balances**: Check VL/SL credits or file a leave.\n• **Payroll & Payslips**: Payout dates, net pay, and salary queries.\n• **Certificates & COE**: Certificate of Employment requests.\n• **Benefits & HMO**: Medical insurance and SSS/Pag-IBIG loan filing.\n\nFeel free to select one of the suggested topics on the left or type a specific question!`.replace("query", query),
+      text: `I'm offline right now, but here's what I can share:\n\n${balances}\n\nPlease try again in a moment for full AI answers about "${query}".`,
       timestamp: timeStr,
+      ...(card ? { actionCard: card } : {}),
     };
   };
 
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const messageText = (textToSend || input).trim();
-    if (!messageText) return;
+    if (!messageText || isThinking) return;
 
     const timeStr = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 
@@ -258,15 +225,53 @@ export function EmployeeAiPage() {
       timestamp: timeStr,
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const next = [...messages, userMessage];
+    setMessages(next);
     setInput("");
     setIsThinking(true);
 
-    setTimeout(() => {
-      const botResponse = generateAnswer(messageText);
+    try {
+      const history = next.slice(-11, -1).map((m) => ({
+        role: (m.sender === "bot" ? "model" : "user") as "user" | "model",
+        text: m.text.slice(0, 1000),
+      }));
+      const res = await chatbotApi.chat({
+        message: messageText,
+        role: "employee",
+        history,
+      });
+      const card = actionCardFor(messageText);
+      const botResponse: Message = {
+        id: `bot-${Date.now()}`,
+        sender: "bot",
+        text: res.reply,
+        timestamp: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+        serverId: res.message_id ?? null,
+        sources: res.sources ?? [],
+        feedback: null,
+        ...(card ? { actionCard: card } : {}),
+      };
       setMessages((prev) => [...prev, botResponse]);
+    } catch {
+      setMessages((prev) => [...prev, fallbackAnswer(messageText)]);
+    } finally {
       setIsThinking(false);
-    }, 600);
+    }
+  };
+
+  const vote = (msg: Message, value: 1 | -1) => {
+    if (msg.serverId == null) return;
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === msg.id
+          ? { ...m, feedback: m.feedback === value ? null : value }
+          : m,
+      ),
+    );
+    // Optimistic — the stored vote is only used for quality analytics.
+    chatbotFaqApi
+      .messageFeedback(msg.serverId, msg.feedback === value ? 0 : value)
+      .catch(() => {});
   };
 
   const handleClearHistory = () => {
@@ -469,7 +474,7 @@ export function EmployeeAiPage() {
                               : "bg-card border border-border/80 text-foreground rounded-tl-xs whitespace-pre-line"
                           }`}
                         >
-                          {msg.text}
+                          {renderRichText(msg.text)}
                         </div>
 
                         {/* Embedded Action Shortcut Card */}
@@ -504,8 +509,41 @@ export function EmployeeAiPage() {
                           </div>
                         )}
 
-                        <p className={`text-[10px] text-muted-foreground ${isUser ? "text-right" : "text-left"} px-1`}>
-                          {msg.timestamp}
+                        {/* FAQ citations */}
+                        {!isUser && msg.sources && msg.sources.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {msg.sources.map((s) => (
+                              <span
+                                key={s.faq_id}
+                                title={`Based on FAQ: ${s.question}`}
+                                className="max-w-full truncate rounded-full border border-border/70 bg-muted/60 px-2 py-0.5 text-[10px] text-muted-foreground"
+                              >
+                                Based on: {s.question}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        <p className={`text-[10px] text-muted-foreground ${isUser ? "text-right" : "text-left"} px-1 flex items-center gap-2`}>
+                          <span>{msg.timestamp}</span>
+                          {!isUser && msg.serverId != null && (
+                            <span className="flex items-center gap-1">
+                              <button
+                                aria-label="Helpful"
+                                onClick={() => vote(msg, 1)}
+                                className={`grid h-5 w-5 place-items-center rounded-full hover:bg-muted ${msg.feedback === 1 ? "text-primary" : "text-muted-foreground"}`}
+                              >
+                                <ThumbsUp className="h-3 w-3" />
+                              </button>
+                              <button
+                                aria-label="Not helpful"
+                                onClick={() => vote(msg, -1)}
+                                className={`grid h-5 w-5 place-items-center rounded-full hover:bg-muted ${msg.feedback === -1 ? "text-destructive" : "text-muted-foreground"}`}
+                              >
+                                <ThumbsDown className="h-3 w-3" />
+                              </button>
+                            </span>
+                          )}
                         </p>
                       </div>
                     </div>

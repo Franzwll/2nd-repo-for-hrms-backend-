@@ -62,5 +62,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
 
         Route::post('requisitions/{requisition}/convert', [RequisitionController::class, 'convert'])
              ->name('requisitions.convert');
+
+        Route::delete('requisitions/{requisition}', [RequisitionController::class, 'destroy'])
+             ->name('requisition.destroy');
     });
 });

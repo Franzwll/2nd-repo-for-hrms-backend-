@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { ListSkeleton } from "@/components/ui/loading-skeletons";
 import { toast } from "sonner";
 import { myLeaveBalances, myProfile } from "@/data/ess";
 import { essApi, type ApiLeaveBalance } from "@/lib/api";
@@ -328,7 +329,10 @@ export function EssLeaveTab() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {(balances.length > 0 ? balances.slice(0, 4) : myLeaveBalances).map((b: any) => {
+              {loading ? (
+                <ListSkeleton items={4} />
+              ) : (
+                (balances.length > 0 ? balances.slice(0, 4) : myLeaveBalances).map((b: any) => {
                 const available = b.available ?? Math.max(0, b.total - b.used);
                 const percent = b.total > 0 ? Math.round((available / b.total) * 100) : 0;
                 return (
@@ -340,7 +344,7 @@ export function EssLeaveTab() {
                     <Progress value={percent} className="h-1.5 mt-1.5" />
                   </div>
                 );
-              })}
+              }))}
             </CardContent>
           </Card>
 

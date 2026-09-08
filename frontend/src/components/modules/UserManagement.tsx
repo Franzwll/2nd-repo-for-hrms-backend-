@@ -76,6 +76,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 const ListBody = TableBody;
 import { TablePagination } from "@/components/ui/table-pagination";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
 import { hcmApi, userManagementApi, type ApiSystemUser } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -913,16 +914,7 @@ export function UserManagement() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {loadingUsers && (
-                      <TableRow>
-                        <TableCell
-                          colSpan={8}
-                          className="py-8 text-center text-sm text-muted-foreground"
-                        >
-                          Loading users…
-                        </TableCell>
-                      </TableRow>
-                    )}
+                    {loadingUsers && <TableRowsSkeleton cols={8} rows={6} />}
                     {!loadingUsers && filteredUsers.length === 0 && (
                       <TableRow>
                         <TableCell

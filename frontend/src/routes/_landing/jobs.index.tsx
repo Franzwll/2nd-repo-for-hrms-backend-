@@ -54,6 +54,8 @@ function FindJobs() {
   const results = useMemo(
     () =>
       jobs.filter((j) => {
+        // Fully-filled posts are removed from the vacancy list (backend also filters).
+        if ((j.vacancies ?? 0) - (j.filled ?? 0) <= 0) return false;
         if (q && !`${j.title} ${j.department} ${j.summary}`.toLowerCase().includes(q.toLowerCase()))
           return false;
         if (dept.length && !dept.includes(j.department)) return false;
@@ -217,7 +219,8 @@ function FindJobs() {
                           </p>
                         </div>
                         <Badge variant="outline" className="border-success/40 text-success">
-                          {job.vacancies - job.filled} vacancies open
+                          {Math.max(0, job.vacancies - job.filled)}{" "}
+                          {Math.max(0, job.vacancies - job.filled) === 1 ? "slot" : "slots"} left
                         </Badge>
                       </div>
 

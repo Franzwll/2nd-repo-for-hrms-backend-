@@ -8,6 +8,7 @@ use App\Mail\ApplicantRejectedMail;
 use App\Mail\OfferNewJobMail;
 use App\Models\SystemUser;
 use App\Services\AuditLogger;
+use App\Services\DuplicateApplicationService;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -97,8 +98,21 @@ class ApplicantManagementController extends Controller
     {
         $data = $request->validated();
 
+        // HR-side duplicate guard mirrors public apply: same email + same job + active stage.
+        $existing = DuplicateApplicationService::findDuplicate(
+            (string) ($data['email'] ?? ''),
+            (int) ($data['job_post_id'] ?? 0)
+        );
+        if ($existing && ! empty($data['email']) && ! empty($data['job_post_id'])) {
+            return response()->json(
+                DuplicateApplicationService::duplicateResponse($existing),
+                409
+            );
+        }
+
         // Handle resume upload
         if ($request->hasFile('resume')) {
+            $data['resume_hash'] = DuplicateApplicationService::hashFile($request->file('resume'));
             $path = $request->file('resume')->store('resumes', 'public');
             $data['resume_file_path'] = $path;
             $data['resume_original_name'] = $request->file('resume')->getClientOriginalName();
@@ -406,6 +420,7 @@ class ApplicantManagementController extends Controller
             if ($model->resume_file_path && Storage::disk('public')->exists($model->resume_file_path)) {
                 Storage::disk('public')->delete($model->resume_file_path);
             }
+            $data['resume_hash'] = DuplicateApplicationService::hashFile($request->file('resume'));
             $data['resume_file_path'] = $request->file('resume')->store('resumes', 'public');
             $data['resume_original_name'] = $request->file('resume')->getClientOriginalName();
         }
@@ -563,6 +578,15 @@ class ApplicantManagementController extends Controller
 
         $model->update(['stage' => $nextStage]);
         $positionTitle = $model->jobPost?->title ?? 'Position';
+
+        // Filling a slot: auto-closes the job post when vacancies reach 0.
+        if ($nextStage === 'Hired' && $model->jobPost) {
+            try {
+                $model->jobPost->fillOneSlot();
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Job post slot fill failed for post '.$model->job_post_id.': '.$e->getMessage());
+            }
+        }
 
         AuditLogger::log(
             action: "Applicant Advanced to {$nextStage}",

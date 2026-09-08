@@ -11,7 +11,6 @@ import {
   Filter,
   Calendar,
   Layers,
-  Loader2,
   Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import {
@@ -391,7 +391,8 @@ export function EssOverviewTab({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {raPage.pageItems.length === 0 ? (
+              {loading && <TableRowsSkeleton cols={5} rows={4} />}
+              {!loading && raPage.pageItems.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                     No activity matching filter.

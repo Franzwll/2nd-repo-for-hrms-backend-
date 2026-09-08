@@ -57,6 +57,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Employee } from "@/data/hr";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 
 import { auditLogApi, hcmApi, type ApiAuditLog, type ApiEmployee } from "@/lib/api";
 import {
@@ -294,15 +295,20 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const [logSearch, setLogSearch] = useState("");
   const [logDept, setLogDept] = useState("all");
   const [recordLogs, setRecordLogs] = useState<RecordLog[]>([]);
+  const [logsLoading, setLogsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
+    setLogsLoading(true);
     auditLogApi
       .list({ per_page: 200, module: "Employee Records" })
       .then((res) => {
         if (!cancelled) setRecordLogs((res.data ?? []).map(mapAuditToRecordLog));
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLogsLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -808,7 +814,9 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {employeePage.pageItems.map((e) => (
+                      {!roster.loaded && <TableRowsSkeleton cols={8} rows={6} />}
+                      {roster.loaded &&
+                        employeePage.pageItems.map((e) => (
                         <TableRow key={e.id}>
                           <TableCell>
                             <Checkbox
@@ -985,7 +993,9 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {logPage.pageItems.map((l) => (
+                      {logsLoading && <TableRowsSkeleton cols={6} rows={5} />}
+                      {!logsLoading &&
+                        logPage.pageItems.map((l) => (
                         <TableRow key={l.id}>
                           <TableCell className="text-xs text-muted-foreground">
                             {l.timestamp}
@@ -1010,7 +1020,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                           <TableCell className="text-xs text-muted-foreground">{l.notes}</TableCell>
                         </TableRow>
                       ))}
-                      {logPage.pageItems.length === 0 && (
+                      {!logsLoading && logPage.pageItems.length === 0 && (
                         <TableRow>
                           <TableCell colSpan={6} className="py-8">
                             <ListEmptyState placeholder="Search actor, target, notes…" />

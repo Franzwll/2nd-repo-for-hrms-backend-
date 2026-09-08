@@ -57,9 +57,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         `Request failed with status ${response.status}: ${response.statusText}`;
       const error = new Error(message) as Error & {
         status?: number;
+        code?: string;
+        payload?: any;
         errors?: Record<string, string[]>;
       };
       error.status = response.status;
+      if (errorData?.code) {
+        error.code = errorData.code;
+      }
+      error.payload = errorData;
       if (errorData?.errors) {
         error.errors = errorData.errors;
       }
@@ -555,6 +561,8 @@ export const requisitionsApi = {
       method: "POST",
       body: JSON.stringify({ job_post_id: jobPostId }),
     }),
+  remove: (id: number | string) =>
+    request<{ message: string }>(`/requisitions/${id}`, { method: "DELETE" }),
 };
 
 export interface ApiDepartment {
@@ -1192,7 +1200,43 @@ export const hcmApi = {
         method: "POST",
       }),
   },
+  promotions: {
+    list: (params?: Record<string, any>) => {
+      const qs = new URLSearchParams(params).toString();
+      return request<{ data: ApiPromotionRequest[]; meta: any }>(
+        `/promotion-requests${qs ? `?${qs}` : ""}`,
+      );
+    },
+    review: (id: number | string, data: Record<string, any>) =>
+      request<{ message: string }>(`/promotion-requests/${id}/review`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+  },
 };
+
+export interface ApiPromotionRequest {
+  promotion_request_id: number;
+  employee_id: number;
+  current_position_id: number | null;
+  requested_position_id: number | null;
+  requested_salary_grade_id: number | null;
+  justification: string;
+  status: "Pending" | "Approved" | "Rejected" | "Returned";
+  reviewed_by: number | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
+  created_at: string;
+  employee?: {
+    employee_code: string;
+    first_name: string;
+    last_name: string;
+    full_name?: string;
+    department?: { name: string } | null;
+    position?: { title: string } | null;
+  } | null;
+  requested_position?: { title: string } | null;
+}
 
 /* ========================================================================= */
 /* 7. USER MANAGEMENT                                                        */
@@ -1779,6 +1823,17 @@ export const essApi = {
       method: "POST",
       body: JSON.stringify({ action }),
     }),
+  myPromotionRequests: () =>
+    request<{ data: ApiPromotionRequest[] }>("/ess/my-promotion-requests"),
+  createPromotionRequest: (data: {
+    requested_position_id?: number | null;
+    requested_salary_grade_id?: number | null;
+    justification: string;
+  }) =>
+    request<{ message: string; data: ApiPromotionRequest }>("/ess/my-promotion-requests", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
   // Admin & Superadmin Management
   adminRequests: (params?: Record<string, any>) => {
@@ -1821,10 +1876,29 @@ export const essApi = {
   auditLogs: () => request<{ logs: any[] }>("/ess/admin/audit-logs"),
 };
 
+export interface ApiChatbotSource {
+  faq_id: number;
+  question: string;
+}
+
 export interface ApiChatbotReply {
   reply: string;
   quick_replies: string[];
   topic: string | null;
+  source?: "gemini" | "fallback";
+  /** True when the rule engine answered (Gemini unavailable). */
+  reduced?: boolean;
+  /** DB id of the stored exchange — used for thumbs feedback. */
+  message_id?: number | null;
+  /** Curated FAQ entries the answer was based on. */
+  sources?: ApiChatbotSource[];
+}
+
+export type ChatbotRole = "guest" | "applicant" | "employee" | "admin" | "superadmin";
+
+export interface ChatbotTurn {
+  role: "user" | "model";
+  text: string;
 }
 
 export interface ApiChatbotFaq {
@@ -1838,8 +1912,32 @@ export interface ApiChatbotFaq {
   updated_at: string | null;
 }
 
+export interface ApiChatbotAnalytics {
+  conversations_today: number;
+  messages_today: number;
+  gemini_messages_30d: number;
+  fallback_messages_30d: number;
+  feedback_up: number;
+  feedback_down: number;
+  gemini_tokens_month: number;
+  trend_14d: { date: string; conversations: number }[];
+}
+
+export interface ApiChatbotUnanswered {
+  id: string;
+  message: string;
+  hits: number;
+  last_at: string | null;
+}
+
 export const chatbotApi = {
-  chat: (data: { message: string; session_id?: string | null; topic?: string | null }) =>
+  chat: (data: {
+    message: string;
+    session_id?: string | null;
+    topic?: string | null;
+    role?: ChatbotRole;
+    history?: ChatbotTurn[];
+  }) =>
     request<ApiChatbotReply>("/landing/chat", {
       method: "POST",
       body: JSON.stringify(data),
@@ -1875,6 +1973,17 @@ export const chatbotFaqApi = {
     }),
   remove: (id: number | string) =>
     request<{ message: string }>(`/chatbot/faqs/${id}`, { method: "DELETE" }),
+  analytics: () =>
+    request<{ data: ApiChatbotAnalytics }>("/chatbot/analytics"),
+  unanswered: () =>
+    request<{ data: ApiChatbotUnanswered[] }>("/chatbot/unanswered"),
+  dismissUnanswered: (hash: string) =>
+    request<{ message: string }>(`/chatbot/unanswered/${hash}`, { method: "DELETE" }),
+  messageFeedback: (messageId: number, value: 1 | -1 | 0) =>
+    request<{ message: string }>(`/chatbot/messages/${messageId}/feedback`, {
+      method: "POST",
+      body: JSON.stringify({ value }),
+    }),
 };
 
 /* ========================================================================= */

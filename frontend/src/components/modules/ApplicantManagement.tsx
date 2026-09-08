@@ -92,6 +92,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { ListSkeleton, Skeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -827,14 +828,8 @@ export function ScreeningReferenceManager() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                        <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> Loading reference
-                        data…
-                      </TableCell>
-                    </TableRow>
-                  ) : filtered.length === 0 ? (
+                  {loading && <TableRowsSkeleton cols={5} rows={5} />}
+                  {!loading && filtered.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
                         No entries match the current filters.
@@ -1002,11 +997,13 @@ export function ScreeningReferenceManager() {
 export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) {
   const navigate = useNavigate();
   const [rows, setRows] = useState<Applicant[]>([]);
+  const [listLoading, setListLoading] = useState(true);
 
   useEffect(() => {
     // Hired applicants leave the pipeline (they move to New Hire Onboarding);
     // rejected applicants stay in the list, only labelled as "Rejected".
     const excludeStages = "Hired";
+    setListLoading(true);
     Promise.allSettled([
       applicantsApi.list({ per_page: 100, exclude_stages: excludeStages }),
       interviewsApi.list({ per_page: 100 }),
@@ -1036,7 +1033,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       })
       .catch((err) => {
         console.warn("Could not fetch applicants/interviews/assessments from API:", err);
-      });
+      })
+      .finally(() => setListLoading(false));
   }, []);
 
   // Schedulable interview days (Mon–Sun setter) persisted via system_settings
@@ -2582,6 +2580,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   </Select>
                 </div>
 
+                {listLoading ? (
+                  <div className="mt-2 flex flex-wrap items-center justify-center gap-8 py-2" aria-busy="true" aria-label="Loading screening results">
+                    <Skeleton className="h-[380px] w-[380px] shrink-0 rounded-full" />
+                    <div className="grid w-full min-w-[16rem] max-w-[24rem] flex-1 grid-cols-1 gap-2">
+                      {[0, 1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-12 w-full rounded-md" />
+                      ))}
+                    </div>
+                  </div>
+                ) : (
                 <div className="mt-2 flex flex-wrap items-center justify-center gap-8 py-2">
                   <div className="relative h-[380px] w-[380px] shrink-0">
                     <PieChart width={380} height={380}>
@@ -2671,6 +2679,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     ))}
                   </div>
                 </div>
+                )}
               </CardContent>
             </Card>
 
@@ -2682,6 +2691,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <p className="text-xs text-muted-foreground">
                   Highest ranked resumes from today&apos;s screening batch.
                 </p>
+                {listLoading ? (
+                  <ListSkeleton items={3} className="mt-4" />
+                ) : (
                 <ol className="mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
                   {topFiveToday.map((a, i) => (
                     <li
@@ -2739,6 +2751,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     </li>
                   ))}
                 </ol>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -2894,7 +2907,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {applicantPage.pageItems.map((a) => (
+                      {listLoading && <TableRowsSkeleton cols={8} rows={6} />}
+                      {!listLoading &&
+                        applicantPage.pageItems.map((a) => (
                         <TableRow key={a.id}>
                           <TableCell className="max-w-0">
                             <div className="flex min-w-0 items-center gap-2">
@@ -2965,6 +2980,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           </TableCell>
                         </TableRow>
                       ))}
+                      {!listLoading && applicantPage.pageItems.length === 0 && (
+                        <TableRow>
+                          <TableCell
+                            colSpan={8}
+                            className="py-10 text-center text-sm text-muted-foreground"
+                          >
+                            No applicants match your filters.
+                          </TableCell>
+                        </TableRow>
+                      )}
                     </TableBody>
                   </Table>
                 </ListBody>
@@ -4127,7 +4152,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {interviewPage.pageItems.map((i) => (
+                      {listLoading && <TableRowsSkeleton cols={7} rows={5} />}
+                      {!listLoading &&
+                        interviewPage.pageItems.map((i) => (
                         <TableRow key={i.id}>
                           <TableCell className="text-sm font-medium">{i.applicant}</TableCell>
                           <TableCell className="text-sm">{i.position}</TableCell>
@@ -4342,7 +4369,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {assessmentPage.pageItems.map((row) =>
+                      {listLoading && <TableRowsSkeleton cols={8} rows={5} />}
+                      {!listLoading &&
+                        assessmentPage.pageItems.map((row) =>
                         row.kind === "ready" ? (
                           <TableRow key={`ready-${row.a.id}`}>
                             <TableCell className="text-sm font-medium">{row.a.name}</TableCell>
@@ -4483,7 +4512,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           </TableRow>
                         ),
                       )}
-                      {assessmentSort.sorted.length === 0 && (
+                      {!listLoading && assessmentSort.sorted.length === 0 && (
                         <TableRow>
                           <TableCell colSpan={9} className="text-sm text-muted-foreground">
                             Nothing to show for this filter yet.
@@ -4690,18 +4719,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           </TableCell>
                         </TableRow>
                       ))}
-                      {auditLoading && (
-                        <TableRow>
-                          <TableCell
-                            colSpan={8}
-                            className="py-10 text-center text-sm text-muted-foreground"
-                          >
-                            <span className="inline-flex items-center gap-2">
-                              <Loader2 className="h-4 w-4 animate-spin" /> Loading audit history…
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      )}
+                      {auditLoading && <TableRowsSkeleton cols={8} rows={4} />}
                       {!auditLoading && auditLog.length === 0 && (
                         <TableRow>
                           <TableCell

@@ -67,6 +67,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { ListSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -82,6 +83,7 @@ import {
   DEFAULT_ACCOUNT_PASSWORD,
   hireStore,
   useHires,
+  useHiresLoading,
   useMasterChecklists,
   usePendingHire,
 } from "@/data/hires";
@@ -473,6 +475,7 @@ export function NewHireOnboarding({ role }: { role: "superadmin" | "admin" | "em
 function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const isSuperAdmin = role === "superadmin";
   const hires = useHires();
+  const hiresLoading = useHiresLoading();
   const setHires = (updater: (prev: NewHire[]) => NewHire[]) => hireStore.setHires(updater);
   const pending = usePendingHire();
   const masterChecklists = useMasterChecklists();
@@ -1531,7 +1534,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {hirePage.pageItems.map((h) => {
+                        {hiresLoading && hires.length === 0 && (
+                          <TableRowsSkeleton cols={7} rows={6} />
+                        )}
+                        {(!hiresLoading || hires.length > 0) &&
+                          hirePage.pageItems.map((h) => {
                           const pct = progress(h);
                           const complete = pct === 100;
                           const awaiting = evaluationRequested.includes(h.id);
@@ -1686,7 +1693,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             </TableRow>
                           );
                         })}
-                        {visible.length === 0 && (
+                        {(!hiresLoading || hires.length > 0) && visible.length === 0 && (
                           <TableRow>
                             <TableCell colSpan={7} className="py-8">
                               <ListEmptyState placeholder="Search name, position..." />
@@ -3750,9 +3757,7 @@ export function EmployeeOnboarding() {
             <CardContent className="flex min-h-0 flex-1 flex-col">
               <div ref={listScrollRef} className="-mr-2 overflow-y-auto pr-2">
                 {loading ? (
-                  <div className="flex h-full items-center justify-center py-12 text-center text-sm text-muted-foreground">
-                    Loading your probationary onboarding checklist...
-                  </div>
+                  <ListSkeleton items={5} />
                 ) : filteredItems.length === 0 ? (
                   <div className="flex h-full items-center justify-center py-12 px-4 text-center text-sm text-muted-foreground">
                     {totalCount === 0

@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
+import { TableSkeleton } from "@/components/ui/loading-skeletons";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
 import { essApi, type ApiEssRequestItem } from "@/lib/api";
@@ -256,6 +257,10 @@ export function EssAllRequestsTab() {
         </CardHeader>
 
         <CardContent>
+          {loading ? (
+            <TableSkeleton cols={7} rows={6} />
+          ) : (
+          <>
           <Table>
             <TableHeader>
               <TableRow>
@@ -269,14 +274,7 @@ export function EssAllRequestsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin mx-auto text-primary mb-1.5" />
-                    Loading requests tracker...
-                  </TableCell>
-                </TableRow>
-              ) : pagination.pageItems.length === 0 ? (
+              {pagination.pageItems.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="h-24 text-center text-muted-foreground text-xs">
                     No matching requests found.
@@ -323,6 +321,8 @@ export function EssAllRequestsTab() {
             label="requests"
             onPageChange={pagination.setPage}
           />
+          </>
+          )}
         </CardContent>
       </Card>
 

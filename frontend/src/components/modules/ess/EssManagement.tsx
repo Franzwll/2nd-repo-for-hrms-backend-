@@ -33,6 +33,7 @@ import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
 import { StatCard } from "@/components/portal/StatCard";
 import { Badge } from "@/components/ui/badge";
@@ -547,6 +548,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
         }
       />
 
+      {loading ? (
+        <StatCardsSkeleton count={6} />
+      ) : (
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <StatCard
           label="Total Requests"
@@ -590,6 +594,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
           onClick={() => setStatus("Completed")}
         />
       </div>
+      )}
 
       <Tabs defaultValue="requests" className="mt-6">
         <TabsList className="flex h-auto flex-wrap justify-start">
@@ -805,7 +810,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {requestPage.pageItems.map((r) => (
+                      {loading && <TableRowsSkeleton cols={8} rows={6} />}
+                      {!loading &&
+                        requestPage.pageItems.map((r) => (
                         <TableRow key={r.id}>
                           {role === "superadmin" && (
                             <TableCell>
@@ -896,7 +903,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                           </TableCell>
                         </TableRow>
                       ))}
-                      {requestPage.pageItems.length === 0 && (
+                      {!loading && requestPage.pageItems.length === 0 && (
                         <TableRow>
                           <TableCell colSpan={role === "superadmin" ? 8 : 7} className="py-8">
                             <ListEmptyState placeholder="Search employee or request…" />

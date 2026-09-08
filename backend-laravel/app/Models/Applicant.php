@@ -23,6 +23,7 @@ class Applicant extends Model
         'source',
         'resume_file_path',
         'resume_original_name',
+        'resume_hash',
         'summary',
         'flags_json',
     ];

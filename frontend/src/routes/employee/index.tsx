@@ -17,6 +17,11 @@ import {
 import { AnnouncementsCard } from "@/components/portal/AnnouncementsCard";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { StatCard } from "@/components/portal/StatCard";
+import {
+  CardSkeleton,
+  ListSkeleton,
+  StatCardsSkeleton,
+} from "@/components/ui/loading-skeletons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,6 +46,9 @@ function EmployeeDashboard() {
   const [recognitions, setRecognitions] = useState<ApiRecognitionItem[]>([]);
   const [pendingTasks, setPendingTasks] = useState<string[]>([]);
   const [loadingOnboarding, setLoadingOnboarding] = useState(true);
+  const [loadingRecognitions, setLoadingRecognitions] = useState(true);
+  /** True while the ESS overview request is in flight. */
+  const loadingOverview = overview === null;
 
   // Time of day greeting
   const greeting = useMemo(() => {
@@ -81,7 +89,8 @@ function EmployeeDashboard() {
           setRecognitions(res.recognitions);
         }
       })
-      .catch(() => { });
+      .catch(() => { })
+      .finally(() => setLoadingRecognitions(false));
 
     // 4. Fetch Onboarding Tasks
     newHiresApi
@@ -205,6 +214,9 @@ function EmployeeDashboard() {
         </div>
       )}
 
+      {loadingOverview ? (
+        <StatCardsSkeleton count={4} />
+      ) : (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Leave Balance"
@@ -228,7 +240,8 @@ function EmployeeDashboard() {
           tone="primary"
         />
         <StatCard label="Position" value={position} hint={employmentType} icon={ClipboardCheck} tone="gold" />
-      </div>
+        </div>
+      )}
 
       {/* Quick Actions Grid (Compact Box Type 3x3 Grid) */}
       <div className="mt-6">
@@ -369,6 +382,10 @@ function EmployeeDashboard() {
               </Button>
             </div>
 
+            {loadingOverview ? (
+              <CardSkeleton rows={6} className="mt-4" />
+            ) : (
+            <>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <Link
                 to="/employee/ess"
@@ -438,6 +455,8 @@ function EmployeeDashboard() {
                 </div>
               ))}
             </div>
+            </>
+            )}
           </CardContent>
         </Card>
 
@@ -458,6 +477,9 @@ function EmployeeDashboard() {
 
             <div className="mt-4 space-y-3">
               {/* Highlight Shoutouts */}
+              {loadingRecognitions ? (
+                <ListSkeleton items={3} />
+              ) : (
               <div className="space-y-2.5">
                 {(recognitions.length > 0 ? recognitions.slice(0, 3) : [
                   {
@@ -535,6 +557,7 @@ function EmployeeDashboard() {
                   </div>
                 ))}
               </div>
+              )}
             </div>
 
             <Button asChild size="sm" className="mt-4 w-full sm:w-auto bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs shadow-xs">

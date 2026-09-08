@@ -26,6 +26,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { applicantsApi, dashboardApi, jobPostsApi } from "@/lib/api";
 import type { ApiApplicant, ApiDashboardStats, ApiJobPost } from "@/lib/api";
+import { ListSkeleton, StatCardsSkeleton } from "@/components/ui/loading-skeletons";
+const Skeleton = (p: any) => <div className={"animate-pulse rounded-md bg-primary/10 " + (p.className ?? "")} />;
 
 export const Route = createFileRoute("/admin/")({
   head: () => ({
@@ -115,6 +117,9 @@ function AdminDashboard() {
 
   const vacancyJobs = openJobs.filter((j) => j.vacancies > 0);
 
+  /** True while the dashboard data requests are in flight. */
+  const loading = stats === null;
+
   return (
     <div>
       <PageHeader
@@ -128,6 +133,9 @@ function AdminDashboard() {
         }
       />
 
+      {loading ? (
+        <StatCardsSkeleton count={4} />
+      ) : (
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Total Applicants"
@@ -160,7 +168,8 @@ function AdminDashboard() {
           icon={UserPlus}
           to="/admin/onboarding"
         />
-      </div>
+        </div>
+      )}
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.5fr_1fr]">
         <Card className="border-border/70">
@@ -169,6 +178,9 @@ function AdminDashboard() {
             <p className="text-xs text-muted-foreground">
               Incoming applications versus resumes processed by the screening engine.
             </p>
+            {loading ? (
+              <Skeleton className="mt-4 h-64 rounded-xl" aria-busy="true" aria-label="Loading applications chart" />
+            ) : (
             <div className="mt-4 h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={stats?.applicants.trend ?? []}>
@@ -194,6 +206,7 @@ function AdminDashboard() {
                 </LineChart>
               </ResponsiveContainer>
             </div>
+            )}
           </CardContent>
         </Card>
 
@@ -201,6 +214,9 @@ function AdminDashboard() {
           <CardContent className="p-6">
             <h2 className="font-display text-2xl font-semibold">Screening Outcomes</h2>
             <p className="text-xs text-muted-foreground">Result mix from the latest NER batch.</p>
+            {loading ? (
+              <Skeleton className="mt-2 h-64 rounded-xl" aria-busy="true" aria-label="Loading screening outcomes chart" />
+            ) : (
             <div className="mt-2 h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -221,6 +237,7 @@ function AdminDashboard() {
                 </PieChart>
               </ResponsiveContainer>
             </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -229,6 +246,9 @@ function AdminDashboard() {
         <Card className="border-border/70">
           <CardContent className="p-6">
             <h2 className="font-display text-2xl font-semibold">Hiring Funnel</h2>
+            {loading ? (
+              <Skeleton className="mt-4 h-60 rounded-xl" aria-busy="true" aria-label="Loading hiring funnel chart" />
+            ) : (
             <div className="mt-4 h-60">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={funnel}>
@@ -244,12 +264,16 @@ function AdminDashboard() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            )}
           </CardContent>
         </Card>
 
         <Card className="border-border/70">
           <CardContent className="p-6">
             <h2 className="font-display text-2xl font-semibold">Applicant Sources</h2>
+            {loading ? (
+              <Skeleton className="mt-4 h-60 rounded-xl" aria-busy="true" aria-label="Loading applicant sources chart" />
+            ) : (
             <div className="mt-4 h-60">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={sourceData} layout="vertical" margin={{ left: 30 }}>
@@ -272,6 +296,7 @@ function AdminDashboard() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -285,6 +310,9 @@ function AdminDashboard() {
                 <Link to="/admin/applicants">View all</Link>
               </Button>
             </div>
+            {loading ? (
+              <ListSkeleton items={5} className="mt-4" />
+            ) : (
             <ul className="mt-4 space-y-3">
               {topApplicants.map((a) => (
                 <li
@@ -306,6 +334,7 @@ function AdminDashboard() {
                 </li>
               ))}
             </ul>
+            )}
           </CardContent>
         </Card>
 
@@ -313,6 +342,9 @@ function AdminDashboard() {
           <Card className="border-border/70">
             <CardContent className="p-6">
               <h2 className="font-display text-2xl font-semibold">Vacancy Fill Rate</h2>
+              {loading ? (
+                <ListSkeleton items={4} className="mt-4" />
+              ) : (
               <ul className="mt-4 space-y-4">
                 {vacancyJobs.map((j) => {
                   const pct =
@@ -333,6 +365,7 @@ function AdminDashboard() {
                   );
                 })}
               </ul>
+              )}
             </CardContent>
           </Card>
         </div>

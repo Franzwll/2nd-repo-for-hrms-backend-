@@ -34,6 +34,12 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  CardSkeleton,
+  ListSkeleton,
+  Skeleton,
+  StatCardsSkeleton,
+} from "@/components/ui/loading-skeletons";
 import { dashboardApi } from "@/lib/api";
 import type { ApiDashboardStats } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -138,6 +144,8 @@ function SuperAdminDashboard() {
   }));
   const recentUsers = stats?.system_users.recent ?? [];
   const recentAudit = stats?.audit.recent ?? [];
+  /** True while the dashboard stats request is in flight. */
+  const loading = stats === null;
 
   return (
     <div>
@@ -147,6 +155,9 @@ function SuperAdminDashboard() {
         description="Whole-system oversight across property operations, users, and HRMS modules."
       />
 
+      {loading ? (
+        <StatCardsSkeleton count={4} />
+      ) : (
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Total Employees"
@@ -179,7 +190,8 @@ function SuperAdminDashboard() {
           icon={Users}
           to="/superadmin/applicants"
         />
-      </div>
+        </div>
+      )}
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.5fr_1fr]">
         <Card className="border-border/70 shadow-sm">
@@ -211,6 +223,16 @@ function SuperAdminDashboard() {
             </div>
 
             {/* KPI Overview Row */}
+            {loading ? (
+              <div className="mt-4 grid grid-cols-4 gap-2 rounded-xl border border-border p-2" aria-busy="true">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="space-y-2 p-2 text-center">
+                    <Skeleton className="mx-auto h-3 w-16" />
+                    <Skeleton className="mx-auto h-6 w-12" />
+                  </div>
+                ))}
+              </div>
+            ) : (
             <div className="mt-4 grid grid-cols-4 divide-x divide-border rounded-xl border border-border bg-card p-2 text-center shadow-xs">
               <div className="p-2">
                 <p className="eyebrow">Current</p>
@@ -233,8 +255,12 @@ function SuperAdminDashboard() {
                 <p className="font-display text-xl font-bold text-gold">{retentionRate}%</p>
               </div>
             </div>
+            )}
 
             {/* Revamped Composed Chart with Area Fill & Rounded Bars */}
+            {loading ? (
+              <Skeleton className="mt-5 h-68 w-full rounded-xl" aria-busy="true" aria-label="Loading headcount chart" />
+            ) : (
             <div className="mt-5 h-68">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
@@ -344,6 +370,7 @@ function SuperAdminDashboard() {
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
+            )}
           </CardContent>
         </Card>
 
@@ -363,6 +390,9 @@ function SuperAdminDashboard() {
               </Badge>
             </div>
 
+            {loading ? (
+              <CardSkeleton rows={3} className="mt-4" />
+            ) : (
             <div className="mt-4 grid grid-cols-3 gap-2">
               {roleData.map((r, i) => (
                 <div
@@ -381,7 +411,15 @@ function SuperAdminDashboard() {
                 </div>
               ))}
             </div>
+            )}
 
+            {loading ? (
+              <div className="mt-3 flex flex-wrap items-center gap-1.5" aria-busy="true">
+                <Skeleton className="h-5 w-16 rounded-full" />
+                <Skeleton className="h-5 w-20 rounded-full" />
+                <Skeleton className="h-5 w-14 rounded-full" />
+              </div>
+            ) : (
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               {statusData.map((s) => (
                 <Badge
@@ -393,12 +431,17 @@ function SuperAdminDashboard() {
                 </Badge>
               ))}
             </div>
+            )}
 
             <div className="mt-4 border-t border-border/70 pt-3">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Recent sign-ins
               </p>
               <div className="mt-2 space-y-2">
+                {loading ? (
+                  <ListSkeleton items={3} />
+                ) : (
+                <>
                 {recentUsers.length === 0 && (
                   <p className="text-xs text-muted-foreground">No sign-ins recorded yet.</p>
                 )}
@@ -425,6 +468,8 @@ function SuperAdminDashboard() {
                     </Badge>
                   </div>
                 ))}
+                </>
+                )}
               </div>
             </div>
           </CardContent>
@@ -448,6 +493,12 @@ function SuperAdminDashboard() {
               </Badge>
             </div>
 
+            {loading ? (
+              <div className="mt-4 grid gap-6 lg:grid-cols-[1.4fr_1fr]" aria-busy="true" aria-label="Loading staffing chart">
+                <Skeleton className="h-60 rounded-xl" />
+                <ListSkeleton items={5} />
+              </div>
+            ) : (
             <div className="mt-4 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
               <div className="h-60">
                 <ResponsiveContainer width="100%" height="100%">
@@ -513,6 +564,7 @@ function SuperAdminDashboard() {
                 })}
               </div>
             </div>
+            )}
           </CardContent>
         </Card>
 
@@ -526,6 +578,9 @@ function SuperAdminDashboard() {
                 <Link to="/superadmin/audit">View logs</Link>
               </Button>
             </div>
+            {loading ? (
+              <ListSkeleton items={4} className="mt-4" />
+            ) : (
             <ul className="mt-4 space-y-3">
               {recentAudit.length === 0 && (
                 <p className="text-xs text-muted-foreground">No audit activity recorded.</p>
@@ -553,10 +608,16 @@ function SuperAdminDashboard() {
                 </li>
               ))}
             </ul>
+            )}
           </CardContent>
         </Card>
       </div>
 
+      {loading ? (
+        <div className="mt-6">
+          <StatCardsSkeleton count={4} />
+        </div>
+      ) : (
       <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Onboarding in progress"
@@ -590,7 +651,8 @@ function SuperAdminDashboard() {
           icon={ShieldAlert}
           to="/superadmin/users"
         />
-      </div>
+        </div>
+      )}
       <div className="mt-6">
         <AnnouncementsCard role="superadmin" />
       </div>
