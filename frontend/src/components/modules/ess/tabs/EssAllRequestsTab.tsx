@@ -38,6 +38,7 @@ import { toast } from "sonner";
 const CATEGORY_SUBTYPES: Record<string, string[]> = {
   Leave: ["Vacation", "Sick", "Emergency", "Maternity", "Paternity", "Solo Parent", "Bereavement"],
   Attendance: ["Time In Correction", "Missed Time Out", "Overtime Claim", "Rest Day Duty", "Official Business (OB)"],
+  "Career & Position": ["Promotion Request", "Lateral Transfer", "Job Reclassification", "Salary Grade Review"],
   Payroll: ["Payroll Clarification", "Overtime Discrepancy", "Night Differential Claim", "Tax Withholding Clarification"],
   "Payroll Update": ["Bank Account Update", "Tax Exemption Status Update", "Direct Deposit Update"],
   Loan: ["SSS Salary Loan", "Pag-IBIG Calamity Loan", "Company Emergency Loan", "Educational Assistance Loan"],
