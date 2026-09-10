@@ -9,6 +9,9 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as EmployeeRouteImport } from './routes/employee'
+import { Route as SuperadminRouteImport } from './routes/superadmin'
 import { Route as LandingIndexRouteImport } from './routes/_landing/index'
 import { Route as LandingAboutRouteImport } from './routes/_landing/about'
 import { Route as LandingContactRouteImport } from './routes/_landing/contact'
@@ -52,6 +55,21 @@ import { Route as SuperadminSettingsChatbotRouteImport } from './routes/superadm
 import { Route as SuperadminSettingsSettingsRouteImport } from './routes/superadmin/_settings/settings'
 import { Route as SuperadminUsermanagementUsersRouteImport } from './routes/superadmin/_usermanagement/users'
 
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EmployeeRoute = EmployeeRouteImport.update({
+  id: '/employee',
+  path: '/employee',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SuperadminRoute = SuperadminRouteImport.update({
+  id: '/superadmin',
+  path: '/superadmin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LandingIndexRoute = LandingIndexRouteImport.update({
   id: '/_landing/',
   path: '/',
@@ -93,24 +111,24 @@ const LoginResetPasswordRoute = LoginResetPasswordRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
-  id: '/admin/',
-  path: '/admin/',
-  getParentRoute: () => rootRouteImport,
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRoute,
 } as any)
 const EmployeeIndexRoute = EmployeeIndexRouteImport.update({
-  id: '/employee/',
-  path: '/employee/',
-  getParentRoute: () => rootRouteImport,
+  id: '/',
+  path: '/',
+  getParentRoute: () => EmployeeRoute,
 } as any)
 const EmployeeAiRoute = EmployeeAiRouteImport.update({
-  id: '/employee/ai',
-  path: '/employee/ai',
-  getParentRoute: () => rootRouteImport,
+  id: '/ai',
+  path: '/ai',
+  getParentRoute: () => EmployeeRoute,
 } as any)
 const SuperadminIndexRoute = SuperadminIndexRouteImport.update({
-  id: '/superadmin/',
-  path: '/superadmin/',
-  getParentRoute: () => rootRouteImport,
+  id: '/',
+  path: '/',
+  getParentRoute: () => SuperadminRoute,
 } as any)
 const LandingJobsIndexRoute = LandingJobsIndexRouteImport.update({
   id: '/_landing/jobs/',
@@ -124,166 +142,169 @@ const LandingJobsJobIdRoute = LandingJobsJobIdRouteImport.update({
 } as any)
 const AdminApplicantManagementApplicantsRoute =
   AdminApplicantManagementApplicantsRouteImport.update({
-    id: '/admin/_applicant-management/applicants',
-    path: '/admin/applicants',
-    getParentRoute: () => rootRouteImport,
+    id: '/_applicant-management/applicants',
+    path: '/applicants',
+    getParentRoute: () => AdminRoute,
   } as any)
 const AdminCorehcmDeptPosRoute = AdminCorehcmDeptPosRouteImport.update({
-  id: '/admin/_corehcm/dept-pos',
-  path: '/admin/dept-pos',
-  getParentRoute: () => rootRouteImport,
+  id: '/_corehcm/dept-pos',
+  path: '/dept-pos',
+  getParentRoute: () => AdminRoute,
 } as any)
 const AdminCorehcmHcmRoute = AdminCorehcmHcmRouteImport.update({
-  id: '/admin/_corehcm/hcm',
-  path: '/admin/hcm',
-  getParentRoute: () => rootRouteImport,
+  id: '/_corehcm/hcm',
+  path: '/hcm',
+  getParentRoute: () => AdminRoute,
 } as any)
 const AdminCorehcmOrgChartRoute = AdminCorehcmOrgChartRouteImport.update({
-  id: '/admin/_corehcm/org-chart',
-  path: '/admin/org-chart',
-  getParentRoute: () => rootRouteImport,
+  id: '/_corehcm/org-chart',
+  path: '/org-chart',
+  getParentRoute: () => AdminRoute,
 } as any)
 const AdminEmployeerecordsEmployeesRoute =
   AdminEmployeerecordsEmployeesRouteImport.update({
-    id: '/admin/_employeerecords/employees',
-    path: '/admin/employees',
-    getParentRoute: () => rootRouteImport,
+    id: '/_employeerecords/employees',
+    path: '/employees',
+    getParentRoute: () => AdminRoute,
   } as any)
 const AdminEssmanagementEssRoute = AdminEssmanagementEssRouteImport.update({
-  id: '/admin/_essmanagement/ess',
-  path: '/admin/ess',
-  getParentRoute: () => rootRouteImport,
+  id: '/_essmanagement/ess',
+  path: '/ess',
+  getParentRoute: () => AdminRoute,
 } as any)
 const AdminNewhireonboardingOnboardingRoute =
   AdminNewhireonboardingOnboardingRouteImport.update({
-    id: '/admin/_newhireonboarding/onboarding',
-    path: '/admin/onboarding',
-    getParentRoute: () => rootRouteImport,
+    id: '/_newhireonboarding/onboarding',
+    path: '/onboarding',
+    getParentRoute: () => AdminRoute,
   } as any)
 const AdminProfilepageProfileRoute = AdminProfilepageProfileRouteImport.update({
-  id: '/admin/_profilepage/profile',
-  path: '/admin/profile',
-  getParentRoute: () => rootRouteImport,
+  id: '/_profilepage/profile',
+  path: '/profile',
+  getParentRoute: () => AdminRoute,
 } as any)
 const AdminRecruitmentmanagementRecruitmentRoute =
   AdminRecruitmentmanagementRecruitmentRouteImport.update({
-    id: '/admin/_recruitmentmanagement/recruitment',
-    path: '/admin/recruitment',
-    getParentRoute: () => rootRouteImport,
+    id: '/_recruitmentmanagement/recruitment',
+    path: '/recruitment',
+    getParentRoute: () => AdminRoute,
   } as any)
 const AdminSettingsChatbotRoute = AdminSettingsChatbotRouteImport.update({
-  id: '/admin/_settings/chatbot',
-  path: '/admin/chatbot',
-  getParentRoute: () => rootRouteImport,
+  id: '/_settings/chatbot',
+  path: '/chatbot',
+  getParentRoute: () => AdminRoute,
 } as any)
 const AdminSettingsSettingsRoute = AdminSettingsSettingsRouteImport.update({
-  id: '/admin/_settings/settings',
-  path: '/admin/settings',
-  getParentRoute: () => rootRouteImport,
+  id: '/_settings/settings',
+  path: '/settings',
+  getParentRoute: () => AdminRoute,
 } as any)
 const EmployeeEssmanagementEssRoute =
   EmployeeEssmanagementEssRouteImport.update({
-    id: '/employee/_essmanagement/ess',
-    path: '/employee/ess',
-    getParentRoute: () => rootRouteImport,
+    id: '/_essmanagement/ess',
+    path: '/ess',
+    getParentRoute: () => EmployeeRoute,
   } as any)
 const EmployeeNewhireonboardingOnboardingRoute =
   EmployeeNewhireonboardingOnboardingRouteImport.update({
-    id: '/employee/_newhireonboarding/onboarding',
-    path: '/employee/onboarding',
-    getParentRoute: () => rootRouteImport,
+    id: '/_newhireonboarding/onboarding',
+    path: '/onboarding',
+    getParentRoute: () => EmployeeRoute,
   } as any)
 const EmployeeProfilepageProfileRoute =
   EmployeeProfilepageProfileRouteImport.update({
-    id: '/employee/_profilepage/profile',
-    path: '/employee/profile',
-    getParentRoute: () => rootRouteImport,
+    id: '/_profilepage/profile',
+    path: '/profile',
+    getParentRoute: () => EmployeeRoute,
   } as any)
 const EmployeeSettingsSettingsRoute =
   EmployeeSettingsSettingsRouteImport.update({
-    id: '/employee/_settings/settings',
-    path: '/employee/settings',
-    getParentRoute: () => rootRouteImport,
+    id: '/_settings/settings',
+    path: '/settings',
+    getParentRoute: () => EmployeeRoute,
   } as any)
 const SuperadminApplicantManagementApplicantsRoute =
   SuperadminApplicantManagementApplicantsRouteImport.update({
-    id: '/superadmin/_applicant-management/applicants',
-    path: '/superadmin/applicants',
-    getParentRoute: () => rootRouteImport,
+    id: '/_applicant-management/applicants',
+    path: '/applicants',
+    getParentRoute: () => SuperadminRoute,
   } as any)
 const SuperadminAuditlogsAuditRoute =
   SuperadminAuditlogsAuditRouteImport.update({
-    id: '/superadmin/_auditlogs/audit',
-    path: '/superadmin/audit',
-    getParentRoute: () => rootRouteImport,
+    id: '/_auditlogs/audit',
+    path: '/audit',
+    getParentRoute: () => SuperadminRoute,
   } as any)
 const SuperadminCorehcmDeptPosRoute =
   SuperadminCorehcmDeptPosRouteImport.update({
-    id: '/superadmin/_corehcm/dept-pos',
-    path: '/superadmin/dept-pos',
-    getParentRoute: () => rootRouteImport,
+    id: '/_corehcm/dept-pos',
+    path: '/dept-pos',
+    getParentRoute: () => SuperadminRoute,
   } as any)
 const SuperadminCorehcmHcmRoute = SuperadminCorehcmHcmRouteImport.update({
-  id: '/superadmin/_corehcm/hcm',
-  path: '/superadmin/hcm',
-  getParentRoute: () => rootRouteImport,
+  id: '/_corehcm/hcm',
+  path: '/hcm',
+  getParentRoute: () => SuperadminRoute,
 } as any)
 const SuperadminCorehcmOrgChartRoute =
   SuperadminCorehcmOrgChartRouteImport.update({
-    id: '/superadmin/_corehcm/org-chart',
-    path: '/superadmin/org-chart',
-    getParentRoute: () => rootRouteImport,
+    id: '/_corehcm/org-chart',
+    path: '/org-chart',
+    getParentRoute: () => SuperadminRoute,
   } as any)
 const SuperadminEmployeerecordsEmployeesRoute =
   SuperadminEmployeerecordsEmployeesRouteImport.update({
-    id: '/superadmin/_employeerecords/employees',
-    path: '/superadmin/employees',
-    getParentRoute: () => rootRouteImport,
+    id: '/_employeerecords/employees',
+    path: '/employees',
+    getParentRoute: () => SuperadminRoute,
   } as any)
 const SuperadminEssmanagementEssRoute =
   SuperadminEssmanagementEssRouteImport.update({
-    id: '/superadmin/_essmanagement/ess',
-    path: '/superadmin/ess',
-    getParentRoute: () => rootRouteImport,
+    id: '/_essmanagement/ess',
+    path: '/ess',
+    getParentRoute: () => SuperadminRoute,
   } as any)
 const SuperadminNewhireonboardingOnboardingRoute =
   SuperadminNewhireonboardingOnboardingRouteImport.update({
-    id: '/superadmin/_newhireonboarding/onboarding',
-    path: '/superadmin/onboarding',
-    getParentRoute: () => rootRouteImport,
+    id: '/_newhireonboarding/onboarding',
+    path: '/onboarding',
+    getParentRoute: () => SuperadminRoute,
   } as any)
 const SuperadminProfilepageProfileRoute =
   SuperadminProfilepageProfileRouteImport.update({
-    id: '/superadmin/_profilepage/profile',
-    path: '/superadmin/profile',
-    getParentRoute: () => rootRouteImport,
+    id: '/_profilepage/profile',
+    path: '/profile',
+    getParentRoute: () => SuperadminRoute,
   } as any)
 const SuperadminRecruitmentmanagementRecruitmentRoute =
   SuperadminRecruitmentmanagementRecruitmentRouteImport.update({
-    id: '/superadmin/_recruitmentmanagement/recruitment',
-    path: '/superadmin/recruitment',
-    getParentRoute: () => rootRouteImport,
+    id: '/_recruitmentmanagement/recruitment',
+    path: '/recruitment',
+    getParentRoute: () => SuperadminRoute,
   } as any)
 const SuperadminSettingsChatbotRoute =
   SuperadminSettingsChatbotRouteImport.update({
-    id: '/superadmin/_settings/chatbot',
-    path: '/superadmin/chatbot',
-    getParentRoute: () => rootRouteImport,
+    id: '/_settings/chatbot',
+    path: '/chatbot',
+    getParentRoute: () => SuperadminRoute,
   } as any)
 const SuperadminSettingsSettingsRoute =
   SuperadminSettingsSettingsRouteImport.update({
-    id: '/superadmin/_settings/settings',
-    path: '/superadmin/settings',
-    getParentRoute: () => rootRouteImport,
+    id: '/_settings/settings',
+    path: '/settings',
+    getParentRoute: () => SuperadminRoute,
   } as any)
 const SuperadminUsermanagementUsersRoute =
   SuperadminUsermanagementUsersRouteImport.update({
-    id: '/superadmin/_usermanagement/users',
-    path: '/superadmin/users',
-    getParentRoute: () => rootRouteImport,
+    id: '/_usermanagement/users',
+    path: '/users',
+    getParentRoute: () => SuperadminRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
+  '/admin': typeof AdminRouteWithChildren
+  '/employee': typeof EmployeeRouteWithChildren
+  '/superadmin': typeof SuperadminRouteWithChildren
   '/about': typeof LandingAboutRoute
   '/contact': typeof LandingContactRoute
   '/faq': typeof LandingFaqRoute
@@ -373,6 +394,9 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/admin': typeof AdminRouteWithChildren
+  '/employee': typeof EmployeeRouteWithChildren
+  '/superadmin': typeof SuperadminRouteWithChildren
   '/_landing/about': typeof LandingAboutRoute
   '/_landing/contact': typeof LandingContactRoute
   '/_landing/faq': typeof LandingFaqRoute
@@ -419,6 +443,9 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/admin'
+    | '/employee'
+    | '/superadmin'
     | '/about'
     | '/contact'
     | '/faq'
@@ -507,6 +534,9 @@ export interface FileRouteTypes {
     | '/jobs'
   id:
     | '__root__'
+    | '/admin'
+    | '/employee'
+    | '/superadmin'
     | '/_landing/about'
     | '/_landing/contact'
     | '/_landing/faq'
@@ -552,6 +582,9 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  AdminRoute: typeof AdminRouteWithChildren
+  EmployeeRoute: typeof EmployeeRouteWithChildren
+  SuperadminRoute: typeof SuperadminRouteWithChildren
   LandingAboutRoute: typeof LandingAboutRoute
   LandingContactRoute: typeof LandingContactRoute
   LandingFaqRoute: typeof LandingFaqRoute
@@ -559,45 +592,34 @@ export interface RootRouteChildren {
   LoginLoginRoute: typeof LoginLoginRoute
   LoginOtpRoute: typeof LoginOtpRoute
   LoginResetPasswordRoute: typeof LoginResetPasswordRoute
-  EmployeeAiRoute: typeof EmployeeAiRoute
   LandingIndexRoute: typeof LandingIndexRoute
-  AdminIndexRoute: typeof AdminIndexRoute
-  EmployeeIndexRoute: typeof EmployeeIndexRoute
-  SuperadminIndexRoute: typeof SuperadminIndexRoute
   LandingJobsJobIdRoute: typeof LandingJobsJobIdRoute
-  AdminApplicantManagementApplicantsRoute: typeof AdminApplicantManagementApplicantsRoute
-  AdminCorehcmDeptPosRoute: typeof AdminCorehcmDeptPosRoute
-  AdminCorehcmHcmRoute: typeof AdminCorehcmHcmRoute
-  AdminCorehcmOrgChartRoute: typeof AdminCorehcmOrgChartRoute
-  AdminEmployeerecordsEmployeesRoute: typeof AdminEmployeerecordsEmployeesRoute
-  AdminEssmanagementEssRoute: typeof AdminEssmanagementEssRoute
-  AdminNewhireonboardingOnboardingRoute: typeof AdminNewhireonboardingOnboardingRoute
-  AdminProfilepageProfileRoute: typeof AdminProfilepageProfileRoute
-  AdminRecruitmentmanagementRecruitmentRoute: typeof AdminRecruitmentmanagementRecruitmentRoute
-  AdminSettingsChatbotRoute: typeof AdminSettingsChatbotRoute
-  AdminSettingsSettingsRoute: typeof AdminSettingsSettingsRoute
-  EmployeeEssmanagementEssRoute: typeof EmployeeEssmanagementEssRoute
-  EmployeeNewhireonboardingOnboardingRoute: typeof EmployeeNewhireonboardingOnboardingRoute
-  EmployeeProfilepageProfileRoute: typeof EmployeeProfilepageProfileRoute
-  EmployeeSettingsSettingsRoute: typeof EmployeeSettingsSettingsRoute
-  SuperadminApplicantManagementApplicantsRoute: typeof SuperadminApplicantManagementApplicantsRoute
-  SuperadminAuditlogsAuditRoute: typeof SuperadminAuditlogsAuditRoute
-  SuperadminCorehcmDeptPosRoute: typeof SuperadminCorehcmDeptPosRoute
-  SuperadminCorehcmHcmRoute: typeof SuperadminCorehcmHcmRoute
-  SuperadminCorehcmOrgChartRoute: typeof SuperadminCorehcmOrgChartRoute
-  SuperadminEmployeerecordsEmployeesRoute: typeof SuperadminEmployeerecordsEmployeesRoute
-  SuperadminEssmanagementEssRoute: typeof SuperadminEssmanagementEssRoute
-  SuperadminNewhireonboardingOnboardingRoute: typeof SuperadminNewhireonboardingOnboardingRoute
-  SuperadminProfilepageProfileRoute: typeof SuperadminProfilepageProfileRoute
-  SuperadminRecruitmentmanagementRecruitmentRoute: typeof SuperadminRecruitmentmanagementRecruitmentRoute
-  SuperadminSettingsChatbotRoute: typeof SuperadminSettingsChatbotRoute
-  SuperadminSettingsSettingsRoute: typeof SuperadminSettingsSettingsRoute
-  SuperadminUsermanagementUsersRoute: typeof SuperadminUsermanagementUsersRoute
   LandingJobsIndexRoute: typeof LandingJobsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/employee': {
+      id: '/employee'
+      path: '/employee'
+      fullPath: '/employee'
+      preLoaderRoute: typeof EmployeeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/superadmin': {
+      id: '/superadmin'
+      path: '/superadmin'
+      fullPath: '/superadmin'
+      preLoaderRoute: typeof SuperadminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_landing/': {
       id: '/_landing/'
       path: '/'
@@ -656,31 +678,31 @@ declare module '@tanstack/react-router' {
     }
     '/admin/': {
       id: '/admin/'
-      path: '/admin'
+      path: '/'
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/employee/': {
       id: '/employee/'
-      path: '/employee'
+      path: '/'
       fullPath: '/employee/'
       preLoaderRoute: typeof EmployeeIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof EmployeeRoute
     }
     '/employee/ai': {
       id: '/employee/ai'
-      path: '/employee/ai'
+      path: '/ai'
       fullPath: '/employee/ai'
       preLoaderRoute: typeof EmployeeAiRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof EmployeeRoute
     }
     '/superadmin/': {
       id: '/superadmin/'
-      path: '/superadmin'
+      path: '/'
       fullPath: '/superadmin/'
       preLoaderRoute: typeof SuperadminIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SuperadminRoute
     }
     '/_landing/jobs/': {
       id: '/_landing/jobs/'
@@ -698,217 +720,220 @@ declare module '@tanstack/react-router' {
     }
     '/admin/_applicant-management/applicants': {
       id: '/admin/_applicant-management/applicants'
-      path: '/admin/applicants'
+      path: '/applicants'
       fullPath: '/admin/applicants'
       preLoaderRoute: typeof AdminApplicantManagementApplicantsRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/admin/_corehcm/dept-pos': {
       id: '/admin/_corehcm/dept-pos'
-      path: '/admin/dept-pos'
+      path: '/dept-pos'
       fullPath: '/admin/dept-pos'
       preLoaderRoute: typeof AdminCorehcmDeptPosRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/admin/_corehcm/hcm': {
       id: '/admin/_corehcm/hcm'
-      path: '/admin/hcm'
+      path: '/hcm'
       fullPath: '/admin/hcm'
       preLoaderRoute: typeof AdminCorehcmHcmRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/admin/_corehcm/org-chart': {
       id: '/admin/_corehcm/org-chart'
-      path: '/admin/org-chart'
+      path: '/org-chart'
       fullPath: '/admin/org-chart'
       preLoaderRoute: typeof AdminCorehcmOrgChartRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/admin/_employeerecords/employees': {
       id: '/admin/_employeerecords/employees'
-      path: '/admin/employees'
+      path: '/employees'
       fullPath: '/admin/employees'
       preLoaderRoute: typeof AdminEmployeerecordsEmployeesRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/admin/_essmanagement/ess': {
       id: '/admin/_essmanagement/ess'
-      path: '/admin/ess'
+      path: '/ess'
       fullPath: '/admin/ess'
       preLoaderRoute: typeof AdminEssmanagementEssRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/admin/_newhireonboarding/onboarding': {
       id: '/admin/_newhireonboarding/onboarding'
-      path: '/admin/onboarding'
+      path: '/onboarding'
       fullPath: '/admin/onboarding'
       preLoaderRoute: typeof AdminNewhireonboardingOnboardingRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/admin/_profilepage/profile': {
       id: '/admin/_profilepage/profile'
-      path: '/admin/profile'
+      path: '/profile'
       fullPath: '/admin/profile'
       preLoaderRoute: typeof AdminProfilepageProfileRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/admin/_recruitmentmanagement/recruitment': {
       id: '/admin/_recruitmentmanagement/recruitment'
-      path: '/admin/recruitment'
+      path: '/recruitment'
       fullPath: '/admin/recruitment'
       preLoaderRoute: typeof AdminRecruitmentmanagementRecruitmentRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/admin/_settings/chatbot': {
       id: '/admin/_settings/chatbot'
-      path: '/admin/chatbot'
+      path: '/chatbot'
       fullPath: '/admin/chatbot'
       preLoaderRoute: typeof AdminSettingsChatbotRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/admin/_settings/settings': {
       id: '/admin/_settings/settings'
-      path: '/admin/settings'
+      path: '/settings'
       fullPath: '/admin/settings'
       preLoaderRoute: typeof AdminSettingsSettingsRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/employee/_essmanagement/ess': {
       id: '/employee/_essmanagement/ess'
-      path: '/employee/ess'
+      path: '/ess'
       fullPath: '/employee/ess'
       preLoaderRoute: typeof EmployeeEssmanagementEssRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof EmployeeRoute
     }
     '/employee/_newhireonboarding/onboarding': {
       id: '/employee/_newhireonboarding/onboarding'
-      path: '/employee/onboarding'
+      path: '/onboarding'
       fullPath: '/employee/onboarding'
       preLoaderRoute: typeof EmployeeNewhireonboardingOnboardingRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof EmployeeRoute
     }
     '/employee/_profilepage/profile': {
       id: '/employee/_profilepage/profile'
-      path: '/employee/profile'
+      path: '/profile'
       fullPath: '/employee/profile'
       preLoaderRoute: typeof EmployeeProfilepageProfileRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof EmployeeRoute
     }
     '/employee/_settings/settings': {
       id: '/employee/_settings/settings'
-      path: '/employee/settings'
+      path: '/settings'
       fullPath: '/employee/settings'
       preLoaderRoute: typeof EmployeeSettingsSettingsRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof EmployeeRoute
     }
     '/superadmin/_applicant-management/applicants': {
       id: '/superadmin/_applicant-management/applicants'
-      path: '/superadmin/applicants'
+      path: '/applicants'
       fullPath: '/superadmin/applicants'
       preLoaderRoute: typeof SuperadminApplicantManagementApplicantsRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SuperadminRoute
     }
     '/superadmin/_auditlogs/audit': {
       id: '/superadmin/_auditlogs/audit'
-      path: '/superadmin/audit'
+      path: '/audit'
       fullPath: '/superadmin/audit'
       preLoaderRoute: typeof SuperadminAuditlogsAuditRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SuperadminRoute
     }
     '/superadmin/_corehcm/dept-pos': {
       id: '/superadmin/_corehcm/dept-pos'
-      path: '/superadmin/dept-pos'
+      path: '/dept-pos'
       fullPath: '/superadmin/dept-pos'
       preLoaderRoute: typeof SuperadminCorehcmDeptPosRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SuperadminRoute
     }
     '/superadmin/_corehcm/hcm': {
       id: '/superadmin/_corehcm/hcm'
-      path: '/superadmin/hcm'
+      path: '/hcm'
       fullPath: '/superadmin/hcm'
       preLoaderRoute: typeof SuperadminCorehcmHcmRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SuperadminRoute
     }
     '/superadmin/_corehcm/org-chart': {
       id: '/superadmin/_corehcm/org-chart'
-      path: '/superadmin/org-chart'
+      path: '/org-chart'
       fullPath: '/superadmin/org-chart'
       preLoaderRoute: typeof SuperadminCorehcmOrgChartRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SuperadminRoute
     }
     '/superadmin/_employeerecords/employees': {
       id: '/superadmin/_employeerecords/employees'
-      path: '/superadmin/employees'
+      path: '/employees'
       fullPath: '/superadmin/employees'
       preLoaderRoute: typeof SuperadminEmployeerecordsEmployeesRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SuperadminRoute
     }
     '/superadmin/_essmanagement/ess': {
       id: '/superadmin/_essmanagement/ess'
-      path: '/superadmin/ess'
+      path: '/ess'
       fullPath: '/superadmin/ess'
       preLoaderRoute: typeof SuperadminEssmanagementEssRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SuperadminRoute
     }
     '/superadmin/_newhireonboarding/onboarding': {
       id: '/superadmin/_newhireonboarding/onboarding'
-      path: '/superadmin/onboarding'
+      path: '/onboarding'
       fullPath: '/superadmin/onboarding'
       preLoaderRoute: typeof SuperadminNewhireonboardingOnboardingRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SuperadminRoute
     }
     '/superadmin/_profilepage/profile': {
       id: '/superadmin/_profilepage/profile'
-      path: '/superadmin/profile'
+      path: '/profile'
       fullPath: '/superadmin/profile'
       preLoaderRoute: typeof SuperadminProfilepageProfileRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SuperadminRoute
     }
     '/superadmin/_recruitmentmanagement/recruitment': {
       id: '/superadmin/_recruitmentmanagement/recruitment'
-      path: '/superadmin/recruitment'
+      path: '/recruitment'
       fullPath: '/superadmin/recruitment'
       preLoaderRoute: typeof SuperadminRecruitmentmanagementRecruitmentRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SuperadminRoute
     }
     '/superadmin/_settings/chatbot': {
       id: '/superadmin/_settings/chatbot'
-      path: '/superadmin/chatbot'
+      path: '/chatbot'
       fullPath: '/superadmin/chatbot'
       preLoaderRoute: typeof SuperadminSettingsChatbotRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SuperadminRoute
     }
     '/superadmin/_settings/settings': {
       id: '/superadmin/_settings/settings'
-      path: '/superadmin/settings'
+      path: '/settings'
       fullPath: '/superadmin/settings'
       preLoaderRoute: typeof SuperadminSettingsSettingsRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SuperadminRoute
     }
     '/superadmin/_usermanagement/users': {
       id: '/superadmin/_usermanagement/users'
-      path: '/superadmin/users'
+      path: '/users'
       fullPath: '/superadmin/users'
       preLoaderRoute: typeof SuperadminUsermanagementUsersRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SuperadminRoute
     }
   }
 }
 
-const rootRouteChildren: RootRouteChildren = {
-  LandingAboutRoute: LandingAboutRoute,
-  LandingContactRoute: LandingContactRoute,
-  LandingFaqRoute: LandingFaqRoute,
-  LoginForgotPasswordRoute: LoginForgotPasswordRoute,
-  LoginLoginRoute: LoginLoginRoute,
-  LoginOtpRoute: LoginOtpRoute,
-  LoginResetPasswordRoute: LoginResetPasswordRoute,
-  EmployeeAiRoute: EmployeeAiRoute,
-  LandingIndexRoute: LandingIndexRoute,
+interface AdminRouteChildren {
+  AdminIndexRoute: typeof AdminIndexRoute
+  AdminApplicantManagementApplicantsRoute: typeof AdminApplicantManagementApplicantsRoute
+  AdminCorehcmDeptPosRoute: typeof AdminCorehcmDeptPosRoute
+  AdminCorehcmHcmRoute: typeof AdminCorehcmHcmRoute
+  AdminCorehcmOrgChartRoute: typeof AdminCorehcmOrgChartRoute
+  AdminEmployeerecordsEmployeesRoute: typeof AdminEmployeerecordsEmployeesRoute
+  AdminEssmanagementEssRoute: typeof AdminEssmanagementEssRoute
+  AdminNewhireonboardingOnboardingRoute: typeof AdminNewhireonboardingOnboardingRoute
+  AdminProfilepageProfileRoute: typeof AdminProfilepageProfileRoute
+  AdminRecruitmentmanagementRecruitmentRoute: typeof AdminRecruitmentmanagementRecruitmentRoute
+  AdminSettingsChatbotRoute: typeof AdminSettingsChatbotRoute
+  AdminSettingsSettingsRoute: typeof AdminSettingsSettingsRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
   AdminIndexRoute: AdminIndexRoute,
-  EmployeeIndexRoute: EmployeeIndexRoute,
-  SuperadminIndexRoute: SuperadminIndexRoute,
-  LandingJobsJobIdRoute: LandingJobsJobIdRoute,
   AdminApplicantManagementApplicantsRoute:
     AdminApplicantManagementApplicantsRoute,
   AdminCorehcmDeptPosRoute: AdminCorehcmDeptPosRoute,
@@ -922,11 +947,52 @@ const rootRouteChildren: RootRouteChildren = {
     AdminRecruitmentmanagementRecruitmentRoute,
   AdminSettingsChatbotRoute: AdminSettingsChatbotRoute,
   AdminSettingsSettingsRoute: AdminSettingsSettingsRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
+interface EmployeeRouteChildren {
+  EmployeeAiRoute: typeof EmployeeAiRoute
+  EmployeeIndexRoute: typeof EmployeeIndexRoute
+  EmployeeEssmanagementEssRoute: typeof EmployeeEssmanagementEssRoute
+  EmployeeNewhireonboardingOnboardingRoute: typeof EmployeeNewhireonboardingOnboardingRoute
+  EmployeeProfilepageProfileRoute: typeof EmployeeProfilepageProfileRoute
+  EmployeeSettingsSettingsRoute: typeof EmployeeSettingsSettingsRoute
+}
+
+const EmployeeRouteChildren: EmployeeRouteChildren = {
+  EmployeeAiRoute: EmployeeAiRoute,
+  EmployeeIndexRoute: EmployeeIndexRoute,
   EmployeeEssmanagementEssRoute: EmployeeEssmanagementEssRoute,
   EmployeeNewhireonboardingOnboardingRoute:
     EmployeeNewhireonboardingOnboardingRoute,
   EmployeeProfilepageProfileRoute: EmployeeProfilepageProfileRoute,
   EmployeeSettingsSettingsRoute: EmployeeSettingsSettingsRoute,
+}
+
+const EmployeeRouteWithChildren = EmployeeRoute._addFileChildren(
+  EmployeeRouteChildren,
+)
+
+interface SuperadminRouteChildren {
+  SuperadminIndexRoute: typeof SuperadminIndexRoute
+  SuperadminApplicantManagementApplicantsRoute: typeof SuperadminApplicantManagementApplicantsRoute
+  SuperadminAuditlogsAuditRoute: typeof SuperadminAuditlogsAuditRoute
+  SuperadminCorehcmDeptPosRoute: typeof SuperadminCorehcmDeptPosRoute
+  SuperadminCorehcmHcmRoute: typeof SuperadminCorehcmHcmRoute
+  SuperadminCorehcmOrgChartRoute: typeof SuperadminCorehcmOrgChartRoute
+  SuperadminEmployeerecordsEmployeesRoute: typeof SuperadminEmployeerecordsEmployeesRoute
+  SuperadminEssmanagementEssRoute: typeof SuperadminEssmanagementEssRoute
+  SuperadminNewhireonboardingOnboardingRoute: typeof SuperadminNewhireonboardingOnboardingRoute
+  SuperadminProfilepageProfileRoute: typeof SuperadminProfilepageProfileRoute
+  SuperadminRecruitmentmanagementRecruitmentRoute: typeof SuperadminRecruitmentmanagementRecruitmentRoute
+  SuperadminSettingsChatbotRoute: typeof SuperadminSettingsChatbotRoute
+  SuperadminSettingsSettingsRoute: typeof SuperadminSettingsSettingsRoute
+  SuperadminUsermanagementUsersRoute: typeof SuperadminUsermanagementUsersRoute
+}
+
+const SuperadminRouteChildren: SuperadminRouteChildren = {
+  SuperadminIndexRoute: SuperadminIndexRoute,
   SuperadminApplicantManagementApplicantsRoute:
     SuperadminApplicantManagementApplicantsRoute,
   SuperadminAuditlogsAuditRoute: SuperadminAuditlogsAuditRoute,
@@ -944,6 +1010,25 @@ const rootRouteChildren: RootRouteChildren = {
   SuperadminSettingsChatbotRoute: SuperadminSettingsChatbotRoute,
   SuperadminSettingsSettingsRoute: SuperadminSettingsSettingsRoute,
   SuperadminUsermanagementUsersRoute: SuperadminUsermanagementUsersRoute,
+}
+
+const SuperadminRouteWithChildren = SuperadminRoute._addFileChildren(
+  SuperadminRouteChildren,
+)
+
+const rootRouteChildren: RootRouteChildren = {
+  AdminRoute: AdminRouteWithChildren,
+  EmployeeRoute: EmployeeRouteWithChildren,
+  SuperadminRoute: SuperadminRouteWithChildren,
+  LandingAboutRoute: LandingAboutRoute,
+  LandingContactRoute: LandingContactRoute,
+  LandingFaqRoute: LandingFaqRoute,
+  LoginForgotPasswordRoute: LoginForgotPasswordRoute,
+  LoginLoginRoute: LoginLoginRoute,
+  LoginOtpRoute: LoginOtpRoute,
+  LoginResetPasswordRoute: LoginResetPasswordRoute,
+  LandingIndexRoute: LandingIndexRoute,
+  LandingJobsJobIdRoute: LandingJobsJobIdRoute,
   LandingJobsIndexRoute: LandingJobsIndexRoute,
 }
 export const routeTree = rootRouteImport
