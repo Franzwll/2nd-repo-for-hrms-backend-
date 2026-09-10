@@ -58,7 +58,7 @@ class GeminiChatService
             return ['ok' => false, 'error' => 'Gemini API key not configured.'];
         }
 
-        $model = (string) config('services.gemini.model', 'gemini-2.0-flash');
+        $model = (string) config('services.gemini.model', 'gemini-3.6-flash');
         $timeout = (int) config('services.gemini.timeout', 20);
 
         // Keep the prompt small: system + last 12 turns + current message.
@@ -76,6 +76,7 @@ class GeminiChatService
 
         try {
             $response = Http::timeout($timeout)
+                ->withoutVerifying()
                 ->retry(1, 500)
                 ->withHeaders(['x-goog-api-key' => $key])
                 ->post(
