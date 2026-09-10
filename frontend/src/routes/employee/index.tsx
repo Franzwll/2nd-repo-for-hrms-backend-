@@ -17,6 +17,11 @@ import {
 import { AnnouncementsCard } from "@/components/portal/AnnouncementsCard";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { StatCard } from "@/components/portal/StatCard";
+import {
+  CardSkeleton,
+  ListSkeleton,
+  StatCardsSkeleton,
+} from "@/components/ui/loading-skeletons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,6 +46,9 @@ function EmployeeDashboard() {
   const [recognitions, setRecognitions] = useState<ApiRecognitionItem[]>([]);
   const [pendingTasks, setPendingTasks] = useState<string[]>([]);
   const [loadingOnboarding, setLoadingOnboarding] = useState(true);
+  const [loadingRecognitions, setLoadingRecognitions] = useState(true);
+  /** True while the ESS overview request is in flight. */
+  const loadingOverview = overview === null;
 
   // Time of day greeting
   const greeting = useMemo(() => {
@@ -81,7 +89,8 @@ function EmployeeDashboard() {
           setRecognitions(res.recognitions);
         }
       })
-      .catch(() => { });
+      .catch(() => { })
+      .finally(() => setLoadingRecognitions(false));
 
     // 4. Fetch Onboarding Tasks
     newHiresApi
@@ -205,6 +214,9 @@ function EmployeeDashboard() {
         </div>
       )}
 
+      {loadingOverview ? (
+        <StatCardsSkeleton count={4} />
+      ) : (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Leave Balance"
@@ -228,7 +240,8 @@ function EmployeeDashboard() {
           tone="primary"
         />
         <StatCard label="Position" value={position} hint={employmentType} icon={ClipboardCheck} tone="gold" />
-      </div>
+        </div>
+      )}
 
       {/* Quick Actions Grid (Compact Box Type 3x3 Grid) */}
       <div className="mt-6">
@@ -353,7 +366,99 @@ function EmployeeDashboard() {
         </Card>
       </div>
 
-      <div className="mt-6">
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        {/* ESS Overview Card (analytics + logs) */}
+        <Card className="border-border/70 flex flex-col justify-between">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-display text-xl font-semibold">
+                <Activity className="h-5 w-5 text-primary" />
+                ESS Overview
+              </div>
+              <Button asChild variant="ghost" size="sm" className="text-primary">
+                <Link to="/employee/ess" search={{}}>
+                  Open ESS <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </div>
+
+            {loadingOverview ? (
+              <CardSkeleton rows={6} className="mt-4" />
+            ) : (
+            <>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <Link
+                to="/employee/ess"
+                search={{ category: "Attendance" }}
+                className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5"
+              >
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5 text-primary" /> Attendance
+                </div>
+                <p className="mt-1 text-lg font-bold font-display">{overview?.monthly_attendance?.present ?? 18} Present</p>
+                <p className="text-xs text-muted-foreground">
+                  {overview?.today_attendance?.time_in ? `In ${overview.today_attendance.time_in}` : "Not clocked in"} · {overview?.monthly_attendance?.late ?? 0} late
+                </p>
+              </Link>
+              <Link
+                to="/employee/ess"
+                search={{ category: "Payroll" }}
+                className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5"
+              >
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <FileText className="h-3.5 w-3.5 text-emerald-600" /> Payroll
+                </div>
+                <p className="mt-1 text-lg font-bold font-display">₱{netPay.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Next payout {nextPayoutDate}</p>
+              </Link>
+              <Link
+                to="/employee/ess"
+                search={{ category: "Performance" }}
+                className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5"
+              >
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <TrendingUp className="h-3.5 w-3.5 text-purple-600" /> Performance
+                </div>
+                <p className="mt-1 text-lg font-bold font-display">{lmsDone}/{lmsTotal} Courses</p>
+                <p className="text-xs text-muted-foreground">{overview?.performance_summary?.competency_level ?? "Proficient"} rating</p>
+              </Link>
+              <Link
+                to="/employee/ess"
+                search={{ category: "Documents" }}
+                className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5"
+              >
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <FileCheck className="h-3.5 w-3.5 text-blue-600" /> Documents
+                </div>
+                <p className="mt-1 text-lg font-bold font-display">{requests.filter((r) => r.category === "Documents" || r.type.includes("COE")).length || 3} Files</p>
+                <p className="text-xs text-muted-foreground">{overview?.pending_requests_count ?? 0} active request(s)</p>
+              </Link>
+            </div>
+
+            {/* Recent activities log */}
+            <div className="mt-4 space-y-2 border-t border-border pt-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Recent activities
+                </p>
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                  Top 5 Latest
+                </Badge>
+              </div>
+              {topActions.map((act, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between gap-2 text-xs border-b border-border/50 pb-1.5"
+                >
+                  <span className="font-medium text-foreground truncate">{act.type}</span>
+                  <span className="shrink-0 text-muted-foreground">{act.date}</span>
+                </div>
+              ))}
+            </div>
+            </>
+            )}
+          </CardContent>
+        </Card>
         {/* Social Recognition & Wall of Fame Card */}
         <Card className="border-border/70 flex flex-col justify-between shadow-xs">
           <CardContent className="p-6">
@@ -371,6 +476,9 @@ function EmployeeDashboard() {
 
             <div className="mt-4 space-y-3">
               {/* Highlight Shoutouts */}
+              {loadingRecognitions ? (
+                <ListSkeleton items={3} />
+              ) : (
               <div className="space-y-2.5">
                 {(recognitions.length > 0 ? recognitions.slice(0, 3) : [
                   {
@@ -448,6 +556,7 @@ function EmployeeDashboard() {
                   </div>
                 ))}
               </div>
+              )}
             </div>
 
             <Button asChild size="sm" className="mt-4 w-full sm:w-auto bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs shadow-xs">

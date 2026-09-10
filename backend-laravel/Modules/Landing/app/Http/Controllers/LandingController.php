@@ -7,6 +7,7 @@ use App\Models\Announcement;
 use App\Models\Applicant;
 use App\Models\JobPost;
 use App\Models\SystemSetting;
+use App\Services\DuplicateApplicationService;
 use App\Services\NlpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -69,7 +70,9 @@ class LandingController extends Controller
         $query = JobPost::query()
             ->with(['department', 'position'])
             ->whereIn('status', ['published', 'Open'])
-            ->where('active', 1);
+            ->where('active', 1)
+            // Hide fully-filled posts from the vacancy list
+            ->whereRaw('COALESCE(vacancies, 1) - COALESCE(filled_count, 0) > 0');
 
         if ($request->filled('department_id')) {
             $query->where('department_id', $request->integer('department_id'));
@@ -100,7 +103,7 @@ class LandingController extends Controller
 
     public function job(JobPost $job_post): JsonResponse
     {
-        if (! $job_post->active || ! in_array($job_post->status, ['published', 'Open'])) {
+        if (! $job_post->active || ! in_array($job_post->status, ['published', 'Open']) || $job_post->remainingSlots() <= 0) {
             abort(404);
         }
 
@@ -181,8 +184,21 @@ class LandingController extends Controller
     {
         $jobPost = JobPost::find($request->integer('job_post_id'));
 
-        if (! $jobPost || ! $jobPost->active || ! in_array($jobPost->status, ['published', 'Open'])) {
-            return response()->json(['message' => 'This position is no longer accepting applications.'], 422);
+        if (! $jobPost || ! $jobPost->active || ! in_array($jobPost->status, ['published', 'Open']) || $jobPost->remainingSlots() <= 0) {
+            return response()->json(['message' => 'This position is no longer accepting applications. All slots have been filled.'], 422);
+        }
+
+        // Scoped duplicate guard: same email + same job + active stage only.
+        // Same resume file used for a DIFFERENT job is always allowed.
+        $existing = DuplicateApplicationService::findDuplicate(
+            (string) $request->string('email'),
+            (int) $jobPost->job_post_id
+        );
+        if ($existing) {
+            return response()->json(
+                DuplicateApplicationService::duplicateResponse($existing, (string) $jobPost->title),
+                409
+            );
         }
 
         $payload = [
@@ -199,7 +215,10 @@ class LandingController extends Controller
         ];
 
         // Store resume file if provided — same allow-list as Recruitment Management (add applicant)
+        // Content hash is stored for audit; it is NOT used to block (filename/hash
+        // alone must never trigger a duplicate — only email+job+active stage does).
         if ($request->hasFile('resume')) {
+            $payload['resume_hash'] = DuplicateApplicationService::hashFile($request->file('resume'));
             $path = $request->file('resume')->store('resumes', 'public');
             $payload['resume_file_path'] = $path;
             $payload['resume_original_name'] = $request->file('resume')->getClientOriginalName();

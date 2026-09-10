@@ -13,7 +13,16 @@ Route::prefix('v1')->group(function () {
     Route::get('landing/announcements', [LandingController::class, 'announcements']);
     Route::post('landing/extract-resume', [LandingController::class, 'extractResume']);
     Route::post('landing/apply', [LandingController::class, 'apply']);
-    Route::post('landing/chat', [ChatbotController::class, 'chat']);
+    // Public applicant bot (rate-limited per user account, per IP for guests);
+    // authenticated users pass their Sanctum token so the controller can
+    // tailor answers by role.
+    Route::middleware('throttle:chatbot')->post('landing/chat', [ChatbotController::class, 'chat']);
+
+    // Public thumbs feedback on a single bot answer (rate-limited).
+    Route::middleware('throttle:chatbot')->post(
+        'chatbot/messages/{message}/feedback',
+        [ChatbotFaqController::class, 'feedback']
+    );
 
     /* ------------------------------------------------------------------ */
     /* Announcements (portal CRUD, DB-backed)                              */
@@ -33,6 +42,9 @@ Route::prefix('v1')->group(function () {
     /* ------------------------------------------------------------------ */
     Route::middleware(['auth:sanctum', 'permission:Settings'])->prefix('chatbot')->group(function () {
         Route::get('faqs', [ChatbotFaqController::class, 'index']);
+        Route::get('analytics', [ChatbotFaqController::class, 'analytics']);
+        Route::get('unanswered', [ChatbotFaqController::class, 'unanswered']);
+        Route::delete('unanswered/{hash}', [ChatbotFaqController::class, 'dismissUnanswered']);
 
         Route::middleware('permission:Settings:Edit')->group(function () {
             Route::post('faqs', [ChatbotFaqController::class, 'store']);

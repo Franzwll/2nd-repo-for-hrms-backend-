@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Send, Search, ArrowUpDown, Plus, Filter, Clock, FileText, CheckCircle2, Loader2 } from "lucide-react";
+import { Send, Search, ArrowUpDown, Plus, Filter, Clock, FileText, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { TableSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { requestCategories } from "@/data/ess";
@@ -167,9 +168,7 @@ export function EssRequestCenterTab() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex items-center justify-center p-12 text-muted-foreground text-sm gap-2">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading requests...
-            </div>
+            <TableSkeleton cols={7} rows={5} />
           ) : (
             <>
               <Table>

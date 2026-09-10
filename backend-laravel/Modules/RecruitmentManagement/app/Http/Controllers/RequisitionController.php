@@ -64,6 +64,23 @@ class RequisitionController extends Controller
     public function store(StoreRequisitionRequest $request): JsonResponse
     {
         $data = $request->validated();
+
+        // No duplicate active requisition for the same dept + position.
+        // The requisition itself is editable, so point the user to edit instead.
+        $dup = $this->findActiveDuplicate(
+            (int) $data['department_id'],
+            $data['position_id'] ?? null,
+            $data['position_title'] ?? null
+        );
+        if ($dup && ! $request->boolean('force_create')) {
+            return response()->json([
+                'code' => 'DUPLICATE_REQUISITION',
+                'message' => "An active requisition ({$dup->requisition_code}) already exists for this department and position. Edit it instead of creating a new one.",
+                'existing_requisition_code' => $dup->requisition_code,
+                'existing_requisition_id' => $dup->getKey(),
+            ], 409);
+        }
+
         $data['requisition_code'] = Requisition::generateCode();
         $data['status']           = $data['status'] ?? 'Pending';
 
@@ -102,7 +119,23 @@ class RequisitionController extends Controller
     public function update(UpdateRequisitionRequest $request, int $requisition): JsonResponse
     {
         $model = Requisition::findOrFail($requisition);
-        $model->update($request->validated());
+        $validated = $request->validated();
+
+        // If dept/position changes, re-check duplicate (excluding self).
+        $deptId = (int) ($validated['department_id'] ?? $model->department_id);
+        $posId = $validated['position_id'] ?? $model->position_id;
+        $posTitle = $validated['position_title'] ?? $model->position_title;
+        $dup = $this->findActiveDuplicate($deptId, $posId, $posTitle, $model->getKey());
+        if ($dup && ! $request->boolean('force_update')) {
+            return response()->json([
+                'code' => 'DUPLICATE_REQUISITION',
+                'message' => "Another active requisition ({$dup->requisition_code}) already covers this department and position.",
+                'existing_requisition_code' => $dup->requisition_code,
+                'existing_requisition_id' => $dup->getKey(),
+            ], 409);
+        }
+
+        $model->update($validated);
 
         AuditLogger::log(
             action: 'Requisition Updated',
@@ -141,5 +174,62 @@ class RequisitionController extends Controller
         );
 
         return response()->json(new RequisitionResource($model->load(['department', 'position', 'convertedJobPost'])));
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* DELETE /api/v1/requisitions/{requisition} — superadmin only         */
+    /* ------------------------------------------------------------------ */
+
+    public function destroy(Request $request, int $requisition): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user || ! method_exists($user, 'isSuperAdmin') || ! $user->isSuperAdmin()) {
+            return response()->json(['message' => 'Only a super admin can delete requisitions.'], 403);
+        }
+
+        $model = Requisition::findOrFail($requisition);
+
+        if ($model->status === 'Converted') {
+            return response()->json([
+                'message' => 'Converted requisitions cannot be deleted because they are linked to a job post. They remain as history.',
+            ], 422);
+        }
+
+        $code = $model->requisition_code;
+        $model->delete();
+
+        AuditLogger::log(
+            action: 'Requisition Deleted',
+            module: 'Recruitment Management',
+            targetType: 'Requisition',
+            targetId: (string) $requisition,
+            details: "Deleted requisition {$code} (was status: {$model->status}).",
+        );
+
+        return response()->json(['message' => "Requisition {$code} deleted."]);
+    }
+
+    /**
+     * Active = Pending or Done. Converted rows are history and never block.
+     * Matches on position_id when present, else falls back to position_title.
+     */
+    private function findActiveDuplicate(int $departmentId, mixed $positionId, mixed $positionTitle, mixed $exceptId = null): ?Requisition
+    {
+        $query = Requisition::where('department_id', $departmentId)
+            ->whereIn('status', ['Pending', 'Done']);
+
+        if (! empty($positionId)) {
+            $query->where('position_id', $positionId);
+        } elseif (! empty($positionTitle)) {
+            $query->where('position_title', $positionTitle);
+        } else {
+            return null;
+        }
+
+        if ($exceptId !== null) {
+            $query->where($query->getModel()->getKeyName(), '!=', $exceptId);
+        }
+
+        return $query->first();
     }
 }

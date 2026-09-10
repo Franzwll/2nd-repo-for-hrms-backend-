@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   Award,
   Briefcase,
   Building2,
   CheckCircle2,
   DollarSign,
-  Download,
   Eye,
-  FileText,
   GitBranch,
   History,
   Info,
@@ -80,12 +79,28 @@ import {
   type SalaryGrade,
 } from "@/data/hr";
 import { cn } from "@/lib/utils";
-import { exportToCsv, type CsvColumn } from "@/lib/csv-export";
+import { ListSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ReportMenu } from "@/components/ui/report-menu";
 import { onHcmChanged, notifyHcmChanged } from "@/lib/hcm-sync";
 import { loadRecordDetail } from "@/lib/employeerecords";
-import { requisitionStore, useRequisitions, type Requisition } from "@/data/requisitions";
+import { requisitionStore, useRequisitions, useRequisitionsLoading, type Requisition } from "@/data/requisitions";
 import { type Role } from "@/lib/nav";
 import { buildProfile, Field, Section } from "./EmployeeRecords";
+
+/**
+ * Lets each tab portal its "Generate Report" control up into the module's
+ * PageHeader `actions` slot, so the button sits aligned with the page title
+ * (same pattern as Recruitment & Onboarding) instead of in a toolbar row
+ * above each card.
+ */
+const HeaderActionsContext = createContext<HTMLElement | null>(null);
+
+function HeaderActions({ children }: { children: ReactNode }) {
+  const target = useContext(HeaderActionsContext);
+  if (!target) return null;
+  return createPortal(children, target);
+}
 import {
   auditLogApi,
   hcmApi,
@@ -96,6 +111,7 @@ import {
   type ApiHR3Recommendation,
   type ApiOrgNode,
   type ApiPosition,
+  type ApiPromotionRequest,
   type ApiSalaryGrade,
 } from "@/lib/api";
 
@@ -161,12 +177,22 @@ let hcmData: HcmData = {
 };
 let hcmFetched = false;
 const hcmListeners = new Set<() => void>();
+/** True while an HCM fetch is in flight. Starts true so the very first
+ *  paint shows skeletons. Components gate on `loading && empty` so
+ *  background refetches never flash loaders. */
+let hcmFetching = true;
 
 function emitHcm() {
   hcmListeners.forEach((l) => l());
 }
 
+function setHcmFetching(v: boolean) {
+  hcmFetching = v;
+  emitHcm();
+}
+
 async function fetchHcmData() {
+  setHcmFetching(true);
   try {
     const [emp, dep, pos, sg, org] = await Promise.all([
       hcmApi.employees.list({ per_page: 500 }),
@@ -184,6 +210,8 @@ async function fetchHcmData() {
     };
   } catch (err) {
     console.warn("Could not load Core HCM data.", err);
+  } finally {
+    setHcmFetching(false);
   }
   emitHcm();
 }
@@ -209,6 +237,12 @@ function subscribeHcm(listener: () => void) {
 
 function useHcmData() {
   return useSyncExternalStore(subscribeHcm, getHcmSnapshot, () => hcmData);
+}
+
+/** True while an HCM fetch is in flight. Show skeletons only when
+ *  `loading && <slice> is empty` so background refetches never flash. */
+function useHcmLoading() {
+  return useSyncExternalStore(subscribeHcm, () => hcmFetching, () => hcmFetching);
 }
 
 async function refreshHcm() {
@@ -369,13 +403,18 @@ function buildOrgTree(orgNodes: ApiOrgNode[], employees: ApiEmployee[]): OrgNode
    ========================================================================= */
 
 export function OrgChartModule({ role = "admin" }: { role?: Role }) {
-  const [activeTab, setActiveTab] = useState<"org" | "employees" | "logs">(() => {
+  const [activeTab, setActiveTab] = useState<"org" | "employees" | "promotions" | "logs">(() => {
     const saved =
       typeof window !== "undefined" ? window.sessionStorage.getItem("hcm-org-tab") : null;
-    const valid = saved === "org" || saved === "employees" || saved === "logs" ? saved : "org";
+    const valid =
+      saved === "org" || saved === "employees" || saved === "promotions" || saved === "logs"
+        ? saved
+        : "org";
     return role !== "superadmin" && valid === "logs" ? "employees" : valid;
   });
   const [empSearch, setEmpSearch] = useState("");
+  /** Slot each tab portals its Generate Report control into (page header). */
+  const [headerActionsEl, setHeaderActionsEl] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     window.sessionStorage.setItem("hcm-org-tab", activeTab);
@@ -392,8 +431,10 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
         eyebrow="Core HCM · Human Capital Management"
         title="Organizational Structure & Employee Roster"
         description="Visualize reporting hierarchy, manage employee regularization & promotions, and track lifecycle transitions."
+        actions={<div ref={setHeaderActionsEl} className="flex flex-wrap items-center gap-2" />}
       />
 
+      <HeaderActionsContext.Provider value={headerActionsEl}>
       <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
         <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
           <TabsTrigger
@@ -407,6 +448,12 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
             className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
           >
             <Users className="mr-1.5 h-4 w-4" /> Employee List
+          </TabsTrigger>
+          <TabsTrigger
+            value="promotions"
+            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+          >
+            <TrendingUp className="mr-1.5 h-4 w-4" /> Promotion Requests
           </TabsTrigger>
           {role === "superadmin" && (
             <TabsTrigger
@@ -426,12 +473,17 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
           <EmployeeListManager role={role} empSearch={empSearch} onEmpSearchChange={setEmpSearch} />
         </TabsContent>
 
+        <TabsContent value="promotions" className="space-y-6">
+          <PromotionRequestsManager />
+        </TabsContent>
+
         {role === "superadmin" && (
           <TabsContent value="logs" className="space-y-6">
             <LifecycleLogsViewer />
           </TabsContent>
         )}
       </Tabs>
+      </HeaderActionsContext.Provider>
     </div>
   );
 }
@@ -439,6 +491,7 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
 /* --- Org Chart Visualizer --- */
 function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string) => void }) {
   const hcm = useHcmData();
+  const hcmLoading = useHcmLoading();
   const [selectedNode, setSelectedNode] = useState<OrgNode | null>(null);
   const [scale, setScale] = useState(0.58);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -543,6 +596,34 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
   };
 
   return (
+    <>
+    <HeaderActions>
+      <ReportMenu
+        size="sm"
+        label="Export org chart"
+        recordCount={employees.length}
+        report={() => ({
+          title: "Organization Chart Report",
+          subtitle: `${employees.length} employee(s) across ${departments.length} department(s)`,
+          columns: [
+            { header: "Employee", key: "name" },
+            { header: "Position", key: "position" },
+            { header: "Department", key: "department" },
+            { header: "Status", key: "status" },
+          ],
+          rows: employees.map((e) => ({
+            name: e.name,
+            position: e.position,
+            department: e.department,
+            status: (e as any).status ?? "Active",
+          })),
+          summary: [
+            { label: "Employees", value: employees.length },
+            { label: "Departments", value: departments.length },
+          ],
+        })}
+      />
+    </HeaderActions>
     <Card className="border-border/70 shadow-sm">
       <CardContent className="p-6">
         <div className="mb-6 border-b border-border/60 pb-4">
@@ -556,6 +637,30 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+          {hcmLoading && employees.length === 0 ? (
+            <>
+              <div className="min-h-[35rem] rounded-xl border border-border p-6" aria-busy="true" aria-label="Loading organization chart">
+                <div className="mx-auto max-w-md space-y-3 pt-16">
+                  <Skeleton className="mx-auto h-16 w-48 rounded-xl" />
+                  <div className="flex justify-center gap-3 pt-4">
+                    <Skeleton className="h-16 w-40 rounded-xl" />
+                    <Skeleton className="h-16 w-40 rounded-xl" />
+                    <Skeleton className="h-16 w-40 rounded-xl" />
+                  </div>
+                  <div className="flex justify-center gap-3 pt-2">
+                    <Skeleton className="h-14 w-32 rounded-xl" />
+                    <Skeleton className="h-14 w-32 rounded-xl" />
+                    <Skeleton className="h-14 w-32 rounded-xl" />
+                    <Skeleton className="h-14 w-32 rounded-xl" />
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-border p-4" aria-busy="true" aria-label="Loading details">
+                <ListSkeleton items={4} />
+              </div>
+            </>
+          ) : (
+          <>
           <div
             className="relative min-h-[35rem] touch-none overflow-hidden rounded-xl border border-border bg-[radial-gradient(var(--color-border)_1px,transparent_1px)] bg-[size:16px_16px] cursor-grab active:cursor-grabbing"
             onPointerDown={beginDrag}
@@ -699,9 +804,12 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
               </div>
             )}
           </aside>
+          </>
+          )}
         </div>
       </CardContent>
     </Card>
+    </>
   );
 }
 
@@ -793,6 +901,7 @@ function EmployeeListManager({
   onEmpSearchChange: (value: string) => void;
 }) {
   const hcm = useHcmData();
+  const hcmLoading = useHcmLoading();
   const employeeIdByCode = useMemo(
     () => new Map(hcm.employees.map((e) => [e.employee_code, e.employee_id])),
     [hcm.employees],
@@ -1351,29 +1460,25 @@ function EmployeeListManager({
                 <SelectItem value="Promotion">Promotion</SelectItem>
               </SelectContent>
             </Select>
-            <Button
+            <ReportMenu
               size="sm"
-              variant="outline"
-              className="h-8 gap-1.5 text-xs"
-              onClick={() => {
-                const timestamp = new Date().toISOString().slice(0, 10);
-                const columns: CsvColumn<HR3Recommendation>[] = [
-                  { header: "Evaluation ID", accessor: (r) => r.id },
-                  { header: "Employee", accessor: (r) => r.employeeName },
-                  { header: "Department", accessor: (r) => r.department },
-                  { header: "Type", accessor: (r) => r.recommendationType },
-                  { header: "Score (%)", accessor: (r) => r.evaluationScore },
-                  { header: "Evaluator", accessor: (r) => r.evaluator },
-                  { header: "Date Submitted", accessor: (r) => r.dateSubmitted },
-                  { header: "Status", accessor: (r) => r.status },
-                  { header: "Comments", accessor: (r) => r.comments },
-                ];
-                exportToCsv(`hr3-recommendations-${timestamp}`, columns, filteredRecs);
-                toast.success(`HR3 recommendations report (${filteredRecs.length} records) downloaded.`);
-              }}
-            >
-              <Download className="h-3.5 w-3.5" /> Generate Report
-            </Button>
+              recordCount={filteredRecs.length}
+              report={() => ({
+                title: "HR3 Recommendations Report",
+                subtitle: `${filteredRecs.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+                columns: [
+                  { header: "Evaluation ID", key: "id" },
+                  { header: "Employee", key: "employeeName" },
+                  { header: "Department", key: "department" },
+                  { header: "Type", key: "recommendationType" },
+                  { header: "Score", key: "evaluationScore" },
+                  { header: "Evaluator", key: "evaluator" },
+                  { header: "Submitted", key: "dateSubmitted" },
+                  { header: "Status", key: "status" },
+                ],
+                rows: filteredRecs.map((r) => ({ ...r })),
+              })}
+            />
           </div>
           <div className="min-w-0">
             <Table>
@@ -1452,6 +1557,28 @@ function EmployeeListManager({
       </Dialog>
 
       {/* MAIN EMPLOYEE ROSTER CARD */}
+      {/* Generate Report aligned with the page title via HeaderActions portal */}
+      <HeaderActions>
+        <ReportMenu
+          size="sm"
+          recordCount={filteredEmployees.length}
+          report={() => ({
+            title: "Employee Roster Report",
+            subtitle: `${filteredEmployees.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+            columns: [
+              { header: "Employee ID", key: "id" },
+              { header: "Name", key: "name" },
+              { header: "Department", key: "department" },
+              { header: "Position", key: "position" },
+              { header: "Salary Grade", key: "salaryGrade" },
+              { header: "Type", key: "employmentType" },
+              { header: "Date Hired", key: "dateHired" },
+              { header: "Status", key: "status" },
+            ],
+            rows: filteredEmployees.map((r) => ({ ...r })),
+          })}
+        />
+      </HeaderActions>
       <Card className="border-border/70 shadow-sm">
         <CardContent className="p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1519,31 +1646,6 @@ function EmployeeListManager({
                   <SelectItem value="Terminated">Terminated</SelectItem>
                 </SelectContent>
               </Select>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-9 gap-1.5 text-xs"
-                onClick={() => {
-                  const timestamp = new Date().toISOString().slice(0, 10);
-                  const columns: CsvColumn<Employee>[] = [
-                    { header: "Employee ID", accessor: (r) => r.id },
-                    { header: "Name", accessor: (r) => r.name },
-                    { header: "Department", accessor: (r) => r.department },
-                    { header: "Position", accessor: (r) => r.position },
-                    { header: "Salary Grade", accessor: (r) => r.salaryGrade },
-                    { header: "Employment Type", accessor: (r) => r.employmentType },
-                    { header: "Date Hired", accessor: (r) => r.dateHired },
-                    { header: "Status", accessor: (r) => r.status },
-                    { header: "Email", accessor: (r) => r.email },
-                    { header: "Phone", accessor: (r) => r.phone },
-                    { header: "Supervisor", accessor: (r) => r.supervisor },
-                  ];
-                  exportToCsv(`employee-roster-${timestamp}`, columns, filteredEmployees);
-                  toast.success(`Employee roster report (${filteredEmployees.length} records) downloaded.`);
-                }}
-              >
-                <Download className="h-4 w-4" /> Generate Report
-              </Button>
             </div>
           </div>
 
@@ -1563,7 +1665,9 @@ function EmployeeListManager({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {empPage.pageItems.map((e) => (
+                {hcmLoading && empList.length === 0 && <TableRowsSkeleton cols={9} rows={6} />}
+                {(!hcmLoading || empList.length > 0) &&
+                  empPage.pageItems.map((e) => (
                   <TableRow key={e.id}>
                     <TableCell className="font-mono text-xs font-medium">{e.id}</TableCell>
                     <TableCell className="font-medium">{e.name}</TableCell>
@@ -2549,6 +2653,306 @@ function EmployeeListManager({
   );
 }
 
+/* --- Promotion Requests Manager (HR inbox for ESS-filed requests) --- */
+function PromotionRequestsManager() {
+  const [rows, setRows] = useState<ApiPromotionRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [reviewFor, setReviewFor] = useState<ApiPromotionRequest | null>(null);
+  const [decision, setDecision] = useState<"approve" | "reject" | "return">("approve");
+  const [notes, setNotes] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await hcmApi.promotions.list({ per_page: 100 });
+      setRows(res?.data ?? []);
+    } catch {
+      toast.error("Could not load promotion requests.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const filtered = rows.filter((r) => {
+    const q = search.toLowerCase().trim();
+    const name = `${r.employee?.first_name ?? ""} ${r.employee?.last_name ?? ""}`.toLowerCase();
+    const matches =
+      !q ||
+      name.includes(q) ||
+      (r.employee?.employee_code ?? "").toLowerCase().includes(q) ||
+      (r.justification ?? "").toLowerCase().includes(q);
+    return matches && (statusFilter === "all" || r.status === statusFilter);
+  });
+  const page = usePagination(filtered);
+  const pendingCount = rows.filter((r) => r.status === "Pending" || r.status === "Returned").length;
+
+  return (
+    <>
+      <HeaderActions>
+        <ReportMenu
+          size="sm"
+          recordCount={filtered.length}
+          report={() => ({
+            title: "Promotion Requests Report",
+            subtitle: `${filtered.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+            columns: [
+              { header: "Employee", key: "employee" },
+              { header: "Code", key: "code" },
+              { header: "Requested", key: "requested" },
+              { header: "Status", key: "status" },
+              { header: "Filed", key: "filed" },
+            ],
+            rows: filtered.map((r) => ({
+              employee: `${r.employee?.first_name ?? ""} ${r.employee?.last_name ?? ""}`.trim(),
+              code: r.employee?.employee_code ?? "",
+              requested: r.requested_position?.title ?? "For HR review",
+              status: r.status,
+              filed: new Date(r.created_at).toLocaleDateString(),
+            })),
+          })}
+        />
+      </HeaderActions>
+      <Card className="border-border/70 shadow-sm">
+        <CardHeader className="border-b border-border/50 pb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold">
+                <TrendingUp className="h-4 w-4 text-primary" /> Promotion Requests
+                {pendingCount > 0 && (
+                  <Badge variant="outline" className="border-gold/40 text-gold text-[10px]">
+                    {pendingCount} pending
+                  </Badge>
+                )}
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Filed by employees via ESS. Approving applies the promotion immediately
+                (position transfer + history entry).
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative min-w-[12rem]">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search employee, code, reason…"
+                  className="h-9 pl-8 text-xs bg-card"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="h-9 w-32 text-xs bg-card">
+                  <SelectValue placeholder="All statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="Returned">Returned</SelectItem>
+                  <SelectItem value="Approved">Approved</SelectItem>
+                  <SelectItem value="Rejected">Rejected</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button size="sm" variant="outline" className="h-9 gap-1.5 text-xs" onClick={load}>
+                Refresh
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="pl-6">Employee</TableHead>
+                    <TableHead>Current → Requested</TableHead>
+                    <TableHead>Justification</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Filed</TableHead>
+                    <TableHead className="text-right pr-6">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading && <TableRowsSkeleton cols={6} rows={6} />}
+                  {!loading &&
+                    page.pageItems.map((r) => (
+                    <TableRow key={r.promotion_request_id}>
+                      <TableCell className="pl-6 text-xs">
+                        <p className="font-semibold">
+                          {r.employee?.first_name} {r.employee?.last_name}
+                        </p>
+                        <p className="font-mono text-[11px] text-muted-foreground">
+                          {r.employee?.employee_code}
+                        </p>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {r.employee?.position?.title ?? "—"} →{" "}
+                        <span className="font-medium text-foreground">
+                          {r.requested_position?.title ?? "For HR review"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="max-w-64 truncate text-xs text-muted-foreground">
+                        {r.justification}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={
+                            r.status === "Approved"
+                              ? "border-success/40 bg-success/10 text-success text-[10px]"
+                              : r.status === "Rejected"
+                                ? "border-destructive/40 bg-destructive/10 text-destructive text-[10px]"
+                                : "border-gold/40 text-gold text-[10px]"
+                          }
+                        >
+                          {r.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {new Date(r.created_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right pr-6">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          disabled={r.status !== "Pending" && r.status !== "Returned"}
+                          onClick={() => {
+                            setReviewFor(r);
+                            setDecision("approve");
+                            setNotes("");
+                          }}
+                        >
+                          <Eye className="mr-1 h-3.5 w-3.5" /> Review
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {!loading && filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="py-8 text-center text-xs text-muted-foreground">
+                        No promotion requests found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+              <div className="p-4 pt-2">
+                <TablePagination
+                  page={page.page}
+                  pageCount={page.pageCount}
+                  from={page.from}
+                  to={page.to}
+                  total={page.total}
+                  label="promotion requests"
+                  onPageChange={page.setPage}
+                />
+              </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={!!reviewFor} onOpenChange={(o) => !o && setReviewFor(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Review — {reviewFor?.employee?.first_name} {reviewFor?.employee?.last_name}
+            </DialogTitle>
+            <DialogDescription>
+              {reviewFor?.employee?.position?.title} →{" "}
+              {reviewFor?.requested_position?.title ?? "HR to decide"}. Filed{" "}
+              {reviewFor ? new Date(reviewFor.created_at).toLocaleDateString() : ""}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md bg-muted/50 p-3 text-xs italic text-muted-foreground">
+            “{reviewFor?.justification}”
+          </div>
+          <div className="space-y-3 py-1">
+            <div className="space-y-1.5">
+              <Label>Decision</Label>
+              <Select value={decision} onValueChange={(v: any) => setDecision(v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="approve">Approve & apply promotion</SelectItem>
+                  <SelectItem value="return">Return for clarification</SelectItem>
+                  <SelectItem value="reject">Reject</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Review notes</Label>
+              <Textarea
+                rows={3}
+                placeholder="Reason / effective notes for the employee record…"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReviewFor(null)}>
+              Cancel
+            </Button>
+            <Button onClick={() => setConfirming(true)}>Review decision</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm {decision}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {decision === "approve"
+                ? "The promotion is applied immediately: position transfer, filled-count move and a position-history entry."
+                : decision === "return"
+                  ? "The employee is asked for clarification and can resubmit."
+                  : "The request is closed as rejected."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Back</AlertDialogCancel>
+            <AlertDialogAction
+              className={
+                decision === "reject"
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : ""
+              }
+              onClick={async () => {
+                if (!reviewFor) return;
+                setSaving(true);
+                try {
+                  await hcmApi.promotions.review(reviewFor.promotion_request_id, {
+                    decision,
+                    review_notes: notes || undefined,
+                  });
+                  toast.success(`Promotion request ${decision}d.`);
+                  setReviewFor(null);
+                  setConfirming(false);
+                  load();
+                  notifyHcmChanged();
+                } catch (e: any) {
+                  toast.error(e?.message || "Could not review request.");
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              {saving ? "Saving…" : `Confirm ${decision}`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
 /* --- Lifecycle Logs Viewer --- */
 type LifecycleLog = {
   id: string;
@@ -2570,11 +2974,13 @@ function LifecycleLogsViewer() {
   const [search, setSearch] = useState("");
   const [logs, setLogs] = useState<LifecycleLog[]>([]);
   const [logsError, setLogsError] = useState("");
+  const [logsLoading, setLogsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLogsError("");
+      setLogsLoading(true);
       try {
         const res = await auditLogApi.list({ module: "Core HCM", per_page: 100 });
         if (cancelled) return;
@@ -2626,6 +3032,7 @@ function LifecycleLogsViewer() {
         }
         setLogs([]);
       }
+      if (!cancelled) setLogsLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -2668,6 +3075,27 @@ function LifecycleLogsViewer() {
   };
 
   return (
+    <>
+    <HeaderActions>
+      <ReportMenu
+        size="sm"
+        recordCount={filteredLogs.length}
+        report={() => ({
+          title: "Lifecycle Logs Report",
+          subtitle: `${filteredLogs.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+          columns: [
+            { header: "Log ID", key: "id" },
+            { header: "Timestamp", key: "timestamp" },
+            { header: "Category", key: "category" },
+            { header: "Employee", key: "employeeName" },
+            { header: "Position", key: "position" },
+            { header: "Department", key: "department" },
+            { header: "Actor", key: "actor" },
+          ],
+          rows: filteredLogs.map((r) => ({ ...r })),
+        })}
+      />
+    </HeaderActions>
     <Card className="border-border/70 shadow-sm">
       <CardContent className="p-6">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -2716,30 +3144,6 @@ function LifecycleLogsViewer() {
                 <SelectItem value="Retirement">Retirement</SelectItem>
               </SelectContent>
             </Select>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-9 gap-1.5 text-xs"
-              onClick={() => {
-                const timestamp = new Date().toISOString().slice(0, 10);
-                const columns: CsvColumn<LifecycleLog>[] = [
-                  { header: "Log ID", accessor: (r) => r.id },
-                  { header: "Timestamp", accessor: (r) => r.timestamp },
-                  { header: "Action Category", accessor: (r) => r.category },
-                  { header: "Employee Name", accessor: (r) => r.employeeName },
-                  { header: "Employee ID", accessor: (r) => r.employeeId },
-                  { header: "Position", accessor: (r) => r.position },
-                  { header: "Department", accessor: (r) => r.department },
-                  { header: "Actor", accessor: (r) => r.actor },
-                  { header: "Actor Role", accessor: (r) => r.actorRole },
-                  { header: "Details", accessor: (r) => r.details },
-                ];
-                exportToCsv(`lifecycle-logs-${timestamp}`, columns, filteredLogs);
-                toast.success(`Lifecycle logs report (${filteredLogs.length} records) downloaded.`);
-              }}
-            >
-              <Download className="h-4 w-4" /> Generate Report
-            </Button>
           </div>
         </div>
 
@@ -2757,7 +3161,9 @@ function LifecycleLogsViewer() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {page.pageItems.map((log) => (
+              {logsLoading && <TableRowsSkeleton cols={7} rows={6} />}
+              {!logsLoading &&
+                page.pageItems.map((log) => (
                 <TableRow key={log.id}>
                   <TableCell className="font-mono text-xs font-medium">{log.id}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{log.timestamp}</TableCell>
@@ -2791,7 +3197,7 @@ function LifecycleLogsViewer() {
                   </TableCell>
                 </TableRow>
               ))}
-              {filteredLogs.length === 0 && (
+              {!logsLoading && filteredLogs.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="py-8 text-center text-xs text-muted-foreground">
                     {logsError || "No matching lifecycle transition log entries found."}
@@ -2813,6 +3219,7 @@ function LifecycleLogsViewer() {
         />
       </CardContent>
     </Card>
+    </>
   );
 }
 
@@ -2832,14 +3239,19 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
     window.sessionStorage.setItem("hcm-deptpos-tab", activeTab);
   }, [activeTab]);
 
+  /** Slot each tab portals its Generate Report control into (page header). */
+  const [headerActionsEl, setHeaderActionsEl] = useState<HTMLDivElement | null>(null);
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Core HCM · Organization Setup"
         title="Department, Position & Salary Grade Management"
         description="Configure property departments, define position headcounts, manage salary grade structures, and approve requisitions."
+        actions={<div ref={setHeaderActionsEl} className="flex flex-wrap items-center gap-2" />}
       />
 
+      <HeaderActionsContext.Provider value={headerActionsEl}>
       <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
         <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
           <TabsTrigger
@@ -2871,9 +3283,10 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
         </TabsContent>
 
         <TabsContent value="reqs" className="space-y-6">
-          <RequisitionManager />
+          <RequisitionManager role={role} />
         </TabsContent>
       </Tabs>
+      </HeaderActionsContext.Provider>
     </div>
   );
 }
@@ -2881,6 +3294,7 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
 /* --- Department and Position Manager --- */
 function DepartmentAndPositionManager({ role }: { role: Role }) {
   const hcm = useHcmData();
+  const hcmLoading = useHcmLoading();
   const reqs = useRequisitions();
 
   const deptList = useMemo<Department[]>(() => hcm.departments.map(toUiDepartment), [hcm]);
@@ -3204,6 +3618,24 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
   return (
     <div className="space-y-8">
       {/* 1. DEPARTMENTS SECTION CARD */}
+      {/* Generate Report aligned with the page title via HeaderActions portal */}
+      <HeaderActions>
+        <ReportMenu
+          size="sm"
+          label="Export departments"
+          recordCount={filteredDepts.length}
+          report={() => ({
+            title: "Departments Report",
+            subtitle: `${filteredDepts.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+            columns: [
+              { header: "Dept Code", key: "code" },
+              { header: "Department", key: "name" },
+              { header: "Head", key: "head" },
+            ],
+            rows: filteredDepts.map((r) => ({ ...r })),
+          })}
+        />
+      </HeaderActions>
       <Card className="border-border/70 shadow-sm">
         <CardHeader className="border-b border-border/50 pb-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3225,25 +3657,6 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                   onChange={(e) => setDeptTableSearch(e.target.value)}
                 />
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-9 gap-1.5 text-xs"
-                onClick={() => {
-                  const timestamp = new Date().toISOString().slice(0, 10);
-                  const columns: CsvColumn<Department>[] = [
-                    { header: "Dept Code", accessor: (r) => r.code },
-                    { header: "Department Name", accessor: (r) => r.name },
-                    { header: "Department Head", accessor: (r) => r.head },
-                    { header: "Positions Count", accessor: (r) => posList.filter((p) => p.department === r.name).length },
-                    { header: "Staff Count", accessor: (r) => getDerivedStaffCount(r.name) },
-                  ];
-                  exportToCsv(`departments-${timestamp}`, columns, filteredDepts);
-                  toast.success(`Departments report (${filteredDepts.length} records) downloaded.`);
-                }}
-              >
-                <Download className="h-4 w-4" /> Generate Report
-              </Button>
               {role === "superadmin" && (
                 <Button
                   size="sm"
@@ -3283,7 +3696,9 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {deptPage.pageItems.map((d) => {
+              {hcmLoading && deptList.length === 0 && <TableRowsSkeleton cols={6} rows={5} />}
+              {(!hcmLoading || deptList.length > 0) &&
+                deptPage.pageItems.map((d) => {
                 const positionsUnder = posList.filter((p) => p.department === d.name);
                 const derivedStaff = getDerivedStaffCount(d.name);
 
@@ -3364,6 +3779,27 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
       </Card>
 
       {/* 2. POSITIONS SECTION CARD */}
+      <HeaderActions>
+        <ReportMenu
+          size="sm"
+          label="Export positions"
+          recordCount={filteredPositions.length}
+          report={() => ({
+            title: "Positions Report",
+            subtitle: `${filteredPositions.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+            columns: [
+              { header: "POS ID", key: "id" },
+              { header: "Title", key: "title" },
+              { header: "Department", key: "department" },
+              { header: "Level", key: "level" },
+              { header: "Headcount", key: "headcount" },
+              { header: "Filled", key: "filled" },
+              { header: "Salary Band", key: "salaryBand" },
+            ],
+            rows: filteredPositions.map((r) => ({ ...r })),
+          })}
+        />
+      </HeaderActions>
       <Card className="border-border/70 shadow-sm">
         <CardHeader className="border-b border-border/50 pb-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3398,28 +3834,6 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                   ))}
                 </SelectContent>
               </Select>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-9 gap-1.5 text-xs"
-                onClick={() => {
-                  const timestamp = new Date().toISOString().slice(0, 10);
-                  const columns: CsvColumn<Position>[] = [
-                    { header: "POS ID", accessor: (r) => r.id },
-                    { header: "Job Position Title", accessor: (r) => r.title },
-                    { header: "Department", accessor: (r) => r.department },
-                    { header: "Level", accessor: (r) => r.level },
-                    { header: "Target Headcount", accessor: (r) => r.headcount },
-                    { header: "Filled Staff", accessor: (r) => r.filled },
-                    { header: "Vacancies", accessor: (r) => r.vacancies ?? 0 },
-                    { header: "Salary Grade / Band", accessor: (r) => r.salaryBand },
-                  ];
-                  exportToCsv(`positions-${timestamp}`, columns, filteredPositions);
-                  toast.success(`Positions report (${filteredPositions.length} records) downloaded.`);
-                }}
-              >
-                <Download className="h-4 w-4" /> Generate Report
-              </Button>
               {role === "superadmin" && (
                 <Button
                   size="sm"
@@ -3468,7 +3882,9 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {posPage.pageItems.map((p) => (
+                {hcmLoading && posList.length === 0 && <TableRowsSkeleton cols={8} rows={5} />}
+                {(!hcmLoading || posList.length > 0) &&
+                  posPage.pageItems.map((p) => (
                   <TableRow key={p.id}>
                     <TableCell className="pl-6 font-mono text-xs font-medium">{p.id}</TableCell>
                     <TableCell className="font-medium">{p.title}</TableCell>
@@ -4020,6 +4436,7 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
 /* --- Salary Grade Manager --- */
 function SalaryGradeManager() {
   const hcm = useHcmData();
+  const hcmLoading = useHcmLoading();
   const grades = useMemo<SalaryGrade[]>(() => hcm.salaryGrades.map(toUiSalaryGrade), [hcm]);
   const [sgSearch, setSgSearch] = useState("");
   const [sgLevelFilter, setSgLevelFilter] = useState("all");
@@ -4134,6 +4551,26 @@ function SalaryGradeManager() {
   const sgPage = usePagination(filteredGrades);
 
   return (
+    <>
+    <HeaderActions>
+      <ReportMenu
+        size="sm"
+        recordCount={filteredGrades.length}
+        report={() => ({
+          title: "Salary Grades Report",
+          subtitle: `${filteredGrades.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+          columns: [
+            { header: "Grade Code", key: "code" },
+            { header: "Band Title", key: "title" },
+            { header: "Job Level", key: "level" },
+            { header: "Min Salary", key: "minSalary" },
+            { header: "Max Salary", key: "maxSalary" },
+            { header: "Currency", key: "currency" },
+          ],
+          rows: filteredGrades.map((r) => ({ ...r })),
+        })}
+      />
+    </HeaderActions>
     <Card className="border-border/70 shadow-sm">
       <CardHeader className="border-b border-border/50 pb-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -4167,27 +4604,6 @@ function SalaryGradeManager() {
                 <SelectItem value="Executive">Executive</SelectItem>
               </SelectContent>
             </Select>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-9 gap-1.5 text-xs"
-              onClick={() => {
-                const timestamp = new Date().toISOString().slice(0, 10);
-                const columns: CsvColumn<SalaryGrade>[] = [
-                  { header: "Grade Code", accessor: (r) => r.code },
-                  { header: "Band Title", accessor: (r) => r.title },
-                  { header: "Job Level", accessor: (r) => r.level },
-                  { header: "Min Salary", accessor: (r) => r.minSalary },
-                  { header: "Max Salary", accessor: (r) => r.maxSalary },
-                  { header: "Currency", accessor: (r) => r.currency },
-                  { header: "Notes", accessor: (r) => r.notes },
-                ];
-                exportToCsv(`salary-grades-${timestamp}`, columns, filteredGrades);
-                toast.success(`Salary grades report (${filteredGrades.length} records) downloaded.`);
-              }}
-            >
-              <Download className="h-4 w-4" /> Generate Report
-            </Button>
             <Button size="sm" className="h-9 gap-1.5 text-xs" onClick={openAddSg}>
               <Plus className="h-4 w-4" /> Add Grade
             </Button>
@@ -4210,7 +4626,9 @@ function SalaryGradeManager() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sgPage.pageItems.map((sg) => (
+            {hcmLoading && grades.length === 0 && <TableRowsSkeleton cols={8} rows={5} />}
+            {(!hcmLoading || grades.length > 0) &&
+              sgPage.pageItems.map((sg) => (
               <TableRow key={sg.id}>
                 <TableCell className="pl-6 font-mono text-xs font-semibold text-primary">
                   {sg.code}
@@ -4355,16 +4773,30 @@ function SalaryGradeManager() {
         </AlertDialogContent>
       </AlertDialog>
     </Card>
+    </>
   );
 }
 
 /* --- Requisition Manager --- */
-function RequisitionManager() {
+function RequisitionManager({ role = "admin" }: { role?: Role }) {
   const reqs = useRequisitions();
+  const reqLoading = useRequisitionsLoading();
   const [reqSearch, setReqSearch] = useState("");
   const [reqDeptFilter, setReqDeptFilter] = useState("all");
   const [reqStatusFilter, setReqStatusFilter] = useState("all");
   const [reqUrgencyFilter, setReqUrgencyFilter] = useState("all");
+  const [editing, setEditing] = useState<Requisition | null>(null);
+  const [editCount, setEditCount] = useState("1");
+  const [editUrgency, setEditUrgency] = useState("Normal");
+  const [editJustification, setEditJustification] = useState("");
+  const [editStatus, setEditStatus] = useState<Requisition["status"]>("Pending");
+  const [confirmEdit, setConfirmEdit] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [historyFor, setHistoryFor] = useState<Requisition | null>(null);
+  const [historyLogs, setHistoryLogs] = useState<ApiAuditLog[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [deleteFor, setDeleteFor] = useState<Requisition | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const deptOptions = Array.from(new Set(reqs.map((r) => r.department))).sort();
 
@@ -4386,6 +4818,38 @@ function RequisitionManager() {
   const reqPage = usePagination(filteredReqs);
 
   return (
+    <>
+    <HeaderActions>
+      <ReportMenu
+        size="sm"
+        recordCount={filteredReqs.length}
+        report={() => ({
+          title: "Vacancy Requisitions Report",
+          subtitle: `${filteredReqs.length} requisition(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+          columns: [
+            { header: "Req Code", key: "id" },
+            { header: "Position", key: "position" },
+            { header: "Department", key: "department" },
+            { header: "Slots", key: "count" },
+            { header: "Urgency", key: "urgency" },
+            { header: "Status", key: "status" },
+            { header: "Requested", key: "requestedAt" },
+          ],
+          rows: filteredReqs.map((r) => ({ ...r })),
+          summary: [
+            { label: "Total", value: filteredReqs.length },
+            {
+              label: "Pending",
+              value: filteredReqs.filter((r) => r.status === "Pending").length,
+            },
+            {
+              label: "Converted",
+              value: filteredReqs.filter((r) => r.status === "Converted").length,
+            },
+          ],
+        })}
+      />
+    </HeaderActions>
     <Card className="border-border/70 shadow-sm">
       <CardHeader className="border-b border-border/50 pb-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -4430,7 +4894,7 @@ function RequisitionManager() {
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
                 <SelectItem value="Pending">Pending</SelectItem>
-                <SelectItem value="Approved">Approved</SelectItem>
+                <SelectItem value="Done">Done</SelectItem>
                 <SelectItem value="Converted">Converted</SelectItem>
               </SelectContent>
             </Select>
@@ -4447,28 +4911,6 @@ function RequisitionManager() {
                 <SelectItem value="Low">Low</SelectItem>
               </SelectContent>
             </Select>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-9 gap-1.5 text-xs"
-              onClick={() => {
-                const timestamp = new Date().toISOString().slice(0, 10);
-                const columns: CsvColumn<Requisition>[] = [
-                  { header: "Req Code", accessor: (r) => r.id },
-                  { header: "Position Title", accessor: (r) => r.position },
-                  { header: "Department", accessor: (r) => r.department },
-                  { header: "Slots Requested", accessor: (r) => r.count },
-                  { header: "Urgency", accessor: (r) => r.urgency },
-                  { header: "Status", accessor: (r) => r.status },
-                  { header: "Date Requested", accessor: (r) => r.requestedAt },
-                  { header: "Justification", accessor: (r) => r.justification },
-                ];
-                exportToCsv(`requisitions-${timestamp}`, columns, filteredReqs);
-                toast.success(`Requisitions report (${filteredReqs.length} records) downloaded.`);
-              }}
-            >
-              <Download className="h-4 w-4" /> Generate Report
-            </Button>
           </div>
         </div>
       </CardHeader>
@@ -4483,11 +4925,14 @@ function RequisitionManager() {
               <TableHead className="text-center">Slots Requested</TableHead>
               <TableHead>Urgency</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="text-right pr-6">Date Requested</TableHead>
+              <TableHead>Date Requested</TableHead>
+              <TableHead className="text-right pr-6">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {reqPage.pageItems.map((r) => (
+            {reqLoading && reqs.length === 0 && <TableRowsSkeleton cols={8} rows={5} />}
+            {(!reqLoading || reqs.length > 0) &&
+              reqPage.pageItems.map((r) => (
               <TableRow key={r.id}>
                 <TableCell className="pl-6 font-mono text-xs font-medium">{r.id}</TableCell>
                 <TableCell className="font-medium text-xs">{r.position}</TableCell>
@@ -4519,14 +4964,72 @@ function RequisitionManager() {
                     {r.status}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-right pr-6 text-xs text-muted-foreground">
+                <TableCell className="text-xs text-muted-foreground">
                   {r.requestedAt}
+                </TableCell>
+                <TableCell className="text-right pr-6">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Edit requisition (with confirmation)"
+                      disabled={r.status === "Converted"}
+                      onClick={() => {
+                        setEditing(r);
+                        setEditCount(String(r.count));
+                        setEditUrgency(r.urgency);
+                        setEditJustification(r.justification);
+                        setEditStatus(r.status === "Converted" ? "Converted" : r.status);
+                      }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Action history (created / updated / deleted)"
+                      onClick={async () => {
+                        setHistoryFor(r);
+                        setHistoryLoading(true);
+                        try {
+                          const res = await auditLogApi.list({ per_page: 100, search: r.id });
+                          const logs = (res?.data ?? []).filter(
+                            (l) =>
+                              l.target_id === String(r.dbId ?? "") ||
+                              (l.details ?? "").includes(r.id),
+                          );
+                          setHistoryLogs(logs);
+                        } catch {
+                          setHistoryLogs([]);
+                        } finally {
+                          setHistoryLoading(false);
+                        }
+                      }}
+                    >
+                      <History className="h-3.5 w-3.5" />
+                    </Button>
+                    {role === "superadmin" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive hover:text-destructive"
+                        title="Delete requisition (superadmin)"
+                        disabled={r.status === "Converted"}
+                        onClick={() => setDeleteFor(r)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
-            {filteredReqs.length === 0 && (
+            {(!reqLoading || reqs.length > 0) &&
+              filteredReqs.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="py-8 text-center text-xs text-muted-foreground">
+                <TableCell colSpan={8} className="py-8 text-center text-xs text-muted-foreground">
                   No vacancy requisitions match your search and filter criteria.
                 </TableCell>
               </TableRow>
@@ -4546,6 +5049,185 @@ function RequisitionManager() {
         </div>
       </CardContent>
     </Card>
+
+    {/* Edit requisition dialog — saving always asks for confirmation */}
+    <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit requisition {editing?.id}</DialogTitle>
+          <DialogDescription>
+            {editing?.position} · {editing?.department}. Changes apply immediately after you
+            confirm.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="space-y-1.5">
+            <Label>Slots requested</Label>
+            <Input
+              type="number"
+              min={1}
+              value={editCount}
+              onChange={(e) => setEditCount(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Urgency</Label>
+            <Select value={editUrgency} onValueChange={setEditUrgency}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["Low", "Normal", "High", "Urgent"].map((u) => (
+                  <SelectItem key={u} value={u}>
+                    {u}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Status</Label>
+            <Select value={editStatus} onValueChange={(v: any) => setEditStatus(v)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Pending">Pending</SelectItem>
+                <SelectItem value="Done">Done</SelectItem>
+                <SelectItem value="Converted">Converted</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Justification</Label>
+            <Textarea
+              rows={3}
+              value={editJustification}
+              onChange={(e) => setEditJustification(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditing(null)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => setConfirmEdit(true)}
+            disabled={savingEdit || Number(editCount) < 1}
+          >
+            Review changes
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <AlertDialog open={confirmEdit} onOpenChange={setConfirmEdit}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Confirm requisition update?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {editing?.id}: slots {editing?.count} → {editCount}, urgency {editing?.urgency} →{" "}
+            {editUrgency}, status {editing?.status} → {editStatus}. This is recorded in the
+            action history.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Back</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={async () => {
+              if (!editing) return;
+              setSavingEdit(true);
+              try {
+                await requisitionStore.update(editing.id, {
+                  count: Math.max(1, Number(editCount) || 1),
+                  urgency: editUrgency,
+                  justification: editJustification,
+                  status: editStatus,
+                });
+                toast.success(`Requisition ${editing.id} updated.`);
+                setEditing(null);
+                setConfirmEdit(false);
+              } catch {
+                // requisitionStore already toasted
+              } finally {
+                setSavingEdit(false);
+              }
+            }}
+          >
+            Confirm update
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    {/* Action history dialog */}
+    <Dialog open={!!historyFor} onOpenChange={(o) => !o && setHistoryFor(null)}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>History — {historyFor?.id}</DialogTitle>
+          <DialogDescription>
+            Created / updated / converted / deleted actions for this requisition.
+          </DialogDescription>
+        </DialogHeader>
+        {historyLoading ? (
+          <ListSkeleton items={4} />
+        ) : historyLogs.length === 0 ? (
+          <p className="py-6 text-center text-xs text-muted-foreground">
+            No audit entries found for {historyFor?.id} yet. New creates, updates and deletes
+            are logged automatically.
+          </p>
+        ) : (
+          <div className="max-h-80 space-y-2 overflow-y-auto py-1">
+            {historyLogs.map((l) => (
+              <div key={l.audit_log_id} className="rounded-md border border-border/60 p-3 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold">{l.action}</span>
+                  <span className="text-muted-foreground">
+                    {new Date(l.occurred_at ?? l.timestamp).toLocaleString()}
+                  </span>
+                </div>
+                <p className="mt-1 text-muted-foreground">{l.details}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+
+    {/* Superadmin delete with confirmation */}
+    <AlertDialog open={!!deleteFor} onOpenChange={(o) => !o && setDeleteFor(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete requisition {deleteFor?.id}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This permanently removes the request for {deleteFor?.position} (
+            {deleteFor?.department}). Converted requisitions are kept as history and cannot be
+            deleted. This cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={async () => {
+              if (!deleteFor) return;
+              setDeleting(true);
+              try {
+                await requisitionStore.remove(deleteFor.id);
+                setDeleteFor(null);
+              } catch {
+                // store already toasted
+              } finally {
+                setDeleting(false);
+              }
+            }}
+          >
+            {deleting ? "Deleting…" : "Delete requisition"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
 

@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import { Bot, Edit3, MessageCircleQuestion, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  Bot,
+  Edit3,
+  Lightbulb,
+  MessageCircleQuestion,
+  Pencil,
+  Plus,
+  ThumbsDown,
+  ThumbsUp,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
@@ -37,7 +50,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { chatbotFaqApi, type ApiChatbotFaq } from "@/lib/api";
+import { ListSkeleton } from "@/components/ui/loading-skeletons";
+import {
+  chatbotFaqApi,
+  type ApiChatbotAnalytics,
+  type ApiChatbotFaq,
+  type ApiChatbotUnanswered,
+} from "@/lib/api";
 
 type Draft = {
   faq_id: number | null;
@@ -71,6 +90,8 @@ export function ChatbotFaqPage({ role }: { role: "superadmin" | "admin" }) {
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ApiChatbotFaq | null>(null);
+  const [analytics, setAnalytics] = useState<ApiChatbotAnalytics | null>(null);
+  const [suggestions, setSuggestions] = useState<ApiChatbotUnanswered[]>([]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -81,6 +102,14 @@ export function ChatbotFaqPage({ role }: { role: "superadmin" | "admin" }) {
         toast.error(e instanceof Error ? e.message : "Could not load chatbot FAQs.");
       })
       .finally(() => setLoading(false));
+    chatbotFaqApi
+      .analytics()
+      .then((res) => setAnalytics(res.data))
+      .catch(() => setAnalytics(null));
+    chatbotFaqApi
+      .unanswered()
+      .then((res) => setSuggestions(res.data ?? []))
+      .catch(() => setSuggestions([]));
   }, []);
 
   useEffect(() => {
@@ -164,6 +193,25 @@ export function ChatbotFaqPage({ role }: { role: "superadmin" | "admin" }) {
 
   const enabledCount = faqs.filter((f) => f.enabled).length;
 
+  const startFaqFromSuggestion = (message: string) => {
+    setDraft({ ...EMPTY_DRAFT, question: message });
+    setDialogOpen(true);
+  };
+
+  const dismissSuggestion = async (hash: string) => {
+    try {
+      const res = await chatbotFaqApi.dismissUnanswered(hash);
+      toast.success(res.message);
+      setSuggestions((prev) => prev.filter((s) => s.id !== hash));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not dismiss the suggestion.");
+    }
+  };
+
+  const aiTotal = (analytics?.gemini_messages_30d ?? 0) + (analytics?.fallback_messages_30d ?? 0);
+  const aiShare = aiTotal > 0 ? Math.round(((analytics?.gemini_messages_30d ?? 0) / aiTotal) * 100) : 0;
+  const trendMax = Math.max(1, ...(analytics?.trend_14d ?? []).map((t) => t.conversations));
+
   return (
     <div>
       <PageHeader
@@ -173,6 +221,150 @@ export function ChatbotFaqPage({ role }: { role: "superadmin" | "admin" }) {
       />
 
       <div className="grid gap-5">
+        {/* Insights */}
+        <Card className="rounded-xl border-border/70 shadow-sm">
+          <CardContent className="flex flex-col gap-4 p-6">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center text-primary">
+                <BarChart3 className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="font-display text-xl font-semibold">Insights</h2>
+                <p className="text-xs text-muted-foreground">
+                  How the assistant is being used and which answers need work.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-xl border border-border/70 p-4">
+                <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Conversations today
+                </p>
+                <p className="font-display text-2xl font-semibold text-primary">
+                  {analytics?.conversations_today ?? 0}
+                </p>
+                <p className="text-[0.7rem] text-muted-foreground">
+                  {analytics?.messages_today ?? 0} messages
+                </p>
+              </div>
+              <div className="rounded-xl border border-border/70 p-4">
+                <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                  AI vs fallback (30d)
+                </p>
+                <p className="font-display text-2xl font-semibold">{aiShare}%</p>
+                <div className="mt-1.5 flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div className="h-full bg-primary" style={{ width: `${aiShare}%` }} />
+                  <div className="h-full bg-gold" style={{ width: `${100 - aiShare}%` }} />
+                </div>
+                <p className="text-[0.7rem] text-muted-foreground">
+                  {analytics?.gemini_messages_30d ?? 0} AI · {analytics?.fallback_messages_30d ?? 0} fallback
+                </p>
+              </div>
+              <div className="rounded-xl border border-border/70 p-4">
+                <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Answer feedback
+                </p>
+                <p className="flex items-center gap-3 font-display text-2xl font-semibold">
+                  <span className="flex items-center gap-1 text-success">
+                    <ThumbsUp className="h-4 w-4" /> {analytics?.feedback_up ?? 0}
+                  </span>
+                  <span className="flex items-center gap-1 text-destructive">
+                    <ThumbsDown className="h-4 w-4" /> {analytics?.feedback_down ?? 0}
+                  </span>
+                </p>
+                <p className="text-[0.7rem] text-muted-foreground">
+                  Thumbs from users on individual answers
+                </p>
+              </div>
+              <div className="rounded-xl border border-border/70 p-4">
+                <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Gemini tokens this month
+                </p>
+                <p className="font-display text-2xl font-semibold">
+                  {(analytics?.gemini_tokens_month ?? 0).toLocaleString()}
+                </p>
+                <p className="text-[0.7rem] text-muted-foreground">Prompt + completion combined</p>
+              </div>
+            </div>
+
+            {(analytics?.trend_14d?.length ?? 0) > 0 && (
+              <div className="rounded-xl border border-border/70 p-4">
+                <p className="mb-2 text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Conversations · last 14 days
+                </p>
+                <div className="flex h-20 items-end gap-1.5">
+                  {analytics!.trend_14d.map((t) => (
+                    <div key={t.date} className="flex flex-1 flex-col items-center gap-1">
+                      <div
+                        className="w-full rounded-t bg-primary/70"
+                        style={{ height: `${Math.max(4, (t.conversations / trendMax) * 100)}%` }}
+                        title={`${t.date}: ${t.conversations}`}
+                      />
+                      <span className="text-[0.6rem] text-muted-foreground">
+                        {t.date.slice(8)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Suggested new FAQs — unmatched user questions */}
+            <div className="rounded-xl border border-border/70 p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <Lightbulb className="h-4 w-4 text-gold" />
+                <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Suggested new FAQs — questions the assistant couldn't match
+                </p>
+              </div>
+              {suggestions.length === 0 ? (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Activity className="h-3.5 w-3.5" /> Nothing unanswered right now — every question
+                  matched a FAQ.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {suggestions.map((s) => (
+                    <div
+                      key={s.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium">{s.message}</p>
+                        <p className="text-[0.65rem] text-muted-foreground">
+                          asked {s.hits}×
+                          {s.last_at ? ` · last ${new Date(s.last_at).toLocaleDateString()}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[0.7rem]"
+                          onClick={() => startFaqFromSuggestion(s.message)}
+                        >
+                          <Plus className="mr-1 h-3 w-3" /> Create FAQ
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          aria-label="Dismiss suggestion"
+                          onClick={() => dismissSuggestion(s.id)}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* FAQ entries */}
         <Card className="rounded-xl border-border/70 shadow-sm">
           <CardContent className="flex flex-col gap-4 p-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -201,7 +393,7 @@ export function ChatbotFaqPage({ role }: { role: "superadmin" | "admin" }) {
             </p>
 
             {loading ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">Loading FAQs…</p>
+              <ListSkeleton items={4} />
             ) : faqs.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-10 text-center">
                 <Bot className="h-8 w-8 text-muted-foreground/50" />

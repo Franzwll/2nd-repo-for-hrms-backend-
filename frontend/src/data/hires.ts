@@ -111,10 +111,18 @@ const subscribe = (listener: () => void) => {
 };
 
 let hasFetched = false;
+/** True while the hire list is being fetched AND no rows are cached yet.
+/// Components show skeletons only when `fetching && empty` so background
+/// refetches (15s interval, window focus) never flash loaders. */
+let hiresFetching = true;
 async function fetchHiresFromApi() {
   if (hasFetched) return;
   hasFetched = true;
+  hiresFetching = true;
+  emit();
   await syncFromApi();
+  hiresFetching = false;
+  emit();
 }
 
 /** How often to silently refetch so checklist toggles made on one screen
@@ -534,6 +542,12 @@ export const hireStore = {
 
 export function useHires() {
   return useSyncExternalStore(subscribe, hireStore.getHires, hireStore.getHires);
+}
+
+/** True while the first hire-list fetch is in flight. Gate skeletons on
+ *  `loading && hires.length === 0` so background syncs never flash. */
+export function useHiresLoading() {
+  return useSyncExternalStore(subscribe, () => hiresFetching, () => hiresFetching);
 }
 
 export function useHireEmployees() {

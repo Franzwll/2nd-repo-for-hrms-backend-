@@ -1226,4 +1226,67 @@ class EssPortalController extends Controller
             ],
         ]);
     }
+
+    /* ------------------------------------------------------------------ */
+    /* Promotion requests (employee files, HR reviews in Core HCM)         */
+    /* ------------------------------------------------------------------ */
+
+    public function myPromotionRequests(Request $request): JsonResponse
+    {
+        $employee = $this->resolveEmployee($request);
+        if (! $employee) {
+            return response()->json(['message' => 'No linked employee record found.'], 404);
+        }
+
+        $rows = \App\Models\PromotionRequest::with(['requestedPosition'])
+            ->where('employee_id', $employee->employee_id)
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json(['data' => $rows]);
+    }
+
+    public function createPromotionRequest(Request $request): JsonResponse
+    {
+        $employee = $this->resolveEmployee($request);
+        if (! $employee) {
+            return response()->json(['message' => 'No linked employee record found.'], 404);
+        }
+
+        $data = $request->validate([
+            'requested_position_id' => ['nullable', 'integer', 'exists:positions,position_id'],
+            'requested_salary_grade_id' => ['nullable', 'integer', 'exists:salary_grades,salary_grade_id'],
+            'justification' => ['required', 'string', 'min:10', 'max:2000'],
+        ]);
+
+        $pending = \App\Models\PromotionRequest::where('employee_id', $employee->employee_id)
+            ->active()
+            ->exists();
+        if ($pending) {
+            return response()->json([
+                'code' => 'DUPLICATE_PROMOTION_REQUEST',
+                'message' => 'You already have a pending promotion request. Please wait for HR review or withdraw it first.',
+            ], 409);
+        }
+
+        $row = \App\Models\PromotionRequest::create([
+            'employee_id' => $employee->employee_id,
+            'current_position_id' => $employee->position_id,
+            'requested_position_id' => $data['requested_position_id'] ?? null,
+            'requested_salary_grade_id' => $data['requested_salary_grade_id'] ?? null,
+            'justification' => $data['justification'],
+            'status' => 'Pending',
+        ]);
+
+        AuditLogger::log(
+            'Promotion request filed',
+            'ESS Management',
+            'Info',
+            'employee',
+            (string) $employee->employee_code,
+            "Employee {$employee->full_name} filed promotion request #{$row->promotion_request_id}.",
+        );
+
+        return response()->json(['message' => 'Promotion request submitted for HR review.', 'data' => $row], 201);
+    }
 }

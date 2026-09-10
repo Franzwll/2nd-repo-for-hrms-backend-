@@ -60,4 +60,26 @@ class JobPost extends Model
     {
         return $this->hasMany(Applicant::class, 'job_post_id', 'job_post_id');
     }
+
+    public function remainingSlots(): int
+    {
+        return max(0, (int) ($this->vacancies ?? 0) - (int) ($this->filled_count ?? 0));
+    }
+
+    public function scopeOpen($query)
+    {
+        return $query->whereIn('status', ['published', 'Open'])
+            ->where('active', 1)
+            ->whereRaw('COALESCE(vacancies, 1) - COALESCE(filled_count, 0) > 0');
+    }
+
+    /** Fill one slot; auto-closes the post when slots reach 0. */
+    public function fillOneSlot(): void
+    {
+        $this->increment('filled_count');
+        $this->refresh();
+        if ($this->remainingSlots() <= 0 && in_array($this->status, ['published', 'Open'])) {
+            $this->update(['status' => 'Closed', 'active' => 0]);
+        }
+    }
 }

@@ -106,6 +106,22 @@ class RecruitmentManagementController extends Controller
     {
         $data = $request->validated();
 
+        // Dismissible duplicate warning: same position already has an active/open post.
+        // Frontend shows "Warning — View existing / Create anyway (force_create=true)".
+        if (! $request->boolean('force_create') && ! empty($data['position_id'])) {
+            $dup = JobPost::where('position_id', $data['position_id'])
+                ->where('active', 1)
+                ->whereIn('status', ['published', 'Open'])
+                ->first(['job_post_id', 'title']);
+            if ($dup) {
+                return response()->json([
+                    'code' => 'DUPLICATE_JOB_POST',
+                    'message' => "An active job post already exists for this position ({$dup->title}).",
+                    'existing_job_post_id' => $dup->job_post_id,
+                ], 409);
+            }
+        }
+
         // title and slug are derived from the linked position by the JobPost model
         $data['responsibilities_json'] = $data['responsibilities'] ?? [];
         $data['qualifications_json'] = $data['qualifications'] ?? [];

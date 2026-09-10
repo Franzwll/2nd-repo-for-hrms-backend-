@@ -330,9 +330,21 @@ function JobDetail() {
                           description: `Application ${res.data.applicant_code} for ${job.title} was received.`,
                         });
                       } catch (err: any) {
-                        toast.error(
-                          err?.message || "Unable to submit your application. Please try again.",
-                        );
+                        if (err?.status === 409 || err?.code === "DUPLICATE_APPLICATION") {
+                          const existing = err?.payload?.existing_applicant_code
+                            ? ` (${err.payload.existing_applicant_code})`
+                            : "";
+                          const applied = err?.payload?.applied_at
+                            ? ` on ${new Date(err.payload.applied_at).toLocaleDateString()}`
+                            : "";
+                          toast.warning("Duplicate application blocked", {
+                            description: `You already applied for ${job.title}${existing}${applied}. Same resume can still be used for other jobs.`,
+                          });
+                        } else {
+                          toast.error(
+                            err?.message || "Unable to submit your application. Please try again.",
+                          );
+                        }
                       } finally {
                         setApplying(false);
                       }

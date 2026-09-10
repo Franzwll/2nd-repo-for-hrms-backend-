@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { SortHead, useSort } from "@/components/portal/sortable";
 import { StatCard } from "@/components/portal/StatCard";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -421,16 +422,7 @@ export function AuditLogs() {
                     </TableRow>
                   );
                 })}
-                {loading && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={9}
-                      className="py-8 text-center text-sm text-muted-foreground"
-                    >
-                      Loading audit activity…
-                    </TableCell>
-                  </TableRow>
-                )}
+                {loading && <TableRowsSkeleton cols={9} rows={6} />}
                 {!loading && rows.length === 0 && (
                   <TableRow>
                     <TableCell

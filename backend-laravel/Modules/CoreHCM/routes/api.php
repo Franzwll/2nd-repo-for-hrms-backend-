@@ -7,6 +7,7 @@ use Modules\CoreHCM\Http\Controllers\EmployeeController;
 use Modules\CoreHCM\Http\Controllers\HR3RecommendationController;
 use Modules\CoreHCM\Http\Controllers\OrgChartController;
 use Modules\CoreHCM\Http\Controllers\PositionController;
+use Modules\CoreHCM\Http\Controllers\PromotionRequestController;
 use Modules\CoreHCM\Http\Controllers\SalaryGradeController;
 
 Route::middleware(['auth:sanctum', 'permission:Dashboard'])->prefix('v1')->group(function () {
@@ -24,6 +25,8 @@ Route::middleware(['auth:sanctum', 'permission:Core HCM'])->prefix('v1')->group(
     Route::get('hr3-recommendations', [HR3RecommendationController::class, 'index']);
     Route::get('employees', [EmployeeController::class, 'index']);
     Route::get('employees/{employee}', [EmployeeController::class, 'show']);
+    Route::get('promotion-requests', [PromotionRequestController::class, 'index']);
+    Route::get('promotion-requests/{promotionRequest}', [PromotionRequestController::class, 'show']);
 });
 
 Route::middleware(['auth:sanctum', 'permission:Core HCM:Edit'])->prefix('v1')->group(function () {
@@ -44,4 +47,5 @@ Route::middleware(['auth:sanctum', 'permission:Core HCM:Edit'])->prefix('v1')->g
     Route::post('employees/{employee}/regularize', [EmployeeController::class, 'regularize']);
     Route::post('employees/{employee}/promote', [EmployeeController::class, 'promote']);
     Route::post('employees/{employee}/exit', [EmployeeController::class, 'exit']);
+    Route::post('promotion-requests/{promotionRequest}/review', [PromotionRequestController::class, 'review']);
 });

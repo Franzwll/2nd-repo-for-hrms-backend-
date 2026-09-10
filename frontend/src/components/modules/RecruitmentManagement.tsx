@@ -85,13 +85,14 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { CardSkeleton, StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { ListBody } from "@/components/portal/ListBody";
 import { DEFAULT_PAGE_SIZE } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
 import { peso, type Job } from "@/data/jobs";
 import { departments, positions, type Department, type Position } from "@/data/hr";
-import { requisitionStore, useRequisitions, type Requisition } from "@/data/requisitions";
+import { requisitionStore, useRequisitions, useRequisitionsLoading, type Requisition } from "@/data/requisitions";
 import {
   assessmentCriteria,
   interviewers,
@@ -382,8 +383,10 @@ function snapshotOf(d: Draft, b: BlockId[]) {
 
 export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }) {
   const [jobList, setJobList] = useState<Job[]>([]);
+  const [jobsLoading, setJobsLoading] = useState(true);
 
   useEffect(() => {
+    setJobsLoading(true);
     jobPostsApi
       .list({ per_page: 100 })
       .then((res) => {
@@ -391,7 +394,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       })
       .catch((err) => {
         console.warn("Could not fetch jobs from API:", err);
-      });
+      })
+      .finally(() => setJobsLoading(false));
   }, []);
 
   /** Departments & positions straight from the Core HCM database. */
@@ -1094,6 +1098,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   };
 
   const requisitions = useRequisitions();
+  const reqsLoading = useRequisitionsLoading();
 
   const [draft, setDraft] = useState<Draft>(blankDraft);
   const [platforms, setPlatforms] = useState<Record<string, boolean>>({
@@ -2262,38 +2267,42 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Active Postings"
-          value={openCount}
-          icon={Send}
-          tone="primary"
-          onClick={() => focusPostings("Open")}
-        />
-        <StatCard
-          label="Total Vacancies"
-          value={totalVacancies}
-          icon={Briefcase}
-          tone="gold"
-          onClick={() => focusPostings("all")}
-        />
-        <StatCard
-          label="Pending Requisitions"
-          value={pendingRequisitions.length}
-          hint="From Core HCM"
-          icon={FileText}
-          tone="success"
-          onClick={() => focusRequisitions({ status: "Pending" })}
-        />
-        <StatCard
-          label="High Urgency"
-          value={highUrgencyCount}
-          hint="Requisitions flagged high urgency"
-          icon={AlertTriangle}
-          tone="caution"
-          onClick={() => focusRequisitions({ urgency: "High" })}
-        />
-      </div>
+      {jobsLoading ? (
+        <StatCardsSkeleton count={4} />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label="Active Postings"
+            value={openCount}
+            icon={Send}
+            tone="primary"
+            onClick={() => focusPostings("Open")}
+          />
+          <StatCard
+            label="Total Vacancies"
+            value={totalVacancies}
+            icon={Briefcase}
+            tone="gold"
+            onClick={() => focusPostings("all")}
+          />
+          <StatCard
+            label="Pending Requisitions"
+            value={pendingRequisitions.length}
+            hint="From Core HCM"
+            icon={FileText}
+            tone="success"
+            onClick={() => focusRequisitions({ status: "Pending" })}
+          />
+          <StatCard
+            label="High Urgency"
+            value={highUrgencyCount}
+            hint="Requisitions flagged high urgency"
+            icon={AlertTriangle}
+            tone="caution"
+            onClick={() => focusRequisitions({ urgency: "High" })}
+          />
+        </div>
+      )}
 
       <Tabs value={tab} onValueChange={handleTabChange} className="mt-6">
         <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
@@ -2407,6 +2416,30 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               viewMode === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "space-y-2",
             )}
           >
+            {jobsLoading ? (
+              viewMode === "grid" ? (
+                <>
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <Card key={i} className="border-border/70">
+                      <CardContent className="p-5">
+                        <CardSkeleton rows={5} />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </>
+              ) : (
+                <div className="space-y-2">
+                  {[0, 1, 2, 3].map((i) => (
+                    <Card key={i} className="border-border/70">
+                      <CardContent className="p-5">
+                        <CardSkeleton rows={2} />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )
+            ) : (
+              <>
             {viewMode === "list" && (
               <div className="space-y-2">
                 <div
@@ -2624,6 +2657,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 <ListEmptyState placeholder="Search posted positions…" />
               </div>
             )}
+              </>
+            )}
           </ListBody>
 
           <TablePagination
@@ -2721,6 +2756,14 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 </div>
               </div>
               <ListBody className="mt-4 space-y-2 overflow-x-auto">
+                {reqsLoading && requisitions.length === 0 ? (
+                  <Card className="border-border/70">
+                    <CardContent className="p-5">
+                      <CardSkeleton rows={5} />
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <>
                 <div
                   className={cn(
                     "hidden min-w-[960px] items-center gap-2 px-3 py-1.5 md:grid",
@@ -2847,6 +2890,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 ))}
 
                 {filteredRequisitions.length === 0 && <ListEmptyState subject="requisitions" />}
+                  </>
+                )}
               </ListBody>
               <TablePagination
                 page={reqPageSafe}

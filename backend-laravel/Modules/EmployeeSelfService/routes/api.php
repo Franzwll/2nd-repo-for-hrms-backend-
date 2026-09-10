@@ -22,6 +22,8 @@ Route::middleware(['auth:sanctum', 'permission:ESS Management'])->prefix('v1/ess
     Route::post('recognitions/{id}/react', [EssPortalController::class, 'reactKudos']);
     Route::post('requests', [EssPortalController::class, 'createRequest']);
     Route::post('clock', [EssPortalController::class, 'clock']);
+    Route::get('my-promotion-requests', [EssPortalController::class, 'myPromotionRequests']);
+    Route::post('my-promotion-requests', [EssPortalController::class, 'createPromotionRequest']);
 
     // Admin & Super Admin Read Endpoints (View access)
     Route::get('admin/requests', [EssAdminController::class, 'getRequests']);

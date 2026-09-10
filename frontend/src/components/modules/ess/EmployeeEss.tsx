@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   HeartHandshake,
   Send,
+  TrendingUp,
 } from "lucide-react";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ import { EssPayrollTab } from "@/components/modules/ess/tabs/EssPayrollTab";
 import { EssLatestPayslipTab } from "@/components/modules/ess/tabs/EssLatestPayslipTab";
 import { EssDocumentsTab } from "@/components/modules/ess/tabs/EssDocumentsTab";
 import { EssAllRequestsTab } from "@/components/modules/ess/tabs/EssAllRequestsTab";
+import { EssPromotionTab } from "@/components/modules/ess/tabs/EssPromotionTab";
 import { EssPerformanceTab } from "@/components/modules/ess/tabs/EssPerformanceTab";
 import { EssRecognitionTab } from "@/components/modules/ess/tabs/EssRecognitionTab";
 import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
@@ -57,6 +59,7 @@ export function EmployeeEss() {
     "Documents",
     "Recognition",
     "Benefits",
+    "Promotion",
   ].includes(categoryParam || "");
 
   const getPageTitle = () => {
@@ -81,6 +84,8 @@ export function EmployeeEss() {
         return "Employee Self-Service · All Requests Tracker";
       case "Benefits":
         return "Employee Self-Service · Statutory Benefits & HMO";
+      case "Promotion":
+        return "Employee Self-Service · Request Promotion";
       default:
         return "EMPLOYEE SELF-SERVICE";
     }
@@ -105,6 +110,8 @@ export function EmployeeEss() {
         return "Praise colleagues, give kudos, and celebrate hotel service values on the public Wall of Fame.";
       case "Benefits":
         return "Review SSS, PhilHealth, Pag-IBIG HDMF, and healthcare coverage.";
+      case "Promotion":
+        return "Request a promotion review and track your HR decision.";
       default:
         return "View your employee information, activities, and HR services.";
     }
@@ -140,6 +147,7 @@ export function EmployeeEss() {
           {(categoryParam === "Requests" || categoryParam === "COE" || categoryParam === "RequestDoc") && <EssAllRequestsTab />}
           {categoryParam === "Recognition" && <EssRecognitionTab />}
           {(categoryParam === "Benefits" || categoryParam === "Statutory") && <EssPayrollTab />}
+          {categoryParam === "Promotion" && <EssPromotionTab />}
         </div>
       ) : (
         /* MAIN ESS SECTION (Portal Hub) */
@@ -164,6 +172,9 @@ export function EmployeeEss() {
               </TabsTrigger>
               <TabsTrigger className="flex items-center gap-1.5" value="requests">
                 <Send className="h-3.5 w-3.5" /> All Requests
+              </TabsTrigger>
+              <TabsTrigger className="flex items-center gap-1.5" value="promotion">
+                <TrendingUp className="h-3.5 w-3.5" /> Promotion
               </TabsTrigger>
             </TabsList>
 
@@ -191,6 +202,10 @@ export function EmployeeEss() {
 
             <TabsContent value="requests" className="mt-6">
               <EssAllRequestsTab />
+            </TabsContent>
+
+            <TabsContent value="promotion" className="mt-6">
+              <EssPromotionTab />
             </TabsContent>
           </Tabs>
         </div>

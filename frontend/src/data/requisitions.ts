@@ -79,9 +79,17 @@ async function refreshLookupCache() {
 // Fetch live from Laravel MySQL API on load
 let hasFetched = false;
 let fetchInFlight: Promise<void> | null = null;
+/** True while a requisition fetch is in flight. Components show skeletons
+ *  only when `loading && empty` so background refreshes never flash. */
+let reqFetching = true;
+function setReqFetching(v: boolean) {
+  reqFetching = v;
+  emit();
+}
 async function fetchRequisitionsFromApi() {
   if (fetchInFlight) return fetchInFlight;
   fetchInFlight = (async () => {
+    setReqFetching(true);
     try {
       const res = await requisitionsApi.list({ per_page: 100 });
       requisitions = (res?.data ?? []).map(transformApiRequisition);
@@ -93,6 +101,7 @@ async function fetchRequisitionsFromApi() {
     } finally {
       hasFetched = true;
       fetchInFlight = null;
+      setReqFetching(false);
     }
   })();
   return fetchInFlight;
@@ -109,6 +118,17 @@ export const requisitionStore = {
     return () => listeners.delete(listener);
   },
   add: async (r: Requisition) => {
+    // Client-side duplicate guard mirrors backend: one active requisition per dept+position.
+    const dup = requisitions.find(
+      (x) =>
+        x.department === r.department &&
+        x.position === r.position &&
+        x.status !== "Converted",
+    );
+    if (dup) {
+      toast.warning(`Requisition ${dup.id} already covers ${r.position} (${r.department}). Edit it instead.`);
+      throw Object.assign(new Error("DUPLICATE_REQUISITION"), { code: "DUPLICATE_REQUISITION" });
+    }
     requisitions = [r, ...requisitions];
     emit();
     try {
@@ -131,7 +151,18 @@ export const requisitionStore = {
           : x,
       );
       emit();
-    } catch (e) {
+    } catch (e: any) {
+      if (e?.status === 409 || e?.code === "DUPLICATE_REQUISITION") {
+        // Roll back optimistic row; backend is source of truth.
+        requisitions = requisitions.filter((x) => x.id !== r.id);
+        emit();
+        toast.warning(
+          e?.payload?.existing_requisition_code
+            ? `Duplicate blocked — ${e.payload.existing_requisition_code} already exists. Edit it instead.`
+            : "Duplicate requisition blocked — edit the existing one instead.",
+        );
+        throw e;
+      }
       console.warn("API requisition create error:", e);
       toast.error("The requisition could not be saved to the database.");
     }
@@ -177,6 +208,24 @@ export const requisitionStore = {
       console.warn("API requisition convert error:", e);
     }
   },
+  /** Deletes a requisition (superadmin only on backend; Converted rows are blocked). */
+  remove: async (id: string) => {
+    const target = requisitions.find((r) => r.id === id);
+    if (!target) return;
+    const prev = requisitions;
+    requisitions = requisitions.filter((r) => r.id !== id);
+    emit();
+    try {
+      await requisitionsApi.remove(target.dbId ?? id);
+      toast.success(`Requisition ${target.id} deleted.`);
+    } catch (e: any) {
+      requisitions = prev;
+      emit();
+      console.warn("API requisition delete error:", e);
+      toast.error(e?.message || "Could not delete requisition.");
+      throw e;
+    }
+  },
   refresh: () => {
     hasFetched = false;
     return fetchRequisitionsFromApi();
@@ -188,5 +237,15 @@ export function useRequisitions() {
     requisitionStore.subscribe,
     requisitionStore.getSnapshot,
     requisitionStore.getSnapshot,
+  );
+}
+
+/** True while a requisition fetch is in flight. Gate skeletons on
+ *  `loading && reqs.length === 0` so background refreshes never flash. */
+export function useRequisitionsLoading() {
+  return useSyncExternalStore(
+    requisitionStore.subscribe,
+    () => reqFetching,
+    () => reqFetching,
   );
 }

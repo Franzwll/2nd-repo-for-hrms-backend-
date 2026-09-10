@@ -12,7 +12,6 @@ import {
   Stethoscope,
   AlertCircle,
   CalendarDays,
-  Loader2,
   FileText,
   Layers,
   ArrowLeftRight,
@@ -34,6 +33,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { myAttendance } from "@/data/ess";
@@ -202,9 +202,7 @@ export function EssAttendanceTab() {
           </CardHeader>
           <CardContent>
             {scheduleLoading ? (
-              <div className="flex items-center justify-center p-12 text-muted-foreground text-sm gap-2">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading weekly roster...
-              </div>
+              <StatCardsSkeleton count={4} />
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {roster.map((s) => {
@@ -457,9 +455,7 @@ export function EssAttendanceTab() {
         </div>
 
         {leaveLoading ? (
-          <div className="flex items-center justify-center p-12 text-muted-foreground text-sm gap-2">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading leave balances...
-          </div>
+          <StatCardsSkeleton count={4} />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {balances.map((l) => {

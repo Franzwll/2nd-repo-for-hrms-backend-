@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { ShieldCheck, HeartPulse, Landmark, CreditCard, CheckCircle2, Plus, Loader2 } from "lucide-react";
+import { ShieldCheck, HeartPulse, Landmark, CreditCard, CheckCircle2, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -38,9 +39,7 @@ export function EssBenefitsTab() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center p-12 text-muted-foreground text-sm gap-2">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading benefits data...
-        </div>
+        <StatCardsSkeleton count={3} />
       ) : (
         /* Statutory Benefits Cards */
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
