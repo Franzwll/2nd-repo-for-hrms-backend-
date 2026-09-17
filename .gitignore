@@ -20,6 +20,10 @@ public_html/hot
 
 storage/*.key
 .env
+*.env*
+*-DESKTOP-*.env
+.env.local
+.env.*.local
 Homestead.yaml
 Homestead.json
 /.vagrant
@@ -43,3 +47,7 @@ nlp-service/.venv/
 nlp-service/evaluation_new_resumes.json
 nlp-service/test_blur_enhance*.py
 TRASH/
+0001_01_01_000002_create_jobs_table.php
+*.log
+38
+"witch main"

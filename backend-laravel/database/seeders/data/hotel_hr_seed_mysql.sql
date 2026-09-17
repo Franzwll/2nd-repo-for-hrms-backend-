@@ -738,6 +738,21 @@ INSERT INTO `audit_logs` (`system_user_id`, `actor_role`, `actor_department`, `o
 (2, 'Admin', 'Administration / HR', '2026-07-28 13:45:00', 'Interview No-Show', 'Interview Scheduling', 'applicant', 'APP-1033', 'Candidate did not join the virtual meeting room.', 'Warning', '192.168.10.22', 'Edge on Windows'),
 (NULL, 'F&B Director', 'Food & Beverage', '2026-07-29 16:30:00', 'Interview Cancelled', 'Interview Scheduling', 'applicant', 'APP-1035', 'Follow-up panel interview cancelled — role already filled.', 'Info', '192.168.10.2', 'Chrome on Windows');
 
+
+-- social_recognitions
+INSERT INTO `social_recognitions` (`recognition_id`, `sender_employee_id`, `recipient_employee_id`, `sender_name`, `recipient_name`, `sender_role`, `recipient_role`, `core_value`, `message`, `clap_count`, `heart_count`, `star_count`, `fire_count`, `created_at`, `updated_at`) VALUES
+(1, NULL, 5, 'Chef Marco Rossi', 'Kevin Dela Cruz', 'Executive Chef · F&B', 'Line Cook · Kitchen / Culinary', 'Teamwork & Malasakit', 'Stepped up during the 200-guest executive banquet dinner rush and ensured flawless plating and zero delays!', 14, 8, 6, 5, '2026-08-21 09:30:00', '2026-08-21 09:30:00'),
+(2, 3, 2, 'Paolo Cruz', 'Maria Santos', 'Payroll & HR Specialist · Administration / HR', 'Guest Relations Officer · Front Office', 'Guest Delight', 'Received a glowing 5-star TripAdvisor review from our corporate VIP praising your warmth, attentiveness, and swift check-in!', 19, 12, 10, 4, '2026-08-20 14:15:00', '2026-08-20 14:15:00'),
+(3, 5, NULL, 'Kevin Dela Cruz', 'Chef Marco Rossi', 'Line Cook · Kitchen / Culinary', 'Executive Chef · F&B', 'Going the Extra Mile', 'Thank you for mentoring the team through the new seasonal tasting menu prep and always looking out for kitchen crew welfare!', 11, 7, 5, 2, '2026-08-19 17:00:00', '2026-08-19 17:00:00'),
+(4, NULL, 7, 'Elena Torres', 'Ricardo Gomez', 'Housekeeping Supervisor · Housekeeping', 'Housekeeping Attendant · Housekeeping', 'Operational Excellence', 'Maintained a 100% spotless inspection pass rate across all 30 deluxe executive suites on Floor 8 with zero guest callbacks.', 9, 5, 8, 3, '2026-08-18 11:20:00', '2026-08-18 11:20:00');
+
+-- recognition_reactions
+INSERT INTO `recognition_reactions` (`reaction_id`, `recognition_id`, `employee_id`, `reaction_type`, `created_at`, `updated_at`) VALUES
+(1, 1, 1, 'clap', '2026-08-21 10:00:00', '2026-08-21 10:00:00'),
+(2, 1, 1, 'star', '2026-08-21 10:00:00', '2026-08-21 10:00:00'),
+(3, 2, 1, 'heart', '2026-08-20 15:00:00', '2026-08-20 15:00:00'),
+(4, 4, 1, 'fire', '2026-08-18 12:00:00', '2026-08-18 12:00:00');
+
 -- announcements
 INSERT INTO `announcements` (`published_date`, `title`, `body`, `audience`, `created_by_user_id`, `status`) VALUES
 ('2026-05-24', 'Job Fair: Hotel & Restaurant Careers Day', 'Walk-in interviews for Front Office, F&B, and Kitchen roles at the Grand Ballroom.', 'All', 1, 'published'),

@@ -233,22 +233,14 @@ export function EssPayrollTab() {
                     <TableCell>
                       <EssStatusBadge status={ps.status} />
                     </TableCell>
-                    <TableCell className="text-right space-x-1">
+                    <TableCell className="text-right">
                       <Button
                         size="sm"
                         variant="ghost"
                         className="h-8 text-xs font-medium text-primary hover:bg-primary/10 gap-1"
                         onClick={() => openPayslip(ps.period, ps.net)}
                       >
-                        <Eye className="h-3.5 w-3.5" /> View
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 text-xs font-medium gap-1"
-                        onClick={() => toast.success(`Downloading PDF payslip for ${ps.period}`)}
-                      >
-                        <Download className="h-3.5 w-3.5" /> PDF
+                        <Eye className="h-3.5 w-3.5" /> View Payslip
                       </Button>
                     </TableCell>
                   </TableRow>

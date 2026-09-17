@@ -459,7 +459,6 @@ function EmployeeDashboard() {
             )}
           </CardContent>
         </Card>
-
         {/* Social Recognition & Wall of Fame Card */}
         <Card className="border-border/70 flex flex-col justify-between shadow-xs">
           <CardContent className="p-6">

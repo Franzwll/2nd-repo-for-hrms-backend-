@@ -7,6 +7,7 @@ use App\Models\Employee;
 use App\Models\EmployeeEmergencyContact;
 use App\Models\EmployeeExitRecord;
 use App\Models\EmployeePositionHistory;
+use App\Models\EssRequest;
 use App\Models\Hr3Recommendation;
 use App\Models\Position;
 use App\Services\AuditLogger;
@@ -230,6 +231,18 @@ class EmployeeController extends Controller
         });
 
         $this->markRecommendationProcessed($recommendation);
+
+        // Resolve any active ESS Promotion Requests for this employee
+        EssRequest::where('employee_id', $employee->employee_id)
+            ->whereIn('status', ['Pending', 'Under Review'])
+            ->where(function ($q) {
+                $q->where('request_type', 'LIKE', '%Promotion%')
+                  ->orWhereHas('category', fn ($c) => $c->where('code', 'career_promotion')->orWhere('name', 'LIKE', '%Career%'));
+            })
+            ->update([
+                'status' => 'Approved',
+                'review_note' => 'Promotion officially approved and processed via Core HCM & HR3 Performance Evaluation.',
+            ]);
 
         AuditLogger::log(
             'Employee promoted',

@@ -255,3 +255,80 @@
   }
 }
 
+/* Print Optimization for Official Payslip Receipts */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0 !important; /* Eliminates browser URL, title, and timestamp headers/footers */
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide everything on the page by default */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Unhide only the official payslip receipt and all its inner children */
+  #official-payslip-receipt,
+  #official-payslip-receipt * {
+    visibility: visible !important;
+  }
+
+  #official-payslip-receipt {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 12mm 15mm !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    page-break-inside: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  /* Transparently hide modal shells, dialog backdrops, and navigation */
+  [data-radix-portal],
+  [data-radix-popper-content-wrapper],
+  [role="dialog"] {
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  nav,
+  aside,
+  header,
+  footer,
+  .print\:hidden,
+  button,
+  [role="button"] {
+    display: none !important;
+  }
+}
+
