@@ -6,12 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Models\Department;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\CoreHCM\Http\Controllers\Concerns\AppliesTableQuery;
 use Modules\CoreHCM\Http\Requests\StoreDepartmentRequest;
 use Modules\CoreHCM\Http\Requests\UpdateDepartmentRequest;
 use Modules\CoreHCM\Http\Resources\DepartmentResource;
 
 class DepartmentController extends Controller
 {
+    use AppliesTableQuery;
+
     public function index(Request $request): JsonResponse
     {
         $query = Department::query()
@@ -28,7 +31,18 @@ class DepartmentController extends Controller
             });
         }
 
-        $departments = $query->orderBy('name')->paginate($request->integer('per_page', 25));
+        $this->applyFilters($request, $query, [
+            'code' => 'code',
+            'name' => 'name',
+        ]);
+
+        $this->applySort($request, $query, [
+            'code' => 'code',
+            'name' => 'name',
+            'created_at' => 'created_at',
+        ], ['name', 'asc']);
+
+        $departments = $query->paginate($request->integer('per_page', 25));
 
         return response()->json([
             'data' => DepartmentResource::collection($departments),

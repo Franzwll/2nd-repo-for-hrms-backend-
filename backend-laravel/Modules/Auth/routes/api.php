@@ -6,6 +6,7 @@ use Modules\Auth\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\NotificationController;
 
 Route::prefix('v1')->group(function () {
+    Route::get('auth/session-policy', [AuthController::class, 'sessionPolicy']);
     Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
     Route::post('auth/otp/verify', [AuthController::class, 'verifyOtp'])->middleware('throttle:10,1');
     Route::post('auth/otp/resend', [AuthController::class, 'resendOtp'])->middleware('throttle:3,1');

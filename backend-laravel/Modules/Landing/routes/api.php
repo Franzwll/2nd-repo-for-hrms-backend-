@@ -29,6 +29,8 @@ Route::prefix('v1')->group(function () {
     /* ------------------------------------------------------------------ */
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('announcements', [AnnouncementController::class, 'index']);
+        Route::get('chatbot/sessions', [ChatbotController::class, 'sessions']);
+        Route::get('chatbot/sessions/{session}/messages', [ChatbotController::class, 'sessionMessages']);
 
         Route::middleware('permission:Settings:Edit')->group(function () {
             Route::post('announcements', [AnnouncementController::class, 'store']);

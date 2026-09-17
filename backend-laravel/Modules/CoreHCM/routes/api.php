@@ -48,4 +48,6 @@ Route::middleware(['auth:sanctum', 'permission:Core HCM:Edit'])->prefix('v1')->g
     Route::post('employees/{employee}/promote', [EmployeeController::class, 'promote']);
     Route::post('employees/{employee}/exit', [EmployeeController::class, 'exit']);
     Route::post('promotion-requests/{promotionRequest}/review', [PromotionRequestController::class, 'review']);
+    Route::post('promotion-requests/{promotionRequest}/forward-to-hr3', [PromotionRequestController::class, 'forwardToHr3']);
+    Route::post('promotion-requests/{promotionRequest}/hr3-result', [PromotionRequestController::class, 'linkHr3Result']);
 });

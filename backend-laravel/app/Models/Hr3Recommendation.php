@@ -14,6 +14,7 @@ class Hr3Recommendation extends Model
 
     protected $fillable = [
         'employee_id',
+        'promotion_request_id',
         'recommendation_type',
         'evaluation_score',
         'evaluator_user_id',
@@ -48,5 +49,10 @@ class Hr3Recommendation extends Model
     public function evaluator(): BelongsTo
     {
         return $this->belongsTo(SystemUser::class, 'evaluator_user_id', 'system_user_id');
+    }
+
+    public function promotionRequest(): BelongsTo
+    {
+        return $this->belongsTo(PromotionRequest::class, 'promotion_request_id', 'promotion_request_id');
     }
 }

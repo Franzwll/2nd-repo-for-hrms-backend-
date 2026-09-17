@@ -5,8 +5,7 @@ import { toast } from "sonner";
 
 import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FloatingInput } from "@/components/ui/floating-input";
 
 import { authApi } from "@/lib/api";
 
@@ -63,8 +62,8 @@ function ForgotPasswordPage() {
             </div>
             <h2 className="font-display text-2xl font-semibold">Check your inbox</h2>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              If an active HRMS account matches that email, a password reset link has been sent. It
-              expires in 60 minutes.
+              A password reset link has been sent to {email.trim()}. It expires in
+              60 minutes.
             </p>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
               Didn't receive it? Check your spam folder, or try again after a minute.
@@ -86,19 +85,15 @@ function ForgotPasswordPage() {
 
             <form className="space-y-5" onSubmit={handleSubmit}>
               <div className="space-y-1.5">
-                <Label htmlFor="email">Work email</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@email.com"
-                    className="pl-9"
-                    autoComplete="username"
-                  />
-                </div>
+                <FloatingInput
+                  id="email"
+                  type="email"
+                  label="Work email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  leftIcon={<Mail className="h-4 w-4" />}
+                  autoComplete="username"
+                />
               </div>
 
               {error && (

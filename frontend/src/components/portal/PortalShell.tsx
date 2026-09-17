@@ -19,6 +19,8 @@ import {
 
 import { Logo } from "@/components/brand/Logo";
 import { AnnouncementDialog } from "@/components/portal/AnnouncementDialog";
+import { AiConciergeWidget } from "@/components/portal/AiConciergeWidget";
+import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { isVisibleTo, usePortalState } from "@/components/portal/portal-state";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +78,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
   const [open, setOpen] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [time, setTime] = useState<Date>(new Date());
+  useSessionTimeout();
 
   useEffect(() => {
     setMounted(true);
@@ -549,6 +552,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
       </div>
 
       <AnnouncementDialog open={announceOpen} onOpenChange={setAnnounceOpen} author={meta.user} />
+      <AiConciergeWidget role={role} />
     </div>
   );
 }

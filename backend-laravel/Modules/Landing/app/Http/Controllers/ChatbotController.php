@@ -233,6 +233,44 @@ class ChatbotController extends Controller
     }
 
     /**
+     * List the authenticated user's past chat sessions (for the internal
+     * portal widget history drawer). Newest exchange first per session.
+     */
+    public function sessions(): JsonResponse
+    {
+        $userId = request()->user()?->getAuthIdentifier();
+
+        $rows = ChatbotMessage::query()
+            ->when($userId, fn ($q) => $q->where('user_id', $userId))
+            ->when(! $userId, fn ($q) => $q->whereRaw('1 = 0'))
+            ->selectRaw('session_id, MAX(created_at) as last_at, COUNT(*) as exchanges')
+            ->whereNotNull('session_id')
+            ->groupBy('session_id')
+            ->orderByDesc('last_at')
+            ->limit(20)
+            ->get();
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * Full transcript for one session (user must own it).
+     */
+    public function sessionMessages(string $session): JsonResponse
+    {
+        $userId = request()->user()?->getAuthIdentifier();
+
+        $rows = ChatbotMessage::query()
+            ->where('session_id', $session)
+            ->when($userId, fn ($q) => $q->where('user_id', $userId))
+            ->orderBy('created_at')
+            ->limit(100)
+            ->get(['id', 'message', 'reply', 'source', 'feedback', 'created_at']);
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
      * Store the exchange for audit + analytics. Never breaks the chat if the
      * table is missing (e.g. migration not yet run) or the DB hiccups.
      */

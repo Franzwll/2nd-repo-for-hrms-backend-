@@ -24,35 +24,64 @@ class PasswordResetController extends Controller
         $email = $request->string('email')->toString();
         $user = SystemUser::where('email', $email)->first();
 
-        if ($user && $user->status === 'Active') {
-            $token = $this->service->issue($user);
-
-            $frontendUrl = rtrim((string) config('app.frontend_url'), '/');
-            $resetUrl = $frontendUrl . '/reset-password?token=' . $token;
-
-            try {
-                Mail::to($user->email)->send(new SendPasswordResetMail(
-                    $resetUrl,
-                    $user->full_name ?: $user->username,
-                    (int) round(PasswordResetService::ttlSeconds() / 60)
-                ));
-            } catch (\Throwable $e) {
-                report($e);
-            }
-
+        if (! $user) {
             AuditLogger::log(
-                'Password reset requested',
+                'Failed password reset request',
                 'Authentication',
-                'Info',
+                'Warning',
                 'user',
-                $user->username,
-                'Password reset link emailed to ' . $this->maskEmail($user->email),
-                $user
+                $email,
+                'Password reset requested for unknown email.',
             );
+
+            return response()->json([
+                'message' => 'No account found for this email. Please check and try again.',
+            ], 422);
         }
 
+        if ($user->status !== 'Active') {
+            AuditLogger::log(
+                'Blocked password reset request',
+                'Authentication',
+                'Warning',
+                'user',
+                $user->username,
+                "Password reset blocked: account is {$user->status}.",
+                $user
+            );
+
+            return response()->json([
+                'message' => 'Your account is not active. Contact an administrator.',
+            ], 403);
+        }
+
+        $token = $this->service->issue($user);
+
+        $frontendUrl = rtrim((string) config('app.frontend_url'), '/');
+        $resetUrl = $frontendUrl . '/reset-password?token=' . $token;
+
+        try {
+            Mail::to($user->email)->send(new SendPasswordResetMail(
+                $resetUrl,
+                $user->full_name ?: $user->username,
+                (int) round(PasswordResetService::ttlSeconds() / 60)
+            ));
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        AuditLogger::log(
+            'Password reset requested',
+            'Authentication',
+            'Info',
+            'user',
+            $user->username,
+            'Password reset link emailed to ' . $this->maskEmail($user->email),
+            $user
+        );
+
         return response()->json([
-            'message' => 'If that email matches an active account, a password reset link has been sent.',
+            'message' => 'Password reset link sent. Please check your email.',
         ]);
     }
 

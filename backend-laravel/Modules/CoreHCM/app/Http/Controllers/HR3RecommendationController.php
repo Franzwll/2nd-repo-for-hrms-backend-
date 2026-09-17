@@ -7,15 +7,47 @@ use App\Models\Hr3Recommendation;
 use App\Services\AuditLogger;
 use App\Observers\ActivityObserver;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Modules\CoreHCM\Http\Controllers\Concerns\AppliesTableQuery;
 
 class HR3RecommendationController extends Controller
 {
-    public function index(): JsonResponse
+    use AppliesTableQuery;
+
+    public function index(Request $request): JsonResponse
     {
-        $recommendations = Hr3Recommendation::query()
-            ->with(['employee.department', 'suggestedPosition', 'suggestedSalaryGrade', 'evaluator'])
-            ->orderByDesc('date_submitted')
-            ->get()
+        $base = Hr3Recommendation::query()
+            ->with(['employee.department', 'suggestedPosition', 'suggestedSalaryGrade', 'evaluator']);
+
+        if ($request->filled('q')) {
+            $search = $request->string('q');
+            $base->where(function ($q) use ($search) {
+                $q->where('comments', 'like', "%{$search}%")
+                    ->orWhereHas('employee', fn ($e) => $e
+                        ->where('first_name', 'like', "%{$search}%")
+                        ->orWhere('last_name', 'like', "%{$search}%")
+                        ->orWhere('employee_code', 'like', "%{$search}%"));
+            });
+        }
+
+        $this->applyFilters($request, $base, [
+            'status' => 'status',
+            'recommendation_type' => 'recommendation_type',
+            'employee_id' => 'employee_id',
+        ]);
+
+        $this->applySort($request, $base, [
+            'evaluation_score' => 'evaluation_score',
+            'date_submitted' => 'date_submitted',
+            'status' => 'status',
+            'recommendation_type' => 'recommendation_type',
+            'created_at' => 'created_at',
+        ], ['date_submitted', 'desc']);
+
+        $perPage = $request->integer('per_page', 0);
+        $records = $perPage > 0 ? $base->paginate($perPage) : $base->get();
+        $items = $records instanceof \Illuminate\Contracts\Pagination\LengthAwarePaginator ? $records->items() : $records;
+        $recommendations = collect($items)
             ->map(function (Hr3Recommendation $rec) {
                 $employee = $rec->employee;
 
@@ -40,7 +72,19 @@ class HR3RecommendationController extends Controller
                 ];
             });
 
-        return response()->json(['data' => $recommendations]);
+        if ($records instanceof \Illuminate\Contracts\Pagination\LengthAwarePaginator) {
+            return response()->json([
+                'data' => $recommendations->values(),
+                'meta' => [
+                    'current_page' => $records->currentPage(),
+                    'last_page' => $records->lastPage(),
+                    'per_page' => $records->perPage(),
+                    'total' => $records->total(),
+                ],
+            ]);
+        }
+
+        return response()->json(['data' => $recommendations->values()]);
     }
 
     public function acknowledge(Hr3Recommendation $recommendation): JsonResponse

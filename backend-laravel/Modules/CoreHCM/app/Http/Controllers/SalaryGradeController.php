@@ -6,15 +6,43 @@ use App\Http\Controllers\Controller;
 use App\Models\SalaryGrade;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\CoreHCM\Http\Controllers\Concerns\AppliesTableQuery;
 use Modules\CoreHCM\Http\Requests\StoreSalaryGradeRequest;
 use Modules\CoreHCM\Http\Requests\UpdateSalaryGradeRequest;
 use Modules\CoreHCM\Http\Resources\SalaryGradeResource;
 
 class SalaryGradeController extends Controller
 {
+    use AppliesTableQuery;
+
     public function index(Request $request): JsonResponse
     {
-        $grades = SalaryGrade::orderBy('code')->paginate($request->integer('per_page', 50));
+        $query = SalaryGrade::query();
+
+        if ($request->filled('q')) {
+            $search = $request->string('q');
+            $query->where(function ($q) use ($search) {
+                $q->where('code', 'like', "%{$search}%")
+                    ->orWhere('title', 'like', "%{$search}%")
+                    ->orWhere('level', 'like', "%{$search}%");
+            });
+        }
+
+        $this->applyFilters($request, $query, [
+            'code' => 'code',
+            'level' => 'level',
+        ]);
+
+        $this->applySort($request, $query, [
+            'code' => 'code',
+            'title' => 'title',
+            'level' => 'level',
+            'min_salary' => 'min_salary',
+            'max_salary' => 'max_salary',
+            'created_at' => 'created_at',
+        ], ['code', 'asc']);
+
+        $grades = $query->paginate($request->integer('per_page', 50));
 
         return response()->json([
             'data' => SalaryGradeResource::collection($grades),

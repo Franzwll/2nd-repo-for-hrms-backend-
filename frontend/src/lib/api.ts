@@ -938,6 +938,14 @@ export const authApi = {
     }),
   me: () => request<{ user: ApiVerifyResponse["user"] }>("/auth/me"),
   logout: () => request<{ message: string }>("/auth/logout", { method: "POST" }),
+  sessionPolicy: () =>
+    request<{
+      token_expiration_minutes: number;
+      idle_timeout_minutes: number;
+      roles?: Record<string, { token_minutes: number; idle_minutes: number }>;
+      otp_expires_in_seconds: number;
+      reset_expires_in_seconds: number;
+    }>("/auth/session-policy"),
   forgotPassword: (email: string) =>
     request<{ message: string }>("/auth/forgot-password", {
       method: "POST",
@@ -1212,6 +1220,16 @@ export const hcmApi = {
         method: "POST",
         body: JSON.stringify(data),
       }),
+    forwardToHr3: (id: number | string, data?: Record<string, any>) =>
+      request<{ message: string }>(`/promotion-requests/${id}/forward-to-hr3`, {
+        method: "POST",
+        body: JSON.stringify(data ?? {}),
+      }),
+    linkHr3Result: (id: number | string, data: Record<string, any>) =>
+      request<{ message: string }>(`/promotion-requests/${id}/hr3-result`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
   },
 };
 
@@ -1221,12 +1239,29 @@ export interface ApiPromotionRequest {
   current_position_id: number | null;
   requested_position_id: number | null;
   requested_salary_grade_id: number | null;
+  hr3_recommendation_id?: number | null;
+  forwarded_to_hr3_by?: number | null;
+  forwarded_to_hr3_at?: string | null;
   justification: string;
-  status: "Pending" | "Approved" | "Rejected" | "Returned";
+  status:
+    | "Pending"
+    | "Under HR3 Review"
+    | "Pending HR Action"
+    | "Approved"
+    | "Rejected"
+    | "Returned"
+    | "Terminated"
+    | "Deferred";
   reviewed_by: number | null;
   reviewed_at: string | null;
   review_notes: string | null;
   created_at: string;
+  hr3_recommendation?: {
+    recommendation_id: number;
+    recommendation_type: string;
+    evaluation_score: number;
+    status: string;
+  } | null;
   employee?: {
     employee_code: string;
     first_name: string;
@@ -1942,7 +1977,27 @@ export const chatbotApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  sessions: () => request<{ data: ApiChatSession[] }>("/chatbot/sessions"),
+  sessionMessages: (sessionId: string) =>
+    request<{ data: ApiChatSessionMessage[] }>(
+      `/chatbot/sessions/${encodeURIComponent(sessionId)}/messages`,
+    ),
 };
+
+export interface ApiChatSession {
+  session_id: string;
+  last_at: string;
+  exchanges: number;
+}
+
+export interface ApiChatSessionMessage {
+  id: number;
+  message: string;
+  reply: string;
+  source: string | null;
+  feedback: number | null;
+  created_at: string;
+}
 
 export const chatbotFaqApi = {
   list: () => request<{ data: ApiChatbotFaq[] }>("/chatbot/faqs"),

@@ -8,6 +8,7 @@ use App\Models\UserLoginActivity;
 use App\Services\AuditLogger;
 use App\Services\Notifier;
 use App\Services\OtpService;
+use App\Services\RoleSessionPolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -121,7 +122,12 @@ class AuthController extends Controller
             return response()->json(['message' => 'Your account is not active.'], 403);
         }
 
-        $token = $user->createToken('auth-token')->plainTextToken;
+        $policy = RoleSessionPolicy::forRole($user->loadMissing('role')->role?->role_name);
+        $token = $user->createToken(
+            'auth-token',
+            ['*'],
+            now()->addMinutes($policy['token_minutes'])
+        )->plainTextToken;
 
         $previousIp = $user->last_login_ip;
         $previousLogin = $user->last_login_at;
@@ -156,6 +162,8 @@ class AuthController extends Controller
             'token' => $token,
             'token_type' => 'Bearer',
             'user' => new UserResource($user),
+            'expires_in_minutes' => $policy['token_minutes'],
+            'idle_timeout_minutes' => $policy['idle_minutes'],
         ];
 
         AuditLogger::log(
@@ -195,6 +203,22 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * Public session policy so the login page and portal can display
+     * exactly how many minutes a session lasts (no more guessing).
+     * Returns the per-role map; the global Sanctum value is the ceiling.
+     */
+    public function sessionPolicy(): JsonResponse
+    {
+        return response()->json([
+            'token_expiration_minutes' => (int) config('sanctum.expiration'),
+            'idle_timeout_minutes' => (int) env('SESSION_IDLE_MINUTES', 30),
+            'roles' => RoleSessionPolicy::map(),
+            'otp_expires_in_seconds' => OtpService::ttlSeconds(),
+            'reset_expires_in_seconds' => \Modules\Auth\Services\PasswordResetService::ttlSeconds(),
+        ]);
+    }
+
     public function logout(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -230,7 +254,12 @@ class AuthController extends Controller
      */
     private function completeLogin(Request $request, SystemUser $user): array
     {
-        $token = $user->createToken('auth-token')->plainTextToken;
+        $policy = RoleSessionPolicy::forRole($user->loadMissing('role')->role?->role_name);
+        $token = $user->createToken(
+            'auth-token',
+            ['*'],
+            now()->addMinutes($policy['token_minutes'])
+        )->plainTextToken;
 
         $user->forceFill([
             'last_login_at' => now(),
@@ -250,6 +279,8 @@ class AuthController extends Controller
             'token' => $token,
             'token_type' => 'Bearer',
             'user' => new UserResource($user),
+            'expires_in_minutes' => $policy['token_minutes'],
+            'idle_timeout_minutes' => $policy['idle_minutes'],
         ];
     }
 

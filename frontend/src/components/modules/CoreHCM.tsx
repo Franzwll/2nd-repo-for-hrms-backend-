@@ -69,6 +69,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { SortHead, useSort } from "@/components/portal/sortable";
 import { usePagination } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -957,7 +958,16 @@ function EmployeeListManager({
         );
       })(),
   );
-  const recPage = usePagination(filteredRecs);
+  const recSort = useSort(filteredRecs, {
+    id: (r) => r.id,
+    employeeName: (r) => r.employeeName,
+    department: (r) => r.department,
+    recommendationType: (r) => r.recommendationType,
+    evaluationScore: (r) => r.evaluationScore,
+    dateSubmitted: (r) => r.dateSubmitted,
+    status: (r) => r.status,
+  });
+  const recPage = usePagination(recSort.sorted);
 
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
   const [viewingEmpInfo, setViewingEmpInfo] = useState<Employee | null>(null);
@@ -1051,7 +1061,16 @@ function EmployeeListManager({
     return matchesSearch && matchesDept && matchesStatus && matchesType;
   });
 
-  const empPage = usePagination(filteredEmployees);
+  const empSort = useSort(filteredEmployees, {
+    id: (e) => e.id,
+    name: (e) => e.name,
+    department: (e) => e.department,
+    position: (e) => `${e.position} ${e.salaryGrade ?? ""}`,
+    type: (e) => e.employmentType,
+    dateHired: (e) => e.dateHired,
+    status: (e) => e.status,
+  });
+  const empPage = usePagination(empSort.sorted);
   const deptOptions = Array.from(new Set(empList.map((e) => e.department))).sort();
   const positionOptions = hcm.positions.map((p) => p.title).sort();
   const supervisorOptions = empList.map((e) => e.name).sort();
@@ -1484,13 +1503,13 @@ function EmployeeListManager({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Evaluation ID</TableHead>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="text-center">Score</TableHead>
+                  <SortHead sortKey="id" sort={recSort.sort} onSort={recSort.toggle}>Evaluation ID</SortHead>
+                  <SortHead sortKey="employeeName" sort={recSort.sort} onSort={recSort.toggle}>Employee</SortHead>
+                  <SortHead sortKey="department" sort={recSort.sort} onSort={recSort.toggle}>Department</SortHead>
+                  <SortHead sortKey="recommendationType" sort={recSort.sort} onSort={recSort.toggle}>Type</SortHead>
+                  <SortHead sortKey="evaluationScore" sort={recSort.sort} onSort={recSort.toggle} align="center">Score</SortHead>
                   <TableHead>Comments</TableHead>
-                  <TableHead>Status</TableHead>
+                  <SortHead sortKey="status" sort={recSort.sort} onSort={recSort.toggle}>Status</SortHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1653,13 +1672,13 @@ function EmployeeListManager({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Employee ID</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Position & Grade</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Date Hired</TableHead>
-                  <TableHead>Status</TableHead>
+                  <SortHead sortKey="id" sort={empSort.sort} onSort={empSort.toggle}>Employee ID</SortHead>
+                  <SortHead sortKey="name" sort={empSort.sort} onSort={empSort.toggle}>Name</SortHead>
+                  <SortHead sortKey="department" sort={empSort.sort} onSort={empSort.toggle}>Department</SortHead>
+                  <SortHead sortKey="position" sort={empSort.sort} onSort={empSort.toggle}>Position & Grade</SortHead>
+                  <SortHead sortKey="type" sort={empSort.sort} onSort={empSort.toggle}>Type</SortHead>
+                  <SortHead sortKey="dateHired" sort={empSort.sort} onSort={empSort.toggle}>Date Hired</SortHead>
+                  <SortHead sortKey="status" sort={empSort.sort} onSort={empSort.toggle}>Status</SortHead>
                   <TableHead className="text-center">Details</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -2660,7 +2679,7 @@ function PromotionRequestsManager() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [reviewFor, setReviewFor] = useState<ApiPromotionRequest | null>(null);
-  const [decision, setDecision] = useState<"approve" | "reject" | "return">("approve");
+  const [decision, setDecision] = useState<"approve" | "reject" | "return" | "terminate" | "defer">("approve");
   const [notes, setNotes] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2691,8 +2710,16 @@ function PromotionRequestsManager() {
       (r.justification ?? "").toLowerCase().includes(q);
     return matches && (statusFilter === "all" || r.status === statusFilter);
   });
-  const page = usePagination(filtered);
-  const pendingCount = rows.filter((r) => r.status === "Pending" || r.status === "Returned").length;
+  const promoSort = useSort(filtered, {
+    employee: (r) => `${r.employee?.first_name ?? ""} ${r.employee?.last_name ?? ""}`,
+    requested: (r) => r.requested_position?.title ?? "",
+    status: (r) => r.status,
+    filed: (r) => r.created_at,
+  });
+  const page = usePagination(promoSort.sorted);
+  const pendingCount = rows.filter((r) =>
+    ["Pending", "Returned", "Under HR3 Review", "Pending HR Action"].includes(r.status),
+  ).length;
 
   return (
     <>
@@ -2733,8 +2760,9 @@ function PromotionRequestsManager() {
                 )}
               </CardTitle>
               <p className="text-xs text-muted-foreground">
-                Filed by employees via ESS. Approving applies the promotion immediately
-                (position transfer + history entry).
+                Filed by employees via ESS. Forward to HR3 for evaluation, then
+                decide (promote / terminate) once the HR3 score is back — or
+                approve directly for non-HR3 cases.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -2754,9 +2782,13 @@ function PromotionRequestsManager() {
                 <SelectContent>
                   <SelectItem value="all">All statuses</SelectItem>
                   <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="Under HR3 Review">Under HR3 Review</SelectItem>
+                  <SelectItem value="Pending HR Action">Pending HR Action</SelectItem>
                   <SelectItem value="Returned">Returned</SelectItem>
                   <SelectItem value="Approved">Approved</SelectItem>
+                  <SelectItem value="Terminated">Terminated</SelectItem>
                   <SelectItem value="Rejected">Rejected</SelectItem>
+                  <SelectItem value="Deferred">Deferred</SelectItem>
                 </SelectContent>
               </Select>
               <Button size="sm" variant="outline" className="h-9 gap-1.5 text-xs" onClick={load}>
@@ -2769,11 +2801,11 @@ function PromotionRequestsManager() {
           <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="pl-6">Employee</TableHead>
-                    <TableHead>Current → Requested</TableHead>
+                    <SortHead sortKey="employee" sort={promoSort.sort} onSort={promoSort.toggle} className="pl-6">Employee</SortHead>
+                    <SortHead sortKey="requested" sort={promoSort.sort} onSort={promoSort.toggle}>Current → Requested</SortHead>
                     <TableHead>Justification</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Filed</TableHead>
+                    <SortHead sortKey="status" sort={promoSort.sort} onSort={promoSort.toggle}>Status</SortHead>
+                    <SortHead sortKey="filed" sort={promoSort.sort} onSort={promoSort.toggle}>Filed</SortHead>
                     <TableHead className="text-right pr-6">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -2805,31 +2837,64 @@ function PromotionRequestsManager() {
                           className={
                             r.status === "Approved"
                               ? "border-success/40 bg-success/10 text-success text-[10px]"
-                              : r.status === "Rejected"
+                              : r.status === "Rejected" || r.status === "Terminated"
                                 ? "border-destructive/40 bg-destructive/10 text-destructive text-[10px]"
-                                : "border-gold/40 text-gold text-[10px]"
+                                : r.status === "Under HR3 Review" || r.status === "Pending HR Action"
+                                  ? "border-primary/40 bg-primary/10 text-primary text-[10px]"
+                                  : "border-gold/40 text-gold text-[10px]"
                           }
                         >
                           {r.status}
                         </Badge>
+                        {r.hr3_recommendation && (
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            HR3: {r.hr3_recommendation.evaluation_score}% ·{" "}
+                            {r.hr3_recommendation.recommendation_type}
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {new Date(r.created_at).toLocaleDateString()}
                       </TableCell>
                       <TableCell className="text-right pr-6">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs"
-                          disabled={r.status !== "Pending" && r.status !== "Returned"}
-                          onClick={() => {
-                            setReviewFor(r);
-                            setDecision("approve");
-                            setNotes("");
-                          }}
-                        >
-                          <Eye className="mr-1 h-3.5 w-3.5" /> Review
-                        </Button>
+                        <div className="flex justify-end gap-1.5">
+                          {(r.status === "Pending" || r.status === "Returned") && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs border-primary/40 text-primary hover:bg-primary/10"
+                              onClick={async () => {
+                                try {
+                                  await hcmApi.promotions.forwardToHr3(r.promotion_request_id);
+                                  toast.success("Forwarded to HR3 for evaluation.");
+                                  load();
+                                  notifyHcmChanged();
+                                } catch (e: any) {
+                                  toast.error(e?.message || "Could not forward to HR3.");
+                                }
+                              }}
+                            >
+                              <Send className="mr-1 h-3.5 w-3.5" /> To HR3
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            disabled={
+                              r.status !== "Pending" &&
+                              r.status !== "Returned" &&
+                              r.status !== "Pending HR Action"
+                            }
+                            onClick={() => {
+                              setReviewFor(r);
+                              setDecision("approve");
+                              setNotes("");
+                            }}
+                          >
+                            <Eye className="mr-1 h-3.5 w-3.5" /> Review
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -2871,6 +2936,39 @@ function PromotionRequestsManager() {
           <div className="rounded-md bg-muted/50 p-3 text-xs italic text-muted-foreground">
             “{reviewFor?.justification}”
           </div>
+          {reviewFor?.hr3_recommendation && (
+            <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
+              <p className="font-semibold text-foreground">
+                HR3 evaluation: {reviewFor.hr3_recommendation.evaluation_score}% ·{" "}
+                {reviewFor.hr3_recommendation.recommendation_type}
+              </p>
+              <p className="text-muted-foreground">
+                Status: {reviewFor.hr3_recommendation.status}. Approval consumes
+                this evaluation (marks it processed).
+              </p>
+            </div>
+          )}
+          {reviewFor && (reviewFor.status === "Pending" || reviewFor.status === "Returned") && (
+            <Button
+              variant="outline"
+              className="border-primary/40 text-primary hover:bg-primary/10"
+              onClick={async () => {
+                try {
+                  await hcmApi.promotions.forwardToHr3(reviewFor.promotion_request_id, {
+                    note: notes || undefined,
+                  });
+                  toast.success("Forwarded to HR3 for evaluation.");
+                  setReviewFor(null);
+                  load();
+                  notifyHcmChanged();
+                } catch (e: any) {
+                  toast.error(e?.message || "Could not forward to HR3.");
+                }
+              }}
+            >
+              <Send className="mr-1.5 h-3.5 w-3.5" /> Forward to HR3 instead
+            </Button>
+          )}
           <div className="space-y-3 py-1">
             <div className="space-y-1.5">
               <Label>Decision</Label>
@@ -2880,6 +2978,8 @@ function PromotionRequestsManager() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="approve">Approve & apply promotion</SelectItem>
+                  <SelectItem value="terminate">Terminate (succession decision)</SelectItem>
+                  <SelectItem value="defer">Defer</SelectItem>
                   <SelectItem value="return">Return for clarification</SelectItem>
                   <SelectItem value="reject">Reject</SelectItem>
                 </SelectContent>
@@ -2910,10 +3010,16 @@ function PromotionRequestsManager() {
             <AlertDialogTitle>Confirm {decision}?</AlertDialogTitle>
             <AlertDialogDescription>
               {decision === "approve"
-                ? "The promotion is applied immediately: position transfer, filled-count move and a position-history entry."
-                : decision === "return"
-                  ? "The employee is asked for clarification and can resubmit."
-                  : "The request is closed as rejected."}
+                ? reviewFor?.hr3_recommendation
+                  ? `Applies the promotion using the linked HR3 score (${reviewFor.hr3_recommendation.evaluation_score}%) and marks the evaluation processed.`
+                  : "The promotion is applied immediately: position transfer, filled-count move and a position-history entry."
+                : decision === "terminate"
+                  ? "The employee is exited (Resigned/Terminated flow) and the request is closed as Terminated."
+                  : decision === "defer"
+                    ? "The request and its HR3 evaluation are parked as Deferred."
+                    : decision === "return"
+                      ? "The employee is asked for clarification and can resubmit."
+                      : "The request is closed as rejected."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -3055,7 +3161,15 @@ function LifecycleLogsViewer() {
     return matchesSearch && matchesType && matchesDept;
   });
 
-  const page = usePagination(filteredLogs);
+  const logSort = useSort(filteredLogs, {
+    id: (l) => l.id,
+    timestamp: (l) => l.timestamp,
+    category: (l) => l.category,
+    employee: (l) => `${l.employeeId} ${l.employeeName}`,
+    position: (l) => `${l.position} ${l.department}`,
+    actor: (l) => l.actor,
+  });
+  const page = usePagination(logSort.sorted);
 
   const getCategoryBadgeClass = (category: LifecycleLog["category"]) => {
     switch (category) {
@@ -3151,12 +3265,12 @@ function LifecycleLogsViewer() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Log ID</TableHead>
-                <TableHead>Timestamp</TableHead>
-                <TableHead>Action Category</TableHead>
-                <TableHead>Target Employee (Status Changed)</TableHead>
-                <TableHead>Position & Department</TableHead>
-                <TableHead>HR Admin / Actor</TableHead>
+                <SortHead sortKey="id" sort={logSort.sort} onSort={logSort.toggle}>Log ID</SortHead>
+                <SortHead sortKey="timestamp" sort={logSort.sort} onSort={logSort.toggle}>Timestamp</SortHead>
+                <SortHead sortKey="category" sort={logSort.sort} onSort={logSort.toggle}>Action Category</SortHead>
+                <SortHead sortKey="employee" sort={logSort.sort} onSort={logSort.toggle}>Target Employee (Status Changed)</SortHead>
+                <SortHead sortKey="position" sort={logSort.sort} onSort={logSort.toggle}>Position & Department</SortHead>
+                <SortHead sortKey="actor" sort={logSort.sort} onSort={logSort.toggle}>HR Admin / Actor</SortHead>
                 <TableHead>Action Details & Justification</TableHead>
               </TableRow>
             </TableHeader>
@@ -3346,8 +3460,25 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
         p.department.toLowerCase().includes(posTableSearch.toLowerCase())),
   );
 
-  const deptPage = usePagination(filteredDepts);
-  const posPage = usePagination(filteredPositions);
+  const deptSort = useSort(filteredDepts, {
+    code: (d) => d.code,
+    name: (d) => d.name,
+    head: (d) => d.head,
+    positions: (d) => d.openRequisitions,
+    staff: (d) => d.staff,
+  });
+  const posSort = useSort(filteredPositions, {
+    id: (p) => p.id,
+    title: (p) => p.title,
+    department: (p) => p.department,
+    level: (p) => p.level,
+    headcount: (p) => p.headcount,
+    filled: (p) => p.filled,
+    vacancies: (p) => p.headcount - p.filled,
+    grade: (p) => p.salaryBand,
+  });
+  const deptPage = usePagination(deptSort.sorted);
+  const posPage = usePagination(posSort.sorted);
   const [editingDept, setEditingDept] = useState<Department | null>(null);
   const [editingPos, setEditingPos] = useState<Position | null>(null);
   const [isNewPos, setIsNewPos] = useState(false);
@@ -3687,11 +3818,11 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-28 pl-6">Dept Code</TableHead>
-                <TableHead>Department Name</TableHead>
-                <TableHead>Department Head</TableHead>
-                <TableHead className="text-center">Positions Count</TableHead>
-                <TableHead className="text-center">Staff Count (Derived)</TableHead>
+                <SortHead sortKey="code" sort={deptSort.sort} onSort={deptSort.toggle} className="w-28 pl-6">Dept Code</SortHead>
+                <SortHead sortKey="name" sort={deptSort.sort} onSort={deptSort.toggle}>Department Name</SortHead>
+                <SortHead sortKey="head" sort={deptSort.sort} onSort={deptSort.toggle}>Department Head</SortHead>
+                <SortHead sortKey="positions" sort={deptSort.sort} onSort={deptSort.toggle} align="center">Positions Count</SortHead>
+                <SortHead sortKey="staff" sort={deptSort.sort} onSort={deptSort.toggle} align="center">Staff Count (Derived)</SortHead>
                 <TableHead className="w-28 text-center pr-6">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -3868,14 +3999,14 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-24 pl-6">POS ID</TableHead>
-                  <TableHead>Job Position Title</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Level</TableHead>
-                  <TableHead className="text-center">Target Headcount</TableHead>
-                  <TableHead className="text-center">Filled Staff</TableHead>
-                  <TableHead className="text-center">Vacancies</TableHead>
-                  <TableHead>Assigned Salary Grade / Band</TableHead>
+                  <SortHead sortKey="id" sort={posSort.sort} onSort={posSort.toggle} className="w-24 pl-6">POS ID</SortHead>
+                  <SortHead sortKey="title" sort={posSort.sort} onSort={posSort.toggle}>Job Position Title</SortHead>
+                  <SortHead sortKey="department" sort={posSort.sort} onSort={posSort.toggle}>Department</SortHead>
+                  <SortHead sortKey="level" sort={posSort.sort} onSort={posSort.toggle}>Level</SortHead>
+                  <SortHead sortKey="headcount" sort={posSort.sort} onSort={posSort.toggle} align="center">Target Headcount</SortHead>
+                  <SortHead sortKey="filled" sort={posSort.sort} onSort={posSort.toggle} align="center">Filled Staff</SortHead>
+                  <SortHead sortKey="vacancies" sort={posSort.sort} onSort={posSort.toggle} align="center">Vacancies</SortHead>
+                  <SortHead sortKey="grade" sort={posSort.sort} onSort={posSort.toggle}>Assigned Salary Grade / Band</SortHead>
                   {role === "superadmin" && (
                     <TableHead className="w-28 text-center pr-4">Actions</TableHead>
                   )}
@@ -4548,7 +4679,14 @@ function SalaryGradeManager() {
     return matchesSearch && matchesLevel;
   });
 
-  const sgPage = usePagination(filteredGrades);
+  const sgSort = useSort(filteredGrades, {
+    code: (g) => g.code,
+    title: (g) => g.title,
+    level: (g) => g.level,
+    minSalary: (g) => g.minSalary,
+    maxSalary: (g) => g.maxSalary,
+  });
+  const sgPage = usePagination(sgSort.sorted);
 
   return (
     <>
@@ -4615,11 +4753,11 @@ function SalaryGradeManager() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-28 pl-6">Grade Code</TableHead>
-              <TableHead>Band Title</TableHead>
-              <TableHead>Job Level</TableHead>
-              <TableHead className="text-right">Min Salary</TableHead>
-              <TableHead className="text-right">Max Salary</TableHead>
+              <SortHead sortKey="code" sort={sgSort.sort} onSort={sgSort.toggle} className="w-28 pl-6">Grade Code</SortHead>
+              <SortHead sortKey="title" sort={sgSort.sort} onSort={sgSort.toggle}>Band Title</SortHead>
+              <SortHead sortKey="level" sort={sgSort.sort} onSort={sgSort.toggle}>Job Level</SortHead>
+              <SortHead sortKey="minSalary" sort={sgSort.sort} onSort={sgSort.toggle} align="right">Min Salary</SortHead>
+              <SortHead sortKey="maxSalary" sort={sgSort.sort} onSort={sgSort.toggle} align="right">Max Salary</SortHead>
               <TableHead>Pay Band Range</TableHead>
               <TableHead className="text-right pr-6">Currency</TableHead>
               <TableHead className="text-center pr-4">Actions</TableHead>
@@ -4815,7 +4953,16 @@ function RequisitionManager({ role = "admin" }: { role?: Role }) {
     return matchesSearch && matchesDept && matchesStatus && matchesUrgency;
   });
 
-  const reqPage = usePagination(filteredReqs);
+  const reqSort = useSort(filteredReqs, {
+    id: (r) => r.id,
+    position: (r) => r.position,
+    department: (r) => r.department,
+    count: (r) => r.count,
+    urgency: (r) => r.urgency,
+    status: (r) => r.status,
+    requestedAt: (r) => r.requestedAt,
+  });
+  const reqPage = usePagination(reqSort.sorted);
 
   return (
     <>
@@ -4919,13 +5066,13 @@ function RequisitionManager({ role = "admin" }: { role?: Role }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="pl-6">Req Code</TableHead>
-              <TableHead>Position Title</TableHead>
-              <TableHead>Department</TableHead>
-              <TableHead className="text-center">Slots Requested</TableHead>
-              <TableHead>Urgency</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Date Requested</TableHead>
+              <SortHead sortKey="id" sort={reqSort.sort} onSort={reqSort.toggle} className="pl-6">Req Code</SortHead>
+              <SortHead sortKey="position" sort={reqSort.sort} onSort={reqSort.toggle}>Position Title</SortHead>
+              <SortHead sortKey="department" sort={reqSort.sort} onSort={reqSort.toggle}>Department</SortHead>
+              <SortHead sortKey="count" sort={reqSort.sort} onSort={reqSort.toggle} align="center">Slots Requested</SortHead>
+              <SortHead sortKey="urgency" sort={reqSort.sort} onSort={reqSort.toggle}>Urgency</SortHead>
+              <SortHead sortKey="status" sort={reqSort.sort} onSort={reqSort.toggle}>Status</SortHead>
+              <SortHead sortKey="requestedAt" sort={reqSort.sort} onSort={reqSort.toggle}>Date Requested</SortHead>
               <TableHead className="text-right pr-6">Actions</TableHead>
             </TableRow>
           </TableHeader>

@@ -7,12 +7,15 @@ use App\Models\Position;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Modules\CoreHCM\Http\Controllers\Concerns\AppliesTableQuery;
 use Modules\CoreHCM\Http\Requests\StorePositionRequest;
 use Modules\CoreHCM\Http\Requests\UpdatePositionRequest;
 use Modules\CoreHCM\Http\Resources\PositionResource;
 
 class PositionController extends Controller
 {
+    use AppliesTableQuery;
+
     public function index(Request $request): JsonResponse
     {
         $query = Position::query()->with(['department', 'salaryGrade']);
@@ -30,7 +33,26 @@ class PositionController extends Controller
             $query->where('department_id', $request->integer('department_id'));
         }
 
-        $positions = $query->orderBy('title')->paginate($request->integer('per_page', 25));
+        if ($request->filled('level')) {
+            $query->where('level', $request->string('level'));
+        }
+
+        $this->applyFilters($request, $query, [
+            'department_id' => 'department_id',
+            'level' => 'level',
+            'salary_grade_id' => 'salary_grade_id',
+        ]);
+
+        $this->applySort($request, $query, [
+            'position_code' => 'position_code',
+            'title' => 'title',
+            'level' => 'level',
+            'headcount' => 'headcount',
+            'filled_count' => 'filled_count',
+            'created_at' => 'created_at',
+        ], ['title', 'asc']);
+
+        $positions = $query->paginate($request->integer('per_page', 25));
 
         return response()->json([
             'data' => PositionResource::collection($positions),

@@ -14,7 +14,7 @@ import suite2b from "@/assets/o-suite(2)b.png";
 import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+import { FloatingInput } from "@/components/ui/floating-input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
@@ -133,6 +133,26 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0);
   const [ready, setReady] = useState(false);
+  const [sessionMinutes, setSessionMinutes] = useState<number | null>(null);
+  const [rolePolicies, setRolePolicies] = useState<Record<
+    string,
+    { token_minutes: number; idle_minutes: number }
+  > | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    authApi
+      .sessionPolicy()
+      .then((p) => {
+        if (cancelled) return;
+        setSessionMinutes(p.token_expiration_minutes);
+        if (p.roles) setRolePolicies(p.roles);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -322,42 +342,37 @@ function LoginPage() {
 
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="space-y-1.5">
-              <Label htmlFor="email">Work email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@email.com"
-                  className="pl-9"
-                  autoComplete="username"
-                />
-              </div>
+              <FloatingInput
+                id="email"
+                type="email"
+                label="Work email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                leftIcon={<Mail className="h-4 w-4" />}
+                autoComplete="username"
+              />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type={show ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="px-9"
-                  autoComplete="current-password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShow((v) => !v)}
-                  aria-label={show ? "Hide password" : "Show password"}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
+              <FloatingInput
+                id="password"
+                type={show ? "text" : "password"}
+                label="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                leftIcon={<Lock className="h-4 w-4" />}
+                autoComplete="current-password"
+                rightSlot={
+                  <button
+                    type="button"
+                    onClick={() => setShow((v) => !v)}
+                    aria-label={show ? "Hide password" : "Show password"}
+                    className="text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                }
+              />
             </div>
 
             {error && (
@@ -385,6 +400,24 @@ function LoginPage() {
             <Button type="submit" size="lg" className="w-full" disabled={submitting}>
               {submitting ? "Signing in…" : "Sign in"}
             </Button>
+            {rolePolicies ? (
+              <p className="text-center text-xs text-muted-foreground">
+                Sessions last {rolePolicies["superadmin"]?.token_minutes ?? 240} min
+                (Super Admin) · {rolePolicies["admin"]?.token_minutes ?? 480} min
+                (Admin) · {rolePolicies["employee"]?.token_minutes ?? 720} min
+                (Employee). Idle auto-logout applies.
+              </p>
+            ) : (
+              sessionMinutes != null && (
+                <p className="text-center text-xs text-muted-foreground">
+                  Sessions last up to {sessionMinutes} minutes
+                  {sessionMinutes >= 60
+                    ? ` (${Math.round(sessionMinutes / 60)} hours)`
+                    : ""}
+                  . You'll be signed out automatically afterwards.
+                </p>
+              )
+            )}
           </form>
 
           <p className="mt-7 text-center text-sm text-muted-foreground">

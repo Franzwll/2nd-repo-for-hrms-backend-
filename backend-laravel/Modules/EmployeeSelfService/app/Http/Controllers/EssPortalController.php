@@ -1238,7 +1238,7 @@ class EssPortalController extends Controller
             return response()->json(['message' => 'No linked employee record found.'], 404);
         }
 
-        $rows = \App\Models\PromotionRequest::with(['requestedPosition'])
+        $rows = \App\Models\PromotionRequest::with(['requestedPosition', 'hr3Recommendation'])
             ->where('employee_id', $employee->employee_id)
             ->orderByDesc('created_at')
             ->get();

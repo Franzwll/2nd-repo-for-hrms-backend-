@@ -50,7 +50,7 @@ return [
     |
     */
 
-    'expiration' => (int) env('SANCTUM_TOKEN_EXPIRATION', 480), // 8 hours (in minutes)
+    'expiration' => (int) env('SANCTUM_TOKEN_EXPIRATION', 720), // ceiling = longest role (Employee 12h); per-role expires_at is set at login via RoleSessionPolicy
 
     /*
     |--------------------------------------------------------------------------

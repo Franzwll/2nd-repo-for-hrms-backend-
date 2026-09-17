@@ -15,6 +15,7 @@ use App\Observers\ActivityObserver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Modules\CoreHCM\Http\Controllers\Concerns\AppliesTableQuery;
 use Modules\CoreHCM\Http\Requests\EmployeeLifecycleRequest;
 use Modules\CoreHCM\Http\Requests\StoreEmployeeRequest;
 use Modules\CoreHCM\Http\Requests\UpdateEmployeeRequest;
@@ -22,6 +23,8 @@ use Modules\CoreHCM\Http\Resources\EmployeeResource;
 
 class EmployeeController extends Controller
 {
+    use AppliesTableQuery;
+
     public function index(Request $request): JsonResponse
     {
         $query = Employee::query()->with(['department', 'position']);
@@ -53,7 +56,25 @@ class EmployeeController extends Controller
             $query->where('employment_type', $request->string('employment_type'));
         }
 
-        $employees = $query->orderBy('employee_code')->paginate($request->integer('per_page', 25));
+        $this->applyFilters($request, $query, [
+            'department_id' => 'department_id',
+            'position_id' => 'position_id',
+            'status' => 'status',
+            'employment_type' => 'employment_type',
+        ]);
+
+        $this->applySort($request, $query, [
+            'employee_code' => 'employee_code',
+            'first_name' => 'first_name',
+            'last_name' => 'last_name',
+            'email' => 'email',
+            'status' => 'status',
+            'employment_type' => 'employment_type',
+            'date_hired' => 'date_hired',
+            'created_at' => 'created_at',
+        ], ['employee_code', 'asc']);
+
+        $employees = $query->paginate($request->integer('per_page', 25));
 
         return response()->json([
             'data' => EmployeeResource::collection($employees),

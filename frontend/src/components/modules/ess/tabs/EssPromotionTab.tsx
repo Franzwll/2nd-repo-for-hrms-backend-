@@ -55,7 +55,9 @@ export function EssPromotionTab() {
     load();
   }, []);
 
-  const pending = rows.find((r) => r.status === "Pending" || r.status === "Returned");
+  const pending = rows.find((r) =>
+    ["Pending", "Returned", "Under HR3 Review", "Pending HR Action"].includes(r.status),
+  );
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,8 +102,13 @@ export function EssPromotionTab() {
           {pending && (
             <p className="mb-4 rounded-md border border-gold/40 bg-gold/10 p-3 text-xs">
               You have a {pending.status.toLowerCase()} request filed on{" "}
-              {new Date(pending.created_at).toLocaleDateString()} — HR will review it in Core
-              HCM. You can file a new one after it is decided.
+              {new Date(pending.created_at).toLocaleDateString()} —{" "}
+              {pending.status === "Under HR3 Review"
+                ? "HR forwarded it to performance evaluation (HR3)."
+                : pending.status === "Pending HR Action"
+                  ? "HR3 returned an evaluation — HR is making the final decision."
+                  : "HR will review it in Core HCM."}{" "}
+              You can file a new one after it is decided.
             </p>
           )}
           <form onSubmit={submit} className="space-y-4">
@@ -158,6 +165,9 @@ export function EssPromotionTab() {
                     </p>
                     <p className="text-muted-foreground">
                       Filed {new Date(r.created_at).toLocaleDateString()}
+                      {r.hr3_recommendation
+                        ? ` · HR3: ${r.hr3_recommendation.evaluation_score}% (${r.hr3_recommendation.recommendation_type})`
+                        : ""}
                       {r.review_notes ? ` · HR: ${r.review_notes}` : ""}
                     </p>
                   </div>
