@@ -15,29 +15,43 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('promotion_requests', function (Blueprint $table) {
-            $table->unsignedBigInteger('hr3_recommendation_id')->nullable()->after('requested_salary_grade_id');
-            $table->unsignedBigInteger('forwarded_to_hr3_by')->nullable()->after('reviewed_by');
-            $table->timestamp('forwarded_to_hr3_at')->nullable()->after('forwarded_to_hr3_by');
-
-            $table->index('hr3_recommendation_id', 'idx_promo_req_hr3_rec');
+            if (! Schema::hasColumn('promotion_requests', 'hr3_recommendation_id')) {
+                $table->unsignedBigInteger('hr3_recommendation_id')->nullable()->after('requested_salary_grade_id');
+                $table->index('hr3_recommendation_id', 'idx_promo_req_hr3_rec');
+            }
+            if (! Schema::hasColumn('promotion_requests', 'forwarded_to_hr3_by')) {
+                $table->unsignedBigInteger('forwarded_to_hr3_by')->nullable()->after('reviewed_by');
+            }
+            if (! Schema::hasColumn('promotion_requests', 'forwarded_to_hr3_at')) {
+                $table->timestamp('forwarded_to_hr3_at')->nullable()->after('forwarded_to_hr3_by');
+            }
         });
 
         // Broaden the status check to the new loop states (additive only).
-        // MySQL has no DROP CONSTRAINT IF EXISTS for CHECKs on all versions,
-        // so drop by name and re-add.
+        // MariaDB uses DROP CONSTRAINT; MySQL 8.0.16+ supports DROP CHECK / DROP CONSTRAINT.
         try {
-            DB::statement('ALTER TABLE `promotion_requests` DROP CHECK `chk_promo_req_status`');
+            DB::statement('ALTER TABLE `promotion_requests` DROP CONSTRAINT `chk_promo_req_status`');
         } catch (\Throwable $e) {
-            // Constraint may not exist on some installs — continue.
+            try {
+                DB::statement('ALTER TABLE `promotion_requests` DROP CHECK `chk_promo_req_status`');
+            } catch (\Throwable $e2) {
+                // Constraint may not exist on some installs — continue.
+            }
         }
-        DB::statement("ALTER TABLE `promotion_requests` ADD CONSTRAINT `chk_promo_req_status` CHECK (`status` IN ('Pending','Under HR3 Review','Pending HR Action','Approved','Rejected','Returned','Terminated','Deferred'))");
+        try {
+            DB::statement("ALTER TABLE `promotion_requests` ADD CONSTRAINT `chk_promo_req_status` CHECK (`status` IN ('Pending','Under HR3 Review','Pending HR Action','Approved','Rejected','Returned','Terminated','Deferred'))");
+        } catch (\Throwable $e) {
+            // If constraint could not be added, continue without crashing.
+        }
 
         Schema::table('hr3_recommendations', function (Blueprint $table) {
-            $table->unsignedBigInteger('promotion_request_id')->nullable()->after('employee_id');
+            if (! Schema::hasColumn('hr3_recommendations', 'promotion_request_id')) {
+                $table->unsignedBigInteger('promotion_request_id')->nullable()->after('employee_id');
 
-            $table->index('promotion_request_id', 'idx_hr3_rec_promo_req');
-            $table->foreign('promotion_request_id', 'fk_hr3_rec_promo_req')
-                ->references('promotion_request_id')->on('promotion_requests')->nullOnDelete();
+                $table->index('promotion_request_id', 'idx_hr3_rec_promo_req');
+                $table->foreign('promotion_request_id', 'fk_hr3_rec_promo_req')
+                    ->references('promotion_request_id')->on('promotion_requests')->nullOnDelete();
+            }
         });
     }
 
@@ -58,10 +72,17 @@ return new class extends Migration
         });
 
         try {
-            DB::statement('ALTER TABLE `promotion_requests` DROP CHECK `chk_promo_req_status`');
+            DB::statement('ALTER TABLE `promotion_requests` DROP CONSTRAINT `chk_promo_req_status`');
+        } catch (\Throwable $e) {
+            try {
+                DB::statement('ALTER TABLE `promotion_requests` DROP CHECK `chk_promo_req_status`');
+            } catch (\Throwable $e2) {
+            }
+        }
+        try {
+            DB::statement("ALTER TABLE `promotion_requests` ADD CONSTRAINT `chk_promo_req_status` CHECK (`status` IN ('Pending','Approved','Rejected','Returned'))");
         } catch (\Throwable $e) {
         }
-        DB::statement("ALTER TABLE `promotion_requests` ADD CONSTRAINT `chk_promo_req_status` CHECK (`status` IN ('Pending','Approved','Rejected','Returned'))");
 
         Schema::table('promotion_requests', function (Blueprint $table) {
             try {
