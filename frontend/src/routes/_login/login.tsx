@@ -12,6 +12,7 @@ import suite1b from "@/assets/o-suite(1)b.png";
 import suite2b from "@/assets/o-suite(2)b.png";
 
 import { Logo } from "@/components/brand/Logo";
+import { LoginFooter } from "@/components/brand/LoginFooter";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FloatingInput } from "@/components/ui/floating-input";
@@ -412,6 +413,8 @@ function LoginPage() {
               Browse job openings
             </Link>
           </p>
+
+          <LoginFooter />
         </div>
       </div>
     </div>
