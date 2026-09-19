@@ -42,4 +42,8 @@ return [
         'max_tokens' => (int) env('GEMINI_MAX_TOKENS', 2048),
     ],
 
+    'turnstile' => [
+        'secret' => env('TURNSTILE_SECRET_KEY'),
+    ],
+
 ];

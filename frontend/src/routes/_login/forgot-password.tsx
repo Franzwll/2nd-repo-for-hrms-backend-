@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
 import { FloatingInput } from "@/components/ui/floating-input";
+import { Turnstile, TURNSTILE_SITE_KEY } from "@/components/ui/turnstile";
 
 import { authApi } from "@/lib/api";
 
@@ -27,20 +28,27 @@ function ForgotPasswordPage() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.includes("@")) return setError("Enter a valid work email address.");
+    if (TURNSTILE_SITE_KEY && !captchaToken) {
+      return setError("Please complete the security check first.");
+    }
 
     setSubmitting(true);
     setError("");
     try {
-      await authApi.forgotPassword(email.trim());
+      await authApi.forgotPassword(email.trim(), captchaToken || undefined);
       setSent(true);
       toast.success("Password reset link sent.");
     } catch (err: any) {
       const message = err?.message || "Unable to send the reset link. Please try again.";
       setError(message);
+      setCaptchaToken("");
+      setCaptchaReset((n) => n + 1);
     } finally {
       setSubmitting(false);
     }
@@ -101,6 +109,14 @@ function ForgotPasswordPage() {
                   {error}
                 </p>
               )}
+
+              <div className="flex justify-center">
+                <Turnstile
+                  onVerify={setCaptchaToken}
+                  onExpire={() => setCaptchaToken("")}
+                  resetKey={captchaReset}
+                />
+              </div>
 
               <Button type="submit" size="lg" className="w-full" disabled={submitting}>
                 {submitting ? "Sending…" : "Send reset link"}

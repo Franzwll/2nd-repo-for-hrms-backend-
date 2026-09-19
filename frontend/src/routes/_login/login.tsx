@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FloatingInput } from "@/components/ui/floating-input";
 import { Label } from "@/components/ui/label";
+import { Turnstile, TURNSTILE_SITE_KEY } from "@/components/ui/turnstile";
 import { cn } from "@/lib/utils";
 
 import { authApi } from "@/lib/api";
@@ -27,6 +28,7 @@ export function persistLoginContext(ctx: {
   login_token: string;
   email: string;
   expires_in: number;
+  mfa_method?: "email_otp" | "totp";
 }) {
   try {
     sessionStorage.setItem(LOGIN_CONTEXT_KEY, JSON.stringify({ ...ctx, issued_at: Date.now() }));
@@ -39,6 +41,7 @@ export function getLoginContext(): {
   login_token: string;
   email: string;
   expires_in: number;
+  mfa_method?: "email_otp" | "totp";
 } | null {
   try {
     const raw = sessionStorage.getItem(LOGIN_CONTEXT_KEY);
@@ -47,6 +50,7 @@ export function getLoginContext(): {
       login_token: string;
       email: string;
       expires_in: number;
+      mfa_method?: "email_otp" | "totp";
       issued_at: number;
     };
     if (Date.now() - ctx.issued_at > ctx.expires_in * 1000) {
@@ -133,26 +137,8 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0);
   const [ready, setReady] = useState(false);
-  const [sessionMinutes, setSessionMinutes] = useState<number | null>(null);
-  const [rolePolicies, setRolePolicies] = useState<Record<
-    string,
-    { token_minutes: number; idle_minutes: number }
-  > | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    authApi
-      .sessionPolicy()
-      .then((p) => {
-        if (cancelled) return;
-        setSessionMinutes(p.token_expiration_minutes);
-        if (p.roles) setRolePolicies(p.roles);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -184,11 +170,14 @@ function LoginPage() {
     e.preventDefault();
     if (!email.includes("@")) return setError("Enter a valid work email address.");
     if (password.length < 6) return setError("Password must be at least 6 characters.");
+    if (TURNSTILE_SITE_KEY && !captchaToken) {
+      return setError("Please complete the security check first.");
+    }
 
     setSubmitting(true);
     setError("");
     try {
-      const res = await authApi.login(email.trim(), password);
+      const res = await authApi.login(email.trim(), password, captchaToken || undefined);
 
       // OTP disabled for this role — the server signed us straight in.
       if (res.otp_required === false && res.token && res.user) {
@@ -210,14 +199,21 @@ function LoginPage() {
         login_token: res.login_token,
         email: email.trim(),
         expires_in: res.expires_in,
+        mfa_method: res.mfa_method ?? "email_otp",
       });
-      toast.success("One-time password sent to your work email.");
+      toast.success(
+        res.mfa_method === "totp"
+          ? "Enter the code from your authenticator app."
+          : "One-time password sent to your work email.",
+      );
       navigate({ to: "/otp" });
     } catch (err: any) {
       const message =
         err?.message ||
         (err?.status === 401 ? "Invalid credentials." : "Unable to sign in. Please try again.");
       setError(message);
+      setCaptchaToken("");
+      setCaptchaReset((n) => n + 1);
       if (err?.status === 401) toast.error("Invalid credentials.");
       if (err?.status === 403) toast.error(message);
     } finally {
@@ -400,24 +396,14 @@ function LoginPage() {
             <Button type="submit" size="lg" className="w-full" disabled={submitting}>
               {submitting ? "Signing in…" : "Sign in"}
             </Button>
-            {rolePolicies ? (
-              <p className="text-center text-xs text-muted-foreground">
-                Sessions last {rolePolicies["superadmin"]?.token_minutes ?? 240} min
-                (Super Admin) · {rolePolicies["admin"]?.token_minutes ?? 480} min
-                (Admin) · {rolePolicies["employee"]?.token_minutes ?? 720} min
-                (Employee). Idle auto-logout applies.
-              </p>
-            ) : (
-              sessionMinutes != null && (
-                <p className="text-center text-xs text-muted-foreground">
-                  Sessions last up to {sessionMinutes} minutes
-                  {sessionMinutes >= 60
-                    ? ` (${Math.round(sessionMinutes / 60)} hours)`
-                    : ""}
-                  . You'll be signed out automatically afterwards.
-                </p>
-              )
-            )}
+
+            <div className="flex justify-center">
+              <Turnstile
+                onVerify={setCaptchaToken}
+                onExpire={() => setCaptchaToken("")}
+                resetKey={captchaReset}
+              />
+            </div>
           </form>
 
           <p className="mt-7 text-center text-sm text-muted-foreground">

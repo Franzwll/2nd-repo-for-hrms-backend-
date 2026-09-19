@@ -37,6 +37,9 @@ class OtpService
                 'code_hash' => hash('sha256', $code),
                 'attempts' => 0,
                 'expires_at' => now()->addSeconds(self::TTL_SECONDS)->timestamp,
+                // login() already passed the Turnstile check to get here,
+                // so downstream verify/resend skip their own challenge.
+                'captcha_passed' => true,
             ],
             now()->addSeconds(self::TTL_SECONDS)
         );
@@ -48,6 +51,17 @@ class OtpService
             'expires_in' => self::TTL_SECONDS,
             'debug_otp' => $code,
         ];
+    }
+
+    /**
+     * Whether this challenge's login already cleared the captcha
+     * (lets verify/resend skip asking twice in one journey).
+     */
+    public static function challengePassedCaptcha(string $token): bool
+    {
+        $payload = Cache::get('auth.otp.' . $token);
+
+        return is_array($payload) && ($payload['captcha_passed'] ?? false) === true;
     }
 
     public function resend(string $token): array

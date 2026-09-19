@@ -6,24 +6,32 @@ use App\Http\Controllers\Controller;
 use App\Models\SystemUser;
 use App\Models\UserLoginActivity;
 use App\Services\AuditLogger;
+use App\Services\LoginService;
 use App\Services\Notifier;
 use App\Services\OtpService;
 use App\Services\RoleSessionPolicy;
+use App\Services\TotpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Modules\Auth\Http\Requests\LoginRequest;
 use Modules\Auth\Http\Requests\OtpVerifyRequest;
 use Modules\Auth\Http\Resources\UserResource;
-
+use Modules\Auth\Http\Controllers\Concerns\VerifiesCaptcha;
 class AuthController extends Controller
 {
+    use VerifiesCaptcha;
+
     public function __construct(private readonly OtpService $otpService)
     {
     }
 
     public function login(LoginRequest $request): JsonResponse
     {
+        if ($failed = $this->captchaFailed($request)) {
+            return $failed;
+        }
+
         $login = $request->string('email');
         $user = SystemUser::where('email', $login)->orWhere('username', $login)->first();
 
@@ -55,6 +63,34 @@ class AuthController extends Controller
             return response()->json(['message' => 'Your account is not active. Contact an administrator.'], 403);
         }
 
+        // Authenticator-app MFA wins over the email OTP toggle: a confirmed
+        // TOTP enrollment always requires the 30-second app code.
+        $user->loadMissing('role');
+        if ($user->usesTotp()) {
+            $issued = app(TotpService::class)->issueChallenge($user);
+
+            AuditLogger::log(
+                'MFA challenge issued',
+                'Authentication',
+                'Info',
+                'user',
+                $user->username,
+                'Authenticator-app code requested at login.',
+                $user
+            );
+
+            return response()->json([
+                'otp_required' => true,
+                'mfa_method' => 'totp',
+                'message' => 'Enter the 6-digit code from your authenticator app.',
+                'login_token' => $issued['login_token'],
+                'expires_in' => $issued['expires_in'],
+                'totp_enrollment_required' => false,
+            ]);
+        }
+
+        $totpRequired = $user->isSuperAdmin();
+
         // OTP can be switched off by each user for their own account
         // (system_users.otp_enabled, toggled in portal Settings).
         // When disabled, sign the user straight in — no one-time password step.
@@ -73,6 +109,8 @@ class AuthController extends Controller
 
             return response()->json([
                 'otp_required' => false,
+                'mfa_method' => 'email_otp',
+                'totp_enrollment_required' => $totpRequired,
                 ...$session,
             ]);
         }
@@ -91,6 +129,8 @@ class AuthController extends Controller
 
         return response()->json([
             'otp_required' => true,
+            'mfa_method' => 'email_otp',
+            'totp_enrollment_required' => $totpRequired,
             ...$this->otpResponse(
                 'One-time password sent to your work email.',
                 $issued
@@ -100,6 +140,14 @@ class AuthController extends Controller
 
     public function verifyOtp(OtpVerifyRequest $request): JsonResponse
     {
+        // Single challenge per journey: login() already cleared Turnstile
+        // to mint this token, so only unstamped tokens face a new check.
+        if (! OtpService::challengePassedCaptcha($request->string('login_token')->toString())) {
+            if ($failed = $this->captchaFailed($request)) {
+                return $failed;
+            }
+        }
+
         $user = $this->otpService->verify(
             $request->string('login_token'),
             $request->string('otp')
@@ -122,12 +170,8 @@ class AuthController extends Controller
             return response()->json(['message' => 'Your account is not active.'], 403);
         }
 
-        $policy = RoleSessionPolicy::forRole($user->loadMissing('role')->role?->role_name);
-        $token = $user->createToken(
-            'auth-token',
-            ['*'],
-            now()->addMinutes($policy['token_minutes'])
-        )->plainTextToken;
+        $issued = LoginService::issueToken($user);
+        $token = $issued['token'];
 
         $previousIp = $user->last_login_ip;
         $previousLogin = $user->last_login_at;
@@ -162,8 +206,8 @@ class AuthController extends Controller
             'token' => $token,
             'token_type' => 'Bearer',
             'user' => new UserResource($user),
-            'expires_in_minutes' => $policy['token_minutes'],
-            'idle_timeout_minutes' => $policy['idle_minutes'],
+            'expires_in_minutes' => $issued['expires_in_minutes'],
+            'idle_timeout_minutes' => $issued['idle_timeout_minutes'],
         ];
 
         AuditLogger::log(
@@ -181,6 +225,12 @@ class AuthController extends Controller
 
     public function resendOtp(Request $request): JsonResponse
     {
+        if (! OtpService::challengePassedCaptcha($request->string('login_token')->toString())) {
+            if ($failed = $this->captchaFailed($request)) {
+                return $failed;
+            }
+        }
+
         $request->validate(['login_token' => ['required', 'string']]);
 
         $result = $this->otpService->resend($request->string('login_token'));
@@ -254,34 +304,7 @@ class AuthController extends Controller
      */
     private function completeLogin(Request $request, SystemUser $user): array
     {
-        $policy = RoleSessionPolicy::forRole($user->loadMissing('role')->role?->role_name);
-        $token = $user->createToken(
-            'auth-token',
-            ['*'],
-            now()->addMinutes($policy['token_minutes'])
-        )->plainTextToken;
-
-        $user->forceFill([
-            'last_login_at' => now(),
-            'last_login_ip' => $request->ip(),
-        ])->save();
-
-        UserLoginActivity::create([
-            'system_user_id' => $user->system_user_id,
-            'login_at' => now(),
-            'ip_address' => $request->ip(),
-            'device_info' => $this->deviceInfo($request),
-            'user_agent' => $request->userAgent(),
-            'status' => 'success',
-        ]);
-
-        return [
-            'token' => $token,
-            'token_type' => 'Bearer',
-            'user' => new UserResource($user),
-            'expires_in_minutes' => $policy['token_minutes'],
-            'idle_timeout_minutes' => $policy['idle_minutes'],
-        ];
+        return LoginService::completeLogin($request, $user);
     }
 
     private function debugOtp(string $code): array

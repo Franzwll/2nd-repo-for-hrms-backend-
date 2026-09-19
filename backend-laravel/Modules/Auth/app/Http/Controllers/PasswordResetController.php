@@ -12,15 +12,22 @@ use Modules\Auth\Http\Requests\ForgotPasswordRequest;
 use Modules\Auth\Http\Requests\ResetPasswordRequest;
 use Modules\Auth\Mail\SendPasswordResetMail;
 use Modules\Auth\Services\PasswordResetService;
+use Modules\Auth\Http\Controllers\Concerns\VerifiesCaptcha;
 
 class PasswordResetController extends Controller
 {
+    use VerifiesCaptcha;
+
     public function __construct(private readonly PasswordResetService $service)
     {
     }
 
     public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
     {
+        if ($failed = $this->captchaFailed($request)) {
+            return $failed;
+        }
+
         $email = $request->string('email')->toString();
         $user = SystemUser::where('email', $email)->first();
 
