@@ -949,6 +949,11 @@ export const authApi = {
     }),
   me: () => request<{ user: ApiVerifyResponse["user"] }>("/auth/me"),
   logout: () => request<{ message: string }>("/auth/logout", { method: "POST" }),
+  confirmPassword: (password: string) =>
+    request<{ ok: boolean }>("/auth/confirm-password", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
   sessionPolicy: () =>
     request<{
       token_expiration_minutes: number;

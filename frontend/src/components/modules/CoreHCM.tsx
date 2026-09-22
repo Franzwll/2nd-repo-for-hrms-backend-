@@ -1584,6 +1584,7 @@ function EmployeeListManager({
           report={() => ({
             title: "Employee Roster Report",
             subtitle: `${filteredEmployees.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+            sensitive: true,
             columns: [
               { header: "Employee ID", key: "id" },
               { header: "Name", key: "name" },
@@ -2730,6 +2731,7 @@ function PromotionRequestsManager() {
           report={() => ({
             title: "Promotion Requests Report",
             subtitle: `${filtered.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+            sensitive: true,
             columns: [
               { header: "Employee", key: "employee" },
               { header: "Code", key: "code" },
@@ -3197,6 +3199,7 @@ function LifecycleLogsViewer() {
         report={() => ({
           title: "Lifecycle Logs Report",
           subtitle: `${filteredLogs.length} record(s) · exported ${new Date().toISOString().slice(0, 10)}`,
+          sensitive: true,
           columns: [
             { header: "Log ID", key: "id" },
             { header: "Timestamp", key: "timestamp" },

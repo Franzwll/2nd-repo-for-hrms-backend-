@@ -14,7 +14,6 @@ import suite2b from "@/assets/o-suite(2)b.png";
 import { Logo } from "@/components/brand/Logo";
 import { LoginFooter } from "@/components/brand/LoginFooter";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { FloatingInput } from "@/components/ui/floating-input";
 import { Label } from "@/components/ui/label";
 import { Turnstile, TURNSTILE_SITE_KEY } from "@/components/ui/turnstile";
@@ -378,13 +377,7 @@ function LoginPage() {
               </p>
             )}
 
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Checkbox id="remember" defaultChecked />
-                <Label htmlFor="remember" className="text-sm font-normal text-muted-foreground">
-                  Keep me signed in
-                </Label>
-              </div>
+            <div className="flex items-center justify-end gap-3">
               <button
                 type="button"
                 className="text-sm text-muted-foreground transition-colors hover:text-primary hover:underline"

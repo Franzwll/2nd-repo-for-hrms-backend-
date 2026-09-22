@@ -35,7 +35,29 @@ class AuthController extends Controller
         $login = $request->string('email');
         $user = SystemUser::where('email', $login)->orWhere('username', $login)->first();
 
+        if ($user && $user->isLockedOut()) {
+            $seconds = now()->diffInSeconds($user->locked_until);
+
+            AuditLogger::log(
+                'Blocked login attempt',
+                'Authentication',
+                'Warning',
+                'user',
+                $user->username,
+                'Login blocked: account temporarily locked after repeated failures.',
+                $user
+            );
+
+            return response()->json([
+                'message' => 'Too many failed attempts. Try again in ' . max(1, (int) ceil($seconds / 60)) . ' minute(s).',
+            ], 423);
+        }
+
         if (!$user || !Hash::check($request->string('password'), $user->password_hash)) {
+            if ($user) {
+                $this->registerFailedAttempt($user);
+            }
+
             AuditLogger::log(
                 'Failed login attempt',
                 'Authentication',
@@ -48,6 +70,8 @@ class AuthController extends Controller
 
             return response()->json(['message' => 'Invalid credentials.'], 401);
         }
+
+        $user->forceFill(['failed_attempts' => 0, 'locked_until' => null])->save();
 
         if ($user->status !== 'Active') {
             AuditLogger::log(
@@ -269,6 +293,46 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * Re-verify the account password for a sensitive action
+     * (confidential report export/print). Never logs the password.
+     */
+    public function confirmPassword(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'password' => ['required', 'string'],
+        ]);
+
+        /** @var SystemUser $user */
+        $user = $request->user();
+
+        if (! Hash::check($data['password'], $user->password_hash)) {
+            AuditLogger::log(
+                'Failed sensitive-action confirmation',
+                'Authentication',
+                'Warning',
+                'user',
+                $user->username,
+                'Wrong password supplied for a sensitive-action confirmation.',
+                $user
+            );
+
+            return response()->json(['message' => 'Incorrect password.'], 401);
+        }
+
+        AuditLogger::log(
+            'Sensitive action confirmed',
+            'Authentication',
+            'Info',
+            'user',
+            $user->username,
+            'Password re-confirmed for a sensitive action (export/print).',
+            $user
+        );
+
+        return response()->json(['ok' => true]);
+    }
+
     public function logout(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -305,6 +369,36 @@ class AuthController extends Controller
     private function completeLogin(Request $request, SystemUser $user): array
     {
         return LoginService::completeLogin($request, $user);
+    }
+
+    /**
+     * Track wrong-password attempts; lock the account for 15 minutes
+     * after 5 consecutive failures.
+     */
+    private function registerFailedAttempt(SystemUser $user): void
+    {
+        $attempts = (int) ($user->failed_attempts ?? 0) + 1;
+
+        $user->forceFill(['failed_attempts' => $attempts]);
+
+        if ($attempts >= 5) {
+            $user->forceFill([
+                'failed_attempts' => 0,
+                'locked_until' => now()->addMinutes(15),
+            ]);
+
+            AuditLogger::log(
+                'Account locked',
+                'Authentication',
+                'Warning',
+                'user',
+                $user->username,
+                'Account locked for 15 minutes after 5 failed login attempts.',
+                $user
+            );
+        }
+
+        $user->save();
     }
 
     private function debugOtp(string $code): array

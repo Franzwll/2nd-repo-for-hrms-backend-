@@ -8,7 +8,8 @@ use App\Http\Controllers\NotificationController;
 
 Route::prefix('v1')->group(function () {
     Route::get('auth/session-policy', [AuthController::class, 'sessionPolicy']);
-    Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
+    // 10/min abuse rail; per-account lockout (5 strikes → 15 min) is the real control.
+    Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
     Route::post('auth/otp/verify', [AuthController::class, 'verifyOtp'])->middleware('throttle:10,1');
     Route::post('auth/otp/resend', [AuthController::class, 'resendOtp'])->middleware('throttle:3,1');
     Route::post('auth/mfa/verify', [MfaController::class, 'verify'])->middleware('throttle:5,1');
@@ -19,6 +20,7 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('auth/logout', [AuthController::class, 'logout']);
         Route::get('auth/me', [AuthController::class, 'me']);
+        Route::post('auth/confirm-password', [AuthController::class, 'confirmPassword'])->middleware('throttle:5,1');
         Route::get('auth/mfa/status', [MfaController::class, 'status']);
         Route::post('auth/mfa/totp/setup', [MfaController::class, 'setup'])->middleware('throttle:10,1');
         Route::post('auth/mfa/totp/confirm', [MfaController::class, 'confirm'])->middleware('throttle:5,1');

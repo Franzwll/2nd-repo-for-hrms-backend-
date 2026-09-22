@@ -105,6 +105,7 @@ import {
   type ApiNewHire,
 } from "@/lib/api";
 import { exportReport, type ReportFormat } from "@/lib/report-export";
+import { usePasswordGate } from "@/components/ui/report-menu";
 import { getUser } from "@/lib/auth";
 import {
   isValidEmail,
@@ -478,6 +479,7 @@ export function NewHireOnboarding({ role }: { role: "superadmin" | "admin" | "em
 
 function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const isSuperAdmin = role === "superadmin";
+  const { gateSensitive, gateDialog } = usePasswordGate();
   const hires = useHires();
   const hiresLoading = useHiresLoading();
   const setHires = (updater: (prev: NewHire[]) => NewHire[]) => hireStore.setHires(updater);
@@ -1044,10 +1046,10 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       progress: `${progress(h)}%`,
       startDate: h.startDate,
     }));
-    exportReport(
-      {
-        title: "New Hire Onboarding Report",
-        subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })}`,
+    const payload = {
+      title: "New Hire Onboarding Report",
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })}`,
+      sensitive: true,
         columns: [
           { header: "New Hire", key: "name", width: "17%" },
           { header: "Position", key: "position", width: "17%" },
@@ -1069,15 +1071,16 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
             value: hires.filter((h) => h.stage === "Probationary").length,
           },
         ],
-      },
-      format,
-    );
-    toast.success(`Onboarding report exported as ${format.toUpperCase()}`);
+    };
+    gateSensitive(payload, () => {
+      exportReport(payload, format);
+      toast.success(`Onboarding report exported as ${format.toUpperCase()}`);
+    });
   };
 
   /**
-   * Automatic regularization by operation of law (Art. 296, Labor Code; DOLE
-   * 6-month rule). When a probationary hire is allowed to keep working past
+    * Automatic regularization by operation of law (Art. 296, Labor Code; DOLE
+    * 6-month rule). When a probationary hire is allowed to keep working past
    * the maximum probationary period without a completed evaluation, the law
    * deems them a regular employee — no HR action required.
    *
@@ -1283,6 +1286,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
 
   return (
     <div>
+      {gateDialog}
       <PageHeader
         eyebrow={role === "superadmin" ? "Super Admin · Recruitment" : "Admin · Recruitment"}
         title="New Hire Onboarding"
@@ -1303,6 +1307,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleExportOnboardingReport("excel")}>
                 <Download className="mr-2 h-4 w-4" /> Export as Excel
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportOnboardingReport("csv")}>
+                <Download className="mr-2 h-4 w-4" /> Export as CSV
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

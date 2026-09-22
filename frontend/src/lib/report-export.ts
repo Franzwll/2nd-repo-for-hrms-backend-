@@ -17,7 +17,7 @@
 import oxfordMarkMaroon from "@/assets/oxford-mark-maroon.png";
 import { getUser } from "@/lib/auth";
 
-export type ReportFormat = "pdf" | "docx" | "excel";
+export type ReportFormat = "pdf" | "docx" | "excel" | "csv";
 
 export interface ReportColumn {
   header: string;
@@ -31,6 +31,11 @@ export interface ReportData {
   columns: ReportColumn[];
   rows: Record<string, any>[];
   summary?: { label: string; value: string | number }[];
+  /**
+   * Confidential reports (payroll, 201 files, applicant PII…).
+   * ReportMenu requires a password confirmation before exporting these.
+   */
+  sensitive?: boolean;
 }
 
 /** Brand identity shared by every exported document. */
@@ -124,9 +129,55 @@ export function exportReport(report: ReportData, format: ReportFormat): void {
     exportToExcel(report, generatedAt, refNo, preparedBy);
   } else if (format === "docx") {
     exportToWord(report, generatedAt, refNo, preparedBy, preparedByTitle, preparedByDept);
+  } else if (format === "csv") {
+    exportToCsv(report);
   } else if (format === "pdf") {
     exportToPrintablePdf(report, generatedAt, refNo, preparedBy, preparedByTitle, preparedByDept);
   }
+}
+
+/**
+ * Open the branded printable report and raise the system print dialog,
+ * so the user can print to paper or to a PDF printer.
+ */
+export function printReport(report: ReportData): void {
+  const now = new Date();
+  const generatedAt = `${formalDate(now)}, ${formalTime(now)}`;
+  const refNo = buildReference(report);
+  const user = getUser();
+  const preparedBy = (user?.full_name as string | undefined) || "System Administrator";
+  const preparedByTitle = (user?.role as string | undefined) || "Human Resources";
+  const preparedByDept =
+    (user?.department_name as string | undefined) || "Human Resources Department";
+
+  printHtmlDocument(
+    buildPrintableHtml(report, generatedAt, refNo, preparedBy, preparedByTitle, preparedByDept),
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* CSV — UTF-8 with BOM so Excel opens it cleanly                       */
+/* ------------------------------------------------------------------ */
+function csvCell(value: any): string {
+  if (value === null || value === undefined) return "";
+  const s = String(value).replace(/\r?\n/g, " ");
+  return /[",;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function exportToCsv(report: ReportData): void {
+  const lines: string[] = [];
+  lines.push(report.columns.map((c) => csvCell(c.header)).join(","));
+  for (const row of report.rows) {
+    lines.push(report.columns.map((c) => csvCell(row[c.key])).join(","));
+  }
+  if (report.summary?.length) {
+    lines.push("");
+    for (const s of report.summary) {
+      lines.push(`${csvCell(s.label)},${csvCell(s.value)}`);
+    }
+  }
+  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  triggerDownload(blob, buildFilename(report, "csv"));
 }
 
 /* ------------------------------------------------------------------ */
@@ -411,6 +462,19 @@ function exportToPrintablePdf(
   preparedByTitle: string,
   preparedByDept: string,
 ): void {
+  printHtmlDocument(
+    buildPrintableHtml(report, generatedAt, refNo, preparedBy, preparedByTitle, preparedByDept),
+  );
+}
+
+function buildPrintableHtml(
+  report: ReportData,
+  generatedAt: string,
+  refNo: string,
+  preparedBy: string,
+  preparedByTitle: string,
+  preparedByDept: string,
+): string {
   const landscape = report.columns.length > 6;
   const colCount = report.columns.length;
 
@@ -538,6 +602,11 @@ function exportToPrintablePdf(
 </body>
 </html>`;
 
+  return html;
+}
+
+/** Render a full HTML document in a hidden iframe and raise the print dialog. */
+function printHtmlDocument(html: string): void {
   const iframe = document.createElement("iframe");
   iframe.setAttribute("aria-hidden", "true");
   iframe.style.position = "fixed";

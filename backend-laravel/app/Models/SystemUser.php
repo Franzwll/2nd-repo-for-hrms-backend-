@@ -31,6 +31,8 @@ class SystemUser extends Authenticatable
         'totp_secret',
         'totp_confirmed_at',
         'mfa_recovery_codes',
+        'failed_attempts',
+        'locked_until',
         'last_login_at',
         'last_login_ip',
     ];
@@ -44,10 +46,16 @@ class SystemUser extends Authenticatable
     protected $casts = [
         'last_login_at' => 'datetime',
         'totp_confirmed_at' => 'datetime',
+        'locked_until' => 'datetime',
         'otp_enabled' => 'boolean',
         'totp_secret' => 'encrypted',
         'mfa_recovery_codes' => 'array',
     ];
+
+    public function isLockedOut(): bool
+    {
+        return $this->locked_until !== null && $this->locked_until->isFuture();
+    }
 
     /**
      * Whether this account signs in with a TOTP authenticator app

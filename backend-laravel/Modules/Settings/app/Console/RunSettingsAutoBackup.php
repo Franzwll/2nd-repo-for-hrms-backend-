@@ -57,6 +57,12 @@ class RunSettingsAutoBackup extends Command
 
         $this->info("Automatic {$schedule} backup created: {$entry['id']} ({$entry['size']}).");
 
+        $keep = max(1, (int) env('BACKUP_KEEP_AUTOMATIC', 8));
+        $pruned = BackupService::pruneAutomatic($keep);
+        if ($pruned > 0) {
+            $this->info("Pruned {$pruned} old automatic backup(s), keeping {$keep}.");
+        }
+
         return self::SUCCESS;
     }
 }

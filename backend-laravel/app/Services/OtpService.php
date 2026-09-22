@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 
 class OtpService
 {
-    private const TTL_SECONDS = 300;
+    private const TTL_SECONDS = 120;
     private const MAX_ATTEMPTS = 3;
 
     /**

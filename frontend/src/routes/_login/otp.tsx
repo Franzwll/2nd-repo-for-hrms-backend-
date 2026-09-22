@@ -86,13 +86,15 @@ function OTPPage() {
   const [error, setError] = useState("");
   const [verified, setVerified] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(60);
+  // True server TTL (120s) — resend unlocks after a 30s anti-spam cooldown.
+  const [timeLeft, setTimeLeft] = useState(() => getLoginContext()?.expires_in ?? 120);
   const [resendDisabled, setResendDisabled] = useState(true);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState("");
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const otpTtl = loginCtx?.expires_in ?? 120;
 
   useEffect(() => {
     if (!getLoginContext()) {
@@ -109,15 +111,17 @@ function OTPPage() {
     return () => clearInterval(slideTimer);
   }, []);
 
-  // Countdown timer
+  // Countdown timer — resend unlocks 30s after issue; expiry matches the server TTL.
   useEffect(() => {
-    if (timeLeft <= 0) {
+    if (timeLeft <= otpTtl - 30) {
       setResendDisabled(false);
+    }
+    if (timeLeft <= 0) {
       return;
     }
     const id = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
     return () => clearTimeout(id);
-  }, [timeLeft]);
+  }, [timeLeft, otpTtl]);
 
   const handleChange = (idx: number, val: string) => {
     const char = val.replace(/\D/g, "").slice(-1);
@@ -238,7 +242,7 @@ function OTPPage() {
         ...(ctx.mfa_method ? { mfa_method: ctx.mfa_method } : {}),
       });
       setDigits(Array.from({ length: OTP_LENGTH }, () => ""));
-      setTimeLeft(60);
+      setTimeLeft(res.expires_in);
       setResendDisabled(true);
       setError("");
       toast("A new OTP has been sent to your work email.");
@@ -388,15 +392,29 @@ function OTPPage() {
             {!isTotp && (
               <div className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
                 <Timer className="h-3.5 w-3.5" />
-                {resendDisabled ? (
-                  <span>Resend in {timeLeft}s</span>
+                {timeLeft > 0 ? (
+                  <span>
+                    Code expires in {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
+                    {!resendDisabled && (
+                      <>
+                        {" · "}
+                        <button
+                          type="button"
+                          onClick={handleResend}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          Resend OTP
+                        </button>
+                      </>
+                    )}
+                  </span>
                 ) : (
                   <button
                     type="button"
                     onClick={handleResend}
                     className="font-medium text-primary hover:underline"
                   >
-                    Resend OTP
+                    Code expired — send a new one
                   </button>
                 )}
               </div>
