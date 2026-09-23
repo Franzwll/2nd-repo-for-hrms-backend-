@@ -14,12 +14,12 @@ import {
   Menu,
   PanelLeftClose,
   Settings as SettingsIcon,
+  ShieldCheck,
   UserCircle,
 } from "lucide-react";
 
 import { Logo } from "@/components/brand/Logo";
 import { AnnouncementDialog } from "@/components/portal/AnnouncementDialog";
-import { AiConciergeWidget } from "@/components/portal/AiConciergeWidget";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { isVisibleTo, usePortalState } from "@/components/portal/portal-state";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -37,7 +37,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { navForRole, roleMeta, type Role } from "@/lib/nav";
-import { authApi } from "@/lib/api";
+import { authApi, mfaApi } from "@/lib/api";
 import { clearSession, getUser } from "@/lib/auth";
 import type { Notification } from "@/components/portal/portal-state";
 
@@ -117,7 +117,23 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
     nav.filter((i) => i.children?.length).map((i) => i.label),
   );
   const [announceOpen, setAnnounceOpen] = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
   const lastActiveGroupRef = useRef<string | null>(null);
+
+  // Soft-mandatory TOTP for Super Admins: nudge until enrolled.
+  useEffect(() => {
+    if (role !== "superadmin") return;
+    let cancelled = false;
+    mfaApi
+      .status()
+      .then((s) => {
+        if (!cancelled) setMfaRequired(s.totp_required);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [role]);
 
   const handleLogout = async () => {
     try {
@@ -548,11 +564,29 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
           ))}
         </div>
 
-        <main className="flex-1 px-4 py-6 md:px-8 md:py-8">{children}</main>
+        <main className="flex-1 px-4 py-6 md:px-8 md:py-8">
+          {mfaRequired && (
+            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-gold/40 bg-gold/10 px-4 py-3 text-sm">
+              <ShieldCheck className="h-4 w-4 shrink-0 text-gold" />
+              <p className="min-w-0 flex-1">
+                <span className="font-semibold">Authenticator MFA is required for Super Admins.</span>{" "}
+                <span className="text-muted-foreground">
+                  Enable it in Settings → Security to protect this account.
+                </span>
+              </p>
+              <Link
+                to={`${meta.base}/settings` as "/admin/settings"}
+                className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Open Settings
+              </Link>
+            </div>
+          )}
+          {children}
+        </main>
       </div>
 
       <AnnouncementDialog open={announceOpen} onOpenChange={setAnnounceOpen} author={meta.user} />
-      <AiConciergeWidget role={role} />
     </div>
   );
 }

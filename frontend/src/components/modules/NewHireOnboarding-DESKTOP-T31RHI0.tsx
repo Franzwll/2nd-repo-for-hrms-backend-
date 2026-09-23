@@ -3867,52 +3867,6 @@ export function EmployeeOnboarding() {
         </CardContent>
       </Card>
 
-      {/* NEW HIRE ONBOARDING Header & Progress Card */}
-      <Card className="border-border/70 overflow-hidden">
-        <CardContent className="p-6 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <p className="eyebrow">NEW HIRE ONBOARDING</p>
-              <h2 className="text-2xl font-semibold font-display text-foreground mt-1">
-                {newHire?.name ?? getUser()?.full_name ?? myProfile.name}
-              </h2>
-              <p className="text-sm font-medium text-muted-foreground mt-0.5">
-                Employee ID:{" "}
-                <span className="text-foreground font-mono font-semibold">
-                  {newHire?.employee_id
-                    ? `OSM-${String(newHire.employee_id).padStart(4, "0")}`
-                    : myProfile.employeeId}
-                </span>
-              </p>
-            </div>
-
-            {/* Prominent Employment Status — PROBATIONARY */}
-            <div className="flex flex-col sm:items-end gap-1.5">
-              <Badge
-                variant="outline"
-                className="border-gold/40 bg-gold/10 text-gold text-xs px-3 py-1 font-semibold uppercase tracking-wider self-start sm:self-auto"
-              >
-                PROBATIONARY
-              </Badge>
-              <span className="text-xs text-muted-foreground font-medium">Employment Status</span>
-            </div>
-          </div>
-
-          {/* Overall Progress */}
-          <div className="border-t border-border pt-4">
-            <div className="flex items-center justify-between text-sm font-medium mb-2">
-              <span className="text-muted-foreground">
-                Verified Progress{" "}
-                <span className="font-normal text-muted-foreground/70">
-                  (HR updates this when they verify your submissions)
-                </span>
-              </span>
-              <span className="text-primary font-bold">{pct}% Complete</span>
-            </div>
-            <Progress value={pct} className="h-3" />
-          </div>
-        </CardContent>
-      </Card>
 
       {/* SPLIT VIEW CONTAINER: Checklist on Left, Task Detail Panel on Right.
           The checklist card keeps a constant 7-row height and DEFINES the

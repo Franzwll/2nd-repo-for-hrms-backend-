@@ -878,6 +878,10 @@ export interface ApiLoginResponse {
   debug_otp: string;
   /** True when the user's role still requires OTP verification at /otp. */
   otp_required?: boolean;
+  /** Which second factor the /otp step expects. */
+  mfa_method?: "email_otp" | "totp";
+  /** True for Super Admins without an enrolled authenticator (soft-mandatory). */
+  totp_enrollment_required?: boolean;
   /** Present only when OTP is disabled for the account (direct sign-in). */
   token?: string;
   token_type?: string;
@@ -905,9 +909,11 @@ export interface ApiVerifyResponse {
 
 export const mySettingsApi = {
   get: (user: string) =>
-    request<{ notifications: Record<string, boolean>; preferences: Record<string, string> }>(
-      `/my/settings?user=${encodeURIComponent(user)}`,
-    ),
+    request<{
+      notifications: Record<string, boolean>;
+      preferences: Record<string, string>;
+      otp_enabled?: boolean;
+    }>(`/my/settings?user=${encodeURIComponent(user)}`),
   save: (scope: "notifications" | "preferences", user: string, value: any) =>
     request<{ setting_key: string; setting_value: any }>(`/my/settings/${scope}`, {
       method: "PUT",
@@ -918,36 +924,93 @@ export const mySettingsApi = {
       method: "POST",
       body: JSON.stringify({ user, current_password: currentPassword, new_password: newPassword }),
     }),
+  toggleOtp: (user: string, enabled: boolean) =>
+    request<{ message: string; otp_enabled: boolean }>("/my/otp", {
+      method: "PUT",
+      body: JSON.stringify({ user, enabled }),
+    }),
 };
 
 export const authApi = {
-  login: (email: string, password: string) =>
+  login: (email: string, password: string, captcha_token?: string) =>
     request<ApiLoginResponse>("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, captcha_token }),
     }),
-  verifyOtp: (login_token: string, otp: string) =>
+  verifyOtp: (login_token: string, otp: string, captcha_token?: string) =>
     request<ApiVerifyResponse>("/auth/otp/verify", {
       method: "POST",
-      body: JSON.stringify({ login_token, otp }),
+      body: JSON.stringify({ login_token, otp, captcha_token }),
     }),
-  resendOtp: (login_token: string) =>
+  resendOtp: (login_token: string, captcha_token?: string) =>
     request<{ message: string; expires_in: number; debug_otp: string }>("/auth/otp/resend", {
       method: "POST",
-      body: JSON.stringify({ login_token }),
+      body: JSON.stringify({ login_token, captcha_token }),
     }),
   me: () => request<{ user: ApiVerifyResponse["user"] }>("/auth/me"),
   logout: () => request<{ message: string }>("/auth/logout", { method: "POST" }),
-  forgotPassword: (email: string) =>
+  sessionPolicy: () =>
+    request<{
+      token_expiration_minutes: number;
+      idle_timeout_minutes: number;
+      roles?: Record<string, { token_minutes: number; idle_minutes: number }>;
+      otp_expires_in_seconds: number;
+      reset_expires_in_seconds: number;
+    }>("/auth/session-policy"),
+  forgotPassword: (email: string, captcha_token?: string) =>
     request<{ message: string }>("/auth/forgot-password", {
       method: "POST",
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, captcha_token }),
     }),
   resetPassword: (token: string, password: string) =>
     request<{ message: string }>("/auth/reset-password", {
       method: "POST",
       body: JSON.stringify({ token, password, password_confirmation: password }),
     }),
+};
+
+export interface MfaStatus {
+  mfa_method: "email_otp" | "totp";
+  totp_confirmed: boolean;
+  recovery_codes_remaining: number;
+  totp_required: boolean;
+  email_otp_enabled: boolean;
+}
+
+export const mfaApi = {
+  status: () => request<MfaStatus>("/auth/mfa/status"),
+  setup: () =>
+    request<{ otpauth_url: string; qr_svg: string; manual_key: string }>(
+      "/auth/mfa/totp/setup",
+      { method: "POST" },
+    ),
+  confirm: (code: string, password: string) =>
+    request<{ message: string; recovery_codes: string[] }>("/auth/mfa/totp/confirm", {
+      method: "POST",
+      body: JSON.stringify({ code, password }),
+    }),
+  disable: (password: string, code?: string) =>
+    request<{ message: string }>("/auth/mfa/totp/disable", {
+      method: "POST",
+      body: JSON.stringify({ password, code }),
+    }),
+  regenerateCodes: (password: string) =>
+    request<{ message: string; recovery_codes: string[] }>("/auth/mfa/recovery-codes", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+  verify: (login_token: string, code: string, captcha_token?: string) =>
+    request<ApiVerifyResponse>("/auth/mfa/verify", {
+      method: "POST",
+      body: JSON.stringify({ login_token, code, captcha_token }),
+    }),
+  recover: (login_token: string, recovery_code: string, captcha_token?: string) =>
+    request<ApiVerifyResponse & { recovery_codes_remaining?: number }>("/auth/mfa/recover", {
+      method: "POST",
+      body: JSON.stringify({ login_token, recovery_code, captcha_token }),
+    }),
+  adminReset: (userId: number | string) =>
+    request<{ message: string }>(`/auth/mfa/reset/${userId}`, { method: "POST" }),
 };
 
 /* ========================================================================= */
@@ -1212,6 +1275,16 @@ export const hcmApi = {
         method: "POST",
         body: JSON.stringify(data),
       }),
+    forwardToHr3: (id: number | string, data?: Record<string, any>) =>
+      request<{ message: string }>(`/promotion-requests/${id}/forward-to-hr3`, {
+        method: "POST",
+        body: JSON.stringify(data ?? {}),
+      }),
+    linkHr3Result: (id: number | string, data: Record<string, any>) =>
+      request<{ message: string }>(`/promotion-requests/${id}/hr3-result`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
   },
 };
 
@@ -1221,12 +1294,29 @@ export interface ApiPromotionRequest {
   current_position_id: number | null;
   requested_position_id: number | null;
   requested_salary_grade_id: number | null;
+  hr3_recommendation_id?: number | null;
+  forwarded_to_hr3_by?: number | null;
+  forwarded_to_hr3_at?: string | null;
   justification: string;
-  status: "Pending" | "Approved" | "Rejected" | "Returned";
+  status:
+    | "Pending"
+    | "Under HR3 Review"
+    | "Pending HR Action"
+    | "Approved"
+    | "Rejected"
+    | "Returned"
+    | "Terminated"
+    | "Deferred";
   reviewed_by: number | null;
   reviewed_at: string | null;
   review_notes: string | null;
   created_at: string;
+  hr3_recommendation?: {
+    recommendation_id: number;
+    recommendation_type: string;
+    evaluation_score: number;
+    status: string;
+  } | null;
   employee?: {
     employee_code: string;
     first_name: string;
@@ -1942,7 +2032,27 @@ export const chatbotApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  sessions: () => request<{ data: ApiChatSession[] }>("/chatbot/sessions"),
+  sessionMessages: (sessionId: string) =>
+    request<{ data: ApiChatSessionMessage[] }>(
+      `/chatbot/sessions/${encodeURIComponent(sessionId)}/messages`,
+    ),
 };
+
+export interface ApiChatSession {
+  session_id: string;
+  last_at: string;
+  exchanges: number;
+}
+
+export interface ApiChatSessionMessage {
+  id: number;
+  message: string;
+  reply: string;
+  source: string | null;
+  feedback: number | null;
+  created_at: string;
+}
 
 export const chatbotFaqApi = {
   list: () => request<{ data: ApiChatbotFaq[] }>("/chatbot/faqs"),

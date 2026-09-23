@@ -10,7 +10,6 @@ import {
   ArrowLeft,
   HeartHandshake,
   Send,
-  TrendingUp,
 } from "lucide-react";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -173,9 +172,6 @@ export function EmployeeEss() {
               <TabsTrigger className="flex items-center gap-1.5" value="requests">
                 <Send className="h-3.5 w-3.5" /> All Requests
               </TabsTrigger>
-              <TabsTrigger className="flex items-center gap-1.5" value="promotion">
-                <TrendingUp className="h-3.5 w-3.5" /> Promotion
-              </TabsTrigger>
             </TabsList>
 
             {/* Tab Contents */}
@@ -202,10 +198,6 @@ export function EmployeeEss() {
 
             <TabsContent value="requests" className="mt-6">
               <EssAllRequestsTab />
-            </TabsContent>
-
-            <TabsContent value="promotion" className="mt-6">
-              <EssPromotionTab />
             </TabsContent>
           </Tabs>
         </div>

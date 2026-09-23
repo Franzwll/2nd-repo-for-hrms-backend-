@@ -144,6 +144,30 @@ function EmployeeDashboard() {
     ? "Rest Day (Off Duty)"
     : `On Shift (${overview?.today_schedule?.time || "07:00 AM – 04:00 PM"})`;
 
+  const handleReact = async (recId: string, reaction: "clap" | "heart" | "star" | "fire") => {
+    setRecognitions((prev) =>
+      prev.map((r) => {
+        if (r.id === recId) {
+          const reactions = { ...(r.reactions || { clap: 0, heart: 0, star: 0, fire: 0 }) };
+          reactions[reaction] = (reactions[reaction] || 0) + 1;
+          return { ...r, reactions };
+        }
+        return r;
+      })
+    );
+
+    try {
+      const res = await essApi.reactKudos(recId, reaction);
+      if (res?.reactions) {
+        setRecognitions((prev) =>
+          prev.map((r) => (r.id === recId ? { ...r, reactions: res.reactions } : r))
+        );
+      }
+    } catch {
+      // Handled gracefully
+    }
+  };
+
   const availableLeaves = overview?.monthly_attendance?.total_leave_available ?? (overview?.leave_balances?.reduce((acc, b) => acc + b.available, 0) || 15);
   const netPay = overview?.payroll_summary?.estimated_net ?? 28080;
   const nextPayoutDate = overview?.payroll_summary?.next_payout ?? "August 30, 2026";
@@ -538,19 +562,39 @@ function EmployeeDashboard() {
                     <p className="text-muted-foreground text-[11px] line-clamp-2 leading-relaxed bg-muted/20 p-2 rounded-lg border border-border/40">
                       "{rec.message}"
                     </p>
-                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground pt-0.5">
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5">
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => handleReact(rec.id, "clap")}
+                        className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 hover:bg-primary/10 hover:border-primary/40 hover:text-primary transition-colors cursor-pointer"
+                        title="Send Claps"
+                      >
                         👏 {rec.reactions?.clap ?? 0}
-                      </span>
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5">
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleReact(rec.id, "heart")}
+                        className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 hover:bg-rose-500/10 hover:border-rose-500/40 hover:text-rose-600 transition-colors cursor-pointer"
+                        title="Send Heart"
+                      >
                         ❤️ {rec.reactions?.heart ?? 0}
-                      </span>
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5">
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleReact(rec.id, "star")}
+                        className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 hover:bg-amber-500/10 hover:border-amber-500/40 hover:text-amber-600 transition-colors cursor-pointer"
+                        title="Send Star"
+                      >
                         ⭐ {rec.reactions?.star ?? 0}
-                      </span>
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5">
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleReact(rec.id, "fire")}
+                        className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 hover:bg-orange-500/10 hover:border-orange-500/40 hover:text-orange-600 transition-colors cursor-pointer"
+                        title="Send Fire"
+                      >
                         🔥 {rec.reactions?.fire ?? 0}
-                      </span>
+                      </button>
                       <span className="ml-auto text-[10px] text-muted-foreground">{rec.timeAgo}</span>
                     </div>
                   </div>

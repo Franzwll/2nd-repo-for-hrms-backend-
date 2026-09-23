@@ -17,20 +17,18 @@ import { Route as LandingAboutRouteImport } from './routes/_landing/about'
 import { Route as LandingContactRouteImport } from './routes/_landing/contact'
 import { Route as LandingFaqRouteImport } from './routes/_landing/faq'
 import { Route as LoginForgotPasswordRouteImport } from './routes/_login/forgot-password'
+import { Route as LoginForgotPasswordDESKTOPT31RHI0RouteImport } from './routes/_login/forgot-password-DESKTOP-T31RHI0'
 import { Route as LoginLoginRouteImport } from './routes/_login/login'
+import { Route as LoginLoginDESKTOPT31RHI0RouteImport } from './routes/_login/login-DESKTOP-T31RHI0'
 import { Route as LoginOtpRouteImport } from './routes/_login/otp'
+import { Route as LoginOtpDESKTOPT31RHI0RouteImport } from './routes/_login/otp-DESKTOP-T31RHI0'
 import { Route as LoginResetPasswordRouteImport } from './routes/_login/reset-password'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
-import { Route as AdminIndexDESKTOPFJ91I5ORouteImport } from './routes/admin/index-DESKTOP-FJ91I5O'
 import { Route as EmployeeIndexRouteImport } from './routes/employee/index'
 import { Route as EmployeeAiRouteImport } from './routes/employee/ai'
-import { Route as EmployeeIndexDESKTOPFJ91I5ORouteImport } from './routes/employee/index-DESKTOP-FJ91I5O'
 import { Route as SuperadminIndexRouteImport } from './routes/superadmin/index'
-import { Route as SuperadminIndexDESKTOPFJ91I5ORouteImport } from './routes/superadmin/index-DESKTOP-FJ91I5O'
 import { Route as LandingJobsIndexRouteImport } from './routes/_landing/jobs.index'
 import { Route as LandingJobsJobIdRouteImport } from './routes/_landing/jobs.$jobId'
-import { Route as LandingJobsJobIdDESKTOPFJ91I5ORouteImport } from './routes/_landing/jobs.$jobId-DESKTOP-FJ91I5O'
-import { Route as LandingJobsIndexDESKTOPFJ91I5ORouteImport } from './routes/_landing/jobs.index-DESKTOP-FJ91I5O'
 import { Route as AdminApplicantManagementApplicantsRouteImport } from './routes/admin/_applicant-management/applicants'
 import { Route as AdminCorehcmDeptPosRouteImport } from './routes/admin/_corehcm/dept-pos'
 import { Route as AdminCorehcmHcmRouteImport } from './routes/admin/_corehcm/hcm'
@@ -100,14 +98,31 @@ const LoginForgotPasswordRoute = LoginForgotPasswordRouteImport.update({
   path: '/forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginForgotPasswordDESKTOPT31RHI0Route =
+  LoginForgotPasswordDESKTOPT31RHI0RouteImport.update({
+    id: '/_login/forgot-password-DESKTOP-T31RHI0',
+    path: '/forgot-password-DESKTOP-T31RHI0',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const LoginLoginRoute = LoginLoginRouteImport.update({
   id: '/_login/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginLoginDESKTOPT31RHI0Route =
+  LoginLoginDESKTOPT31RHI0RouteImport.update({
+    id: '/_login/login-DESKTOP-T31RHI0',
+    path: '/login-DESKTOP-T31RHI0',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const LoginOtpRoute = LoginOtpRouteImport.update({
   id: '/_login/otp',
   path: '/otp',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginOtpDESKTOPT31RHI0Route = LoginOtpDESKTOPT31RHI0RouteImport.update({
+  id: '/_login/otp-DESKTOP-T31RHI0',
+  path: '/otp-DESKTOP-T31RHI0',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginResetPasswordRoute = LoginResetPasswordRouteImport.update({
@@ -120,12 +135,6 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
-const AdminIndexDESKTOPFJ91I5ORoute =
-  AdminIndexDESKTOPFJ91I5ORouteImport.update({
-    id: '/index-DESKTOP-FJ91I5O',
-    path: '/index-DESKTOP-FJ91I5O',
-    getParentRoute: () => AdminRoute,
-  } as any)
 const EmployeeIndexRoute = EmployeeIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -136,23 +145,11 @@ const EmployeeAiRoute = EmployeeAiRouteImport.update({
   path: '/ai',
   getParentRoute: () => EmployeeRoute,
 } as any)
-const EmployeeIndexDESKTOPFJ91I5ORoute =
-  EmployeeIndexDESKTOPFJ91I5ORouteImport.update({
-    id: '/index-DESKTOP-FJ91I5O',
-    path: '/index-DESKTOP-FJ91I5O',
-    getParentRoute: () => EmployeeRoute,
-  } as any)
 const SuperadminIndexRoute = SuperadminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => SuperadminRoute,
 } as any)
-const SuperadminIndexDESKTOPFJ91I5ORoute =
-  SuperadminIndexDESKTOPFJ91I5ORouteImport.update({
-    id: '/index-DESKTOP-FJ91I5O',
-    path: '/index-DESKTOP-FJ91I5O',
-    getParentRoute: () => SuperadminRoute,
-  } as any)
 const LandingJobsIndexRoute = LandingJobsIndexRouteImport.update({
   id: '/_landing/jobs/',
   path: '/jobs/',
@@ -163,18 +160,6 @@ const LandingJobsJobIdRoute = LandingJobsJobIdRouteImport.update({
   path: '/jobs/$jobId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LandingJobsJobIdDESKTOPFJ91I5ORoute =
-  LandingJobsJobIdDESKTOPFJ91I5ORouteImport.update({
-    id: '/_landing/jobs/$jobId-DESKTOP-FJ91I5O',
-    path: '/jobs/$jobId-DESKTOP-FJ91I5O',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const LandingJobsIndexDESKTOPFJ91I5ORoute =
-  LandingJobsIndexDESKTOPFJ91I5ORouteImport.update({
-    id: '/_landing/jobs/index-DESKTOP-FJ91I5O',
-    path: '/jobs/index-DESKTOP-FJ91I5O',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const AdminApplicantManagementApplicantsRoute =
   AdminApplicantManagementApplicantsRouteImport.update({
     id: '/_applicant-management/applicants',
@@ -344,20 +329,18 @@ export interface FileRoutesByFullPath {
   '/contact': typeof LandingContactRoute
   '/faq': typeof LandingFaqRoute
   '/forgot-password': typeof LoginForgotPasswordRoute
+  '/forgot-password-DESKTOP-T31RHI0': typeof LoginForgotPasswordDESKTOPT31RHI0Route
   '/login': typeof LoginLoginRoute
+  '/login-DESKTOP-T31RHI0': typeof LoginLoginDESKTOPT31RHI0Route
   '/otp': typeof LoginOtpRoute
+  '/otp-DESKTOP-T31RHI0': typeof LoginOtpDESKTOPT31RHI0Route
   '/reset-password': typeof LoginResetPasswordRoute
-  '/admin/index-DESKTOP-FJ91I5O': typeof AdminIndexDESKTOPFJ91I5ORoute
   '/employee/ai': typeof EmployeeAiRoute
-  '/employee/index-DESKTOP-FJ91I5O': typeof EmployeeIndexDESKTOPFJ91I5ORoute
-  '/superadmin/index-DESKTOP-FJ91I5O': typeof SuperadminIndexDESKTOPFJ91I5ORoute
   '/': typeof LandingIndexRoute
   '/admin/': typeof AdminIndexRoute
   '/employee/': typeof EmployeeIndexRoute
   '/superadmin/': typeof SuperadminIndexRoute
   '/jobs/$jobId': typeof LandingJobsJobIdRoute
-  '/jobs/$jobId-DESKTOP-FJ91I5O': typeof LandingJobsJobIdDESKTOPFJ91I5ORoute
-  '/jobs/index-DESKTOP-FJ91I5O': typeof LandingJobsIndexDESKTOPFJ91I5ORoute
   '/admin/applicants': typeof AdminApplicantManagementApplicantsRoute
   '/admin/dept-pos': typeof AdminCorehcmDeptPosRoute
   '/admin/hcm': typeof AdminCorehcmHcmRoute
@@ -393,20 +376,18 @@ export interface FileRoutesByTo {
   '/contact': typeof LandingContactRoute
   '/faq': typeof LandingFaqRoute
   '/forgot-password': typeof LoginForgotPasswordRoute
+  '/forgot-password-DESKTOP-T31RHI0': typeof LoginForgotPasswordDESKTOPT31RHI0Route
   '/login': typeof LoginLoginRoute
+  '/login-DESKTOP-T31RHI0': typeof LoginLoginDESKTOPT31RHI0Route
   '/otp': typeof LoginOtpRoute
+  '/otp-DESKTOP-T31RHI0': typeof LoginOtpDESKTOPT31RHI0Route
   '/reset-password': typeof LoginResetPasswordRoute
-  '/admin/index-DESKTOP-FJ91I5O': typeof AdminIndexDESKTOPFJ91I5ORoute
   '/employee/ai': typeof EmployeeAiRoute
-  '/employee/index-DESKTOP-FJ91I5O': typeof EmployeeIndexDESKTOPFJ91I5ORoute
-  '/superadmin/index-DESKTOP-FJ91I5O': typeof SuperadminIndexDESKTOPFJ91I5ORoute
   '/': typeof LandingIndexRoute
   '/admin': typeof AdminIndexRoute
   '/employee': typeof EmployeeIndexRoute
   '/superadmin': typeof SuperadminIndexRoute
   '/jobs/$jobId': typeof LandingJobsJobIdRoute
-  '/jobs/$jobId-DESKTOP-FJ91I5O': typeof LandingJobsJobIdDESKTOPFJ91I5ORoute
-  '/jobs/index-DESKTOP-FJ91I5O': typeof LandingJobsIndexDESKTOPFJ91I5ORoute
   '/admin/applicants': typeof AdminApplicantManagementApplicantsRoute
   '/admin/dept-pos': typeof AdminCorehcmDeptPosRoute
   '/admin/hcm': typeof AdminCorehcmHcmRoute
@@ -446,20 +427,18 @@ export interface FileRoutesById {
   '/_landing/contact': typeof LandingContactRoute
   '/_landing/faq': typeof LandingFaqRoute
   '/_login/forgot-password': typeof LoginForgotPasswordRoute
+  '/_login/forgot-password-DESKTOP-T31RHI0': typeof LoginForgotPasswordDESKTOPT31RHI0Route
   '/_login/login': typeof LoginLoginRoute
+  '/_login/login-DESKTOP-T31RHI0': typeof LoginLoginDESKTOPT31RHI0Route
   '/_login/otp': typeof LoginOtpRoute
+  '/_login/otp-DESKTOP-T31RHI0': typeof LoginOtpDESKTOPT31RHI0Route
   '/_login/reset-password': typeof LoginResetPasswordRoute
-  '/admin/index-DESKTOP-FJ91I5O': typeof AdminIndexDESKTOPFJ91I5ORoute
   '/employee/ai': typeof EmployeeAiRoute
-  '/employee/index-DESKTOP-FJ91I5O': typeof EmployeeIndexDESKTOPFJ91I5ORoute
-  '/superadmin/index-DESKTOP-FJ91I5O': typeof SuperadminIndexDESKTOPFJ91I5ORoute
   '/_landing/': typeof LandingIndexRoute
   '/admin/': typeof AdminIndexRoute
   '/employee/': typeof EmployeeIndexRoute
   '/superadmin/': typeof SuperadminIndexRoute
   '/_landing/jobs/$jobId': typeof LandingJobsJobIdRoute
-  '/_landing/jobs/$jobId-DESKTOP-FJ91I5O': typeof LandingJobsJobIdDESKTOPFJ91I5ORoute
-  '/_landing/jobs/index-DESKTOP-FJ91I5O': typeof LandingJobsIndexDESKTOPFJ91I5ORoute
   '/admin/_applicant-management/applicants': typeof AdminApplicantManagementApplicantsRoute
   '/admin/_corehcm/dept-pos': typeof AdminCorehcmDeptPosRoute
   '/admin/_corehcm/hcm': typeof AdminCorehcmHcmRoute
@@ -500,20 +479,18 @@ export interface FileRouteTypes {
     | '/contact'
     | '/faq'
     | '/forgot-password'
+    | '/forgot-password-DESKTOP-T31RHI0'
     | '/login'
+    | '/login-DESKTOP-T31RHI0'
     | '/otp'
+    | '/otp-DESKTOP-T31RHI0'
     | '/reset-password'
-    | '/admin/index-DESKTOP-FJ91I5O'
     | '/employee/ai'
-    | '/employee/index-DESKTOP-FJ91I5O'
-    | '/superadmin/index-DESKTOP-FJ91I5O'
     | '/'
     | '/admin/'
     | '/employee/'
     | '/superadmin/'
     | '/jobs/$jobId'
-    | '/jobs/$jobId-DESKTOP-FJ91I5O'
-    | '/jobs/index-DESKTOP-FJ91I5O'
     | '/admin/applicants'
     | '/admin/dept-pos'
     | '/admin/hcm'
@@ -549,20 +526,18 @@ export interface FileRouteTypes {
     | '/contact'
     | '/faq'
     | '/forgot-password'
+    | '/forgot-password-DESKTOP-T31RHI0'
     | '/login'
+    | '/login-DESKTOP-T31RHI0'
     | '/otp'
+    | '/otp-DESKTOP-T31RHI0'
     | '/reset-password'
-    | '/admin/index-DESKTOP-FJ91I5O'
     | '/employee/ai'
-    | '/employee/index-DESKTOP-FJ91I5O'
-    | '/superadmin/index-DESKTOP-FJ91I5O'
     | '/'
     | '/admin'
     | '/employee'
     | '/superadmin'
     | '/jobs/$jobId'
-    | '/jobs/$jobId-DESKTOP-FJ91I5O'
-    | '/jobs/index-DESKTOP-FJ91I5O'
     | '/admin/applicants'
     | '/admin/dept-pos'
     | '/admin/hcm'
@@ -601,20 +576,18 @@ export interface FileRouteTypes {
     | '/_landing/contact'
     | '/_landing/faq'
     | '/_login/forgot-password'
+    | '/_login/forgot-password-DESKTOP-T31RHI0'
     | '/_login/login'
+    | '/_login/login-DESKTOP-T31RHI0'
     | '/_login/otp'
+    | '/_login/otp-DESKTOP-T31RHI0'
     | '/_login/reset-password'
-    | '/admin/index-DESKTOP-FJ91I5O'
     | '/employee/ai'
-    | '/employee/index-DESKTOP-FJ91I5O'
-    | '/superadmin/index-DESKTOP-FJ91I5O'
     | '/_landing/'
     | '/admin/'
     | '/employee/'
     | '/superadmin/'
     | '/_landing/jobs/$jobId'
-    | '/_landing/jobs/$jobId-DESKTOP-FJ91I5O'
-    | '/_landing/jobs/index-DESKTOP-FJ91I5O'
     | '/admin/_applicant-management/applicants'
     | '/admin/_corehcm/dept-pos'
     | '/admin/_corehcm/hcm'
@@ -654,13 +627,14 @@ export interface RootRouteChildren {
   LandingContactRoute: typeof LandingContactRoute
   LandingFaqRoute: typeof LandingFaqRoute
   LoginForgotPasswordRoute: typeof LoginForgotPasswordRoute
+  LoginForgotPasswordDESKTOPT31RHI0Route: typeof LoginForgotPasswordDESKTOPT31RHI0Route
   LoginLoginRoute: typeof LoginLoginRoute
+  LoginLoginDESKTOPT31RHI0Route: typeof LoginLoginDESKTOPT31RHI0Route
   LoginOtpRoute: typeof LoginOtpRoute
+  LoginOtpDESKTOPT31RHI0Route: typeof LoginOtpDESKTOPT31RHI0Route
   LoginResetPasswordRoute: typeof LoginResetPasswordRoute
   LandingIndexRoute: typeof LandingIndexRoute
   LandingJobsJobIdRoute: typeof LandingJobsJobIdRoute
-  LandingJobsJobIdDESKTOPFJ91I5ORoute: typeof LandingJobsJobIdDESKTOPFJ91I5ORoute
-  LandingJobsIndexDESKTOPFJ91I5ORoute: typeof LandingJobsIndexDESKTOPFJ91I5ORoute
   LandingJobsIndexRoute: typeof LandingJobsIndexRoute
 }
 
@@ -722,6 +696,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_login/forgot-password-DESKTOP-T31RHI0': {
+      id: '/_login/forgot-password-DESKTOP-T31RHI0'
+      path: '/forgot-password-DESKTOP-T31RHI0'
+      fullPath: '/forgot-password-DESKTOP-T31RHI0'
+      preLoaderRoute: typeof LoginForgotPasswordDESKTOPT31RHI0RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_login/login': {
       id: '/_login/login'
       path: '/login'
@@ -729,11 +710,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_login/login-DESKTOP-T31RHI0': {
+      id: '/_login/login-DESKTOP-T31RHI0'
+      path: '/login-DESKTOP-T31RHI0'
+      fullPath: '/login-DESKTOP-T31RHI0'
+      preLoaderRoute: typeof LoginLoginDESKTOPT31RHI0RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_login/otp': {
       id: '/_login/otp'
       path: '/otp'
       fullPath: '/otp'
       preLoaderRoute: typeof LoginOtpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_login/otp-DESKTOP-T31RHI0': {
+      id: '/_login/otp-DESKTOP-T31RHI0'
+      path: '/otp-DESKTOP-T31RHI0'
+      fullPath: '/otp-DESKTOP-T31RHI0'
+      preLoaderRoute: typeof LoginOtpDESKTOPT31RHI0RouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_login/reset-password': {
@@ -750,13 +745,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/admin/index-DESKTOP-FJ91I5O': {
-      id: '/admin/index-DESKTOP-FJ91I5O'
-      path: '/index-DESKTOP-FJ91I5O'
-      fullPath: '/admin/index-DESKTOP-FJ91I5O'
-      preLoaderRoute: typeof AdminIndexDESKTOPFJ91I5ORouteImport
-      parentRoute: typeof AdminRoute
-    }
     '/employee/': {
       id: '/employee/'
       path: '/'
@@ -771,25 +759,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EmployeeAiRouteImport
       parentRoute: typeof EmployeeRoute
     }
-    '/employee/index-DESKTOP-FJ91I5O': {
-      id: '/employee/index-DESKTOP-FJ91I5O'
-      path: '/index-DESKTOP-FJ91I5O'
-      fullPath: '/employee/index-DESKTOP-FJ91I5O'
-      preLoaderRoute: typeof EmployeeIndexDESKTOPFJ91I5ORouteImport
-      parentRoute: typeof EmployeeRoute
-    }
     '/superadmin/': {
       id: '/superadmin/'
       path: '/'
       fullPath: '/superadmin/'
       preLoaderRoute: typeof SuperadminIndexRouteImport
-      parentRoute: typeof SuperadminRoute
-    }
-    '/superadmin/index-DESKTOP-FJ91I5O': {
-      id: '/superadmin/index-DESKTOP-FJ91I5O'
-      path: '/index-DESKTOP-FJ91I5O'
-      fullPath: '/superadmin/index-DESKTOP-FJ91I5O'
-      preLoaderRoute: typeof SuperadminIndexDESKTOPFJ91I5ORouteImport
       parentRoute: typeof SuperadminRoute
     }
     '/_landing/jobs/': {
@@ -804,20 +778,6 @@ declare module '@tanstack/react-router' {
       path: '/jobs/$jobId'
       fullPath: '/jobs/$jobId'
       preLoaderRoute: typeof LandingJobsJobIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_landing/jobs/$jobId-DESKTOP-FJ91I5O': {
-      id: '/_landing/jobs/$jobId-DESKTOP-FJ91I5O'
-      path: '/jobs/$jobId-DESKTOP-FJ91I5O'
-      fullPath: '/jobs/$jobId-DESKTOP-FJ91I5O'
-      preLoaderRoute: typeof LandingJobsJobIdDESKTOPFJ91I5ORouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_landing/jobs/index-DESKTOP-FJ91I5O': {
-      id: '/_landing/jobs/index-DESKTOP-FJ91I5O'
-      path: '/jobs/index-DESKTOP-FJ91I5O'
-      fullPath: '/jobs/index-DESKTOP-FJ91I5O'
-      preLoaderRoute: typeof LandingJobsIndexDESKTOPFJ91I5ORouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/_applicant-management/applicants': {
@@ -1020,7 +980,6 @@ declare module '@tanstack/react-router' {
 }
 
 interface AdminRouteChildren {
-  AdminIndexDESKTOPFJ91I5ORoute: typeof AdminIndexDESKTOPFJ91I5ORoute
   AdminIndexRoute: typeof AdminIndexRoute
   AdminApplicantManagementApplicantsRoute: typeof AdminApplicantManagementApplicantsRoute
   AdminCorehcmDeptPosRoute: typeof AdminCorehcmDeptPosRoute
@@ -1036,7 +995,6 @@ interface AdminRouteChildren {
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
-  AdminIndexDESKTOPFJ91I5ORoute: AdminIndexDESKTOPFJ91I5ORoute,
   AdminIndexRoute: AdminIndexRoute,
   AdminApplicantManagementApplicantsRoute:
     AdminApplicantManagementApplicantsRoute,
@@ -1057,7 +1015,6 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface EmployeeRouteChildren {
   EmployeeAiRoute: typeof EmployeeAiRoute
-  EmployeeIndexDESKTOPFJ91I5ORoute: typeof EmployeeIndexDESKTOPFJ91I5ORoute
   EmployeeIndexRoute: typeof EmployeeIndexRoute
   EmployeeEssmanagementEssRoute: typeof EmployeeEssmanagementEssRoute
   EmployeeNewhireonboardingOnboardingRoute: typeof EmployeeNewhireonboardingOnboardingRoute
@@ -1067,7 +1024,6 @@ interface EmployeeRouteChildren {
 
 const EmployeeRouteChildren: EmployeeRouteChildren = {
   EmployeeAiRoute: EmployeeAiRoute,
-  EmployeeIndexDESKTOPFJ91I5ORoute: EmployeeIndexDESKTOPFJ91I5ORoute,
   EmployeeIndexRoute: EmployeeIndexRoute,
   EmployeeEssmanagementEssRoute: EmployeeEssmanagementEssRoute,
   EmployeeNewhireonboardingOnboardingRoute:
@@ -1081,7 +1037,6 @@ const EmployeeRouteWithChildren = EmployeeRoute._addFileChildren(
 )
 
 interface SuperadminRouteChildren {
-  SuperadminIndexDESKTOPFJ91I5ORoute: typeof SuperadminIndexDESKTOPFJ91I5ORoute
   SuperadminIndexRoute: typeof SuperadminIndexRoute
   SuperadminApplicantManagementApplicantsRoute: typeof SuperadminApplicantManagementApplicantsRoute
   SuperadminAuditlogsAuditRoute: typeof SuperadminAuditlogsAuditRoute
@@ -1099,7 +1054,6 @@ interface SuperadminRouteChildren {
 }
 
 const SuperadminRouteChildren: SuperadminRouteChildren = {
-  SuperadminIndexDESKTOPFJ91I5ORoute: SuperadminIndexDESKTOPFJ91I5ORoute,
   SuperadminIndexRoute: SuperadminIndexRoute,
   SuperadminApplicantManagementApplicantsRoute:
     SuperadminApplicantManagementApplicantsRoute,
@@ -1132,13 +1086,15 @@ const rootRouteChildren: RootRouteChildren = {
   LandingContactRoute: LandingContactRoute,
   LandingFaqRoute: LandingFaqRoute,
   LoginForgotPasswordRoute: LoginForgotPasswordRoute,
+  LoginForgotPasswordDESKTOPT31RHI0Route:
+    LoginForgotPasswordDESKTOPT31RHI0Route,
   LoginLoginRoute: LoginLoginRoute,
+  LoginLoginDESKTOPT31RHI0Route: LoginLoginDESKTOPT31RHI0Route,
   LoginOtpRoute: LoginOtpRoute,
+  LoginOtpDESKTOPT31RHI0Route: LoginOtpDESKTOPT31RHI0Route,
   LoginResetPasswordRoute: LoginResetPasswordRoute,
   LandingIndexRoute: LandingIndexRoute,
   LandingJobsJobIdRoute: LandingJobsJobIdRoute,
-  LandingJobsJobIdDESKTOPFJ91I5ORoute: LandingJobsJobIdDESKTOPFJ91I5ORoute,
-  LandingJobsIndexDESKTOPFJ91I5ORoute: LandingJobsIndexDESKTOPFJ91I5ORoute,
   LandingJobsIndexRoute: LandingJobsIndexRoute,
 }
 export const routeTree = rootRouteImport

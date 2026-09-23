@@ -188,7 +188,7 @@ export function EssOverviewTab({
             </div>
             <div className="mt-3">
               <p className="text-xl font-bold font-display text-foreground">
-                {myAttendance.monthly.present} Present <span className="text-xs font-normal text-muted-foreground">· {myAttendance.monthly.late} Late</span>
+                {overview?.monthly_attendance?.present ?? myAttendance.monthly.present} Present <span className="text-xs font-normal text-muted-foreground">· {overview?.monthly_attendance?.late ?? myAttendance.monthly.late} Late</span>
               </p>
               <p className="text-xs text-muted-foreground mt-1 truncate">
                 In: <strong className="text-foreground">{todayTimeIn}</strong> ({attendanceStatus})
@@ -219,9 +219,9 @@ export function EssOverviewTab({
             </div>
             <div className="mt-3">
               <p className="text-xl font-bold font-display text-emerald-600 dark:text-emerald-400">
-                ₱{myPayroll.net.toLocaleString()}
+                ₱{(overview?.payroll_summary?.estimated_net ?? myPayroll.net).toLocaleString()}
               </p>
-              <p className="text-xs text-muted-foreground mt-1 truncate">Payout: <strong className="text-foreground">{myPayroll.nextPayout}</strong></p>
+              <p className="text-xs text-muted-foreground mt-1 truncate">Payout: <strong className="text-foreground">{overview?.payroll_summary?.next_payout ?? myPayroll.nextPayout}</strong></p>
             </div>
             <Button
               asChild
@@ -248,10 +248,10 @@ export function EssOverviewTab({
             </div>
             <div className="mt-3">
               <p className="text-xl font-bold font-display text-foreground">
-                {myPerformance.lmsCoursesCompleted}/{myPerformance.lmsCoursesAssigned} Courses
+                {overview?.performance_summary?.lms_completed ?? myPerformance.lmsCoursesCompleted}/{overview?.performance_summary?.lms_total ?? myPerformance.lmsCoursesAssigned} Courses
               </p>
               <p className="text-xs text-muted-foreground mt-1 truncate">
-                Score: <strong className="text-foreground">{myPerformance.averageScore || "90%"}</strong> · {myPerformance.competencyLevel}
+                Level: <strong className="text-foreground">{overview?.performance_summary?.competency_level ?? myPerformance.competencyLevel}</strong>
               </p>
             </div>
             <Button
@@ -282,7 +282,7 @@ export function EssOverviewTab({
                 {myEmployeeDocuments.filter((d) => d.status === "Submitted" || d.status === "Available" || d.status === "Released").length} Verified
               </p>
               <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium truncate">
-                {myEmployeeDocuments.filter((d) => d.status === "Missing").length} Action Item Required
+                {overview?.pending_requests_count ?? 0} Active Request(s)
               </p>
             </div>
             <Button
@@ -330,6 +330,56 @@ export function EssOverviewTab({
           </CardContent>
         </Card>
       </div>
+
+      {/* Interactive Quick Actions Bar */}
+      <Card className="border-border/70 shadow-xs bg-gradient-to-r from-primary/5 via-card to-card">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold font-display text-foreground flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                Quick Actions
+              </h4>
+              <p className="text-xs text-muted-foreground">Launch core self-service workflows directly.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOpenClock}
+                className="gap-1.5 text-xs h-8 border-primary/30 hover:bg-primary/10 hover:border-primary"
+              >
+                <Clock className="h-3.5 w-3.5 text-primary" /> Web Clocking
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOpenLeave}
+                className="gap-1.5 text-xs h-8 border-primary/30 hover:bg-primary/10 hover:border-primary"
+              >
+                <Calendar className="h-3.5 w-3.5 text-emerald-600" /> Apply for Leave
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOpenPayslip}
+                className="gap-1.5 text-xs h-8 border-primary/30 hover:bg-primary/10 hover:border-primary"
+              >
+                <FileText className="h-3.5 w-3.5 text-blue-600" /> Latest Payslip
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={onOpenDocRequest}
+                className="gap-1.5 text-xs h-8 bg-primary text-primary-foreground font-semibold shadow-xs"
+              >
+                <FileCheck className="h-3.5 w-3.5" /> Request Document / COE
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
 
       {/* Recent Activities & Service History */}
       <Card className="border-border/70 shadow-xs">

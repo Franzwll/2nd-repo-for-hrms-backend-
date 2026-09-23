@@ -958,6 +958,50 @@ export const authApi = {
     }),
 };
 
+export interface MfaStatus {
+  mfa_method: "email_otp" | "totp";
+  totp_confirmed: boolean;
+  recovery_codes_remaining: number;
+  totp_required: boolean;
+  email_otp_enabled: boolean;
+}
+
+export const mfaApi = {
+  status: () => request<MfaStatus>("/auth/mfa/status"),
+  setup: () =>
+    request<{ otpauth_url: string; qr_svg: string; manual_key: string }>(
+      "/auth/mfa/totp/setup",
+      { method: "POST" },
+    ),
+  confirm: (code: string, password: string) =>
+    request<{ message: string; recovery_codes: string[] }>("/auth/mfa/totp/confirm", {
+      method: "POST",
+      body: JSON.stringify({ code, password }),
+    }),
+  disable: (password: string, code?: string) =>
+    request<{ message: string }>("/auth/mfa/totp/disable", {
+      method: "POST",
+      body: JSON.stringify({ password, code }),
+    }),
+  regenerateCodes: (password: string) =>
+    request<{ message: string; recovery_codes: string[] }>("/auth/mfa/recovery-codes", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+  verify: (login_token: string, code: string, captcha_token?: string) =>
+    request<ApiVerifyResponse>("/auth/mfa/verify", {
+      method: "POST",
+      body: JSON.stringify({ login_token, code, captcha_token }),
+    }),
+  recover: (login_token: string, recovery_code: string, captcha_token?: string) =>
+    request<ApiVerifyResponse & { recovery_codes_remaining?: number }>("/auth/mfa/recover", {
+      method: "POST",
+      body: JSON.stringify({ login_token, recovery_code, captcha_token }),
+    }),
+  adminReset: (userId: number | string) =>
+    request<{ message: string }>(`/auth/mfa/reset/${userId}`, { method: "POST" }),
+};
+
 /* ========================================================================= */
 /* 6. CORE HCM                                                               */
 /* ========================================================================= */

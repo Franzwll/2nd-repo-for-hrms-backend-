@@ -27,6 +27,7 @@ import { EssAllRequestsTab } from "@/components/modules/ess/tabs/EssAllRequestsT
 import { EssPromotionTab } from "@/components/modules/ess/tabs/EssPromotionTab";
 import { EssPerformanceTab } from "@/components/modules/ess/tabs/EssPerformanceTab";
 import { EssRecognitionTab } from "@/components/modules/ess/tabs/EssRecognitionTab";
+import { EssBenefitsTab } from "@/components/modules/ess/tabs/EssBenefitsTab";
 import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
 import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
 import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewerModal";
@@ -146,7 +147,7 @@ export function EmployeeEss() {
           {categoryParam === "Documents" && <EssDocumentsTab />}
           {(categoryParam === "Requests" || categoryParam === "COE" || categoryParam === "RequestDoc") && <EssAllRequestsTab />}
           {categoryParam === "Recognition" && <EssRecognitionTab />}
-          {(categoryParam === "Benefits" || categoryParam === "Statutory") && <EssPayrollTab />}
+          {(categoryParam === "Benefits" || categoryParam === "Statutory") && <EssBenefitsTab />}
           {categoryParam === "Promotion" && <EssPromotionTab />}
         </div>
       ) : (
