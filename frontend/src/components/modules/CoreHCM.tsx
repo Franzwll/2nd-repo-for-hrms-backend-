@@ -131,6 +131,131 @@ const formatMoney = (val: number) =>
     maximumFractionDigits: 0,
   }).format(val);
 
+/** All employment statuses recognised across the HRMS. */
+const APPLICABLE_STATUSES = [
+  { name: "Active", hint: "Currently employed and on duty" },
+  { name: "On Leave", hint: "Currently employed, on approved leave" },
+  { name: "Probationary", hint: "Under probationary employment type" },
+  { name: "Regular", hint: "Regularised employment type" },
+  { name: "Contractual", hint: "Fixed-term employment type" },
+  { name: "Resigned", hint: "Exited via resignation" },
+  { name: "Retired", hint: "Exited via retirement" },
+  { name: "Terminated", hint: "Exited via termination" },
+] as const;
+
+/**
+ * "Status" tab inside the employee profile: current employment status,
+ * available leave balances, recent leave requests and every applicable status.
+ */
+function EmployeeStatusTab({ employeeCode, employeeId }: { employeeCode: string; employeeId: number | null }) {
+  const [detail, setDetail] = useState<ApiEmployee | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!employeeId) return;
+    let cancelled = false;
+    setLoading(true);
+    hcmApi.employees
+      .get(employeeId)
+      .then((res) => {
+        if (!cancelled) setDetail(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) setDetail(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeId, employeeCode]);
+
+  const balances = detail?.leave_balances ?? [];
+  const leaveRequests = detail?.leave_requests ?? [];
+  const totalAvailable = balances.reduce((s, b) => s + (b.available_days ?? 0), 0);
+
+  return (
+    <div className="space-y-1.5 text-sm">
+      <Section title="Current employment status">
+        <Field k="Status" v={detail?.status ?? "—"} />
+        <Field k="Employment type" v={detail?.employment_type ?? "—"} />
+        <Field k="Onboarding" v={detail ? (detail.onboarding_complete ? "Complete" : "Incomplete") : "—"} />
+        <Field
+          k="Exit record"
+          v={
+            detail?.exit_record
+              ? `${detail.exit_record.exit_type} · ${detail.exit_record.exit_date ?? "date TBD"}`
+              : "No exit on file"
+          }
+        />
+      </Section>
+
+      <Section title={`Available leaves${balances.length ? ` · ${totalAvailable} day(s) left` : ""}`}>
+        {loading ? (
+          <p className="text-xs text-muted-foreground">Loading leave balances…</p>
+        ) : balances.length === 0 ? (
+          <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-3">
+            No leave balances on file for this employee for the current period.
+          </p>
+        ) : (
+          balances.map((b) => (
+            <div key={`${b.leave_type}-${b.period_year}`} className="rounded-md border border-border p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[0.8rem] font-medium">{b.leave_type}</p>
+                <Badge variant="outline" className="border-success/30 bg-success/15 text-success">
+                  {b.available_days} left
+                </Badge>
+              </div>
+              <p className="mt-1 text-[0.7rem] text-muted-foreground">
+                {b.used_days}/{b.total_days} used · Period {b.period_year}
+              </p>
+            </div>
+          ))
+        )}
+      </Section>
+
+      <Section title="Recent leave requests">
+        {loading ? (
+          <p className="text-xs text-muted-foreground">Loading leave requests…</p>
+        ) : leaveRequests.length === 0 ? (
+          <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-3">
+            No leave requests filed by this employee.
+          </p>
+        ) : (
+          leaveRequests.map((r) => (
+            <div key={r.request_code} className="rounded-md border border-border p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[0.8rem] font-medium">{r.request_type}</p>
+                <Badge variant="outline">{r.status}</Badge>
+              </div>
+              <p className="mt-1 text-[0.7rem] text-muted-foreground">
+                {[r.date_from, r.date_to].filter(Boolean).join(" → ") || r.filed_at || r.request_code}
+              </p>
+            </div>
+          ))
+        )}
+      </Section>
+
+      <Section title="Applicable statuses">
+        {APPLICABLE_STATUSES.map((s) => (
+          <div key={s.name} className="rounded-md border border-border p-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[0.8rem] font-medium">{s.name}</p>
+              {detail?.status === s.name || detail?.employment_type === s.name ? (
+                <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
+                  Current
+                </Badge>
+              ) : null}
+            </div>
+            <p className="mt-1 text-[0.7rem] text-muted-foreground">{s.hint}</p>
+          </div>
+        ))}
+      </Section>
+    </div>
+  );
+}
+
 /** HRMS system logo (generic system mark, not the hotel brand). */
 function SystemLogo({ size = "sm", showText = false }: { size?: "sm" | "lg"; showText?: boolean }) {
   return (
@@ -1866,49 +1991,65 @@ function EmployeeListManager({
                     </DialogTitle>
                   </DialogHeader>
 
-                  <div className="space-y-1.5 text-sm">
-                    <Section title="Personal details">
-                      <Field k="Full name" v={viewingEmpInfo.name} />
-                      <Field k="Birth date" v={p.birthDate} />
-                      <Field k="Gender" v={p.gender} />
-                      <Field k="Civil status" v={p.civilStatus} />
-                      <Field k="Nationality" v={p.nationality} />
-                    </Section>
-                    <Section title="Contact information">
-                      <Field k="Company email" v={viewingEmpInfo.email} />
-                      <Field k="Personal email" v={p.personalEmail} />
-                      <Field k="Mobile number" v={viewingEmpInfo.phone} />
-                      <Field k="Home address" v={p.address} wide />
-                    </Section>
-                    <Section title="Family information">
-                      <Field k="Family" v={p.family} wide />
-                    </Section>
-                    <Section title="Emergency contact">
-                      <Field k="Name" v={p.emergencyName} />
-                      <Field k="Relationship" v={p.emergencyRelation} />
-                      <Field k="Contact number" v={p.emergencyPhone} />
-                    </Section>
-                    <Section title="Employment information">
-                      <Field k="Employee number" v={viewingEmpInfo.id} />
-                      <Field k="Position" v={viewingEmpInfo.position} />
-                      <Field k="Department" v={viewingEmpInfo.department} />
-                      <Field k="Outlet / Branch" v="Oxford Suites Makati" />
-                      <Field k="Status" v={viewingEmpInfo.status} />
-                      <Field k="Date hired" v={viewingEmpInfo.dateHired} />
-                      <Field k="Immediate supervisor" v={viewingEmpInfo.supervisor} />
-                      <Field k="Shift" v="AM Shift · 07:00 – 16:00" />
-                      <Field
-                        k="Rate"
-                        v={`${viewingEmpInfo.employmentType} · ${p.contract.split(" · ")[0]}`}
+                  <Tabs defaultValue="profile" className="mt-2">
+                    <TabsList className="flex h-auto flex-wrap justify-start">
+                      <TabsTrigger value="profile">Profile</TabsTrigger>
+                      <TabsTrigger value="status">Status</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="profile" className="mt-3">
+                      <div className="space-y-1.5 text-sm">
+                        <Section title="Personal details">
+                          <Field k="Full name" v={viewingEmpInfo.name} />
+                          <Field k="Birth date" v={p.birthDate} />
+                          <Field k="Gender" v={p.gender} />
+                          <Field k="Civil status" v={p.civilStatus} />
+                          <Field k="Nationality" v={p.nationality} />
+                        </Section>
+                        <Section title="Contact information">
+                          <Field k="Company email" v={viewingEmpInfo.email} />
+                          <Field k="Personal email" v={p.personalEmail} />
+                          <Field k="Mobile number" v={viewingEmpInfo.phone} />
+                          <Field k="Home address" v={p.address} wide />
+                        </Section>
+                        <Section title="Family information">
+                          <Field k="Family" v={p.family} wide />
+                        </Section>
+                        <Section title="Emergency contact">
+                          <Field k="Name" v={p.emergencyName} />
+                          <Field k="Relationship" v={p.emergencyRelation} />
+                          <Field k="Contact number" v={p.emergencyPhone} />
+                        </Section>
+                        <Section title="Employment information">
+                          <Field k="Employee number" v={viewingEmpInfo.id} />
+                          <Field k="Position" v={viewingEmpInfo.position} />
+                          <Field k="Department" v={viewingEmpInfo.department} />
+                          <Field k="Outlet / Branch" v="Oxford Suites Makati" />
+                          <Field k="Status" v={viewingEmpInfo.status} />
+                          <Field k="Date hired" v={viewingEmpInfo.dateHired} />
+                          <Field k="Immediate supervisor" v={viewingEmpInfo.supervisor} />
+                          <Field k="Shift" v="AM Shift · 07:00 – 16:00" />
+                          <Field
+                            k="Rate"
+                            v={`${viewingEmpInfo.employmentType} · ${p.contract.split(" · ")[0]}`}
+                          />
+                        </Section>
+                        <Section title="Government IDs">
+                          <Field k="SSS number" v={p.sss} />
+                          <Field k="Pag-IBIG MID" v={p.pagibig} />
+                          <Field k="PhilHealth number" v={p.philhealth} />
+                          <Field k="TIN" v={p.tin} />
+                        </Section>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="status" className="mt-3">
+                      <EmployeeStatusTab
+                        employeeCode={viewingEmpInfo.id}
+                        employeeId={employeeIdByCode.get(viewingEmpInfo.id) ?? null}
                       />
-                    </Section>
-                    <Section title="Government IDs">
-                      <Field k="SSS number" v={p.sss} />
-                      <Field k="Pag-IBIG MID" v={p.pagibig} />
-                      <Field k="PhilHealth number" v={p.philhealth} />
-                      <Field k="TIN" v={p.tin} />
-                    </Section>
-                  </div>
+                    </TabsContent>
+                  </Tabs>
 
                   <DialogFooter>
                     <Button onClick={() => setViewingEmpInfo(null)}>Close</Button>

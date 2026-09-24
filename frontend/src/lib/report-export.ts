@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Multi-format Report Exporter (PDF, DOCX, Excel) for HRMS Modules.
  *
  * Produces formal, corporate-grade documents entirely client-side with zero
@@ -14,6 +14,7 @@
  * so improving this module upgrades all of them at once.
  */
 
+import { jsPDF } from "jspdf";
 import oxfordMarkMaroon from "@/assets/oxford-mark-maroon.png";
 import { getUser } from "@/lib/auth";
 
@@ -125,6 +126,7 @@ export function exportReport(report: ReportData, format: ReportFormat): void {
   const preparedByDept =
     (user?.department_name as string | undefined) || "Human Resources Department";
 
+  // EXPORT path — always downloads a file, never opens the print dialog.
   if (format === "excel") {
     exportToExcel(report, generatedAt, refNo, preparedBy);
   } else if (format === "docx") {
@@ -132,7 +134,7 @@ export function exportReport(report: ReportData, format: ReportFormat): void {
   } else if (format === "csv") {
     exportToCsv(report);
   } else if (format === "pdf") {
-    exportToPrintablePdf(report, generatedAt, refNo, preparedBy, preparedByTitle, preparedByDept);
+    exportToPdfDownload(report, generatedAt, refNo, preparedBy, preparedByTitle, preparedByDept);
   }
 }
 
@@ -311,10 +313,51 @@ function exportToExcel(
  </Worksheet>
 </Workbook>`;
 
-  const blob = new Blob(["﻿" + xml], {
+  const blob = new Blob(["\uFEFF" + xml], {
     type: "application/vnd.ms-excel;charset=utf-8;",
   });
   triggerDownload(blob, filename);
+}
+
+/* Shared 201-file report builder: one source of truth for 201 export/print. */
+export function build201FileReport(input: {
+  employeeName: string;
+  employeeCode: string;
+  position: string;
+  department: string;
+  status: string;
+  employmentType: string;
+  dateHired: string;
+  email: string;
+  phone: string;
+  supervisor: string;
+  documents: { name: string; status: string; file?: string }[];
+  history: { type: string; date: string; detail: string }[];
+}): ReportData {
+  const rows = [
+    ...input.documents.map((d) => ({
+      section: "Document",
+      detail: d.name,
+      meta: d.file || d.status,
+    })),
+    ...input.history.map((h) => ({ section: h.type, detail: h.detail, meta: h.date })),
+  ];
+  return {
+    title: `201 File - ${input.employeeName}`,
+    subtitle: `${input.employeeCode} · ${input.position} · ${input.department}`,
+    columns: [
+      { header: "Section", key: "section" },
+      { header: "Detail", key: "detail" },
+      { header: "Meta", key: "meta" },
+    ],
+    rows,
+    summary: [
+      { label: "Employment Status", value: input.status },
+      { label: "Employment Type", value: input.employmentType },
+      { label: "Date Hired", value: input.dateHired || "-" },
+    ],
+    sensitive: true,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -446,15 +489,14 @@ function exportToWord(
   </body>
   </html>`;
 
-  const blob = new Blob(["﻿" + html], { type: "application/msword;charset=utf-8" });
+  const blob = new Blob(["\uFEFF" + html], { type: "application/msword;charset=utf-8" });
   triggerDownload(blob, filename);
 }
 
 /* ------------------------------------------------------------------ */
-/* PDF — formal typeset A4 report rendered through an iframe          */
-/*      (avoids popup blockers; "Save as PDF" in the print dialog)     */
+/* PDF — true downloadable PDF via jsPDF (EXPORT path only: no print) */
 /* ------------------------------------------------------------------ */
-function exportToPrintablePdf(
+function exportToPdfDownload(
   report: ReportData,
   generatedAt: string,
   refNo: string,
@@ -462,9 +504,126 @@ function exportToPrintablePdf(
   preparedByTitle: string,
   preparedByDept: string,
 ): void {
-  printHtmlDocument(
-    buildPrintableHtml(report, generatedAt, refNo, preparedBy, preparedByTitle, preparedByDept),
-  );
+  const landscape = report.columns.length > 6;
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: landscape ? "landscape" : "portrait" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 14;
+  let y = margin;
+
+  const ensureSpace = (needed: number) => {
+    if (y + needed > pageH - margin) {
+      doc.addPage();
+      y = margin;
+    }
+  };
+
+  // Letterhead
+  doc.setTextColor(82, 12, 25);
+  doc.setFont("times", "bold");
+  doc.setFontSize(15);
+  doc.text(BRAND, margin, y + 5);
+  doc.setFontSize(8);
+  doc.setTextColor(120, 120, 120);
+  doc.setFont("times", "normal");
+  doc.text(BRAND_SUB.toUpperCase(), margin, y + 10);
+  doc.setFontSize(11);
+  doc.setTextColor(82, 12, 25);
+  doc.setFont("times", "bold");
+  doc.text(report.title, pageW - margin, y + 5, { align: "right" });
+  doc.setFontSize(7.5);
+  doc.setTextColor(80, 80, 80);
+  doc.setFont("times", "normal");
+  doc.text(`Control No.: ${refNo}`, pageW - margin, y + 10, { align: "right" });
+  y += 15;
+  doc.setDrawColor(82, 12, 25);
+  doc.setLineWidth(0.6);
+  doc.line(margin, y, pageW - margin, y);
+  y += 5;
+
+  doc.setFontSize(8);
+  doc.setTextColor(60, 60, 60);
+  doc.text(`Date of Issue: ${generatedAt}`, margin, y);
+  doc.text(`Prepared by: ${preparedBy} (${preparedByTitle} - ${preparedByDept})`, margin, y + 4);
+  if (report.subtitle) {
+    doc.setFont("times", "italic");
+    doc.text(report.subtitle, margin, y + 8);
+    y += 12;
+  } else {
+    y += 8;
+  }
+
+  // Summary
+  if (report.summary?.length) {
+    ensureSpace(12);
+    doc.setFont("times", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(82, 12, 25);
+    for (const s of report.summary) {
+      doc.text(`${s.label}: ${s.value}`, margin, y);
+      y += 5;
+    }
+    y += 2;
+  }
+
+  // Table
+  const colCount = Math.max(report.columns.length, 1);
+  const usable = pageW - margin * 2;
+  const colW = usable / colCount;
+  const rowH = 7;
+
+  const drawHeader = () => {
+    doc.setFillColor(82, 12, 25);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("times", "bold");
+    doc.setFontSize(8);
+    report.columns.forEach((c, i) => {
+      const x = margin + i * colW;
+      doc.rect(x, y, colW, rowH, "F");
+      doc.text(String(c.header).slice(0, 28), x + 1.5, y + 4.8);
+    });
+    y += rowH;
+    doc.setTextColor(20, 20, 20);
+    doc.setFont("times", "normal");
+  };
+
+  ensureSpace(rowH * 2);
+  drawHeader();
+  doc.setFontSize(7.5);
+  if (report.rows.length === 0) {
+    ensureSpace(rowH);
+    doc.text("No records were available for inclusion in this report.", margin + 2, y + 4.8);
+    y += rowH;
+  } else {
+    report.rows.forEach((row, ri) => {
+      ensureSpace(rowH);
+      if (ri % 2 === 1) {
+        doc.setFillColor(247, 245, 242);
+        doc.rect(margin, y, usable, rowH, "F");
+      }
+      report.columns.forEach((c, i) => {
+        const x = margin + i * colW;
+        doc.rect(x, y, colW, rowH);
+        const val = row[c.key] ?? "-";
+        doc.text(String(val).slice(0, 32), x + 1.5, y + 4.8);
+      });
+      y += rowH;
+    });
+  }
+
+  // Sign-off + footer
+  ensureSpace(30);
+  y += 8;
+  doc.setFontSize(8);
+  doc.text(`Prepared by: ${preparedBy}`, margin, y);
+  doc.text("Noted / Received by: ______________________", pageW - margin - 70, y);
+  y += 4;
+  doc.setFontSize(7);
+  doc.setTextColor(120, 120, 120);
+  doc.text(`${ADDRESS} | ${CONTACT}`, margin, pageH - 10);
+  doc.text("System-generated HRMS record - strictly confidential.", margin, pageH - 6);
+
+  doc.save(buildFilename(report, "pdf"));
 }
 
 function buildPrintableHtml(
@@ -594,18 +753,13 @@ function buildPrintableHtml(
     <span>${escapeHtml(ADDRESS)} &bull; ${escapeHtml(CONTACT)}</span>
     <span class="confidential">A system-generated record of the ${escapeHtml(BRAND)} Human Resources Management System &bull; Strictly confidential</span>
   </div>
-  <script>
-    function __printReport() { window.focus(); window.print(); }
-    if (document.readyState === "complete") { setTimeout(__printReport, 300); }
-    else { window.addEventListener("load", function () { setTimeout(__printReport, 300); }); }
-  </script>
 </body>
 </html>`;
 
   return html;
 }
 
-/** Render a full HTML document in a hidden iframe and raise the print dialog. */
+/** Render a full HTML document in a hidden iframe and raise the print dialog ONCE. */
 function printHtmlDocument(html: string): void {
   const iframe = document.createElement("iframe");
   iframe.setAttribute("aria-hidden", "true");
@@ -617,6 +771,27 @@ function printHtmlDocument(html: string): void {
   iframe.style.border = "0";
   document.body.appendChild(iframe);
 
+  const cleanup = () => {
+    setTimeout(() => {
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    }, 1000);
+  };
+
+  const doPrint = () => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // Print exactly once, after the iframe finishes loading the document.
+  iframe.onload = () => {
+    setTimeout(doPrint, 350);
+  };
+  iframe.contentWindow?.addEventListener?.("afterprint", cleanup);
+
   const doc = iframe.contentWindow?.document;
   if (!doc) {
     const w = window.open("", "_blank");
@@ -624,7 +799,11 @@ function printHtmlDocument(html: string): void {
       w.document.open();
       w.document.write(html);
       w.document.close();
+      // New-window fallback: print once on load, never download.
+      w.addEventListener("load", () => setTimeout(() => w.print(), 350));
+      setTimeout(cleanup, 5000);
     } else {
+      cleanup();
       alert("Unable to open the report. Please allow popups for this site.");
     }
     return;
@@ -633,19 +812,11 @@ function printHtmlDocument(html: string): void {
   doc.open();
   doc.write(html);
   doc.close();
-
-  const remove = () => {
-    setTimeout(() => {
-      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-    }, 800);
-  };
-  iframe.contentWindow?.focus();
-  try {
-    iframe.contentWindow?.print();
-  } catch {
-    /* ignore */
-  }
-  remove();
+  // Safety net: if onload already fired synchronously, still print once.
+  setTimeout(() => {
+    if (document.body.contains(iframe)) doPrint();
+  }, 1200);
+  setTimeout(cleanup, 8000);
 }
 
 function triggerDownload(blob: Blob, filename: string): void {
@@ -653,8 +824,11 @@ function triggerDownload(blob: Blob, filename: string): void {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.style.display = "none";
   document.body.appendChild(a);
-  a.click();
+  // Dispatch a real mouse click (more reliable than .click() for blobs).
+  a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // Revoke after a delay — revoking synchronously aborts the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
 }

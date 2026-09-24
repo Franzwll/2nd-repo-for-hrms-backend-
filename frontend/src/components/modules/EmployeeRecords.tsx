@@ -37,6 +37,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -68,6 +75,13 @@ import {
   useRecordDetail,
   useRoster,
 } from "@/lib/employeerecords";
+import {
+  build201FileReport,
+  exportReport,
+  printReport,
+  type ReportFormat,
+} from "@/lib/report-export";
+import { usePasswordGate } from "@/components/ui/report-menu";
 import { usePagination } from "@/hooks/usePagination";
 
 const documentTypes = [
@@ -601,20 +615,123 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     toast.success("Document removed");
   };
 
+  // Security gate: 201 files are confidential — password is required before
+  // opening, printing, or exporting any employee's full record.
+  const { gateSensitive, gateDialog } = usePasswordGate();
+
+  /** Single source of truth for this employee's 201-file report payload. */
+  const build201Report = (emp: Employee) =>
+    build201FileReport({
+      employeeName: emp.name,
+      employeeCode: emp.id,
+      position: emp.position,
+      department: emp.department,
+      status: emp.status,
+      employmentType: emp.employmentType,
+      dateHired: emp.dateHired,
+      email: emp.email,
+      phone: emp.phone,
+      supervisor: emp.supervisor,
+      documents: docsFor(emp).map((d) => ({
+        name: d.name,
+        status: d.status,
+        ...(d.file ? { file: d.file } : {}),
+      })),
+      history: historyFor(emp).map((h) => ({ type: h.type, date: h.date, detail: h.detail })),
+    });
+
+  /** PRINT path only — opens the isolated 201-file print view, never downloads. */
   const printRecord = () => {
     if (!profile) return;
-    toast.success(`Preparing ${profile.name}'s record for printing…`);
-    window.print();
+    gateSensitive({ sensitive: true }, () => {
+      printReport(build201Report(profile));
+      toast.success(`${profile.name}'s 201 file sent to printer.`);
+    });
+  };
+
+  /** EXPORT path only — downloads the 201 file, never opens the print dialog. */
+  const export201File = (format: ReportFormat) => {
+    if (!profile) return;
+    gateSensitive({ sensitive: true }, () => {
+      exportReport(build201Report(profile), format);
+      toast.success(`${profile.name}'s 201 file exported as ${format.toUpperCase()}.`);
+    });
+  };
+
+  /** Password-gated entry into a 201 file (security measure). */
+  const open201File = (emp: Employee) => {
+    gateSensitive({ sensitive: true }, () => {
+      setProfileId(emp.id);
+      setProfileTab("personal");
+      setHistoryFormOpen(false);
+    });
+  };
+
+  /** Company-wide HR report payloads built from the live roster. */
+  const buildCompanyReport = (reportName: string) => {
+    const base = {
+      title: reportName,
+      subtitle: `Oxford Suites Makati · ${list.length} employee(s) on record`,
+      sensitive: true as const,
+      summary: [
+        { label: "Total Employees", value: list.length },
+        { label: "Regular", value: list.filter((e) => e.employmentType === "Regular").length },
+        { label: "Active", value: list.filter((e) => e.status === "Active").length },
+      ],
+    };
+    if (reportName.includes("Headcount")) {
+      const byDept = new Map<string, number>();
+      list.forEach((e) => byDept.set(e.department, (byDept.get(e.department) ?? 0) + 1));
+      return {
+        ...base,
+        columns: [
+          { header: "Department", key: "department" },
+          { header: "Headcount", key: "count" },
+        ],
+        rows: [...byDept.entries()].map(([department, count]) => ({ department, count })),
+      };
+    }
+    return {
+      ...base,
+      columns: [
+        { header: "Employee", key: "name" },
+        { header: "Position", key: "position" },
+        { header: "Department", key: "department" },
+        { header: "Type", key: "type" },
+        { header: "Status", key: "status" },
+        { header: "Date Hired", key: "dateHired" },
+      ],
+      rows: list.map((e) => ({
+        name: `${e.name} (${e.id})`,
+        position: e.position,
+        department: e.department,
+        type: e.employmentType,
+        status: e.status,
+        dateHired: e.dateHired,
+      })),
+    };
+  };
+
+  /** EXPORT path only — downloads the company report, never prints. */
+  const exportCompanyReport = (reportName: string, format: ReportFormat) => {
+    gateSensitive({ sensitive: true }, () => {
+      exportReport(buildCompanyReport(reportName), format);
+      toast.success(`${reportName} exported as ${format.toUpperCase()}.`);
+    });
   };
 
   return (
     <div>
+      {gateDialog}
       <PageHeader
         eyebrow={isSuper ? "Super Admin · Core HR" : "Admin · Core HR"}
         title="Employee Records"
         description="201 files, employment details, records analytics and document generation."
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
+            <span className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-[0.7rem] text-muted-foreground">
+              <ShieldCheck className="h-3.5 w-3.5" /> Password-protected records
+            </span>
             <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>
               <FileText className="mr-2 h-4 w-4" /> Generate reports
             </Button>
@@ -871,11 +988,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => {
-                                  setProfileId(e.id);
-                                  setProfileTab("personal");
-                                  setHistoryFormOpen(false);
-                                }}
+                                onClick={() => open201File(e)}
                               >
                                 <FolderOpen className="mr-2 h-3.5 w-3.5" /> View Records
                               </Button>
@@ -1132,6 +1245,13 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                       <ShieldCheck className="h-3.5 w-3.5" />
                       Admin access: records are read-only and statutory government IDs are hidden.
                       You may create history entries.
+                    </p>
+                  )}
+                  {isSuper && (
+                    <p className="flex items-center gap-2 rounded-md border border-gold/40 bg-gold-soft p-2.5 text-xs text-muted-foreground">
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                      Confidential 201 file — password-verified access. Printing and exporting are
+                      logged and require re-confirmation.
                     </p>
                   )}
 
@@ -1441,9 +1561,24 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     <Button variant="outline" onClick={printRecord}>
                       <Printer className="mr-2 h-3.5 w-3.5" /> Print record
                     </Button>
-                    <Button variant="outline" onClick={() => toast("201 file exported as PDF")}>
-                      Export 201 file
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline">
+                          <Download className="mr-2 h-3.5 w-3.5" /> Export 201 file
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {(["pdf", "docx", "excel", "csv"] as ReportFormat[]).map((format) => (
+                          <DropdownMenuItem key={format} onClick={() => export201File(format)}>
+                            <FileText className="mr-2 h-4 w-4" /> Export as {format.toUpperCase()}
+                          </DropdownMenuItem>
+                        ))}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={printRecord}>
+                          <Printer className="mr-2 h-4 w-4" /> Print…
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </DialogFooter>
                 </>
               );
@@ -1580,7 +1715,38 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => toast.success(`${g.docType} for ${g.employeeName} downloaded`)}
+                    onClick={() =>
+                      gateSensitive({ sensitive: true }, () => {
+                        const emp = list.find((e) => e.name === g.employeeName);
+                        exportReport(
+                          {
+                            title: `${g.docType} - ${g.employeeName}`,
+                            ...(emp
+                              ? {
+                                  subtitle: `${emp.id} · ${emp.position} · ${emp.department}`,
+                                }
+                              : {}),
+                            columns: [
+                              { header: "Field", key: "field" },
+                              { header: "Detail", key: "detail" },
+                            ],
+                            rows: emp
+                              ? [
+                                  { field: "Employee", detail: emp.name },
+                                  { field: "Employee No.", detail: emp.id },
+                                  { field: "Position", detail: emp.position },
+                                  { field: "Department", detail: emp.department },
+                                  { field: "Document", detail: g.docType },
+                                  { field: "Generated", detail: g.generatedAt },
+                                ]
+                              : [{ field: "Document", detail: g.docType }],
+                            sensitive: true,
+                          },
+                          "pdf",
+                        );
+                        toast.success(`${g.docType} for ${g.employeeName} downloaded`);
+                      })
+                    }
                   >
                     <Download className="mr-1.5 h-3.5 w-3.5" /> Download
                   </Button>
@@ -1652,7 +1818,8 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Generate Reports</DialogTitle>
             <DialogDescription>
-              Company-wide HR reports across all employee records.
+              Company-wide HR reports across all employee records. Reports are confidential and
+              require password confirmation before downloading.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -1662,9 +1829,18 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                 className="flex items-center justify-between rounded-md border border-border p-3"
               >
                 <span className="text-sm">{r}</span>
-                <Button size="sm" variant="outline" onClick={() => toast.success(`${r} generated`)}>
-                  <Download className="mr-1.5 h-3.5 w-3.5" /> PDF
-                </Button>
+                <div className="flex gap-1.5">
+                  {(["pdf", "excel"] as ReportFormat[]).map((format) => (
+                    <Button
+                      key={format}
+                      size="sm"
+                      variant="outline"
+                      onClick={() => exportCompanyReport(r, format)}
+                    >
+                      <Download className="mr-1.5 h-3.5 w-3.5" /> {format.toUpperCase()}
+                    </Button>
+                  ))}
+                </div>
               </div>
             ))}
           </div>

@@ -1057,6 +1057,8 @@ export interface ApiEmployee {
   documents?: ApiDocument[];
   position_history?: ApiPositionHistory[];
   exit_record?: ApiExitRecord | null;
+  leave_balances?: ApiEmployeeLeaveBalance[];
+  leave_requests?: ApiEmployeeLeaveRequest[];
   created_at: string;
   updated_at: string;
 }
@@ -1101,6 +1103,24 @@ export interface ApiExitRecord {
   clearance_status: string;
   coe_status: string;
   notes: string | null;
+}
+
+export interface ApiEmployeeLeaveBalance {
+  leave_balance_id: number;
+  leave_type: string;
+  period_year: number;
+  total_days: number;
+  used_days: number;
+  available_days: number;
+}
+
+export interface ApiEmployeeLeaveRequest {
+  request_code: string;
+  request_type: string;
+  status: string;
+  date_from: string | null;
+  date_to: string | null;
+  filed_at: string | null;
 }
 
 export interface ApiHR3Recommendation {

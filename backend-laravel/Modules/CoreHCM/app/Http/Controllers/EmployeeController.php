@@ -121,7 +121,7 @@ class EmployeeController extends Controller
 
     public function show(Employee $employee): JsonResponse
     {
-        $employee->load('department', 'position', 'emergencyContacts', 'documents', 'positionHistory', 'exitRecord');
+        $employee->load('department', 'position', 'emergencyContacts', 'documents', 'positionHistory', 'exitRecord', 'leaveBalances', 'essRequests');
 
         return response()->json([
             'data' => new EmployeeResource($employee),
