@@ -27,18 +27,44 @@ class SystemUser extends Authenticatable
         'role_id',
         'status',
         'otp_enabled',
+        'mfa_method',
+        'totp_secret',
+        'totp_confirmed_at',
+        'mfa_recovery_codes',
+        'failed_attempts',
+        'locked_until',
         'last_login_at',
         'last_login_ip',
     ];
 
     protected $hidden = [
         'password_hash',
+        'totp_secret',
+        'mfa_recovery_codes',
     ];
 
     protected $casts = [
         'last_login_at' => 'datetime',
+        'totp_confirmed_at' => 'datetime',
+        'locked_until' => 'datetime',
         'otp_enabled' => 'boolean',
+        'totp_secret' => 'encrypted',
+        'mfa_recovery_codes' => 'array',
     ];
+
+    public function isLockedOut(): bool
+    {
+        return $this->locked_until !== null && $this->locked_until->isFuture();
+    }
+
+    /**
+     * Whether this account signs in with a TOTP authenticator app
+     * instead of an emailed OTP code.
+     */
+    public function usesTotp(): bool
+    {
+        return $this->mfa_method === 'totp' && $this->totp_confirmed_at !== null;
+    }
 
     public function getAuthPassword(): string
     {

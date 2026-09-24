@@ -878,6 +878,10 @@ export interface ApiLoginResponse {
   debug_otp: string;
   /** True when the user's role still requires OTP verification at /otp. */
   otp_required?: boolean;
+  /** Which second factor the /otp step expects. */
+  mfa_method?: "email_otp" | "totp";
+  /** True for Super Admins without an enrolled authenticator (soft-mandatory). */
+  totp_enrollment_required?: boolean;
   /** Present only when OTP is disabled for the account (direct sign-in). */
   token?: string;
   token_type?: string;
@@ -905,9 +909,11 @@ export interface ApiVerifyResponse {
 
 export const mySettingsApi = {
   get: (user: string) =>
-    request<{ notifications: Record<string, boolean>; preferences: Record<string, string> }>(
-      `/my/settings?user=${encodeURIComponent(user)}`,
-    ),
+    request<{
+      notifications: Record<string, boolean>;
+      preferences: Record<string, string>;
+      otp_enabled?: boolean;
+    }>(`/my/settings?user=${encodeURIComponent(user)}`),
   save: (scope: "notifications" | "preferences", user: string, value: any) =>
     request<{ setting_key: string; setting_value: any }>(`/my/settings/${scope}`, {
       method: "PUT",
@@ -918,26 +924,36 @@ export const mySettingsApi = {
       method: "POST",
       body: JSON.stringify({ user, current_password: currentPassword, new_password: newPassword }),
     }),
+  toggleOtp: (user: string, enabled: boolean) =>
+    request<{ message: string; otp_enabled: boolean }>("/my/otp", {
+      method: "PUT",
+      body: JSON.stringify({ user, enabled }),
+    }),
 };
 
 export const authApi = {
-  login: (email: string, password: string) =>
+  login: (email: string, password: string, captcha_token?: string) =>
     request<ApiLoginResponse>("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, captcha_token }),
     }),
-  verifyOtp: (login_token: string, otp: string) =>
+  verifyOtp: (login_token: string, otp: string, captcha_token?: string) =>
     request<ApiVerifyResponse>("/auth/otp/verify", {
       method: "POST",
-      body: JSON.stringify({ login_token, otp }),
+      body: JSON.stringify({ login_token, otp, captcha_token }),
     }),
-  resendOtp: (login_token: string) =>
+  resendOtp: (login_token: string, captcha_token?: string) =>
     request<{ message: string; expires_in: number; debug_otp: string }>("/auth/otp/resend", {
       method: "POST",
-      body: JSON.stringify({ login_token }),
+      body: JSON.stringify({ login_token, captcha_token }),
     }),
   me: () => request<{ user: ApiVerifyResponse["user"] }>("/auth/me"),
   logout: () => request<{ message: string }>("/auth/logout", { method: "POST" }),
+  confirmPassword: (password: string) =>
+    request<{ ok: boolean }>("/auth/confirm-password", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
   sessionPolicy: () =>
     request<{
       token_expiration_minutes: number;
@@ -946,10 +962,10 @@ export const authApi = {
       otp_expires_in_seconds: number;
       reset_expires_in_seconds: number;
     }>("/auth/session-policy"),
-  forgotPassword: (email: string) =>
+  forgotPassword: (email: string, captcha_token?: string) =>
     request<{ message: string }>("/auth/forgot-password", {
       method: "POST",
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, captcha_token }),
     }),
   resetPassword: (token: string, password: string) =>
     request<{ message: string }>("/auth/reset-password", {

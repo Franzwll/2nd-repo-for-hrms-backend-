@@ -19,6 +19,7 @@ import {
 
 import { toast } from "sonner";
 
+import { MfaSettings } from "@/components/modules/MfaSettings";
 import { PageHeader } from "@/components/portal/PageHeader";
 import {
   AlertDialog,
@@ -726,6 +727,9 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                 }}
               />
             </div>
+
+            {/* Authenticator-app MFA — emailed codes vs TOTP app */}
+            <MfaSettings />
 
             <div className="grid gap-4">
               <div className="space-y-2">

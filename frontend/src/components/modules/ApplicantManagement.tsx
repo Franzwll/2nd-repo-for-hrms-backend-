@@ -131,6 +131,7 @@ import {
   type ApiSystemUser,
 } from "@/lib/api";
 import { exportReport, type ReportFormat } from "@/lib/report-export";
+import { usePasswordGate } from "@/components/ui/report-menu";
 import {
   isValidEmail,
   isValidName,
@@ -998,6 +999,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const navigate = useNavigate();
   const [rows, setRows] = useState<Applicant[]>([]);
   const [listLoading, setListLoading] = useState(true);
+  const { gateSensitive, gateDialog } = usePasswordGate();
 
   useEffect(() => {
     // Hired applicants leave the pipeline (they move to New Hire Onboarding);
@@ -1369,21 +1371,22 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       auditActorFilter !== "all"
         ? `Filters — Action: ${auditActionFilter} | Dept: ${auditDeptFilter} | User: ${auditActorFilter}${auditSearch ? ` | Search: "${auditSearch}"` : ""}`
         : "All audit entries (no filters)";
-    exportReport(
-      {
-        title: "History & Audit Report — Applicant Management",
-        subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · ${filterSummary}`,
-        columns,
-        rows: rowsData,
-        summary: [
-          { label: "Total Entries", value: auditLog.length },
-          { label: "Filtered", value: rowsForReport.length },
-          { label: "Generated", value: new Date().toLocaleString() },
-        ],
-      },
-      format,
-    );
-    toast.success(`Audit report exported as ${format.toUpperCase()}`);
+    const payload = {
+      title: "History & Audit Report — Applicant Management",
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · ${filterSummary}`,
+      sensitive: true,
+      columns,
+      rows: rowsData,
+      summary: [
+        { label: "Total Entries", value: auditLog.length },
+        { label: "Filtered", value: rowsForReport.length },
+        { label: "Generated", value: new Date().toLocaleString() },
+      ],
+    };
+    gateSensitive(payload, () => {
+      exportReport(payload, format);
+      toast.success(`Audit report exported as ${format.toUpperCase()}`);
+    });
   };
 
   const handleExportApplicantReport = (r: (typeof reportOptions)[number], format: ReportFormat) => {
@@ -1428,24 +1431,25 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 ? true
                 : true,
           );
-    exportReport(
-      {
-        title: `Applicant Management — ${r.title}`,
-        subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()}`,
-        columns: cols,
-        rows: data as any,
-        summary: [
-          { label: "Total Applicants", value: rows.length },
-          {
-            label: "Passed Screening",
-            value: rows.filter((a) => a.score >= passing).length,
-          },
-          { label: "Interviews Scheduled", value: interviews.length },
-        ],
-      },
-      format,
-    );
-    toast.success(`${r.title} report exported as ${format.toUpperCase()}`);
+    const payload = {
+      title: `Applicant Management — ${r.title}`,
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()}`,
+      sensitive: true,
+      columns: cols,
+      rows: data as any,
+      summary: [
+        { label: "Total Applicants", value: rows.length },
+        {
+          label: "Passed Screening",
+          value: rows.filter((a) => a.score >= passing).length,
+        },
+        { label: "Interviews Scheduled", value: interviews.length },
+      ],
+    };
+    gateSensitive(payload, () => {
+      exportReport(payload, format);
+      toast.success(`${r.title} report exported as ${format.toUpperCase()}`);
+    });
   };
 
   /** DOCX preview for server file (Review) — actual Word rendering */
@@ -4765,7 +4769,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Generate Report</DialogTitle>
             <DialogDescription>
-              Choose a report type, then use the Generate menu to export as PDF, DOCX or Excel.
+              Choose a report type, then use the Generate menu to export as PDF, DOCX, Excel, or CSV.
             </DialogDescription>
           </DialogHeader>
 
@@ -4794,6 +4798,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "excel")}>
                       <Download className="mr-2 h-4 w-4" /> Export as Excel
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "csv")}>
+                      <Download className="mr-2 h-4 w-4" /> Export as CSV
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -5606,6 +5613,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           )}
         </DialogContent>
       </Dialog>
+      {gateDialog}
     </div>
   );
 }

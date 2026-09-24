@@ -14,6 +14,8 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Idempotent: some environments already carry these columns
+        // (added manually) without the migration record.
         Schema::table('promotion_requests', function (Blueprint $table) {
             if (! Schema::hasColumn('promotion_requests', 'hr3_recommendation_id')) {
                 $table->unsignedBigInteger('hr3_recommendation_id')->nullable()->after('requested_salary_grade_id');
@@ -26,6 +28,14 @@ return new class extends Migration
                 $table->timestamp('forwarded_to_hr3_at')->nullable()->after('forwarded_to_hr3_by');
             }
         });
+
+        // Index on the link column (skipped if it already exists).
+        try {
+            Schema::table('promotion_requests', function (Blueprint $table) {
+                $table->index('hr3_recommendation_id', 'idx_promo_req_hr3_rec');
+            });
+        } catch (\Throwable $e) {
+        }
 
         // Broaden the status check to the new loop states (additive only).
         // MariaDB uses DROP CONSTRAINT; MySQL 8.0.16+ supports DROP CHECK / DROP CONSTRAINT.

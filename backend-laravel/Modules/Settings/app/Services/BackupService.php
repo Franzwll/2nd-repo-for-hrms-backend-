@@ -95,6 +95,36 @@ class BackupService
     }
 
     /**
+     * Delete old Automatic snapshots beyond the retention limit.
+     * Manual backups are never pruned. Returns the number removed.
+     */
+    public static function pruneAutomatic(int $keep): int
+    {
+        $entries = static::entries();
+        $autoIndexes = [];
+        foreach ($entries as $i => $entry) {
+            if (($entry['type'] ?? '') === 'Automatic') {
+                $autoIndexes[] = $i;
+            }
+        }
+
+        $excess = array_slice($autoIndexes, $keep);
+        foreach ($excess as $i) {
+            $file = static::directory() . DIRECTORY_SEPARATOR . ($entries[$i]['filename'] ?? '');
+            if (is_file($file)) {
+                @unlink($file);
+            }
+            unset($entries[$i]);
+        }
+
+        if ($excess !== []) {
+            SystemSetting::setValue('backups', array_values($entries));
+        }
+
+        return count($excess);
+    }
+
+    /**
      * Restore the database from a previously created dump file.
      *
      * @throws \RuntimeException when the entry/file is missing or a statement fails.

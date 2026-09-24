@@ -29,7 +29,7 @@ class AuthFlowTest extends TestCase
 
         $this->assertArrayHasKey('login_token', $login);
         $this->assertArrayHasKey('debug_otp', $login);
-        $this->assertEquals(300, $login['expires_in']);
+        $this->assertEquals(120, $login['expires_in']);
 
         $verify = $this->postJson('/api/v1/auth/otp/verify', [
             'login_token' => $login['login_token'],

@@ -13,7 +13,7 @@ import suite2b from "@/assets/o-suite(2)b.png";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-import { authApi } from "@/lib/api";
+import { authApi, mfaApi } from "@/lib/api";
 import { setToken, setUser } from "@/lib/auth";
 import { clearLoginContext, getLoginContext, persistLoginContext } from "./login";
 
@@ -78,6 +78,7 @@ const montageImages = [
 function OTPPage() {
   const navigate = useNavigate();
   const loginCtx = getLoginContext();
+  const isTotp = loginCtx?.mfa_method === "totp";
 
   const [digits, setDigits] = useState<string[]>(() =>
     Array.from({ length: OTP_LENGTH }, () => ""),
@@ -85,11 +86,15 @@ function OTPPage() {
   const [error, setError] = useState("");
   const [verified, setVerified] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(60);
+  // True server TTL (120s) — resend unlocks after a 30s anti-spam cooldown.
+  const [timeLeft, setTimeLeft] = useState(() => getLoginContext()?.expires_in ?? 120);
   const [resendDisabled, setResendDisabled] = useState(true);
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState("");
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const otpTtl = loginCtx?.expires_in ?? 120;
 
   useEffect(() => {
     if (!getLoginContext()) {
@@ -106,15 +111,17 @@ function OTPPage() {
     return () => clearInterval(slideTimer);
   }, []);
 
-  // Countdown timer
+  // Countdown timer — resend unlocks 30s after issue; expiry matches the server TTL.
   useEffect(() => {
-    if (timeLeft <= 0) {
+    if (timeLeft <= otpTtl - 30) {
       setResendDisabled(false);
+    }
+    if (timeLeft <= 0) {
       return;
     }
     const id = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
     return () => clearTimeout(id);
-  }, [timeLeft]);
+  }, [timeLeft, otpTtl]);
 
   const handleChange = (idx: number, val: string) => {
     const char = val.replace(/\D/g, "").slice(-1);
@@ -145,12 +152,32 @@ function OTPPage() {
     e.preventDefault();
   };
 
+  const finishSignIn = (res: { token: string; user: any }) => {
+    setToken(res.token);
+    setUser(res.user);
+    clearLoginContext();
+    setVerified(true);
+    toast.success("Identity verified — signing you in…");
+    const target =
+      res.user.role === "Super Admin"
+        ? "/superadmin"
+        : res.user.role === "Admin"
+          ? "/admin"
+          : "/employee";
+    setTimeout(() => navigate({ to: target }), 1200);
+  };
+
   const handleVerify = async () => {
     const code = digits.join("");
     if (code.length < OTP_LENGTH) {
-      setError("Please enter the complete 6-digit OTP.");
+      setError(
+        isTotp
+          ? "Please enter the 6-digit code from your authenticator app."
+          : "Please enter the complete 6-digit OTP.",
+      );
       return;
     }
+    // No captcha here: the login step already cleared it to mint this token.
     const ctx = getLoginContext();
     if (!ctx) {
       setError("Your login session has expired. Please sign in again.");
@@ -160,21 +187,13 @@ function OTPPage() {
     setSubmitting(true);
     setError("");
     try {
-      const res = await authApi.verifyOtp(ctx.login_token, code);
-      setToken(res.token);
-      setUser(res.user);
-      clearLoginContext();
-      setVerified(true);
-      toast.success("Identity verified — signing you in…");
-      const target =
-        res.user.role === "Super Admin"
-          ? "/superadmin"
-          : res.user.role === "Admin"
-            ? "/admin"
-            : "/employee";
-      setTimeout(() => navigate({ to: target }), 1200);
+      if (ctx.mfa_method === "totp") {
+        finishSignIn(await mfaApi.verify(ctx.login_token, code));
+      } else {
+        finishSignIn(await authApi.verifyOtp(ctx.login_token, code));
+      }
     } catch (err: any) {
-      setError(err?.message || "Invalid or expired OTP.");
+      setError(err?.message || "Invalid or expired code.");
       setDigits(Array(OTP_LENGTH).fill(""));
       inputRefs.current[0]?.focus();
     } finally {
@@ -182,9 +201,37 @@ function OTPPage() {
     }
   };
 
+  const handleRecovery = async () => {
+    const ctx = getLoginContext();
+    if (!ctx) {
+      setError("Your login session has expired. Please sign in again.");
+      navigate({ to: "/login" });
+      return;
+    }
+    if (recoveryCode.trim().length < 4) {
+      setError("Enter one of your recovery codes (e.g. XXXX-XXXX).");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await mfaApi.recover(ctx.login_token, recoveryCode.trim());
+      if (typeof res.recovery_codes_remaining === "number" && res.recovery_codes_remaining <= 2) {
+        toast.warning(
+          `Only ${res.recovery_codes_remaining} recovery code(s) left — generate new ones in Settings → Security.`,
+        );
+      }
+      finishSignIn(res);
+    } catch (err: any) {
+      setError(err?.message || "Invalid recovery code.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleResend = async () => {
     const ctx = getLoginContext();
-    if (!ctx) return;
+    if (!ctx || ctx.mfa_method === "totp") return;
     setSubmitting(true);
     try {
       const res = await authApi.resendOtp(ctx.login_token);
@@ -192,9 +239,10 @@ function OTPPage() {
         login_token: ctx.login_token,
         email: ctx.email,
         expires_in: res.expires_in,
+        ...(ctx.mfa_method ? { mfa_method: ctx.mfa_method } : {}),
       });
       setDigits(Array.from({ length: OTP_LENGTH }, () => ""));
-      setTimeLeft(60);
+      setTimeLeft(res.expires_in);
       setResendDisabled(true);
       setError("");
       toast("A new OTP has been sent to your work email.");
@@ -248,14 +296,63 @@ function OTPPage() {
               <div className="mb-4">
                 <Logo variant="mark" mark="maroon" />
               </div>
-              <h1 className="font-display text-2xl font-semibold">OTP Verification</h1>
+              <h1 className="font-display text-2xl font-semibold">
+                {isTotp ? "Authenticator Code" : "OTP Verification"}
+              </h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                We've sent a 6-digit code to{" "}
-                <span className="font-medium text-foreground">{maskEmail(loginCtx?.email)}</span>.
-                Enter it below to continue.
+                {isTotp ? (
+                  <>
+                    Open your authenticator app and enter the 6-digit code for{" "}
+                    <span className="font-medium text-foreground">{maskEmail(loginCtx?.email)}</span>.
+                  </>
+                ) : (
+                  <>
+                    We've sent a 6-digit code to{" "}
+                    <span className="font-medium text-foreground">{maskEmail(loginCtx?.email)}</span>.
+                    Enter it below to continue.
+                  </>
+                )}
               </p>
             </div>
 
+            {isTotp && recoveryMode ? (
+              <div className="space-y-3">
+                <p className="text-center text-xs text-muted-foreground">
+                  Lost your phone? Enter one of your recovery codes (each works once).
+                </p>
+                <input
+                  type="text"
+                  value={recoveryCode}
+                  onChange={(e) => {
+                    setRecoveryCode(e.target.value);
+                    setError("");
+                  }}
+                  placeholder="XXXX-XXXX"
+                  autoComplete="one-time-code"
+                  className="h-12 w-full rounded-md border border-border bg-muted/40 text-center font-mono text-lg font-semibold tracking-widest outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/25"
+                />
+                {error && <p className="mt-3 text-center text-xs text-destructive">{error}</p>}
+                <Button
+                  className="mt-2 w-full cursor-pointer"
+                  size="lg"
+                  onClick={handleRecovery}
+                  disabled={submitting || recoveryCode.trim().length < 4}
+                >
+                  {submitting ? "Verifying…" : "Sign in with recovery code"}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRecoveryMode(false);
+                    setError("");
+                  }}
+                  className="w-full text-center text-sm font-medium text-primary hover:underline"
+                >
+                  Back to authenticator code
+                </button>
+              </div>
+            ) : (
+            <>
             {/* OTP boxes */}
             <div
               className="flex justify-center gap-2"
@@ -291,21 +388,37 @@ function OTPPage() {
             {/* Error */}
             {error && <p className="mt-3 text-center text-xs text-destructive">{error}</p>}
 
-            {/* Timer */}
-            <div className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-              <Timer className="h-3.5 w-3.5" />
-              {resendDisabled ? (
-                <span>Resend in {timeLeft}s</span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleResend}
-                  className="font-medium text-primary hover:underline"
-                >
-                  Resend OTP
-                </button>
-              )}
-            </div>
+            {/* Timer / resend (email codes only — app codes refresh themselves) */}
+            {!isTotp && (
+              <div className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                <Timer className="h-3.5 w-3.5" />
+                {timeLeft > 0 ? (
+                  <span>
+                    Code expires in {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
+                    {!resendDisabled && (
+                      <>
+                        {" · "}
+                        <button
+                          type="button"
+                          onClick={handleResend}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          Resend OTP
+                        </button>
+                      </>
+                    )}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResend}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    Code expired — send a new one
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Verify button */}
             <Button
@@ -317,6 +430,24 @@ function OTPPage() {
             >
               {submitting ? "Verifying…" : "Verify & Sign In"}
             </Button>
+
+            {isTotp && (
+              <p className="mt-3 text-center text-sm text-muted-foreground">
+                Lost your phone?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRecoveryMode(true);
+                    setError("");
+                  }}
+                  className="font-medium text-primary hover:underline cursor-pointer"
+                >
+                  Use a recovery code
+                </button>
+              </p>
+            )}
+            </>
+            )}
 
             {/* Back link */}
             <p className="mt-4 text-center text-sm text-muted-foreground">

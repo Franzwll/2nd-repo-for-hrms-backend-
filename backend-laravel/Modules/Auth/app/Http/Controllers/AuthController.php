@@ -6,28 +6,58 @@ use App\Http\Controllers\Controller;
 use App\Models\SystemUser;
 use App\Models\UserLoginActivity;
 use App\Services\AuditLogger;
+use App\Services\LoginService;
 use App\Services\Notifier;
 use App\Services\OtpService;
 use App\Services\RoleSessionPolicy;
+use App\Services\TotpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Modules\Auth\Http\Requests\LoginRequest;
 use Modules\Auth\Http\Requests\OtpVerifyRequest;
 use Modules\Auth\Http\Resources\UserResource;
-
+use Modules\Auth\Http\Controllers\Concerns\VerifiesCaptcha;
 class AuthController extends Controller
 {
+    use VerifiesCaptcha;
+
     public function __construct(private readonly OtpService $otpService)
     {
     }
 
     public function login(LoginRequest $request): JsonResponse
     {
+        if ($failed = $this->captchaFailed($request)) {
+            return $failed;
+        }
+
         $login = $request->string('email');
         $user = SystemUser::where('email', $login)->orWhere('username', $login)->first();
 
+        if ($user && $user->isLockedOut()) {
+            $seconds = now()->diffInSeconds($user->locked_until);
+
+            AuditLogger::log(
+                'Blocked login attempt',
+                'Authentication',
+                'Warning',
+                'user',
+                $user->username,
+                'Login blocked: account temporarily locked after repeated failures.',
+                $user
+            );
+
+            return response()->json([
+                'message' => 'Too many failed attempts. Try again in ' . max(1, (int) ceil($seconds / 60)) . ' minute(s).',
+            ], 423);
+        }
+
         if (!$user || !Hash::check($request->string('password'), $user->password_hash)) {
+            if ($user) {
+                $this->registerFailedAttempt($user);
+            }
+
             AuditLogger::log(
                 'Failed login attempt',
                 'Authentication',
@@ -40,6 +70,8 @@ class AuthController extends Controller
 
             return response()->json(['message' => 'Invalid credentials.'], 401);
         }
+
+        $user->forceFill(['failed_attempts' => 0, 'locked_until' => null])->save();
 
         if ($user->status !== 'Active') {
             AuditLogger::log(
@@ -54,6 +86,34 @@ class AuthController extends Controller
 
             return response()->json(['message' => 'Your account is not active. Contact an administrator.'], 403);
         }
+
+        // Authenticator-app MFA wins over the email OTP toggle: a confirmed
+        // TOTP enrollment always requires the 30-second app code.
+        $user->loadMissing('role');
+        if ($user->usesTotp()) {
+            $issued = app(TotpService::class)->issueChallenge($user);
+
+            AuditLogger::log(
+                'MFA challenge issued',
+                'Authentication',
+                'Info',
+                'user',
+                $user->username,
+                'Authenticator-app code requested at login.',
+                $user
+            );
+
+            return response()->json([
+                'otp_required' => true,
+                'mfa_method' => 'totp',
+                'message' => 'Enter the 6-digit code from your authenticator app.',
+                'login_token' => $issued['login_token'],
+                'expires_in' => $issued['expires_in'],
+                'totp_enrollment_required' => false,
+            ]);
+        }
+
+        $totpRequired = $user->isSuperAdmin();
 
         // OTP can be switched off by each user for their own account
         // (system_users.otp_enabled, toggled in portal Settings).
@@ -73,6 +133,8 @@ class AuthController extends Controller
 
             return response()->json([
                 'otp_required' => false,
+                'mfa_method' => 'email_otp',
+                'totp_enrollment_required' => $totpRequired,
                 ...$session,
             ]);
         }
@@ -91,6 +153,8 @@ class AuthController extends Controller
 
         return response()->json([
             'otp_required' => true,
+            'mfa_method' => 'email_otp',
+            'totp_enrollment_required' => $totpRequired,
             ...$this->otpResponse(
                 'One-time password sent to your work email.',
                 $issued
@@ -100,6 +164,14 @@ class AuthController extends Controller
 
     public function verifyOtp(OtpVerifyRequest $request): JsonResponse
     {
+        // Single challenge per journey: login() already cleared Turnstile
+        // to mint this token, so only unstamped tokens face a new check.
+        if (! OtpService::challengePassedCaptcha($request->string('login_token')->toString())) {
+            if ($failed = $this->captchaFailed($request)) {
+                return $failed;
+            }
+        }
+
         $user = $this->otpService->verify(
             $request->string('login_token'),
             $request->string('otp')
@@ -122,12 +194,8 @@ class AuthController extends Controller
             return response()->json(['message' => 'Your account is not active.'], 403);
         }
 
-        $policy = RoleSessionPolicy::forRole($user->loadMissing('role')->role?->role_name);
-        $token = $user->createToken(
-            'auth-token',
-            ['*'],
-            now()->addMinutes($policy['token_minutes'])
-        )->plainTextToken;
+        $issued = LoginService::issueToken($user);
+        $token = $issued['token'];
 
         $previousIp = $user->last_login_ip;
         $previousLogin = $user->last_login_at;
@@ -162,8 +230,8 @@ class AuthController extends Controller
             'token' => $token,
             'token_type' => 'Bearer',
             'user' => new UserResource($user),
-            'expires_in_minutes' => $policy['token_minutes'],
-            'idle_timeout_minutes' => $policy['idle_minutes'],
+            'expires_in_minutes' => $issued['expires_in_minutes'],
+            'idle_timeout_minutes' => $issued['idle_timeout_minutes'],
         ];
 
         AuditLogger::log(
@@ -181,6 +249,12 @@ class AuthController extends Controller
 
     public function resendOtp(Request $request): JsonResponse
     {
+        if (! OtpService::challengePassedCaptcha($request->string('login_token')->toString())) {
+            if ($failed = $this->captchaFailed($request)) {
+                return $failed;
+            }
+        }
+
         $request->validate(['login_token' => ['required', 'string']]);
 
         $result = $this->otpService->resend($request->string('login_token'));
@@ -219,6 +293,46 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * Re-verify the account password for a sensitive action
+     * (confidential report export/print). Never logs the password.
+     */
+    public function confirmPassword(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'password' => ['required', 'string'],
+        ]);
+
+        /** @var SystemUser $user */
+        $user = $request->user();
+
+        if (! Hash::check($data['password'], $user->password_hash)) {
+            AuditLogger::log(
+                'Failed sensitive-action confirmation',
+                'Authentication',
+                'Warning',
+                'user',
+                $user->username,
+                'Wrong password supplied for a sensitive-action confirmation.',
+                $user
+            );
+
+            return response()->json(['message' => 'Incorrect password.'], 401);
+        }
+
+        AuditLogger::log(
+            'Sensitive action confirmed',
+            'Authentication',
+            'Info',
+            'user',
+            $user->username,
+            'Password re-confirmed for a sensitive action (export/print).',
+            $user
+        );
+
+        return response()->json(['ok' => true]);
+    }
+
     public function logout(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -254,34 +368,37 @@ class AuthController extends Controller
      */
     private function completeLogin(Request $request, SystemUser $user): array
     {
-        $policy = RoleSessionPolicy::forRole($user->loadMissing('role')->role?->role_name);
-        $token = $user->createToken(
-            'auth-token',
-            ['*'],
-            now()->addMinutes($policy['token_minutes'])
-        )->plainTextToken;
+        return LoginService::completeLogin($request, $user);
+    }
 
-        $user->forceFill([
-            'last_login_at' => now(),
-            'last_login_ip' => $request->ip(),
-        ])->save();
+    /**
+     * Track wrong-password attempts; lock the account for 15 minutes
+     * after 5 consecutive failures.
+     */
+    private function registerFailedAttempt(SystemUser $user): void
+    {
+        $attempts = (int) ($user->failed_attempts ?? 0) + 1;
 
-        UserLoginActivity::create([
-            'system_user_id' => $user->system_user_id,
-            'login_at' => now(),
-            'ip_address' => $request->ip(),
-            'device_info' => $this->deviceInfo($request),
-            'user_agent' => $request->userAgent(),
-            'status' => 'success',
-        ]);
+        $user->forceFill(['failed_attempts' => $attempts]);
 
-        return [
-            'token' => $token,
-            'token_type' => 'Bearer',
-            'user' => new UserResource($user),
-            'expires_in_minutes' => $policy['token_minutes'],
-            'idle_timeout_minutes' => $policy['idle_minutes'],
-        ];
+        if ($attempts >= 5) {
+            $user->forceFill([
+                'failed_attempts' => 0,
+                'locked_until' => now()->addMinutes(15),
+            ]);
+
+            AuditLogger::log(
+                'Account locked',
+                'Authentication',
+                'Warning',
+                'user',
+                $user->username,
+                'Account locked for 15 minutes after 5 failed login attempts.',
+                $user
+            );
+        }
+
+        $user->save();
     }
 
     private function debugOtp(string $code): array
