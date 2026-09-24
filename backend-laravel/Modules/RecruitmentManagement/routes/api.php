@@ -21,6 +21,11 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::get('job-posts/stats', [RecruitmentManagementController::class, 'stats'])
              ->name('job-posts.stats');
 
+        // Declared before job-posts/{job_post} so the id binding does not
+        // swallow "ai-usage".
+        Route::get('job-posts/ai-usage', [RecruitmentManagementController::class, 'aiUsage'])
+             ->name('job-post.ai-usage');
+
         Route::get('job-posts', [RecruitmentManagementController::class, 'index'])
              ->name('job-post.index');
 
@@ -39,6 +44,9 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     /* ------------------------------------------------------------------ */
 
     Route::middleware('permission:Recruitment Management:Edit')->group(function () {
+        Route::post('job-posts/generate-draft', [RecruitmentManagementController::class, 'generateDraft'])
+             ->name('job-post.generate-draft');
+
         Route::post('job-posts', [RecruitmentManagementController::class, 'store'])
              ->name('job-post.store');
 

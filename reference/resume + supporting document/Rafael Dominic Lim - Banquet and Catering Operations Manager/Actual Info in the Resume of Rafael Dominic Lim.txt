@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Rafael Dominic Lim.txt
+TARGET CANDIDATE: Rafael Dominic Lim
+TARGET ROLE: Banquet & Catering Operations Manager
+EXTRACTION MODE: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-09-18
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Rafael Dominic Lim
+Target Position:       Banquet & Catering Operations Manager
+Contact Phone Number:  +63 917 810 5923
+Email Address:         rafael.lim.banquets@outlook.ph
+Residential Address:   72 Roxas Triangle, Salcedo Village, 1227 Makati City, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/rafael-lim-banquets
+
+[PROFESSIONAL SUMMARY]
+"Visionary, results-oriented Banquet & Catering Operations Manager with over 8 years of distinguished hospitality leadership overseeing luxury ballrooms, high-profile diplomatic summits, and grand wedding galas catering up to 1,200 guests. Expert in banquet budgeting, BEO translation, culinary staging synchronization, and beverage cost containment. Recognized for orchestrating flawless event rollouts while optimizing labor cost ratios and chinaware preservation."
+
+[CORE COMPETENCIES & SKILLS]
+1. Mega-Scale Banquet Event Order (BEO) Planning & Execution (up to 1,200 covers)
+2. Event Logistics, Function Hall Turnarounds & Spatial Floor Layouts
+3. Departmental Labor Cost Control & On-Call Banquet Staff Management (up to 45 staff)
+4. VIP Diplomatic Protocol, Head Table Service & Security Liaison
+5. Chinaware, Glassware & Silverware (CGS) Par Levels & Breakage Mitigation
+6. Cross-Functional Kitchen Staging & Multi-Course Food Rollout Timers
+7. Banquet Beverage Requisition, Bar Packages & Revenue Reconciliations
+8. Crisis Mitigation, Crowd Flow Management & HACCP Safety Enforcement
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Marriott Hotel Manila
+   Location:     Pasay City, Metro Manila
+   Job Title:    Banquet Operations Manager
+   Duration:     September 2021 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Direct banquet and catering operations across the Grand Ballroom and 12 meeting salons accommodating up to 1,200 attendees.
+   • Manage a core team of 28 full-time staff and up to 50 outsourced catering personnel per major event.
+   • Successfully delivered over 180 corporate conventions, international summits, and luxury galas with 99.4% on-time rollout.
+   • Decreased operational equipment damage by 21% through standardized crate packing and storage handling SOPs.
+
+2. Employer:     Diamond Hotel Philippines
+   Location:     Manila Bay, Manila
+   Job Title:    Assistant Banquet Manager
+   Duration:     July 2018 – August 2021
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Supervised ballroom service operations, buffet presentations, and VIP protocol dining.
+   • Coordinated closely with executive culinary teams to ensure prompt delivery of multi-course banquets.
+   • Conducted daily pre-shift grooming inspections and trained staff on French silver service techniques.
+
+3. Employer:     Century Park Hotel
+   Location:     Malate, Manila
+   Job Title:    Banquet Captain
+   Duration:     May 2016 – June 2018
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Led team of 10 banquet servers during corporate seminars, wedding breakfasts, and social dinners.
+   • Managed table linen distribution and function room breakdown logistics.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in International Hospitality Management
+Institution:    Centro Escolar University (CEU) — Mendiola, Manila
+Graduation:     2016
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   Certified Food and Beverage Executive (CFBE)
+   Issuer:  American Hotel & Lodging Educational Institute (AHLEI)
+   Date:    October 2020
+
+2. Title:   Advanced HACCP & Food Defense in Large Venues
+   Issuer:  Food Safety Council of the Philippines
+   Date:    April 2022
+
+3. Title:   Event Logistics & Crowd Management
+   Issuer:  Philippine MICE Academy
+   Date:    November 2018
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Rafael_Dominic_Lim_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Rafael_Dominic_Lim_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Rafael_Dominic_Lim_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Rafael_Dominic_Lim_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Rafael_Dominic_Lim_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Rafael_Dominic_Lim_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Rafael_Dominic_Lim_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Marriott Hotel Manila
+   - Recipient / Employee: Rafael Dominic Lim
+   - Certified Position: Banquet Operations Manager
+   - Certified Period: September 2021 – Present
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+2. Rafael_Dominic_Lim_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: Diamond Hotel Philippines
+   - Recipient / Employee: Rafael Dominic Lim
+   - Certified Position: Assistant Banquet Manager
+   - Certified Period: November 1, 2018 – August 15, 2021 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+3. Rafael_Dominic_Lim_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: Centro Escolar University (CEU) — Mendiola, Manila
+   - Conferred Graduate: Rafael Dominic Lim
+   - Degree Conferred: Bachelor of Science in International Hospitality Management
+   - Graduation Year: 2016
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+4. Rafael_Dominic_Lim_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: American Hotel & Lodging Educational Institute (AHLEI)
+   - Recipient Name: Rafael Dominic Lim
+   - Training Title: Certified Food and Beverage Executive (CFBE)
+   - Award Date: October 2020
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+5. Rafael_Dominic_Lim_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Philippine MICE Academy
+   - Recipient Name: Rafael Dominic Lim
+   - Certified Course: Foundations of Banquet Beverage Dispensing & Bar Station Setup (CONTROLLED DISCREPANCY)
+   - Training Date: November 2018
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+6. Rafael_Dominic_Lim_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Food Safety Council of the Philippines
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Certified Food and Beverage Executive (CFBE)
+   - Issuance Date: April 2022
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Marriott Hotel Manila | Banquet Operations Manager | September 2021 – Present
+• Evidence: Rafael_Dominic_Lim_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: Diamond Hotel Philippines | Assistant Banquet Manager | July 2018 – August 2021
+• Evidence: Rafael_Dominic_Lim_COE_Previous_Employer.pdf (November 1, 2018 – August 15, 2021)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from November 2018 to August 2021, whereas resume claims start date of July 2018 (4-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Bachelor of Science in International Hospitality Management | Centro Escolar University (CEU) — Mendiola, Manila | 2016
+• Evidence: Rafael_Dominic_Lim_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: Certified Food and Beverage Executive (CFBE) | American Hotel & Lodging Educational Institute (AHLEI) | October 2020
+• Evidence: Rafael_Dominic_Lim_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Event Logistics & Crowd Management | Philippine MICE Academy | November 2018
+• Evidence: Rafael_Dominic_Lim_Training_Certificate_Service.pdf (Foundations of Banquet Beverage Dispensing & Bar Station Setup)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'Event Logistics & Crowd Management', but certificate certifies 'Foundations of Banquet Beverage Dispensing & Bar Station Setup'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: Advanced HACCP & Food Defense in Large Venues | Food Safety Council of the Philippines | April 2022
+• Evidence: Rafael_Dominic_Lim_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is torn and missing from document scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: Century Park Hotel | Banquet Captain | May 2016 – June 2018
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

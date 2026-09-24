@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Samantha Nicole Dela Cruz.txt
+TARGET CANDIDATE: Samantha Nicole Dela Cruz
+TARGET ROLE: Food & Beverage Service Supervisor
+EXTRACTION MODE: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-09-18
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Samantha Nicole Dela Cruz
+Target Position:       Food & Beverage Service Supervisor
+Contact Phone Number:  +63 918 421 7732
+Email Address:         samantha.delacruz.fb@outlook.ph
+Residential Address:   1442 Taft Avenue, Malate, 1004 Manila, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/samantha-delacruz-fb
+
+[PROFESSIONAL SUMMARY]
+"Passionate and detail-oriented Food & Beverage Service Supervisor with over 6 years of frontline and leadership experience in five-star hotel dining, signature restaurants, and high-volume banquet operations. Proven track record in menu engineering, wine service protocol, HACCP food hygiene compliance, and guest satisfaction enhancement. Skilled in leading multicultural service brigades of up to 20 personnel while driving beverage profitability and minimizing table turnaround delays."
+
+[CORE COMPETENCIES & SKILLS]
+1. Fine Dining Table Grooming & French / Russian Service Protocols
+2. Wine Service, Beverage Pairing & Sommelier Support
+3. Pre-Shift Briefing, Station Allocation & Crew Leadership (up to 20 staff)
+4. Point of Sale (POS) Administration & Shift Reconciliations (Micros Simphony)
+5. Guest Complaint Resolution & VIP Table Management
+6. Beverage Cost Control, Stock Par Levels & Requisition Auditing
+7. Food Safety, HACCP Compliance & Kitchen-Floor Coordination
+8. Table Turnover Optimization & Floor Flow Logistics
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Solaire Resort & Casino
+   Location:     Parañaque City, Metro Manila
+   Job Title:    Food & Beverage Service Supervisor
+   Duration:     July 2021 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Supervise floor service operations for an upscale 220-seat signature restaurant generating PHP 1.8M monthly beverage revenue.
+   • Lead pre-shift briefings and mentor 18 service captains, food runners, and bar attendants on fine dining standards.
+   • Reduced guest table wait times by 14% through revised station zoning and real-time Micros POS coordination.
+   • Maintained zero food safety infractions during quarterly health and luxury hotel hygiene audits.
+
+2. Employer:     Sofitel Philippine Plaza
+   Location:     Pasay City, Metro Manila
+   Job Title:    Restaurant Captain
+   Duration:     February 2019 – June 2021
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Directed table service for a high-volume buffet and poolside dining lounge accommodating up to 450 covers daily.
+   • Enforced beverage inventory par levels and reduced wine bottle breakage by 12% across quarterly audits.
+   • Trained 15 junior attendants in five-star sequence of service, silver polishing, and wine decanting protocols.
+
+3. Employer:     The Bistro Group
+   Location:     Makati City, Metro Manila
+   Job Title:    Dining Service Attendant
+   Duration:     June 2017 – January 2019
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Delivered plated dining service and upsold premium beverage selections across casual-dining venues.
+   • Handled cash and credit card settlement with 100% register reconciliation accuracy.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Hotel and Restaurant Management
+Institution:    University of Santo Tomas (UST) — España, Manila
+Graduation:     2017
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   ServSafe Food Protection Manager
+   Issuer:  National Restaurant Association / FSPIC
+   Date:    October 2021
+
+2. Title:   WSET Level 2 Award in Wines
+   Issuer:  Wine & Spirit Education Trust
+   Date:    September 2022
+
+3. Title:   Hospitality Customer Service Excellence
+   Issuer:  Philippine Hospitality Development Center
+   Date:    August 2019
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Samantha_Nicole_Dela_Cruz_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Samantha_Nicole_Dela_Cruz_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Samantha_Nicole_Dela_Cruz_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Samantha_Nicole_Dela_Cruz_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Samantha_Nicole_Dela_Cruz_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Samantha_Nicole_Dela_Cruz_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Samantha_Nicole_Dela_Cruz_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Solaire Resort & Casino
+   - Recipient / Employee: Samantha Nicole Dela Cruz
+   - Certified Position: Food & Beverage Service Supervisor
+   - Certified Period: July 2021 – Present
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+2. Samantha_Nicole_Dela_Cruz_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: Sofitel Philippine Plaza
+   - Recipient / Employee: Samantha Nicole Dela Cruz
+   - Certified Position: Restaurant Captain
+   - Certified Period: April 1, 2019 – June 20, 2021 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+3. Samantha_Nicole_Dela_Cruz_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: University of Santo Tomas (UST) — España, Manila
+   - Conferred Graduate: Samantha Nicole Dela Cruz
+   - Degree Conferred: Bachelor of Science in Hotel and Restaurant Management
+   - Graduation Year: 2017
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+4. Samantha_Nicole_Dela_Cruz_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: National Restaurant Association / FSPIC
+   - Recipient Name: Samantha Nicole Dela Cruz
+   - Training Title: ServSafe Food Protection Manager
+   - Award Date: October 2021
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+5. Samantha_Nicole_Dela_Cruz_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Philippine Hospitality Development Center
+   - Recipient Name: Samantha Nicole Dela Cruz
+   - Certified Course: Foundations of Basic Bartending and Mixology Workshop (CONTROLLED DISCREPANCY)
+   - Training Date: August 2019
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+6. Samantha_Nicole_Dela_Cruz_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Wine & Spirit Education Trust
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: WSET Level 2 Award in Wines
+   - Issuance Date: September 2022
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Solaire Resort & Casino | Food & Beverage Service Supervisor | July 2021 – Present
+• Evidence: Samantha_Nicole_Dela_Cruz_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: Sofitel Philippine Plaza | Restaurant Captain | February 2019 – June 2021
+• Evidence: Samantha_Nicole_Dela_Cruz_COE_Previous_Employer.pdf (April 1, 2019 – June 20, 2021)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from April 2019 to June 2021, whereas resume claims start date of February 2019 (2-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Bachelor of Science in Hotel and Restaurant Management | University of Santo Tomas (UST) — España, Manila | 2017
+• Evidence: Samantha_Nicole_Dela_Cruz_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: ServSafe Food Protection Manager | National Restaurant Association / FSPIC | October 2021
+• Evidence: Samantha_Nicole_Dela_Cruz_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Hospitality Customer Service Excellence | Philippine Hospitality Development Center | August 2019
+• Evidence: Samantha_Nicole_Dela_Cruz_Training_Certificate_Service.pdf (Foundations of Basic Bartending and Mixology Workshop)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'Hospitality Customer Service Excellence', but submitted certificate indicates 'Foundations of Basic Bartending and Mixology Workshop'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: WSET Level 2 Award in Wines | Wine & Spirit Education Trust | September 2022
+• Evidence: Samantha_Nicole_Dela_Cruz_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is torn and missing from document scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: The Bistro Group | Dining Service Attendant | June 2017 – January 2019
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

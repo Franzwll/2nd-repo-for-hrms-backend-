@@ -27,6 +27,42 @@ PERFECT_SCORE_THRESHOLD = 75.0
 ALT_JOB_SCORE_THRESHOLD = 75.0
 REQUIRED_SKILLS_COVERAGE_MIN = 0.60
 
+# Credential verification settings
+CREDENTIAL_VERIFICATION_PENALTY_PER_WARNING = 5.0
+CREDENTIAL_VERIFICATION_MAX_PENALTY = 15.0
+CREDENTIAL_VERIFICATION_ESCALATION_THRESHOLD = 3
+
+# Supporting-document (COE / Certificate / Credential) verification impact on
+# the final ranking score. The resume match score is blended with the document
+# evidence score so the candidate's percentage and rank reflect BOTH the resume
+# screening and the verification of the resume claims:
+#
+#   final = resume_score * (1 - DOCUMENT_VERIFICATION_WEIGHT)
+#         + documents_score * DOCUMENT_VERIFICATION_WEIGHT
+#
+# documents_score = mean(credit) * 100 over decisive documents only, where
+# VERIFIED = 1.00 (claims corroborated), UNABLE_TO_VERIFY = 0.50 (nothing to
+# compare), DISCREPANCY_FOUND = 0.00 (claims contradicted). Documents still
+# PENDING/PROCESSING and "Others" documents that cannot be mapped to a resume
+# section are ignored, so an applicant without usable evidence keeps the
+# resume-only score (no silent penalty).
+DOCUMENT_VERIFICATION_WEIGHT = 0.15
+DOCUMENT_VERIFICATION_CREDIT_VERIFIED = 1.0
+DOCUMENT_VERIFICATION_CREDIT_UNABLE = 0.5
+DOCUMENT_VERIFICATION_CREDIT_DISCREPANCY = 0.0
+
+# Any supporting document contradicting a resume claim escalates the official
+# classification to INVALID_CREDENTIAL — the paper proof and the resume cannot
+# both be right, so HR must review before the applicant is fast-tracked.
+DOCUMENT_VERIFICATION_ESCALATE_ON_DISCREPANCY = True
+
+# Evidence-status labels reported alongside the blended score.
+EVIDENCE_NOT_PROVIDED = "NOT_PROVIDED"
+EVIDENCE_PENDING = "PENDING"
+EVIDENCE_VERIFIED = "VERIFIED"
+EVIDENCE_PARTIAL = "PARTIAL"
+EVIDENCE_DISCREPANCY = "DISCREPANCY"
+
 # Processing statuses tracked per resume (SOP 1).
 STATUS_PROCESSED = "PROCESSED"
 STATUS_PARTIALLY_PROCESSED = "PARTIALLY_PROCESSED"

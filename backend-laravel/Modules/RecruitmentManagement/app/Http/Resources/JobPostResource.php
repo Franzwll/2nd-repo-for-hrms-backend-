@@ -4,6 +4,7 @@ namespace Modules\RecruitmentManagement\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\RecruitmentManagement\Models\JobPost;
 
 class JobPostResource extends JsonResource
 {
@@ -25,6 +26,13 @@ class JobPostResource extends JsonResource
             'posted_date'           => $this->posted_date?->toDateString(),
             'status'                => $this->status,
             'active'                => (bool) $this->active,
+            /* Designated practical-assessment positions stay flagged even when the
+               stored column is still at its default (see PracticalRequirement).
+               $this is the resource, so the model itself is $this->resource. */
+            'requires_practical'    => \Modules\ApplicantManagement\Services\PracticalRequirement::required(
+                $this->resource instanceof JobPost ? $this->resource : null,
+                $this->title,
+            ),
             'experience_level'      => $this->experience_level,
             'education_level'       => $this->education_level,
             'summary'               => $this->summary,

@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Patricia Elaine Ramos.txt
+TARGET CANDIDATE: Patricia Elaine Ramos
+TARGET ROLE: Hotel Purchasing & Procurement Supervisor
+EXTRACTION MODE: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-09-18
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Patricia Elaine Ramos
+Target Position:       Hotel Purchasing & Procurement Supervisor
+Contact Phone Number:  +63 919 621 8045
+Email Address:         patricia.ramos.purchasing@outlook.ph
+Residential Address:   55 Ortigas Avenue, 1605 Pasig City, Metro Manila, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/patricia-ramos-purchasing
+
+[PROFESSIONAL SUMMARY]
+"Strategic, cost-conscious Hotel Purchasing & Procurement Supervisor with over 6 years of experience directing supply chain operations, supplier bidding, and inventory control for luxury hotels and integrated resorts. Proven expertise in SAP MM ERP systems, perishable food par levels, luxury OS&E sourcing, and vendor contract renegotiation. Successfully slashed departmental procurement expenditure by PHP 4.5M annually while securing on-time delivery across 100+ accredited culinary and operational suppliers."
+
+[CORE COMPETENCIES & SKILLS]
+1. Hotel Supply Chain Management & Strategic Sourcing (F&B and OS&E)
+2. SAP Materials Management (MM) & Oracle NetSuite Procurement Administration
+3. Vendor Contract Bidding, Pricing Negotiation & Supplier SLA Enforcement
+4. Perishable Cold Chain Auditing, Receiving Bay QA & Par Level Calculations
+5. Purchase Order (PO) Lifecycle Management, Three-Way Matching & Cost Auditing
+6. Hospitality Importation Logistics, Customs Clearance & Freight Tracking
+7. Cross-Departmental Requisition Fulfillment with Kitchens & Housekeeping
+8. Quarterly Inventory Stocktakes, Shrinkage Audits & Variance Reconciliation
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Sheraton Manila Hotel
+   Location:     Pasay City, Metro Manila
+   Job Title:    Hospitality Procurement Supervisor
+   Duration:     August 2021 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Direct purchasing and receiving operations for a 390-room luxury hotel, 4 dining outlets, and convention ballrooms.
+   • Manage a monthly purchasing expenditure budget of PHP 12M with 99.6% supplier invoice reconciliation accuracy.
+   • Renegotiated meat, seafood, and dairy supply agreements, delivering PHP 2.1M in annual food cost savings.
+   • Supervise receiving dock team of 8 staff, enforcing rigorous temperature logging and defect return procedures.
+
+2. Employer:     Holiday Inn & Suites Makati
+   Location:     Makati City, Metro Manila
+   Job Title:    Purchasing Team Leader
+   Duration:     March 2019 – July 2021
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Issued and expedited over 450 monthly purchase orders covering engineering spares, guest amenities, and beverage stocks.
+   • Conducted quarterly vendor appraisals and audited supplier food handling certifications.
+   • Coordinated emergency ingredient replenishment during major holiday banquets with zero service disruptions.
+
+3. Employer:     Megaworld Hotels & Resorts
+   Location:     Taguig City, Metro Manila
+   Job Title:    F&B Purchasing Assistant
+   Duration:     June 2017 – February 2019
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Encoded daily store requisitions, verified delivery receipts, and assisted in month-end stock inventory counts.
+   • Maintained organized vendor files and monitored trade credit expiration dates.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Business Management (Hospitality Logistics)
+Institution:    De La Salle University (DLSU) — Taft Avenue, Manila
+Graduation:     2017
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   Certified Hospitality Purchasing Executive (CHPE)
+   Issuer:  American Hotel & Lodging Educational Institute (AHLEI)
+   Date:    September 2021
+
+2. Title:   Cold Chain Management & Vendor Audit Protocols
+   Issuer:  Philippine Supply Chain Institute
+   Date:    May 2022
+
+3. Title:   SAP ERP Materials Management in Hospitality
+   Issuer:  Techlogix Enterprise Academy
+   Date:    January 2020
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Patricia_Elaine_Ramos_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Patricia_Elaine_Ramos_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Patricia_Elaine_Ramos_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Patricia_Elaine_Ramos_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Patricia_Elaine_Ramos_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Patricia_Elaine_Ramos_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Patricia_Elaine_Ramos_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Sheraton Manila Hotel
+   - Recipient / Employee: Patricia Elaine Ramos
+   - Certified Position: Hospitality Procurement Supervisor
+   - Certified Period: August 2021 – Present
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+2. Patricia_Elaine_Ramos_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: Holiday Inn & Suites Makati
+   - Recipient / Employee: Patricia Elaine Ramos
+   - Certified Position: Purchasing Team Leader
+   - Certified Period: June 1, 2019 – July 20, 2021 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+3. Patricia_Elaine_Ramos_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: De La Salle University (DLSU) — Taft Avenue, Manila
+   - Conferred Graduate: Patricia Elaine Ramos
+   - Degree Conferred: Bachelor of Science in Business Management (Hospitality Logistics)
+   - Graduation Year: 2017
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+4. Patricia_Elaine_Ramos_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: American Hotel & Lodging Educational Institute (AHLEI)
+   - Recipient Name: Patricia Elaine Ramos
+   - Training Title: Certified Hospitality Purchasing Executive (CHPE)
+   - Award Date: September 2021
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+5. Patricia_Elaine_Ramos_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Techlogix Enterprise Academy
+   - Recipient Name: Patricia Elaine Ramos
+   - Certified Course: Foundations of Warehouse Goods Receiving and Pallet Counting (CONTROLLED DISCREPANCY)
+   - Training Date: January 2020
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+6. Patricia_Elaine_Ramos_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Philippine Supply Chain Institute
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Certified Hospitality Purchasing Executive (CHPE)
+   - Issuance Date: May 2022
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Sheraton Manila Hotel | Hospitality Procurement Supervisor | August 2021 – Present
+• Evidence: Patricia_Elaine_Ramos_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: Holiday Inn & Suites Makati | Purchasing Team Leader | March 2019 – July 2021
+• Evidence: Patricia_Elaine_Ramos_COE_Previous_Employer.pdf (June 1, 2019 – July 20, 2021)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from June 2019 to July 2021, whereas resume claims start date of March 2019 (3-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Bachelor of Science in Business Management (Hospitality Logistics) | De La Salle University (DLSU) — Taft Avenue, Manila | 2017
+• Evidence: Patricia_Elaine_Ramos_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: Certified Hospitality Purchasing Executive (CHPE) | American Hotel & Lodging Educational Institute (AHLEI) | September 2021
+• Evidence: Patricia_Elaine_Ramos_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: SAP ERP Materials Management in Hospitality | Techlogix Enterprise Academy | January 2020
+• Evidence: Patricia_Elaine_Ramos_Training_Certificate_Service.pdf (Foundations of Warehouse Goods Receiving and Pallet Counting)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'SAP ERP Materials Management in Hospitality', but certificate certifies 'Foundations of Warehouse Goods Receiving and Pallet Counting'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: Cold Chain Management & Vendor Audit Protocols | Philippine Supply Chain Institute | May 2022
+• Evidence: Patricia_Elaine_Ramos_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is severed/torn off in the uploaded scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: Megaworld Hotels & Resorts | F&B Purchasing Assistant | June 2017 – February 2019
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

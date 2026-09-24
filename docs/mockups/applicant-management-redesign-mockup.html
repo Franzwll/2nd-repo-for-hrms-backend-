@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Applicant Management — Redesign Mockup (Review Only)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   Oxford Suites Makati HRMS — "Crimson & Ivory" design tokens
+   Copied 1:1 from frontend/src/styles.css (oklch semantic tokens)
+   ============================================================ */
+:root{
+  --radius:0.375rem;
+  --font-display:"Cormorant Garamond",Georgia,"Times New Roman",serif;
+  --font-sans:"Jost",ui-sans-serif,system-ui,sans-serif;
+  --background:oklch(0.988 0.005 85);
+  --foreground:oklch(0.24 0.02 30);
+  --card:oklch(1 0 0);
+  --primary:oklch(0.427 0.166 22.5);
+  --primary-foreground:oklch(0.985 0.006 85);
+  --secondary:oklch(0.962 0.011 84);
+  --secondary-foreground:oklch(0.3 0.03 28);
+  --muted:oklch(0.945 0.013 84);
+  --muted-foreground:oklch(0.52 0.022 45);
+  --gold:oklch(0.72 0.104 85);
+  --gold-soft:oklch(0.955 0.032 88);
+  --destructive:oklch(0.535 0.187 26);
+  --success:oklch(0.505 0.114 152);
+  --warning:oklch(0.79 0.145 84);
+  --warning-foreground:oklch(0.26 0.03 60);
+  --caution:oklch(0.655 0.166 46);
+  --border:oklch(0.9 0.012 80);
+  --ring:oklch(0.427 0.166 22.5);
+  --sidebar:oklch(24.3% 0.048 20);
+  --sidebar-foreground:oklch(0.94 0.012 60);
+  --sidebar-primary:oklch(0.52 0.19 23);
+  --sidebar-primary-foreground:oklch(0.985 0.006 85);
+  --sidebar-accent:oklch(0.32 0.055 20);
+  --sidebar-border:oklch(0.36 0.05 20);
+  --shadow-sm:0 1px 2px oklch(0.24 0.02 30 / 6%);
+  --shadow-md:0 4px 14px oklch(0.24 0.02 30 / 10%);
+  --shadow-lg:0 14px 34px oklch(0.24 0.02 30 / 16%);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+ul,ol{list-style:none}
+body{background:var(--background);color:var(--foreground);font-family:var(--font-sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3,.display{font-family:var(--font-display);font-weight:600;letter-spacing:-0.01em}
+svg.icon{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+svg.icon.sm{width:14px;height:14px}
+svg.icon.lg{width:20px;height:20px}
+.eyebrow{font-size:11px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:var(--muted-foreground)}
+.gold-rule{height:1px;width:100%;background:linear-gradient(to right,transparent,var(--gold) 20%,var(--gold) 80%,transparent);opacity:.7}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-sm)}
+.muted{color:var(--muted-foreground)}
+.small{font-size:12px}
+b,strong{font-weight:600}
+</style>
+<style>
+/* ---------- Mockup-only chrome (banner + screen pill) ---------- */
+.mock-banner{position:sticky;top:0;z-index:80;display:flex;align-items:center;justify-content:center;gap:10px;padding:9px 48px;font-size:12.5px;line-height:1.4;text-align:center;background:linear-gradient(90deg,var(--gold-soft),oklch(0.972 0.014 30) 50%,var(--gold-soft));border-bottom:1px solid oklch(0.72 0.104 85 / 45%)}
+.mock-banner b{color:var(--primary);font-weight:600}
+.mock-banner .tagx{display:inline-block;padding:1px 8px;border-radius:999px;background:var(--primary);color:var(--primary-foreground);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;white-space:nowrap}
+.mock-banner .mclose{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:26px;height:26px;display:grid;place-items:center;border-radius:6px;color:var(--muted-foreground)}
+.mock-banner .mclose:hover{background:oklch(0.945 0.013 84)}
+.screen-pill{position:fixed;right:18px;bottom:18px;z-index:70;display:flex;align-items:center;gap:9px;padding:8px 14px 8px 9px;border-radius:999px;background:var(--card);border:1px solid var(--border);box-shadow:var(--shadow-lg);font-size:12.5px;font-weight:600}
+.screen-pill .num{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--primary);color:var(--primary-foreground);font-size:12px;font-weight:700}
+.screen-pill.p2 .num{background:var(--success)}
+
+/* ---------- Shell: sidebar + main ---------- */
+.app{display:flex;min-height:100vh}
+.sidebar{width:238px;flex:none;background:var(--sidebar);color:var(--sidebar-foreground);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;z-index:40}
+.brand{display:flex;align-items:center;gap:12px;padding:18px 16px;border-bottom:1px solid var(--sidebar-border)}
+.brand-mark{width:38px;height:38px;flex:none;border-radius:9px;background:var(--sidebar-accent);display:grid;place-items:center;color:var(--gold)}
+.brand-name{font-family:var(--font-display);font-size:16px;font-weight:600;line-height:1.15}
+.brand-loc{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:oklch(0.72 0.02 60)}
+.nav{flex:1;overflow:auto;padding:12px 10px}
+.nav-label{padding:12px 10px 6px;font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:oklch(0.72 0.104 85 / 90%)}
+.nav-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:9px 11px;border-radius:8px;font-size:13px;font-weight:500;color:oklch(0.94 0.012 60 / 82%)}
+.nav-item svg.icon{width:15px;height:15px}
+.nav-item:hover{background:oklch(0.32 0.055 20 / 55%)}
+.nav-item.active{background:var(--sidebar-accent);color:var(--sidebar-accent-foreground);box-shadow:inset 3px 0 0 var(--gold)}
+.side-user{display:flex;align-items:center;gap:10px;padding:14px 16px;border-top:1px solid var(--sidebar-border)}
+.side-user .ava{width:34px;height:34px;flex:none;border-radius:50%;display:grid;place-items:center;background:var(--sidebar-primary);color:var(--sidebar-primary-foreground);font-size:12px;font-weight:700}
+.side-user .who{flex:1;min-width:0}
+.side-user .who p{font-size:12.5px;font-weight:600}
+.side-user .who span{font-size:11px;color:oklch(0.94 0.012 60 / 60%)}
+.side-signout{width:30px;height:30px;display:grid;place-items:center;border-radius:7px;color:oklch(0.94 0.012 60 / 65%)}
+.side-signout:hover{background:oklch(0.32 0.055 20)}
+.main{flex:1;min-width:0;padding:26px 30px 70px;max-width:1280px;margin:0 auto}
+
+/* ---------- Buttons / inputs ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;border:1px solid transparent;transition:all .15s ease;white-space:nowrap}
+.btn-primary{background:var(--primary);color:var(--primary-foreground);box-shadow:var(--shadow-sm)}
+.btn-primary:hover{filter:brightness(1.12)}
+.btn-outline{border-color:var(--border);background:var(--card);color:var(--foreground)}
+.btn-outline:hover{border-color:oklch(0.427 0.166 22.5 / 50%)}
+.btn-ghost{color:var(--muted-foreground)}
+.btn-ghost:hover{background:var(--muted);color:var(--foreground)}
+.btn-sm{padding:5px 10px;font-size:12px;border-radius:7px}
+.btn-success{background:var(--success);color:oklch(0.985 0.006 85)}
+.btn-success:hover{filter:brightness(1.1)}
+.btn[disabled]{opacity:.55;cursor:not-allowed}
+.input,.select select{width:100%;height:38px;border:1px solid var(--border);border-radius:8px;background:var(--card);padding:0 12px;font:inherit;font-size:13px;color:var(--foreground);outline:none}
+.input:focus,.select select:focus{border-color:var(--ring);box-shadow:0 0 0 3px oklch(0.427 0.166 22.5 / 15%)}
+.input::placeholder{color:oklch(0.52 0.022 45 / 70%)}
+.select{position:relative;min-width:150px}
+.select select{appearance:none;-webkit-appearance:none;padding-right:32px;cursor:pointer}
+.select .chev{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted-foreground);width:14px;height:14px}
+.search{position:relative;flex:1;min-width:230px}
+.search .icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted-foreground)}
+.search .input{padding-left:34px}
+
+/* ---------- Dropdown menus (details/summary) ---------- */
+.dd{position:relative}
+.dd summary{list-style:none}
+.dd summary::-webkit-details-marker{display:none}
+.dd .menu{position:absolute;right:0;top:calc(100% + 6px);min-width:190px;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);padding:6px;z-index:60}
+.dd .menu button{display:flex;width:100%;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;font-size:13px;font-weight:500;text-align:left}
+.dd .menu button:hover{background:var(--muted)}
+.dd .menu hr{border:0;border-top:1px solid var(--border);margin:5px 4px}
+.dd .menu .danger{color:var(--destructive)}
+</style>
+<style>
+/* ---------- Page header ---------- */
+.page-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:12px}
+.page-head h1{font-size:34px;font-weight:600;line-height:1.1}
+.page-head .desc{margin-top:5px;max-width:62ch;color:var(--muted-foreground);font-size:13.5px}
+.page-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ---------- Stat cards ---------- */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:16px 0 20px}
+.stat{padding:16px 18px;transition:all .15s ease}
+.stat:hover{transform:translateY(-2px);border-color:oklch(0.427 0.166 22.5 / 45%);box-shadow:var(--shadow-md)}
+.stat .top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.stat .lbl{font-size:11px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:var(--muted-foreground)}
+.stat .val{margin-top:8px;font-family:var(--font-display);font-size:30px;font-weight:600;line-height:1}
+.stat .val small{font-size:15px;font-weight:600;color:var(--muted-foreground)}
+.stat .hint{margin-top:5px;font-size:11.5px;color:var(--muted-foreground)}
+.tone-default{color:var(--foreground)}
+.tone-primary{color:var(--primary)}
+.tone-success{color:var(--success)}
+.tone-gold{color:oklch(0.55 0.09 80)}
+
+/* ---------- Tabs (reduced to 3) ---------- */
+.tabs-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tabs{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;padding:5px;border:1px solid oklch(0.9 0.012 80 / 70%);background:oklch(0.945 0.013 84 / 70%);border-radius:12px;box-shadow:var(--shadow-sm)}
+.tab{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;color:var(--muted-foreground);transition:all .15s}
+.tab:hover{color:var(--foreground)}
+.tab.active{background:var(--primary);color:var(--primary-foreground);box-shadow:var(--shadow-sm)}
+.moved-chip{display:inline-flex;align-items:center;gap:7px;border:1px dashed oklch(0.72 0.104 85 / 80%);background:var(--gold-soft);color:oklch(0.42 0.07 60);font-size:11.5px;font-weight:500;padding:8px 12px;border-radius:9px}
+.moved-chip svg.icon{width:13px;height:13px;color:oklch(0.55 0.09 80)}
+.pane{display:none;margin-top:16px}
+.pane.active{display:block}
+
+/* ---------- Toolbar ---------- */
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.toolbar .clear{margin-left:auto}
+
+/* ---------- Table ---------- */
+.tbl-card{overflow:hidden}
+.tbl-wrap{overflow-x:auto}
+.table{width:100%;border-collapse:collapse;font-size:13px;min-width:840px}
+.table th{text-align:left;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-foreground);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--border);background:oklch(0.988 0.005 85);white-space:nowrap}
+.table td{padding:11px 12px;border-bottom:1px solid oklch(0.9 0.012 80 / 55%);vertical-align:middle}
+.table tbody tr:hover{background:oklch(0.945 0.013 84 / 45%)}
+.table tbody tr:last-child td{border-bottom:0}
+.cand{display:flex;align-items:center;gap:10px}
+.ava{width:34px;height:34px;flex:none;border-radius:50%;display:grid;place-items:center;background:oklch(0.427 0.166 22.5 / 10%);color:var(--primary);font-size:12px;font-weight:700;letter-spacing:.02em}
+.cand .nm{font-weight:600;line-height:1.2}
+.cand .em{font-size:11.5px;color:var(--muted-foreground)}
+.score-cell{min-width:86px}
+.score-cell b{font-size:13.5px}
+.score-bar{margin-top:4px;width:56px;height:4px;border-radius:99px;background:var(--muted);overflow:hidden}
+.score-bar i{display:block;height:100%;border-radius:99px}
+.tbl-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;font-size:12.5px;color:var(--muted-foreground)}
+.pager{display:flex;align-items:center;gap:4px}
+.pager button{min-width:30px;height:30px;border-radius:7px;display:grid;place-items:center;font-size:12.5px;font-weight:600;color:var(--muted-foreground);border:1px solid transparent}
+.pager button:hover{background:var(--muted)}
+.pager button.on{background:var(--primary);color:var(--primary-foreground)}
+.chk{width:15px;height:15px;accent-color:var(--primary);cursor:pointer}
+
+/* ---------- Chips / badges ---------- */
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid transparent;white-space:nowrap}
+.chip .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.tone-primary-chip{background:oklch(0.427 0.166 22.5 / 9%);color:var(--primary);border-color:oklch(0.427 0.166 22.5 / 28%)}
+.tone-success-chip{background:oklch(0.505 0.114 152 / 11%);color:var(--success);border-color:oklch(0.505 0.114 152 / 30%)}
+.tone-gold-chip{background:var(--gold-soft);color:oklch(0.5 0.09 75);border-color:oklch(0.72 0.104 85 / 55%)}
+.tone-caution-chip{background:oklch(0.655 0.166 46 / 10%);color:var(--caution);border-color:oklch(0.655 0.166 46 / 30%)}
+.tone-warning-chip{background:oklch(0.79 0.145 84 / 22%);color:var(--warning-foreground);border-color:oklch(0.79 0.145 84 / 50%)}
+.tone-destructive-chip{background:oklch(0.535 0.187 26 / 9%);color:var(--destructive);border-color:oklch(0.535 0.187 26 / 28%)}
+.tone-muted-chip{background:var(--muted);color:var(--muted-foreground);border-color:oklch(0.9 0.012 80)}
+</style>
+<style>
+/* ---------- Candidate Ranking (donut) ---------- */
+.cr-card{margin:0 0 14px;padding:18px}
+.cr-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:6px}
+.cr-head h2{display:flex;align-items:center;gap:9px;font-size:22px}
+.cr-head h2 svg.icon{color:var(--primary);width:18px;height:18px}
+.cr-head .sub{font-size:12px;color:var(--muted-foreground);margin-top:1px}
+.cr-head .select{min-width:180px}
+.cr-flex{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:30px;padding:10px 0 4px}
+.donut-wrap{position:relative;width:212px;height:212px;flex:none}
+.donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.donut-center b{font-family:var(--font-display);font-size:30px;font-weight:600;line-height:1}
+.donut-center span{margin-top:3px;font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-foreground)}
+.legend-rows{display:grid;gap:8px;flex:1;min-width:250px;max-width:430px}
+.legend-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border);border-radius:8px;padding:9px 14px;background:var(--card)}
+.legend-row .ld{display:flex;align-items:center;gap:9px;font-size:13px}
+.legend-row .ld i{width:12px;height:12px;border-radius:50%;flex:none}
+.legend-row b{font-family:var(--font-display);font-size:18px;font-weight:600}
+
+/* ---------- Ranking tab: [2fr_1fr] grid — Candidate Ranking left, Top 5 right ---------- */
+.cr-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;align-items:start;margin:0 0 14px}
+.cr-card{padding:18px}
+.cr-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:6px}
+.cr-head h2{display:flex;align-items:center;gap:9px;font-size:22px}
+.cr-head h2 svg.icon{color:var(--primary);width:18px;height:18px}
+.cr-head .sub{font-size:12px;color:var(--muted-foreground);margin-top:1px}
+.cr-head .select{min-width:170px}
+.cr-flex{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:24px;padding:10px 0 4px}
+.donut-wrap{position:relative;width:200px;height:200px;flex:none}
+.donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.donut-center b{font-family:var(--font-display);font-size:28px;font-weight:600;line-height:1}
+.donut-center span{margin-top:3px;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-foreground)}
+.legend-rows{display:grid;gap:7px;flex:1;min-width:210px;max-width:400px}
+.legend-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border);border-radius:8px;padding:8px 12px;background:var(--card)}
+.legend-row .ld{display:flex;align-items:center;gap:9px;font-size:12.5px}
+.legend-row .ld i{width:11px;height:11px;border-radius:50%;flex:none}
+.legend-row b{font-family:var(--font-display);font-size:17px;font-weight:600}
+.top5-card{padding:16px}
+.top5-card h3{display:flex;align-items:center;gap:8px;font-size:19px}
+.top5-card h3 svg.icon{color:oklch(0.55 0.09 80);width:17px;height:17px}
+.top5-card .sub{font-size:11.5px;color:var(--muted-foreground);margin-top:2px}
+.top5-list{display:grid;gap:8px;margin-top:12px}
+.rank-row{display:flex;align-items:center;gap:9px;padding:9px 10px;border:1px solid var(--border);border-radius:10px;background:var(--card);cursor:pointer;transition:all .15s}
+.rank-row:hover{border-color:oklch(0.427 0.166 22.5 / 45%);box-shadow:var(--shadow-sm)}
+.medal{width:26px;height:26px;flex:none;border-radius:8px;display:grid;place-items:center;font-size:12px;font-weight:700}
+.medal.m1{background:var(--gold-soft);color:oklch(0.5 0.11 75);border:1px solid oklch(0.72 0.104 85 / 60%)}
+.medal.m2{background:oklch(0.945 0.013 84);color:var(--muted-foreground);border:1px solid var(--border)}
+.medal.m3{background:oklch(0.655 0.166 46 / 12%);color:var(--caution);border:1px solid oklch(0.655 0.166 46 / 35%)}
+.medal.mx{background:transparent;color:var(--muted-foreground);font-weight:600}
+.rank-row .rmeta{flex:1;min-width:0}
+.rank-row .rmeta p{font-size:13px;font-weight:600;line-height:1.25}
+.rank-row .rmeta span{font-size:11.5px;color:var(--muted-foreground)}
+.rank-row .rscore{font-family:var(--font-display);font-size:18px;font-weight:700;color:var(--primary)}
+.rank-foot{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted-foreground);display:flex;align-items:center;gap:7px}
+
+/* ---------- Scheduling pane ---------- */
+.sched-grid{display:grid;grid-template-columns:1fr 1.2fr;gap:16px;align-items:start}
+.panel-pad{padding:18px}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.panel-head h3{font-size:19px}
+.panel-head .sub{font-size:12px;color:var(--muted-foreground)}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.day{border:1px solid var(--border);border-radius:9px;padding:8px 6px;text-align:center;min-height:64px}
+.day .dow{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted-foreground)}
+.day .dnum{font-family:var(--font-display);font-size:17px;font-weight:700;margin-top:2px}
+.day.today{border-color:oklch(0.427 0.166 22.5 / 55%);background:oklch(0.427 0.166 22.5 / 5%)}
+.day .ev{margin-top:5px;display:flex;justify-content:center;gap:3px}
+.day .ev i{width:6px;height:6px;border-radius:50%;background:var(--primary)}
+.day .ev i.gold{background:var(--gold)}
+.legend{display:flex;gap:14px;margin-top:12px;font-size:11.5px;color:var(--muted-foreground)}
+.legend i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+.sched-note{display:flex;gap:9px;align-items:flex-start;margin-top:14px;padding:10px 12px;border-radius:9px;background:oklch(0.427 0.166 22.5 / 5%);border:1px solid oklch(0.427 0.166 22.5 / 18%);font-size:12px;color:var(--muted-foreground)}
+.sched-note svg.icon{color:var(--primary);margin-top:1px}
+
+/* ---------- History & Audit pane ---------- */
+.sev{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+
+/* ---------- Generic utility ---------- */
+.hide{display:none !important}
+</style>
+<style>
+/* ============ Screen 2: Applicant View ============ */
+.detail-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+.back-link{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--muted-foreground);padding:7px 10px;border-radius:8px}
+.back-link:hover{background:var(--muted);color:var(--foreground)}
+.hero{padding:18px 20px}
+.hero .row1{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.ava-xl{width:54px;height:54px;border-radius:14px;background:oklch(0.427 0.166 22.5 / 10%);color:var(--primary);display:grid;place-items:center;font-family:var(--font-display);font-size:20px;font-weight:700;letter-spacing:.02em}
+.hero h2{font-size:26px;line-height:1.1}
+.hero .row2{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:12.5px;color:var(--muted-foreground)}
+.hero .row2 span{display:inline-flex;align-items:center;gap:6px}
+.hero .fields{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;border-top:1px solid oklch(0.9 0.012 80 / 60%);margin-top:14px;padding-top:14px}
+.hero .fields .f .k{font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-foreground)}
+.hero .fields .f .v{margin-top:3px;font-size:13.5px;font-weight:600}
+
+/* Stepper */
+.stepper{display:flex;align-items:flex-start;margin:16px 0 18px;overflow-x:auto;padding:4px 2px}
+.step{flex:1;min-width:128px;display:flex;flex-direction:column;align-items:center;text-align:center;position:relative}
+.step::before,.step::after{content:"";position:absolute;top:15px;height:2px;width:calc(50% - 20px);background:var(--border)}
+.step::before{left:0}
+.step::after{right:0}
+.step:first-child::before,.step:last-child::after{display:none}
+.step.done::before,.step.done::after,.step.current::before{background:var(--success)}
+.step .bub{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--muted);color:var(--muted-foreground);font-size:12px;font-weight:700;border:2px solid var(--border);position:relative;z-index:1}
+.step.done .bub{background:var(--success);border-color:var(--success);color:oklch(0.985 0.006 85)}
+.step.current .bub{background:var(--primary);border-color:var(--primary);color:var(--primary-foreground);box-shadow:0 0 0 4px oklch(0.427 0.166 22.5 / 15%)}
+.step.skip .bub{background:var(--card);border-style:dashed;color:var(--muted-foreground)}
+.step .sl{margin-top:7px;font-size:12px;font-weight:600}
+.step.current .sl{color:var(--primary)}
+.step.skip .sl{color:var(--muted-foreground);font-weight:500}
+.step .ss{font-size:10.5px;color:var(--muted-foreground)}
+.step.current .ss{color:var(--primary);font-weight:600}
+.step.done .ss{color:var(--success);font-weight:600}
+
+/* Detail grid: left nav + panels */
+.detail-grid{display:grid;grid-template-columns:225px 1fr;gap:16px;align-items:start}
+.dnav{position:sticky;top:16px;padding:8px}
+.dnav .dn-label{padding:8px 10px 4px;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-foreground)}
+.dnav button{display:flex;width:100%;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;font-size:12.5px;font-weight:500;color:var(--muted-foreground);text-align:left;border-left:2px solid transparent}
+.dnav button:hover{background:var(--muted);color:var(--foreground)}
+.dnav button.active{background:oklch(0.427 0.166 22.5 / 7%);color:var(--primary);font-weight:600;border-left-color:var(--primary)}
+.dnav button .cnt{margin-left:auto;font-size:10.5px;font-weight:700;background:var(--muted);border-radius:99px;padding:1px 7px;color:var(--muted-foreground)}
+.dnav button.active .cnt{background:oklch(0.427 0.166 22.5 / 12%);color:var(--primary)}
+.dpanel{display:none}
+.dpanel.active{display:block}
+.dpanel .card{margin-bottom:14px}
+.dp-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+.dp-head .t{display:flex;align-items:center;gap:11px}
+.dp-head .t .ic{width:36px;height:36px;flex:none;border-radius:10px;display:grid;place-items:center;background:oklch(0.427 0.166 22.5 / 9%);color:var(--primary)}
+.dp-head h3{font-size:20px}
+.dp-head .sub{font-size:12.5px;color:var(--muted-foreground);margin-top:1px}
+.cta-band{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:13px 15px;border-radius:10px;background:oklch(0.505 0.114 152 / 8%);border:1px solid oklch(0.505 0.114 152 / 30%);margin-bottom:14px}
+.cta-band .ic{width:34px;height:34px;flex:none;border-radius:50%;background:var(--success);color:oklch(0.985 0.006 85);display:grid;place-items:center}
+.cta-band .tx{flex:1;min-width:220px}
+.cta-band .tx p{font-size:13px;font-weight:600;color:var(--success)}
+.cta-band .tx span{font-size:12px;color:var(--muted-foreground)}
+</style>
+<style>
+.meta3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.meta3 .m{border:1px solid var(--border);border-radius:10px;padding:11px 13px;background:oklch(0.988 0.005 85)}
+.meta3 .m .k{font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-foreground)}
+.meta3 .m .v{margin-top:3px;font-size:13.5px;font-weight:600}
+.sec-lbl{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-foreground);margin:2px 0 9px}
+.res-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.res-card{border:1px solid var(--border);border-radius:10px;padding:12px 13px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:all .15s;background:var(--card)}
+.res-card:hover{border-color:oklch(0.427 0.166 22.5 / 45%);box-shadow:var(--shadow-sm)}
+.res-card .st{width:26px;height:26px;flex:none;border-radius:50%;display:grid;place-items:center}
+.res-card .st.ok{background:var(--success);color:oklch(0.985 0.006 85)}
+.res-card .st.na{background:var(--muted);color:var(--muted-foreground)}
+.res-card .st.pend{background:oklch(0.79 0.145 84 / 30%);color:var(--warning-foreground)}
+.res-card .rt{flex:1;min-width:0}
+.res-card .rt p{font-size:12.5px;font-weight:600}
+.res-card .rt span{font-size:11px;color:var(--muted-foreground)}
+.res-card > svg{color:var(--muted-foreground)}
+.tline{position:relative;margin-left:6px;padding-left:22px}
+.tline::before{content:"";position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:var(--border)}
+.tl-item{position:relative;padding:7px 0}
+.tl-item::before{content:"";position:absolute;left:-19px;top:13px;width:9px;height:9px;border-radius:50%;background:var(--card);border:2px solid var(--primary)}
+.tl-item.ok::before{background:var(--success);border-color:var(--success)}
+.tl-item .d{font-size:11px;color:var(--muted-foreground)}
+.tl-item .x{font-size:12.5px;margin-top:1px}
+.tl-item .x b{font-weight:600}
+.tl-item .x .sep{color:var(--muted-foreground);margin:0 5px}
+.doc-row{display:flex;align-items:center;gap:11px;padding:11px 4px;border-bottom:1px solid oklch(0.9 0.012 80 / 60%)}
+.doc-row:last-child{border-bottom:0}
+.doc-ic{width:36px;height:36px;flex:none;border-radius:9px;display:grid;place-items:center;background:oklch(0.427 0.166 22.5 / 8%);color:var(--primary)}
+.doc-row .dt{flex:1;min-width:0}
+.doc-row .dt p{font-size:13px;font-weight:600}
+.doc-row .dt span{font-size:11.5px;color:var(--muted-foreground)}
+.up-zone{margin-top:12px;border:1.5px dashed var(--border);border-radius:10px;padding:18px;text-align:center;font-size:12.5px;color:var(--muted-foreground)}
+.up-zone svg.icon{margin-bottom:4px}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:12px 18px}
+.kv .k{font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-foreground)}
+.kv .v{margin-top:2px;font-size:13px;font-weight:500}
+.ent-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.sum-box{margin-top:14px;border-radius:10px;padding:13px 15px;background:var(--gold-soft);border:1px solid oklch(0.72 0.104 85 / 40%);font-size:12.5px}
+.sum-box .sh{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:oklch(0.5 0.09 75);margin-bottom:5px}
+.note{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:oklch(0.988 0.005 85)}
+.note .nh{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600}
+.note .nh span{font-weight:400;color:var(--muted-foreground);font-size:11px}
+.note p{margin-top:5px;font-size:13px}
+.note-box{margin-top:14px}
+.note-box textarea{width:100%;min-height:74px;border:1px solid var(--border);border-radius:10px;padding:11px 13px;font:inherit;font-size:13px;resize:vertical;outline:none;background:var(--card)}
+.note-box textarea:focus{border-color:var(--ring);box-shadow:0 0 0 3px oklch(0.427 0.166 22.5 / 15%)}
+.note-foot{display:flex;justify-content:flex-end;margin-top:8px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--sidebar);color:var(--sidebar-foreground);padding:10px 18px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:all .25s ease;z-index:100;border:1px solid var(--sidebar-border)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media (max-width:1100px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .sched-grid{grid-template-columns:1fr}
+  .cr-grid{grid-template-columns:1fr}
+  .detail-grid{grid-template-columns:1fr}
+  .dnav{position:static}
+  .hero .fields{grid-template-columns:repeat(2,1fr)}
+  .res-row{grid-template-columns:1fr}
+  .meta3{grid-template-columns:1fr}
+  .sidebar{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- ==================== SVG icon sprite (lucide-style) ==================== -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-building" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="1"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-user-check" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></symbol>
+  <symbol id="i-user-plus" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></symbol>
+  <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></symbol>
+  <symbol id="i-cal-clock" viewBox="0 0 24 24"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/><circle cx="17.5" cy="17.5" r="4.5"/><path d="M17.5 15.5v2l1.5 1"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+  <symbol id="i-chev-d" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></symbol>
+  <symbol id="i-chev-l" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-clip-check" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M10 2v8l3-3 3 3V2"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+  <symbol id="i-check-circle" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></symbol>
+</svg>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+  <symbol id="i-arrow-l" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+  <symbol id="i-shield-check" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+  <symbol id="i-briefcase" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></symbol>
+  <symbol id="i-video" viewBox="0 0 24 24"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><line x1="14" y1="2" x2="14" y2="6"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="16" y1="18" x2="16" y2="22"/></symbol>
+  <symbol id="i-arrow-r" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></symbol>
+</svg>
+
+<!-- ==================== Mockup banner ==================== -->
+<div class="mock-banner" id="mockBanner" style="position:relative">
+  <span class="tagx">UI Mockup</span>
+  <span><b>Applicant Management redesign — for review only.</b> Screen 1 keeps the metric cards &amp; only 3 tabs. The stage tabs (Interview, Assessment Test, Practical Assessment, Final Evaluation) moved into each applicant's <b>View</b> screen. Not connected to live data.</span>
+  <button class="mclose" onclick="document.getElementById('mockBanner').remove()" title="Dismiss"><svg class="icon sm"><use href="#i-x"/></svg></button>
+</div>
+<div class="app">
+<!-- ==================== Sidebar ==================== -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-mark"><svg class="icon lg"><use href="#i-building"/></svg></div>
+    <div>
+      <p class="brand-name">Oxford Suites<br>Makati</p>
+      <p class="brand-loc">HRMS</p>
+    </div>
+  </div>
+  <nav class="nav">
+    <div class="nav-label">Recruitment &amp; Onboarding</div>
+    <button class="nav-item active"><svg class="icon"><use href="#i-users"/></svg> Applicant Management</button>
+    <button class="nav-item" onclick="toast('Mockup only — Recruitment Management is out of scope.')"><svg class="icon"><use href="#i-briefcase"/></svg> Recruitment Management</button>
+    <div class="nav-label">Workspace</div>
+    <button class="nav-item" onclick="toast('Mockup only.')"><svg class="icon"><use href="#i-calendar"/></svg> Interviews</button>
+    <button class="nav-item" onclick="toast('Mockup only.')"><svg class="icon"><use href="#i-history"/></svg> History &amp; Audit</button>
+  </nav>
+  <div class="side-user">
+    <div class="ava">HR</div>
+    <div class="who">
+      <p>HR Admin</p>
+      <span>Super Admin</span>
+    </div>
+    <button class="side-signout" title="Sign out" onclick="toast('Mockup only — no session here.')"><svg class="icon sm"><use href="#i-logout"/></svg></button>
+  </div>
+</aside>
+
+<main class="main">
+<!-- ============================================================
+     SCREEN 1 — APPLICANT LIST (DEFAULT VIEW)
+     Keeps: metric cards + 3 tabs. Stage tabs moved to View screen.
+     ============================================================ -->
+<section id="screen-list">
+  <header class="page-head">
+    <div>
+      <div class="eyebrow">Recruitment &amp; Onboarding</div>
+      <h1>Applicant Management</h1>
+      <p class="desc">Track and process applicants from screening to hiring.</p>
+    </div>
+    <div class="page-actions">
+      <div class="dd">
+        <details>
+          <summary class="btn btn-primary"><svg class="icon sm"><use href="#i-download"/></svg> Generate Report <svg class="icon sm"><use href="#i-chev-d"/></svg></summary>
+          <div class="menu">
+            <button onclick="toast('Mockup only — report export is not wired here.')"><svg class="icon sm"><use href="#i-file"/></svg> Applicants summary (PDF)</button>
+            <button onclick="toast('Mockup only — report export is not wired here.')"><svg class="icon sm"><use href="#i-file"/></svg> Screening report (Excel)</button>
+            <button onclick="toast('Mockup only — report export is not wired here.')"><svg class="icon sm"><use href="#i-file"/></svg> Interview schedule (CSV)</button>
+          </div>
+        </details>
+      </div>
+    </div>
+  </header>
+  <div class="gold-rule"></div>
+
+  <!-- Metric cards (unchanged from current design) -->
+  <div class="stats">
+    <div class="card stat" onclick="toast('Mockup only — filter would jump to the applicant table.')">
+      <div class="top"><span class="lbl">Total Applicants</span><svg class="icon tone-default"><use href="#i-users"/></svg></div>
+      <p class="val tone-default">128</p>
+      <p class="hint">All-time submissions</p>
+    </div>
+    <div class="card stat">
+      <div class="top"><span class="lbl">Passed Screening</span><svg class="icon tone-success"><use href="#i-user-check"/></svg></div>
+      <p class="val tone-success">96 <small>(75%)</small></p>
+      <p class="hint">Passing score: 75%</p>
+    </div>
+    <div class="card stat">
+      <div class="top"><span class="lbl">Interviews Today</span><svg class="icon tone-primary"><use href="#i-cal-clock"/></svg></div>
+      <p class="val tone-primary">8</p>
+      <p class="hint">Across all departments</p>
+    </div>
+    <div class="card stat">
+      <div class="top"><span class="lbl">Ready for Interview</span><svg class="icon tone-gold"><use href="#i-user-plus"/></svg></div>
+      <p class="val tone-gold">5</p>
+      <p class="hint">Accepted — waiting for schedule</p>
+    </div>
+  </div>
+
+  <!-- Tabs: REDUCED from 7 to 3 -->
+  <div class="tabs-row">
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="ranking" role="tab"><svg class="icon sm"><use href="#i-trophy"/></svg> Ranking &amp; Applicants</button>
+      <button class="tab" data-tab="scheduling" role="tab"><svg class="icon sm"><use href="#i-cal-clock"/></svg> Interview Scheduling</button>
+      <button class="tab" data-tab="history" role="tab"><svg class="icon sm"><use href="#i-history"/></svg> History &amp; Audit</button>
+    </div>
+    <span class="moved-chip"><svg class="icon"><use href="#i-arrow-r"/></svg> Interview · Assessment Test · Practical Assessment · Final Evaluation now live inside each applicant's <b>&nbsp;View&nbsp;</b> screen</span>
+  </div>
+  <!-- ===== Tab 1: Ranking & Applicants ===== -->
+  <div class="pane active" id="pane-ranking">
+    <div class="cr-grid">
+      <!-- LEFT: Candidate Ranking — donut of fit-status distribution (mirrors current card) -->
+      <div class="card cr-card">
+        <div class="cr-head">
+          <div>
+            <h2><svg class="icon"><use href="#i-trophy"/></svg> Candidate Ranking</h2>
+            <p class="sub">Resume screening results — <b id="crTotalTxt">128</b> resumes processed across all positions.</p>
+          </div>
+          <div class="select">
+            <select><option>All positions</option><option>Front Desk Receptionist</option><option>Line Cook</option><option>Bartender</option><option>Restaurant Server</option><option>Housekeeping Attendant</option></select>
+            <svg class="chev"><use href="#i-chev-d"/></svg>
+          </div>
+        </div>
+        <div class="cr-flex">
+          <div class="donut-wrap">
+            <svg id="donutSvg" viewBox="0 0 212 212" width="200" height="200" role="img" aria-label="Fit status distribution"></svg>
+            <div class="donut-center"><b id="crTotal">128</b><span>Resumes</span></div>
+          </div>
+          <div class="legend-rows" id="donutLegend"></div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Top 5 Candidates Today -->
+      <div class="card top5-card">
+        <h3><svg class="icon"><use href="#i-trophy"/></svg> Top 5 Candidates Today</h3>
+        <p class="sub">Highest resume screening scores — updates after every screening</p>
+        <div class="top5-list" id="rankList"></div>
+        <div class="rank-foot">
+          <svg class="icon sm"><use href="#i-info"/></svg>
+          <span>Passing score is <b>75%</b>. Click a candidate to open their View screen.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="search">
+        <svg class="icon sm"><use href="#i-search"/></svg>
+        <input class="input" id="q" type="text" placeholder="Search by name, ID, email..." oninput="renderTable()">
+      </div>
+      <div class="select">
+        <select id="fStage" onchange="renderTable()">
+          <option value="all">Current Stage — All</option>
+          <option>Screening</option><option>Interview</option><option>Assessment Test</option>
+          <option>Practical Test</option><option>Final Evaluation</option><option>Accepted</option>
+        </select>
+        <svg class="chev"><use href="#i-chev-d"/></svg>
+      </div>
+      <div class="select">
+        <select id="fDept" onchange="renderTable()">
+          <option value="all">Department — All</option>
+          <option>Front Office</option><option>Food &amp; Beverage</option><option>Kitchen</option><option>Housekeeping</option>
+        </select>
+        <svg class="chev"><use href="#i-chev-d"/></svg>
+      </div>
+      <div class="select">
+        <select id="fFit" onchange="renderTable()">
+          <option value="all">Fit Status — All</option>
+          <option value="fit">Perfect for the Job</option><option value="other">Fit for other Job</option>
+          <option value="cred">Invalid credential</option><option value="notfit">Not fitted to Job</option>
+        </select>
+        <svg class="chev"><use href="#i-chev-d"/></svg>
+      </div>
+      <button class="btn btn-ghost clear" onclick="resetFilters()"><svg class="icon sm"><use href="#i-x"/></svg> Clear</button>
+    </div>
+
+    <div class="card tbl-card">
+        <div class="tbl-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th style="width:34px"><input type="checkbox" class="chk"></th>
+                <th>Applicant</th><th>Position</th><th>Department</th><th>Applied</th>
+                <th>Score</th><th>Current Stage</th><th>Fit Status</th><th style="text-align:right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+        <div class="tbl-foot">
+          <span id="showing">Showing 1–8 of 128 applicants</span>
+          <div class="pager">
+            <button onclick="toast('Mockup only.')"><svg class="icon sm"><use href="#i-chev-l"/></svg></button>
+            <button class="on">1</button><button onclick="toast('Mockup only.')">2</button>
+            <button onclick="toast('Mockup only.')">3</button><button onclick="toast('Mockup only.')">4</button>
+            <button onclick="toast('Mockup only.')">5</button>
+            <button onclick="toast('Mockup only.')"><svg class="icon sm"><use href="#i-chev-r"/></svg></button>
+          </div>
+        </div>
+      </div>
+  </div>
+  <!-- ===== Tab 2: Interview Scheduling (stays in the list) ===== -->
+  <div class="pane" id="pane-scheduling">
+    <div class="sched-grid">
+      <div class="card panel-pad">
+        <div class="panel-head">
+          <div><h3>Interview Calendar</h3><p class="sub">Week of September 7 – 13, 2026</p></div>
+          <button class="btn btn-outline btn-sm" onclick="toast('Mockup only.')"><svg class="icon sm"><use href="#i-cal-clock"/></svg> Book Interview</button>
+        </div>
+        <div class="week">
+          <div class="day"><div class="dow">Mon</div><div class="dnum">7</div><div class="ev"><i></i></div></div>
+          <div class="day"><div class="dow">Tue</div><div class="dnum">8</div><div class="ev"><i></i><i class="gold"></i></div></div>
+          <div class="day"><div class="dow">Wed</div><div class="dnum">9</div><div class="ev"><i></i></div></div>
+          <div class="day today"><div class="dow">Thu</div><div class="dnum">10</div><div class="ev"><i></i><i></i></div></div>
+          <div class="day"><div class="dow">Fri</div><div class="dnum">11</div><div class="ev"><i class="gold"></i></div></div>
+          <div class="day"><div class="dow">Sat</div><div class="dnum">12</div><div class="ev"></div></div>
+          <div class="day"><div class="dow">Sun</div><div class="dnum">13</div><div class="ev"></div></div>
+        </div>
+        <div class="legend">
+          <span><i style="background:var(--primary)"></i> On-site interviews</span>
+          <span><i style="background:var(--gold)"></i> Virtual interviews</span>
+        </div>
+        <div class="sched-note">
+          <svg class="icon sm"><use href="#i-info"/></svg>
+          <span>Scheduling stays in this main tab — it is a <b>batch-level</b> workflow. Per-applicant interview <b>results</b> now live inside the applicant's View screen.</span>
+        </div>
+      </div>
+      <div class="card tbl-card">
+        <div class="panel-pad" style="padding-bottom:6px">
+          <div class="panel-head" style="margin-bottom:0">
+            <div><h3>Upcoming Interviews</h3><p class="sub">Next 5 booked slots</p></div>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table class="table" style="min-width:520px">
+            <thead><tr><th>Applicant</th><th>Date &amp; Time</th><th>Mode</th><th>Interviewer</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td><b>Maria Santos</b></td><td>Sep 10 · 09:00 AM</td><td><span class="chip tone-primary-chip">On-site · Room 1</span></td><td>Ms. Aquino</td><td><span class="chip tone-gold-chip">Today</span></td></tr>
+              <tr><td><b>Rafael Santos</b></td><td>Sep 10 · 02:00 PM</td><td><span class="chip tone-primary-chip">On-site · Room 1</span></td><td>Mr. Reyes</td><td><span class="chip tone-gold-chip">Today</span></td></tr>
+              <tr><td><b>Bianca Soriano</b></td><td>Sep 11 · 10:30 AM</td><td><span class="chip tone-muted-chip">Virtual · Online Room</span></td><td>Ms. Aquino</td><td><span class="chip tone-muted-chip">Booked</span></td></tr>
+              <tr><td><b>Kanor Ornak</b></td><td>Sep 11 · 03:00 PM</td><td><span class="chip tone-primary-chip">On-site · Room 2</span></td><td>Mr. Delos Reyes</td><td><span class="chip tone-muted-chip">Booked</span></td></tr>
+              <tr><td><b>Carla Gomez</b></td><td>Sep 12 · 09:30 AM</td><td><span class="chip tone-primary-chip">On-site · Room 1</span></td><td>Ms. Santos</td><td><span class="chip tone-muted-chip">Booked</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ===== Tab 3: History & Audit (stays in the list) ===== -->
+  <div class="pane" id="pane-history">
+    <div class="toolbar">
+      <div class="search">
+        <svg class="icon sm"><use href="#i-search"/></svg>
+        <input class="input" type="text" placeholder="Search audit entries...">
+      </div>
+      <div class="select">
+        <select><option>Action — All</option><option>Stage moved</option><option>Interview Booked</option><option>Screening</option></select>
+        <svg class="chev"><use href="#i-chev-d"/></svg>
+      </div>
+      <div class="select">
+        <select><option>Department — All</option><option>Front Office</option><option>Food &amp; Beverage</option></select>
+        <svg class="chev"><use href="#i-chev-d"/></svg>
+      </div>
+      <div class="dd">
+        <details>
+          <summary class="btn btn-outline"><svg class="icon sm"><use href="#i-download"/></svg> Export <svg class="icon sm"><use href="#i-chev-d"/></svg></summary>
+          <div class="menu">
+            <button onclick="toast('Mockup only — export is not wired here.')"><svg class="icon sm"><use href="#i-file"/></svg> Export as PDF</button>
+            <button onclick="toast('Mockup only — export is not wired here.')"><svg class="icon sm"><use href="#i-file"/></svg> Export as Excel</button>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="card tbl-card">
+      <div class="tbl-wrap">
+        <table class="table" style="min-width:820px">
+          <thead><tr><th>Date &amp; Time</th><th>Performed By</th><th>Action</th><th>Module</th><th>Applicant</th><th>Details</th><th>Severity</th></tr></thead>
+          <tbody>
+            <tr><td>Sep 8, 2026 · 09:12 AM</td><td>HR Admin</td><td>Assessment Started</td><td>Assessment</td><td><b>Juan Dela Cruz</b></td><td>Job-specific test issued (10-minute limit).</td><td><span class="sev" style="color:var(--primary)">Info</span></td></tr>
+            <tr><td>Sep 8, 2026 · 08:47 AM</td><td>Ms. Aquino</td><td>Interview Scored</td><td>Interview</td><td><b>Maria Santos</b></td><td>Scored 82% — recommendation: Passed.</td><td><span class="sev" style="color:var(--success)">Success</span></td></tr>
+            <tr><td>Sep 7, 2026 · 05:20 PM</td><td>HR Admin</td><td>Stage Moved</td><td>Applicant</td><td><b>Mark Lee</b></td><td>Stage advanced to Final Evaluation.</td><td><span class="sev" style="color:var(--primary)">Info</span></td></tr>
+            <tr><td>Sep 7, 2026 · 04:02 PM</td><td>System</td><td>Resume Screening</td><td>Screening</td><td><b>Paul Garcia</b></td><td>Scored 64% with status NOT_FITTED_TO_JOB.</td><td><span class="sev" style="color:var(--destructive)">Warning</span></td></tr>
+            <tr><td>Sep 7, 2026 · 10:31 AM</td><td>Mr. Reyes</td><td>Interview Booked</td><td>Interview Scheduling</td><td><b>Carla Gomez</b></td><td>On-site interview booked for Sep 12, 09:30 AM.</td><td><span class="sev" style="color:var(--primary)">Info</span></td></tr>
+            <tr><td>Sep 6, 2026 · 03:58 PM</td><td>HR Admin</td><td>Applicant Added</td><td>Screening</td><td><b>Jasmine Bautista</b></td><td>Added via document screening — referral source.</td><td><span class="sev" style="color:var(--primary)">Info</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tbl-foot"><span>Showing 1–6 of 412 entries</span><div class="pager"><button><svg class="icon sm"><use href="#i-chev-l"/></svg></button><button class="on">1</button><button onclick="toast('Mockup only.')">2</button><button onclick="toast('Mockup only.')">3</button><button onclick="toast('Mockup only.')"><svg class="icon sm"><use href="#i-chev-r"/></svg></button></div></div>
+    </div>
+  </div>
+</section>
+<!-- ============================================================
+     SCREEN 2 — APPLICANT VIEW (after clicking "View")
+     Home of the moved stage tabs: Interview, Assessment Test,
+     Practical Assessment, Final Evaluation (+ details/docs/notes)
+     ============================================================ -->
+<section id="screen-detail" class="hide">
+  <div class="detail-top">
+    <button class="back-link" onclick="showList()"><svg class="icon sm"><use href="#i-arrow-l"/></svg> Back to Applicants</button>
+    <div class="dd">
+      <details>
+        <summary class="btn btn-outline"><svg class="icon sm"><use href="#i-more"/></svg> More Actions <svg class="icon sm"><use href="#i-chev-d"/></svg></summary>
+        <div class="menu">
+          <button onclick="toast('Mockup only.')"><svg class="icon sm"><use href="#i-file"/></svg> Print applicant profile</button>
+          <button onclick="toast('Mockup only.')"><svg class="icon sm"><use href="#i-download"/></svg> Export profile as PDF</button>
+          <button onclick="toast('Mockup only.')"><svg class="icon sm"><use href="#i-alert"/></svg> Flag for review</button>
+          <hr>
+          <button class="danger" onclick="toast('Mockup only.')"><svg class="icon sm"><use href="#i-x"/></svg> Archive applicant</button>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- Applicant hero -->
+  <div class="card hero">
+    <div class="row1">
+      <div class="ava-xl" id="dAva">JD</div>
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <h2 id="dName">Juan Dela Cruz</h2>
+          <span class="chip tone-success-chip" id="dTrack"><svg class="icon" style="width:11px;height:11px"><use href="#i-check"/></svg> On Track</span>
+          <span class="chip tone-gold-chip" id="dFit">Perfect for the Job</span>
+        </div>
+        <div class="row2">
+          <span><svg class="icon sm"><use href="#i-mail"/></svg> <span id="dEmail">juan@email.com</span></span>
+          <span><svg class="icon sm"><use href="#i-phone"/></svg> <span id="dPhone">+63 912 345 6789</span></span>
+          <span><svg class="icon sm"><use href="#i-pin"/></svg> Makati City</span>
+          <span style="color:var(--muted-foreground)">·&nbsp; <b id="dCode" style="font-weight:600">APP-1041</b></span>
+        </div>
+      </div>
+    </div>
+    <div class="fields">
+      <div class="f"><div class="k">Position</div><div class="v" id="dPos">Line Cook</div></div>
+      <div class="f"><div class="k">Department</div><div class="v" id="dDept">Kitchen</div></div>
+      <div class="f"><div class="k">Applied</div><div class="v" id="dApplied">Aug 28, 2026</div></div>
+      <div class="f"><div class="k">Resume Score</div><div class="v" id="dScore">87%</div></div>
+    </div>
+  </div>
+
+  <!-- Stage tracker -->
+  <div class="card" style="padding:14px 18px 12px">
+    <div class="stepper" id="stepper"></div>
+  </div>
+
+  <!-- Body grid: section nav + panels -->
+  <div class="detail-grid">
+    <nav class="card dnav" id="dnav">
+      <div class="dn-label">Applicant sections</div>
+      <button class="active" data-dp="dp-current"><svg class="icon sm"><use href="#i-activity"/></svg> Current Stage</button>
+      <button data-dp="dp-details"><svg class="icon sm"><use href="#i-file"/></svg> Application Details</button>
+      <button data-dp="dp-resume"><svg class="icon sm"><use href="#i-copy"/></svg> Resume &amp; Documents <span class="cnt" id="cntDocs">4</span></button>
+      <button data-dp="dp-interview"><svg class="icon sm"><use href="#i-clip-check"/></svg> Interview</button>
+      <button data-dp="dp-test"><svg class="icon sm"><use href="#i-book"/></svg> Assessment Test</button>
+      <button data-dp="dp-practical"><svg class="icon sm"><use href="#i-wrench"/></svg> Practical Assessment</button>
+      <button data-dp="dp-final"><svg class="icon sm"><use href="#i-check-circle"/></svg> Final Evaluation</button>
+      <button data-dp="dp-notes"><svg class="icon sm"><use href="#i-pen"/></svg> Notes <span class="cnt" id="cntNotes">2</span></button>
+    </nav>
+
+    <div class="dpanels">
+      <div class="dpanel active" id="dp-current"></div>
+      <div class="dpanel" id="dp-details"></div>
+      <div class="dpanel" id="dp-resume"></div>
+      <div class="dpanel" id="dp-interview"></div>
+      <div class="dpanel" id="dp-test"></div>
+      <div class="dpanel" id="dp-practical"></div>
+      <div class="dpanel" id="dp-final"></div>
+      <div class="dpanel" id="dp-notes"></div>
+    </div>
+  </div>
+</section>
+</main>
+</div>
+
+<div class="screen-pill" id="pill"><span class="num" id="pillNum">1</span> <span id="pillTxt">Applicant List — Default View</span></div>
+<div id="toast"></div>
+<script>
+/* =====================================================================
+   Mock data — mirrors the shape of frontend/src/data/applicants.ts
+   Stages: Screening → Interview → Assessment Test → Practical Test
+           → Final Evaluation → (Accepted / Hired / Rejected)
+   ===================================================================== */
+const STAGES = ["Screening","Interview","Assessment Test","Practical Test","Final Evaluation"];
+const STAGE_CHIP = {
+  "Screening":"tone-muted-chip","Interview":"tone-primary-chip","Assessment Test":"tone-gold-chip",
+  "Practical Test":"tone-caution-chip","Final Evaluation":"tone-muted-chip","Accepted":"tone-success-chip"
+};
+const FIT = {
+  fit:{label:"Perfect for the Job",chip:"tone-success-chip"},
+  other:{label:"Fit for other Job",chip:"tone-warning-chip"},
+  cred:{label:"Invalid credential",chip:"tone-caution-chip"},
+  notfit:{label:"Not fitted to Job",chip:"tone-destructive-chip"}
+};
+const applicants = [
+  { id:"APP-1041", name:"Juan Dela Cruz", email:"juan.delacruz@email.com", phone:"+63 912 345 6789",
+    position:"Line Cook", dept:"Kitchen", applied:"Aug 28, 2026", score:87, stage:"Assessment Test",
+    fit:"fit", practical:false, source:"Online Portal",
+    summary:"Three years à la carte kitchen experience, strong knife skills, TESDA Cookery NC II.",
+    entities:[["SKILL","Hot Line Cooking"],["SKILL","HACCP"],["ORG","Café Adriatico"],["EDU","Culinary Diploma"],["CERT","TESDA Cookery NC II"]],
+    interview:{status:"Completed", score:82, rec:"Passed", date:"Sep 4, 2026 · 02:00 PM", mode:"On-site · Room 1", interviewer:"Chef Villanueva"},
+    assessment:{status:"In Progress", type:"Job-Specific", limit:"10 minutes", attempts:"1 / 1"},
+    activity:[
+      ["Sep 8, 2026 · 10:24 AM","Assessment started","Job-specific test issued",""],
+      ["Sep 4, 2026 · 03:15 PM","Interview completed","Score: 82%","Recommendation: Passed"],
+      ["Aug 30, 2026 · 09:02 AM","Screening completed","Score: 87%",""],
+      ["Aug 28, 2026 · 11:40 AM","Application received","Via Online Portal",""]],
+    docs:[["Resume — Juan_Dela_Cruz_CV.pdf","PDF · uploaded Aug 28, 2026 · screened 87%","ok"],
+          ["Valid Government ID","PNG · verified Aug 29, 2026","ok"],
+          ["TESDA Cookery NC II","PDF · verified Aug 29, 2026","ok"],
+          ["NBI Clearance","Pending upload","pend"]],
+    notes:[["HR Admin · Sep 5, 2026","Strong interview. Chef noted speed and station discipline — proceed to final evaluation."],
+           ["System · Aug 28, 2026","Auto-note: resume parsed, 5 entities extracted, no validation flags."]] },
+  { id:"APP-1040", name:"Maria Santos", email:"maria.santos@email.com", phone:"+63 917 555 0143",
+    position:"Front Desk Receptionist", dept:"Front Office", applied:"Aug 27, 2026", score:82, stage:"Interview",
+    fit:"fit", practical:false, source:"Indeed",
+    summary:"Four years front-office experience in a 4-star property. Opera PMS proficient, complete credentials.",
+    entities:[["SKILL","Guest Relations"],["SKILL","Opera PMS"],["ORG","Grand Horizon Hotel"],["EDU","BS Hospitality Management"],["CERT","TESDA Front Office NC II"]],
+    interview:{status:"Completed", score:88, rec:"Passed", date:"Sep 8, 2026 · 09:00 AM", mode:"On-site · Room 1", interviewer:"Ms. Aquino"},
+    assessment:{status:"Pending", type:"Job-Specific", limit:"10 minutes", attempts:"1 / 1"},
+    activity:[
+      ["Sep 8, 2026 · 09:47 AM","Interview completed","Score: 88%","Recommendation: Passed"],
+      ["Sep 6, 2026 · 01:12 PM","Interview scheduled","On-site · Room 1","Sep 8, 09:00 AM"],
+      ["Aug 28, 2026 · 04:31 PM","Screening completed","Score: 82%",""],
+      ["Aug 27, 2026 · 08:19 AM","Application received","Via Indeed",""]],
+    docs:[["Resume — Maria_Santos_CV.pdf","PDF · uploaded Aug 27, 2026 · screened 82%","ok"],
+          ["Valid Government ID","PNG · verified Aug 28, 2026","ok"],
+          ["TOR — BS Hospitality Management","PDF · verified Aug 28, 2026","ok"],
+          ["NBI Clearance","PDF · verified Aug 30, 2026","ok"]],
+    notes:[["Ms. Aquino · Sep 8, 2026","Excellent grooming and phone etiquette. Suggested for assessment test."]] },
+  { id:"APP-1039", name:"Ana Reyes", email:"ana.reyes@email.com", phone:"+63 905 118 7742",
+    position:"Bartender", dept:"Food & Beverage", applied:"Aug 26, 2026", score:91, stage:"Practical Test",
+    fit:"fit", practical:true, source:"Referral",
+    summary:"Five years cocktail-bar experience, flair basics, TESDA Bar NC II.",
+    entities:[["SKILL","Mixology"],["SKILL","Flair Bartending"],["ORG","The Spirits Library"],["CERT","TESDA Bar NC II"]],
+    interview:{status:"Completed", score:85, rec:"Passed", date:"Sep 3, 2026 · 04:00 PM", mode:"On-site · Room 2", interviewer:"Mr. Delos Reyes"},
+    assessment:{status:"Completed", type:"Job-Specific", limit:"10 minutes", attempts:"1 / 1", score:84},
+    activity:[
+      ["Sep 8, 2026 · 11:05 AM","Practical assessment scheduled","Bar simulation · Bar Lab","Sep 10, 02:00 PM"],
+      ["Sep 6, 2026 · 10:40 AM","Assessment test completed","Score: 84%","Passed"],
+      ["Sep 1, 2026 · 02:26 PM","Interview completed","Score: 85%","Recommendation: Passed"],
+      ["Aug 26, 2026 · 07:55 PM","Application received","Via Referral",""]],
+    docs:[["Resume — Ana_Reyes_CV.pdf","PDF · uploaded Aug 26, 2026 · screened 91%","ok"],
+          ["Valid Government ID","PNG · verified Aug 27, 2026","ok"],
+          ["TESDA Bar NC II","PDF · verified Aug 27, 2026","ok"],
+          ["Health Card","PDF · expires Mar 2027","ok"]],
+    notes:[["Mr. Delos Reyes · Sep 1, 2026","Great personality, correct pour counts. Watch upselling scripts."]] },
+  { id:"APP-1038", name:"Mark Lee", email:"mark.lee@email.com", phone:"+63 908 220 4567",
+    position:"Restaurant Server", dept:"Food & Beverage", applied:"Aug 25, 2026", score:78, stage:"Final Evaluation",
+    fit:"other", practical:true, source:"Walk-in",
+    summary:"Banquet and à la carte service background. Flag: stronger match detected for Barista (86%).",
+    entities:[["SKILL","Table Service"],["SKILL","POS Systems"],["ORG","Bistro Manila"],["EDU","HRM Vocational"]],
+    interview:{status:"Completed", score:76, rec:"Passed", date:"Aug 30, 2026 · 10:00 AM", mode:"Virtual · Online Room", interviewer:"Ms. Santos"},
+    assessment:{status:"Completed", type:"Job-Specific", limit:"10 minutes", attempts:"2 / 2", score:79},
+    activity:[
+      ["Sep 7, 2026 · 05:20 PM","Stage advanced","Final Evaluation",""],
+      ["Sep 2, 2026 · 09:14 AM","Practical assessment completed","Service simulation · 81%","Passed"],
+      ["Aug 29, 2026 · 11:47 AM","Assessment test completed","Score: 79%","Second attempt"],
+      ["Aug 25, 2026 · 01:33 PM","Application received","Walk-in",""]],
+    docs:[["Resume — Mark_Lee_CV.pdf","PDF · uploaded Aug 25, 2026 · screened 78%","ok"],
+          ["Valid Government ID","PNG · verified Aug 26, 2026","ok"],
+          ["HRM Vocational Diploma","PDF · verified Aug 26, 2026","ok"],
+          ["Health Card","Pending renewal","pend"]],
+    notes:[["HR Admin · Sep 2, 2026","Solid service basics; flagged stronger match for Barista — discuss with F&B director."]] },
+  { id:"APP-1037", name:"Carla Gomez", email:"carla.gomez@email.com", phone:"+63 926 774 8810",
+    position:"Housekeeping Attendant", dept:"Housekeeping", applied:"Aug 24, 2026", score:76, stage:"Screening",
+    fit:"fit", practical:false, source:"Facebook",
+    summary:"Two years room-keeping experience in a condo-hotel. Complete basic requirements.",
+    entities:[["SKILL","Room Keeping"],["SKILL","Laundry Operations"],["ORG","Citi Park Hotel"]],
+    interview:{status:"Pending", date:null, mode:null, interviewer:null, score:null, rec:null},
+    assessment:{status:"Pending", type:"Job-Specific", limit:"10 minutes", attempts:"1 / 1"},
+    activity:[
+      ["Aug 24, 2026 · 02:12 PM","Application received","Via Facebook",""],
+      ["Aug 24, 2026 · 02:15 PM","Resume parsed","4 entities extracted","No flags"]],
+    docs:[["Resume — Carla_Gomez_CV.pdf","PDF · uploaded Aug 24, 2026 · screened 76%","ok"],
+          ["Valid Government ID","Pending upload","pend"]],
+    notes:[] },
+  { id:"APP-1036", name:"Rafael Santos", email:"rafael.santos@email.com", phone:"+63 916 340 2299",
+    position:"Front Desk Receptionist", dept:"Front Office", applied:"Aug 22, 2026", score:72, stage:"Interview",
+    fit:"other", practical:false, source:"Online Portal",
+    summary:"Retail customer-service background transitioning to hotels. Flag: stronger match for Restaurant Server (81%).",
+    entities:[["SKILL","Customer Service"],["SKILL","Cash Handling"],["ORG","RetailMart PH"]],
+    interview:{status:"Scheduled", date:"Sep 10, 2026 · 02:00 PM", mode:"On-site · Room 1", interviewer:"Mr. Reyes", score:null, rec:null},
+    assessment:{status:"Pending", type:"Job-Specific", limit:"10 minutes", attempts:"1 / 1"},
+    activity:[
+      ["Sep 6, 2026 · 10:31 AM","Interview scheduled","On-site · Room 1","Sep 10, 02:00 PM"],
+      ["Aug 23, 2026 · 09:05 AM","Screening completed","Score: 72%","Below passing (75%) — for review"],
+      ["Aug 22, 2026 · 03:44 PM","Application received","Via Online Portal",""]],
+    docs:[["Resume — Rafael_Santos_CV.pdf","PDF · uploaded Aug 22, 2026 · screened 72%","ok"],
+          ["Valid Government ID","PNG · verified Aug 24, 2026","ok"],
+          ["NBI Clearance","PDF · verified Aug 25, 2026","ok"]],
+    notes:[["HR Admin · Aug 23, 2026","Below passing score but strong service attitude. Director approved interview slot."]] },
+  { id:"APP-1035", name:"Jasmine Bautista", email:"jasmine.bautista@email.com", phone:"+63 918 664 0032",
+    position:"Line Cook", dept:"Kitchen", applied:"Aug 20, 2026", score:69, stage:"Assessment Test",
+    fit:"cred", practical:true, source:"Indeed",
+    summary:"Quick-service kitchen experience. Flag: TESDA certificate could not be validated.",
+    entities:[["SKILL","Short-order Cooking"],["ORG","ChowKing Corp"]],
+    interview:{status:"Completed", score:71, rec:"Conditional", date:"Aug 29, 2026 · 09:00 AM", mode:"Virtual · Online Room", interviewer:"Chef Villanueva"},
+    assessment:{status:"In Progress", type:"Job-Specific", limit:"10 minutes", attempts:"1 / 1"},
+    activity:[
+      ["Sep 7, 2026 · 08:41 PM","Assessment invitation sent","Expires in 48 hours",""],
+      ["Aug 29, 2026 · 10:12 AM","Interview completed","Score: 71%","Recommendation: Conditional"],
+      ["Aug 21, 2026 · 05:28 PM","Screening completed","Score: 69%","Credential flag raised"],
+      ["Aug 20, 2026 · 12:02 PM","Application received","Via Indeed",""]],
+    docs:[["Resume — Jasmine_Bautista_CV.pdf","PDF · uploaded Aug 20, 2026 · screened 69%","ok"],
+          ["TESDA Certificate (unverified)","PDF · could not be validated","pend"],
+          ["Valid Government ID","PNG · verified Aug 22, 2026","ok"]],
+    notes:[["Chef Villanueva · Aug 29, 2026","Knife skills acceptable; needs station discipline. Credential issue must be cleared first."]] },
+  { id:"APP-1034", name:"Paul Garcia", email:"paul.garcia@email.com", phone:"+63 927 118 5520",
+    position:"Bartender", dept:"Food & Beverage", applied:"Aug 18, 2026", score:64, stage:"Screening",
+    fit:"notfit", practical:false, source:"Online Portal",
+    summary:"Limited bar experience; profile best suited to waiter roles.",
+    entities:[["SKILL","Food Running"],["ORG","Bar 360"]],
+    interview:{status:"Pending", date:null, mode:null, interviewer:null, score:null, rec:null},
+    assessment:{status:"Pending", type:"Job-Specific", limit:"10 minutes", attempts:"1 / 1"},
+    activity:[
+      ["Aug 18, 2026 · 09:30 AM","Application received","Via Online Portal",""],
+      ["Aug 18, 2026 · 09:33 AM","Resume parsed","2 entities extracted","Low relevance"]],
+    docs:[["Resume — Paul_Garcia_CV.pdf","PDF · uploaded Aug 18, 2026 · screened 64%","ok"]],
+    notes:[] }
+
+
+
+];
+</script>
+
+<script>
+/* ================= helpers ================= */
+const $ = (s)=>document.querySelector(s);
+const initials = (n)=>n.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
+const scoreColor = (s)=> s>=75 ? "var(--success)" : s>=60 ? "var(--caution)" : "var(--destructive)";
+let toastTimer=null;
+function toast(msg){
+  const t=$("#toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),2600);
+}
+
+/* ================= Screen 1: table + rank list ================= */
+function renderTable(){
+  const q=($("#q").value||"").toLowerCase();
+  const st=$("#fStage").value, dp=$("#fDept").value, ft=$("#fFit").value;
+  const rows=applicants.filter(a=>{
+    if(q && !(a.name.toLowerCase().includes(q)||a.id.toLowerCase().includes(q)||a.email.toLowerCase().includes(q))) return false;
+    if(st!=="all" && a.stage!==st) return false;
+    if(dp!=="all" && a.dept!==dp) return false;
+    if(ft!=="all" && a.fit!==ft) return false;
+    return true;
+  });
+  $("#tbody").innerHTML = rows.length ? rows.map(a=>`
+    <tr>
+      <td><input type="checkbox" class="chk"></td>
+      <td><div class="cand"><div class="ava">${initials(a.name)}</div><div><p class="nm">${a.name}</p><p class="em">${a.email}</p></div></div></td>
+      <td>${a.position}</td><td>${a.dept}</td><td>${a.applied}</td>
+      <td><div class="score-cell"><b style="color:${scoreColor(a.score)}">${a.score}%</b><div class="score-bar"><i style="width:${a.score}%;background:${scoreColor(a.score)}"></i></div></div></td>
+      <td><span class="chip ${STAGE_CHIP[a.stage]||"tone-muted-chip"}"><span class="dot"></span>${a.stage==="Practical Test"?"Practical Assessment":a.stage}</span></td>
+      <td><span class="chip ${FIT[a.fit].chip}"><span class="dot"></span>${FIT[a.fit].label}</span></td>
+      <td style="text-align:right"><button class="btn btn-outline btn-sm" onclick="openDetail('${a.id}')"><svg class="icon sm"><use href="#i-eye"/></svg> View</button></td>
+    </tr>`).join("")
+    : `<tr><td colspan="9" style="text-align:center;padding:26px;color:var(--muted-foreground)">No applicants match the current filters.</td></tr>`;
+  const n=rows.length;
+  $("#showing").textContent = n ? `Showing 1–${n} of 128 applicants` : "Showing 0 of 128 applicants";
+}
+function renderRank(){
+  const top=[...applicants].sort((a,b)=>b.score-a.score).slice(0,5);
+  $("#rankList").innerHTML=top.map((a,i)=>`
+    <div class="rank-row" style="cursor:pointer" onclick="openDetail('${a.id}')">
+      <div class="medal ${i===0?"m1":i===1?"m2":i===2?"m3":"mx"}">${i<3?i+1:"·"}</div>
+      <div class="ava" style="width:28px;height:28px;font-size:10.5px">${initials(a.name)}</div>
+      <div class="rmeta"><p>${a.name}</p><span>${a.position} · ${a.dept}</span></div>
+      <div class="rscore">${a.score}%</div>
+    </div>`).join("");
+}
+function resetFilters(){ $("#q").value=""; $("#fStage").value="all"; $("#fDept").value="all"; $("#fFit").value="all"; renderTable(); }
+
+/* ================= List tabs ================= */
+function switchTab(name){
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===name));
+  document.querySelectorAll("#screen-list .pane").forEach(p=>p.classList.toggle("active",p.id==="pane-"+name));
+}
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>switchTab(t.dataset.tab)));
+
+/* ================= Screen switching ================= */
+function showList(){
+  $("#screen-detail").classList.add("hide");
+  $("#screen-list").classList.remove("hide");
+  const p=$("#pill"); p.classList.remove("p2"); $("#pillNum").textContent="1"; $("#pillTxt").textContent="Applicant List — Default View";
+  window.scrollTo({top:0});
+}
+</script>
+<script>
+/* ================= Screen 2: applicant detail ================= */
+let CURRENT=null;
+function openDetail(id){
+  const a=applicants.find(x=>x.id===id); if(!a) return;
+  CURRENT=a;
+  /* hero */
+  $("#dAva").textContent=initials(a.name);
+  $("#dName").textContent=a.name;
+  $("#dEmail").textContent=a.email;
+  $("#dPhone").textContent=a.phone;
+  $("#dCode").textContent=a.id;
+  $("#dPos").textContent=a.position;
+  $("#dDept").textContent=a.dept;
+  $("#dApplied").textContent=a.applied;
+  $("#dScore").textContent=a.score+"%";
+  $("#dScore").style.color=scoreColor(a.score);
+  const fitEl=$("#dFit"); fitEl.className="chip "+FIT[a.fit].chip; fitEl.textContent=FIT[a.fit].label;
+  $("#cntDocs").textContent=a.docs.length;
+  $("#cntNotes").textContent=a.notes.length;
+  buildStepper(a);
+  buildCurrent(a); buildDetails(a); buildResume(a);
+  buildInterview(a); buildTest(a); buildPractical(a); buildFinal(a); buildNotes(a);
+  /* reset to first panel */
+  document.querySelectorAll("#dnav button").forEach(b=>b.classList.toggle("active",b.dataset.dp==="dp-current"));
+  document.querySelectorAll(".dpanel").forEach(p=>p.classList.toggle("active",p.id==="dp-current"));
+  /* swap screens */
+  $("#screen-list").classList.add("hide");
+  $("#screen-detail").classList.remove("hide");
+  const p=$("#pill"); p.classList.add("p2"); $("#pillNum").textContent="2"; $("#pillTxt").textContent="Applicant View — "+a.name;
+  window.scrollTo({top:0});
+}
+
+/* ---------- stage stepper ---------- */
+function buildStepper(a){
+  const idx=STAGES.indexOf(a.stage);
+  const stepState=(i)=>{
+    if(STAGES[i]==="Practical Test" && !a.practical) return "skip";
+    if(idx===-1) return "done"; /* Accepted / beyond final */
+    if(i<idx) return "done";
+    if(i===idx) return "current";
+    return "todo";
+  };
+  const sub={done:"Completed",current:"In Progress",todo:"Pending",skip:"Not Required"};
+  $("#stepper").innerHTML=STAGES.map((s,i)=>{
+    const st=stepState(i);
+    const label=s==="Practical Test"?"Practical Assessment":s;
+    const bub=st==="done" ? '<svg class="icon sm"><use href="#i-check"/></svg>'
+      : st==="skip" ? '<svg class="icon sm"><use href="#i-x"/></svg>' : (i+1);
+    return `<div class="step ${st==="todo"?"":st}">
+      <div class="bub">${bub}</div>
+      <div class="sl">${label}</div>
+      <div class="ss">${sub[st]}</div>
+    </div>`;
+  }).join("");
+}
+
+/* ---------- panel: Current Stage ---------- */
+function buildCurrent(a){
+  const idx=STAGES.indexOf(a.stage);
+  const stageLabel=a.stage==="Practical Test"?"Practical Assessment":a.stage;
+  const desc={
+    "Screening":"Resume is being screened by the NLP service.",
+    "Interview":"Interview process for this applicant.",
+    "Assessment Test":"Job-specific test for this position.",
+    "Practical Test":"Hands-on skills demonstration for this position.",
+    "Final Evaluation":"Final review of all process stages."
+  }[a.stage]||"Review this applicant's final evaluation.";
+  let cta="";
+  if(a.stage==="Assessment Test" && a.assessment.status==="In Progress"){
+    cta=`<div class="cta-band">
+      <div class="ic"><svg class="icon sm"><use href="#i-check"/></svg></div>
+      <div class="tx"><p>This applicant is ready for the assessment test.</p><span>Send the test invitation or start the assessment now.</span></div>
+      <button class="btn btn-primary" onclick="toast('Mockup only — would open the assessment runner.')"><svg class="icon sm"><use href="#i-send"/></svg> Start Assessment</button>
+    </div>`;
+  }
+  const m=a.stage==="Assessment Test"
+    ? `<div class="meta3">
+        <div class="m"><div class="k">Test Type</div><div class="v">${a.assessment.type}</div></div>
+        <div class="m"><div class="k">Time Limit</div><div class="v">${a.assessment.limit}</div></div>
+        <div class="m"><div class="k">Attempts</div><div class="v">${a.assessment.attempts}</div></div>
+      </div>` : "";
+  $("#dp-current").innerHTML=`
+    <div class="card" style="padding:18px">
+      <div class="dp-head">
+        <div class="t">
+          <div class="ic"><svg class="icon"><use href="#i-activity"/></svg></div>
+          <div><h3>${stageLabel}</h3><p class="sub">${desc}</p></div>
+        </div>
+      </div>
+      ${cta}${m}
+      <div class="sec-lbl">Previous Stage Results</div>
+      <div class="res-row">${prevResults(a)}</div>
+      <div class="sec-lbl" style="margin-top:16px">Recent Activity</div>
+      <div class="tline">${a.activity.map(ev=>`
+        <div class="tl-item ${/completed|received|passed/i.test(ev[1])?"ok":""}">
+          <div class="d">${ev[0]}</div>
+          <div class="x"><b>${ev[1]}</b>${ev[3]?`<span class="sep">·</span>${ev[3]}`:""}${ev[2]?`<span class="sep">·</span>${ev[2]}`:""}</div>
+        </div>`).join("")}</div>
+    </div>`;
+}
+function prevResults(a){
+  const card=(st,label,meta,cls,icon)=>`
+    <div class="res-card" onclick="gotoPanel('${st}')">
+      <div class="st ${cls}"><svg class="icon sm"><use href="#${icon}"/></svg></div>
+      <div class="rt"><p>${label}</p><span>${meta}</span></div>
+      <svg class="icon sm"><use href="#i-chev-r"/></svg>
+    </div>`;
+  return card("dp-details","Screening",(a.score>=75?"Passed":"For Review")+" · Score: "+a.score+"%",a.score>=75?"ok":"pend","i-check")
+    + card("dp-interview","Interview",a.interview.status==="Completed"?("Passed · Score: "+a.interview.score+"%"):a.interview.status==="Scheduled"?("Scheduled · "+(a.interview.date||"").split(" · ")[0]):"Not yet conducted",a.interview.status==="Completed"?"ok":a.interview.status==="Scheduled"?"pend":"na","i-clip-check")
+    + card("dp-practical","Practical Assessment",a.practical?"Required — see Practical tab":"Not required for this position",a.practical?"pend":"na","i-wrench");
+}
+/* ---------- panel: Application Details ---------- */
+function buildDetails(a){
+  $("#dp-details").innerHTML=`
+    <div class="card" style="padding:18px">
+      <div class="dp-head">
+        <div class="t"><div class="ic"><svg class="icon"><use href="#i-file"/></svg></div>
+        <div><h3>Application Details</h3><p class="sub">Submitted via ${a.source} · ${a.applied}</p></div></div>
+        <button class="btn btn-outline btn-sm" onclick="toast('Mockup only — edit is disabled in mockup.')"><svg class="icon sm"><use href="#i-pen"/></svg> Edit</button>
+      </div>
+      <div class="kv">
+        <div><div class="k">Applicant ID</div><div class="v">${a.id}</div></div>
+        <div><div class="k">Full Name</div><div class="v">${a.name}</div></div>
+        <div><div class="k">Email</div><div class="v">${a.email}</div></div>
+        <div><div class="k">Phone</div><div class="v">${a.phone}</div></div>
+        <div><div class="k">Position Applied</div><div class="v">${a.position}</div></div>
+        <div><div class="k">Department</div><div class="v">${a.dept}</div></div>
+        <div><div class="k">Source</div><div class="v">${a.source}</div></div>
+        <div><div class="k">Resume Score</div><div class="v" style="color:${scoreColor(a.score)}">${a.score}%</div></div>
+        <div><div class="k">Current Stage</div><div class="v">${a.stage}</div></div>
+      </div>
+      <div class="sum-box">
+        <div class="sh"><svg class="icon sm"><use href="#i-star"/></svg> AI Screening Summary (spaCy NER)</div>
+        ${a.summary}
+        <div class="ent-chips">${a.entities.map(e=>`<span class="chip tone-muted-chip">${e[0]} · ${e[1]}</span>`).join("")}</div>
+      </div>
+    </div>`;
+}
+
+/* ---------- panel: Resume & Documents ---------- */
+function buildResume(a){
+  const ic=(t)=>t.toLowerCase().includes("resume")?"i-file":t.toLowerCase().includes("id")?"i-shield-check":"i-copy";
+  $("#dp-resume").innerHTML=`
+    <div class="card" style="padding:18px">
+      <div class="dp-head">
+        <div class="t"><div class="ic"><svg class="icon"><use href="#i-copy"/></svg></div>
+        <div><h3>Resume &amp; Documents</h3><p class="sub">${a.docs.length} files on record</p></div></div>
+      </div>
+      ${a.docs.map(d=>`
+        <div class="doc-row">
+          <div class="doc-ic"><svg class="icon"><use href="#${ic(d[0])}"/></svg></div>
+          <div class="dt"><p>${d[0]}</p><span>${d[1]}</span></div>
+          ${d[2]==="ok"?'<span class="chip tone-success-chip">Verified</span>':'<span class="chip tone-warning-chip">Pending</span>'}
+          <button class="btn btn-ghost btn-sm" onclick="toast('Mockup only — would stream the file.')"><svg class="icon sm"><use href="#i-eye"/></svg> View</button>
+          <button class="btn btn-ghost btn-sm" onclick="toast('Mockup only — download is disabled.')"><svg class="icon sm"><use href="#i-download"/></svg></button>
+        </div>`).join("")}
+      <div class="up-zone">
+        <svg class="icon"><use href="#i-upload"/></svg><br>
+        Drop additional documents here or <b>browse</b><br>
+        <span style="font-size:11px">PDF, PNG or JPG · max 10MB · mockup only</span>
+      </div>
+    </div>`;
+}
+/* ---------- panel: Interview ---------- */
+function buildInterview(a){
+  const iv=a.interview;
+  let body="";
+  if(iv.status==="Completed"){
+    body=`
+      <div class="meta3">
+        <div class="m"><div class="k">Conducted</div><div class="v">${iv.date}</div></div>
+        <div class="m"><div class="k">Mode</div><div class="v">${iv.mode}</div></div>
+        <div class="m"><div class="k">Interviewer</div><div class="v">${iv.interviewer}</div></div>
+      </div>
+      <div class="res-row">
+        <div class="res-card" style="cursor:default"><div class="st ${iv.score>=75?"ok":"pend"}"><svg class="icon sm"><use href="#i-check"/></svg></div><div class="rt"><p>Overall Score</p><span>${iv.score}%</span></div></div>
+        <div class="res-card" style="cursor:default"><div class="st ok"><svg class="icon sm"><use href="#i-check"/></svg></div><div class="rt"><p>Recommendation</p><span>${iv.rec}</span></div></div>
+        <div class="res-card" onclick="toast('Mockup only — scorecard is not wired.')"><div class="st na"><svg class="icon sm"><use href="#i-eye"/></svg></div><div class="rt"><p>Scorecard</p><span>Open evaluation sheet</span></div><svg class="icon sm"><use href="#i-chev-r"/></svg></div>
+      </div>`;
+  }else if(iv.status==="Scheduled"){
+    body=`
+      <div class="cta-band">
+        <div class="ic"><svg class="icon sm"><use href="#i-clock"/></svg></div>
+        <div class="tx"><p>Interview scheduled — ${iv.date}</p><span>${iv.mode} · Interviewer: ${iv.interviewer}</span></div>
+        <button class="btn btn-outline" onclick="toast('Mockup only — reschedule lives in Interview Scheduling.')">Reschedule</button>
+      </div>
+      <div class="sched-note" style="margin-top:0"><svg class="icon sm"><use href="#i-info"/></svg><span>Booking and rescheduling stay in the <b>Interview Scheduling tab</b> of the main list. This section shows this applicant's interview record only.</span></div>`;
+  }else{
+    body=`<div class="sched-note" style="margin-top:0"><svg class="icon sm"><use href="#i-info"/></svg><span>No interview yet. Book a slot from the <b>Interview Scheduling tab</b> in the main list.</span></div>`;
+  }
+  $("#dp-interview").innerHTML=`
+    <div class="card" style="padding:18px">
+      <div class="dp-head">
+        <div class="t"><div class="ic"><svg class="icon"><use href="#i-clip-check"/></svg></div>
+        <div><h3>Interview</h3><p class="sub">Stage status: ${iv.status}</p></div></div>
+      </div>
+      ${body}
+    </div>`;
+}
+
+/* ---------- panel: Assessment Test ---------- */
+function buildTest(a){
+  const t=a.assessment;
+  let body="";
+  if(t.status==="In Progress"){
+    body=`<div class="cta-band">
+        <div class="ic"><svg class="icon sm"><use href="#i-check"/></svg></div>
+        <div class="tx"><p>This applicant is ready for the assessment test.</p><span>Send the test invitation or start the assessment now.</span></div>
+        <button class="btn btn-primary" onclick="toast('Mockup only — would open the assessment runner.')"><svg class="icon sm"><use href="#i-send"/></svg> Start Assessment</button>
+      </div>
+      <div class="meta3">
+        <div class="m"><div class="k">Test Type</div><div class="v">${t.type}</div></div>
+        <div class="m"><div class="k">Time Limit</div><div class="v">${t.limit}</div></div>
+        <div class="m"><div class="k">Attempts</div><div class="v">${t.attempts}</div></div>
+      </div>`;
+  }else if(t.status==="Completed"){
+    body=`<div class="res-row">
+        <div class="res-card" style="cursor:default"><div class="st ok"><svg class="icon sm"><use href="#i-check"/></svg></div><div class="rt"><p>Result</p><span>Passed · Score: ${t.score}%</span></div></div>
+        <div class="res-card" style="cursor:default"><div class="st na"><svg class="icon sm"><use href="#i-clock"/></svg></div><div class="rt"><p>Completed</p><span>Attempts used: ${t.attempts}</span></div></div>
+        <div class="res-card" onclick="toast('Mockup only — answers are not wired.')"><div class="st na"><svg class="icon sm"><use href="#i-eye"/></svg></div><div class="rt"><p>Answer Sheet</p><span>Review responses</span></div><svg class="icon sm"><use href="#i-chev-r"/></svg></div>
+      </div>`;
+  }else{
+    body=`<div class="sched-note" style="margin-top:0"><svg class="icon sm"><use href="#i-info"/></svg><span>Assessment test unlocks after the interview stage is completed.</span></div>`;
+  }
+  $("#dp-test").innerHTML=`
+    <div class="card" style="padding:18px">
+      <div class="dp-head">
+        <div class="t"><div class="ic"><svg class="icon"><use href="#i-book"/></svg></div>
+        <div><h3>Assessment Test</h3><p class="sub">Stage status: ${t.status}</p></div></div>
+      </div>
+      ${body}
+    </div>`;
+}
+/* ---------- panel: Practical Assessment ---------- */
+function buildPractical(a){
+  let body="";
+  if(!a.practical){
+    body=`<div class="sched-note" style="margin-top:0">
+      <svg class="icon sm"><use href="#i-info"/></svg>
+      <span><b>Not required for this position.</b> Practical assessments are designated for hands-on roles (e.g., F&amp;B service, Kitchen, Bar). This applicant proceeds directly from the assessment test to final evaluation.</span></div>`;
+  }else if(a.stage==="Practical Test"){
+    body=`<div class="cta-band">
+      <div class="ic"><svg class="icon sm"><use href="#i-clock"/></svg></div>
+      <div class="tx"><p>Practical assessment scheduled.</p><span>Bar simulation · Bar Lab — Sep 10, 2026 · 02:00 PM</span></div>
+      <button class="btn btn-primary" onclick="toast('Mockup only — would open the practical scoring sheet.')"><svg class="icon sm"><use href="#i-play"/></svg> Score Practical</button>
+    </div>
+    <div class="sec-lbl">Default Criteria</div>
+    <div class="kv" style="grid-template-columns:repeat(4,1fr)">
+      <div><div class="k">Skill Execution</div><div class="v">40 pts</div></div>
+      <div><div class="k">Hygiene &amp; Safety</div><div class="v">30 pts</div></div>
+      <div><div class="k">Presentation</div><div class="v">20 pts</div></div>
+      <div><div class="k">Time Management</div><div class="v">10 pts</div></div>
+    </div>`;
+  }else{
+    body=`<div class="res-row">
+      <div class="res-card" style="cursor:default"><div class="st ok"><svg class="icon sm"><use href="#i-check"/></svg></div><div class="rt"><p>Result</p><span>Passed · 81%</span></div></div>
+      <div class="res-card" onclick="toast('Mockup only — scoring sheet is not wired.')"><div class="st na"><svg class="icon sm"><use href="#i-eye"/></svg></div><div class="rt"><p>Scoring Sheet</p><span>Review criteria scores</span></div><svg class="icon sm"><use href="#i-chev-r"/></svg></div>
+    </div>`;
+  }
+  $("#dp-practical").innerHTML=`
+    <div class="card" style="padding:18px">
+      <div class="dp-head">
+        <div class="t"><div class="ic"><svg class="icon"><use href="#i-wrench"/></svg></div>
+        <div><h3>Practical Assessment</h3><p class="sub">${a.practical?"Required for "+a.position:"Not required for "+a.position}</p></div></div>
+      </div>
+      ${body}
+    </div>`;
+}
+
+/* ---------- panel: Final Evaluation ---------- */
+function buildFinal(a){
+  const ready=a.stage==="Final Evaluation";
+  const row=(ok,label,meta)=>`
+    <div class="doc-row"><div class="doc-ic" style="background:${ok?"oklch(0.505 0.114 152 / 10%)":"oklch(0.945 0.013 84)"};color:${ok?"var(--success)":"var(--muted-foreground)"}"><svg class="icon sm"><use href="#${ok?"i-check":"i-clock"}"/></svg></div>
+    <div class="dt"><p>${label}</p><span>${meta}</span></div>${ok?'<span class="chip tone-success-chip">Passed</span>':'<span class="chip tone-muted-chip">Pending</span>'}</div>`;
+  $("#dp-final").innerHTML=`
+    <div class="card" style="padding:18px">
+      <div class="dp-head">
+        <div class="t"><div class="ic"><svg class="icon"><use href="#i-check-circle"/></svg></div>
+        <div><h3>Final Evaluation</h3><p class="sub">${ready?"All stages complete — run the final review":"Available once all stages are completed"}</p></div></div>
+        <button class="btn ${ready?"btn-primary":"btn-outline"}" ${ready?"":"disabled"} onclick="toast('Mockup only — would open the final evaluation form.')"><svg class="icon sm"><use href="#i-clip-check"/></svg> ${ready?"Run Final Evaluation":"Run Final Evaluation"}</button>
+      </div>
+      ${row(true,"Screening","Resume score: "+a.score+"% · passing 75%")}
+      ${row(a.interview.status==="Completed","Interview",a.interview.status==="Completed"?"Score: "+a.interview.score+"% · "+a.interview.rec:"Not yet completed")}
+      ${row(a.assessment.status==="Completed","Assessment Test",a.assessment.status==="Completed"?"Score: "+a.assessment.score+"%":"Pending completion")}
+      ${a.practical?row(a.stage!=="Practical Test"&&a.stage!=="Assessment Test","Practical Assessment",a.stage==="Practical Test"?"Scheduled":"Completed · 81%"):""}
+      <div class="sec-lbl" style="margin-top:14px">Final Recommendation</div>
+      <span class="chip tone-gold-chip"><span class="dot"></span>${ready?"Pending review":"Locked until stages complete"}</span>
+    </div>`;
+}
+
+/* ---------- panel: Notes ---------- */
+function buildNotes(a){
+  $("#dp-notes").innerHTML=`
+    <div class="card" style="padding:18px">
+      <div class="dp-head">
+        <div class="t"><div class="ic"><svg class="icon"><use href="#i-pen"/></svg></div>
+        <div><h3>Notes</h3><p class="sub">Internal — visible to HR only</p></div></div>
+      </div>
+      ${a.notes.length?a.notes.map(n=>`
+        <div class="note"><div class="nh">${n[0].split(" · ")[0]}<span>${n[0].split(" · ")[1]}</span></div><p>${n[1]}</p></div>`).join("")
+        :'<div class="sched-note" style="margin-top:0"><svg class="icon sm"><use href="#i-info"/></svg><span>No notes yet for this applicant.</span></div>'}
+      <div class="note-box">
+        <textarea placeholder="Add an internal note... (e.g., 'Client-facing with strong poise — endorse for final eval.')"></textarea>
+        <div class="note-foot"><button class="btn btn-primary btn-sm" onclick="toast('Mockup only — note saving is not wired.')"><svg class="icon sm"><use href="#i-pen"/></svg> Add Note</button></div>
+      </div>
+    </div>`;
+}
+
+/* ---------- detail nav ---------- */
+function gotoPanel(id){
+  document.querySelectorAll("#dnav button").forEach(b=>b.classList.toggle("active",b.dataset.dp===id));
+  document.querySelectorAll(".dpanel").forEach(p=>p.classList.toggle("active",p.id===id));
+}
+document.querySelectorAll("#dnav button").forEach(b=>b.addEventListener("click",()=>gotoPanel(b.dataset.dp)));
+
+/* ---------- Candidate Ranking donut (fit-status distribution) ---------- */
+/* Mirrors the real card: distribution over ApplicantStatus with statusChartColor */
+const DIST = [
+  { key:"fit",        name:"Perfect for the Job", value:58, color:"var(--success)" },
+  { key:"other-role", name:"Fit for other Job",   value:34, color:"var(--warning)" },
+  { key:"credential", name:"Invalid credential",  value:20, color:"var(--caution)" },
+  { key:"not-fit",    name:"Not fitted to Job",   value:16, color:"var(--destructive)" }
+];
+function renderDonut(){
+  const total = DIST.reduce((t,d)=>t+d.value,0);
+  $("#crTotal").textContent = total;
+  $("#crTotalTxt").textContent = total;
+  const cx=106, cy=106, r=76, sw=27;                 /* scaled from 380px chart (r 80/130) */
+  const C = 2*Math.PI*r;
+  const gap = C*(2/360);                             /* paddingAngle = 2deg, like the real chart */
+  let cum = 0, segs = "", labels = "";
+  DIST.forEach(d=>{
+    const frac = d.value/total;
+    const segLen = Math.max(frac*C - gap, 0.6);
+    segs += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${d.color}" stroke-width="${sw}"
+      stroke-dasharray="${segLen} ${C-segLen}" stroke-dashoffset="${-(cum*C + gap/2)}"></circle>`;
+    const mid = -90 + 360*(cum + frac/2);            /* deg, 12 o'clock start */
+    const rad = mid*Math.PI/180;
+    const pct = Math.round(frac*100);
+    if(pct >= 4){
+      const lx = cx + r*Math.cos(rad), ly = cy + r*Math.sin(rad);
+      labels += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="central"
+        fill="#fff" font-size="11.5" font-weight="600" font-family="Jost, sans-serif">${pct}%</text>`;
+    }
+    cum += frac;
+  });
+  $("#donutSvg").innerHTML =
+    `<g transform="rotate(-90 ${cx} ${cy})">${segs}</g>` + labels;
+  $("#donutLegend").innerHTML = DIST.map(d=>`
+    <div class="legend-row">
+      <span class="ld"><i style="background:${d.color}"></i>${d.name}</span>
+      <b>${d.value}</b>
+    </div>`).join("");
+}
+
+/* ================= init ================= */
+renderTable();
+renderRank();
+renderDonut();
+/* Optional deep link for reviewers/screenshots: open the detail screen directly with #detail */
+if(location.hash==="#detail") openDetail(applicants[0].id);
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

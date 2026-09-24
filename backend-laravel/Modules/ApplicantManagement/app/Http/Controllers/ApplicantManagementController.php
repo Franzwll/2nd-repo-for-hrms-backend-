@@ -37,6 +37,7 @@ class ApplicantManagementController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Applicant::with(['jobPost.department', 'screeningEntities', 'screeningScores', 'latestScreening'])
+            ->withCount('documents')
             ->orderByDesc('applied_at');
 
         // Search by name or email
@@ -189,6 +190,7 @@ class ApplicantManagementController extends Controller
             'interviews',
             'assessment',
             'latestScreening',
+            'documents',
         ])->findOrFail($applicant);
 
         return response()->json(new ApplicantResource($model));
@@ -209,6 +211,50 @@ class ApplicantManagementController extends Controller
         }
 
         return response()->json(['data' => $screening]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/applicants/{applicant}/screening/recompute              */
+    /* Re-runs the classification stage with the current supporting-document */
+    /* evidence so the ranking percentage, rank order and official status    */
+    /* reflect the verification of the resume claims.                        */
+    /* ------------------------------------------------------------------ */
+
+    public function recomputeScreening(int $applicant): JsonResponse
+    {
+        $model = Applicant::with('jobPost')->findOrFail($applicant);
+
+        $screening = $this->screening->recomputeWithDocuments($model);
+
+        if (! $screening) {
+            return response()->json([
+                'message' => 'No completed resume screening is available to recompute, or the NLP service is offline.',
+            ], 422);
+        }
+
+        AuditLogger::log(
+            action: 'Screening Recomputed With Supporting Documents',
+            module: 'Applicant Management',
+            severity: $screening->screening_result === 'credential' ? 'Warning' : 'Info',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            details: sprintf(
+                'Ranking score recomputed to %s%% using %d supporting document(s).',
+                rtrim(rtrim((string) $screening->match_score, '0'), '.'),
+                $model->documents()->count()
+            )
+        );
+
+        return response()->json([
+            'data'      => $screening,
+            'applicant' => new ApplicantResource($model->fresh([
+                'jobPost.department',
+                'screeningEntities',
+                'screeningScores',
+                'latestScreening',
+                'documents',
+            ])),
+        ]);
     }
 
     /* ------------------------------------------------------------------ */
@@ -271,9 +317,15 @@ class ApplicantManagementController extends Controller
             ?? (function_exists('mime_content_type') ? @mime_content_type($path) : null)
             ?? 'application/octet-stream';
 
+        // Keep the filename header-safe: quotes / line breaks in the stored
+        // original name would otherwise break out of Content-Disposition and
+        // flip an inline preview into a forced download (or worse). The
+        // RFC 5987 filename* carries the exact name for Unicode clients.
+        $safeName = (string) preg_replace('/[\r\n"]+/', '_', (string) $name);
+
         return response()->file($path, [
             'Content-Type'        => $mime,
-            'Content-Disposition' => 'inline; filename="' . $name . '"',
+            'Content-Disposition' => 'inline; filename="' . $safeName . '"; filename*=UTF-8\'\'' . rawurlencode((string) $name),
         ]);
     }
 
@@ -563,17 +615,29 @@ class ApplicantManagementController extends Controller
     {
         $model = Applicant::with(['jobPost'])->findOrFail($applicant);
 
+        // Strict pre-hiring workflow: an offer may only be extended from a
+        // Final Evaluation with a "Recommended for Hire" verdict. There are
+        // no shortcuts from earlier stages — the candidate must complete the
+        // assessment test, practical test (when required) and final evaluation.
         $nextStage = match ($model->stage) {
-            'Assessed'            => 'Offer',
+            'Final Evaluation'    => 'Offer',
             'Offer'               => 'Hired',
-            'Accepted'            => 'Offer',
             default               => null,
         };
 
         if (! $nextStage) {
             return response()->json([
-                'message' => "Cannot advance from stage '{$model->stage}' using the hire action.",
+                'message' => "Cannot advance from stage '{$model->stage}' using the hire action. Complete the required evaluation workflow first.",
             ], 422);
+        }
+
+        if ($model->stage === 'Final Evaluation') {
+            $final = $model->finalEvaluation()->latest('final_evaluation_id')->first();
+            if (! $final || $final->recommendation !== 'Recommended for Hire') {
+                return response()->json([
+                    'message' => 'A final evaluation with a "Recommended for Hire" recommendation is required before extending an offer.',
+                ], 422);
+            }
         }
 
         $model->update(['stage' => $nextStage]);
