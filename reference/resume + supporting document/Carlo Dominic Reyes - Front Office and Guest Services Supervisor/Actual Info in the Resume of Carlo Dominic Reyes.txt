@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Carlo Dominic Reyes.txt
+TARGET CANDIDATE: Carlo Dominic Reyes
+TARGET ROLE: Front Office & Guest Services Supervisor
+EXTRACTION MODE: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-09-18
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Carlo Dominic Reyes
+Target Position:       Front Office & Guest Services Supervisor
+Contact Phone Number:  +63 917 639 2145
+Email Address:         carlo.reyes.frontoffice@outlook.ph
+Residential Address:   88 New Manila, Quezon City, 1112 Metro Manila, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/carlo-reyes-frontoffice
+
+[PROFESSIONAL SUMMARY]
+"Accomplished, guest-centric Front Office & Guest Services Supervisor with over 6 years of front-desk and rooms division leadership in five-star integrated resorts and luxury business hotels. Proficient in Opera PMS, Forbes luxury service standards, VIP arrival staging, and room inventory yield management. Recognized for maintaining over 94% guest satisfaction indices and resolving intricate guest concerns with diplomacy, tact, and speed."
+
+[CORE COMPETENCIES & SKILLS]
+1. Opera PMS Cloud & Property Management Systems Administration
+2. Front Desk Check-in / Check-out Floor Supervision & Queue Mitigation
+3. VIP Guest Arrival Staging & High-Tier Loyalty Recognition
+4. Night Audit Reconciliations & Daily Rooms Division Balancing
+5. Upselling Programs, Late Check-out Monetization & Room Yield Support
+6. Emergency Response, Keycard Security & Guest Privacy Protocols
+7. Cross-Departmental Coordination with Housekeeping & Engineering
+8. Front Office Team Training, Rostering & Shift Handover Management
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Okada Manila
+   Location:     Parañaque City, Metro Manila
+   Job Title:    Front Office Duty Supervisor
+   Duration:     August 2022 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Supervise front office lobby operations, check-in desks, and guest services across a 993-room luxury integrated resort.
+   • Train and lead 22 front desk agents, concierge associates, and bell captains in five-star service standards.
+   • Generated PHP 850,000 in incremental revenue during Q1 2023 via front desk suite upselling and early check-in fees.
+   • Maintained an average check-in processing duration of under 3 minutes during peak conference arrival windows.
+
+2. Employer:     The Peninsula Manila
+   Location:     Makati City, Metro Manila
+   Job Title:    Guest Relations Officer / Shift Leader
+   Duration:     March 2020 – July 2022
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Orchestrated personalized VIP arrival greetings, amenity placements, and private check-ins for suite guests.
+   • Coordinated directly with Housekeeping to expedite room turnovers for early arrivals and diplomatic delegations.
+   • Handled guest escalations calmly and achieved a 96% dispute resolution rate prior to guest departure.
+
+3. Employer:     City Garden Grand Hotel
+   Location:     Makati City, Metro Manila
+   Job Title:    Front Desk Associate
+   Duration:     May 2018 – February 2020
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Processed registration, key issuance, and currency exchange for international leisure and business travelers.
+   • Performed cashiering duties and balanced shift folios with zero variance over 18 consecutive months.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Hotel, Restaurant, and Institution Management
+Institution:    De La Salle-College of Saint Benilde (DLS-CSB) — Malate, Manila
+Graduation:     2018
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   Certified Front Desk Representative (CFDR)
+   Issuer:  American Hotel & Lodging Educational Institute (AHLEI)
+   Date:    November 2020
+
+2. Title:   Opera PMS Cloud Administration
+   Issuer:  Oracle Hospitality University
+   Date:    August 2022
+
+3. Title:   Crisis Response & Guest Safety in Lodging
+   Issuer:  Philippine Hotel Security Association
+   Date:    March 2021
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Carlo_Dominic_Reyes_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Carlo_Dominic_Reyes_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Carlo_Dominic_Reyes_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Carlo_Dominic_Reyes_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Carlo_Dominic_Reyes_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Carlo_Dominic_Reyes_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Carlo_Dominic_Reyes_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Okada Manila
+   - Recipient / Employee: Carlo Dominic Reyes
+   - Certified Position: Front Office Duty Supervisor
+   - Certified Period: August 2022 – Present
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+2. Carlo_Dominic_Reyes_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: The Peninsula Manila
+   - Recipient / Employee: Carlo Dominic Reyes
+   - Certified Position: Guest Relations Officer / Shift Leader
+   - Certified Period: July 1, 2020 – July 15, 2022 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+3. Carlo_Dominic_Reyes_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: De La Salle-College of Saint Benilde (DLS-CSB) — Malate, Manila
+   - Conferred Graduate: Carlo Dominic Reyes
+   - Degree Conferred: Bachelor of Science in Hotel, Restaurant, and Institution Management
+   - Graduation Year: 2018
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+4. Carlo_Dominic_Reyes_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: American Hotel & Lodging Educational Institute (AHLEI)
+   - Recipient Name: Carlo Dominic Reyes
+   - Training Title: Certified Front Desk Representative (CFDR)
+   - Award Date: November 2020
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+5. Carlo_Dominic_Reyes_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Philippine Hotel Security Association
+   - Recipient Name: Carlo Dominic Reyes
+   - Certified Course: Foundations of Front Office Telephone Etiquette and Call Routing (CONTROLLED DISCREPANCY)
+   - Training Date: March 2021
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+6. Carlo_Dominic_Reyes_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Oracle Hospitality University
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Certified Front Desk Representative (CFDR)
+   - Issuance Date: August 2022
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Okada Manila | Front Office Duty Supervisor | August 2022 – Present
+• Evidence: Carlo_Dominic_Reyes_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: The Peninsula Manila | Guest Relations Officer / Shift Leader | March 2020 – July 2022
+• Evidence: Carlo_Dominic_Reyes_COE_Previous_Employer.pdf (July 1, 2020 – July 15, 2022)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from July 2020 to July 2022, whereas resume claims start date of March 2020 (4-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Bachelor of Science in Hotel, Restaurant, and Institution Management | De La Salle-College of Saint Benilde (DLS-CSB) — Malate, Manila | 2018
+• Evidence: Carlo_Dominic_Reyes_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: Certified Front Desk Representative (CFDR) | American Hotel & Lodging Educational Institute (AHLEI) | November 2020
+• Evidence: Carlo_Dominic_Reyes_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Crisis Response & Guest Safety in Lodging | Philippine Hotel Security Association | March 2021
+• Evidence: Carlo_Dominic_Reyes_Training_Certificate_Service.pdf (Foundations of Front Office Telephone Etiquette and Call Routing)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'Crisis Response & Guest Safety in Lodging', but certificate certifies 'Foundations of Front Office Telephone Etiquette and Call Routing'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: Opera PMS Cloud Administration | Oracle Hospitality University | August 2022
+• Evidence: Carlo_Dominic_Reyes_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is cut off due to torn corner scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: City Garden Grand Hotel | Front Desk Associate | May 2018 – February 2020
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

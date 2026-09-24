@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pipeline Overview — Mockup Only (Review Only)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --background:#faf8f3; --foreground:#3a2a26; --card:#fff;
+  --primary:#7c2128; --primary-fg:#fdf8f0;
+  --muted:#efe9dd; --muted-fg:#7a6f67; --border:#e5dccb;
+  --gold:#c9a227; --success:#1e7a46; --destructive:#b4232a; --caution:#b45a12;
+  --display:"Cormorant Garamond",Georgia,serif; --sans:"Jost",system-ui,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--background);color:var(--foreground);font-family:var(--sans);font-size:14px;padding-bottom:80px}
+.banner{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 16px;background:linear-gradient(90deg,#f7ecc8,#f9e9e9,#f7ecc8);border-bottom:1px solid var(--gold);font-size:12.5px;text-align:center}
+.banner b{color:var(--primary)} .tag{background:var(--primary);color:#fff;font-size:10px;font-weight:700;letter-spacing:.12em;padding:2px 10px;border-radius:999px}
+.wrap{max-width:1280px;margin:0 auto;padding:24px 20px}
+h1{font-family:var(--display);font-size:32px} .sub{color:var(--muted-fg);font-size:12.5px;margin-top:4px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;background:#ece5d5;border:1px solid var(--border);border-radius:12px;padding:5px;margin-top:18px}
+.tab{padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;color:var(--muted-fg)}
+.tab.active{background:var(--primary);color:#fff;box-shadow:0 2px 6px rgb(0 0 0/.15)}
+.tab.mock{outline:2px dashed var(--gold);outline-offset:-2px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 1px 2px rgb(0 0 0/.05);margin-top:16px}
+.card-h{padding:18px 20px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.card-h h2{font-family:var(--display);font-size:22px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--border)}
+.filters input,.filters select{border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:12.5px;background:#fff;min-width:150px}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:1080px}
+th{text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-fg);padding:10px 12px;border-bottom:1px solid var(--border);background:#faf6ec;white-space:nowrap}
+td{padding:12px;border-bottom:1px solid var(--border);vertical-align:top}
+tr:last-child td{border-bottom:0}
+.applicant{display:flex;gap:10px;align-items:center;min-width:190px}
+.avatar{width:32px;height:32px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700;flex:none}
+.stage{font-size:11px;color:var(--muted-fg)}
+.cell b{display:block;font-size:12.5px} .cell span{font-size:11.5px;color:var(--muted-fg)}
+/* V2 plain-list: no inner cards — label + pill + text button only */
+.plain b{display:block;font-size:12.5px;font-weight:600} .plain>span{display:block;font-size:11.5px;color:var(--muted-fg)}
+.link{background:none;border:0;color:#2f4fb3;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;padding:0;margin-top:4px;text-decoration:underline}
+table.plain-list td{vertical-align:middle}
+table.plain-list tbody tr:hover{background:#faf6ec}
+.pill{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.pass{background:#e3f3e9;color:var(--success);border:1px solid #bfe3cd}
+.fail{background:#fbe4e4;color:var(--destructive);border:1px solid #f0b9bd}
+.pend{background:#f1ede2;color:#6d6358;border:1px solid #ddd2bd}
+.sched{background:#e8edfb;color:#2f4fb3;border:1px solid #c3cff2}
+.na{background:#f4f1ea;color:#9a8f80;border:1px dashed #cfc4ae}
+.score{font-family:var(--display);font-size:17px;font-weight:700}
+.legend{display:flex;gap:14px;flex-wrap:wrap;padding:12px 20px;font-size:11.5px;color:var(--muted-fg)}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px}
+.note{margin-top:14px;border:1px dashed var(--gold);background:#fffdf3;border-radius:10px;padding:12px 14px;font-size:12px;color:#6a5c2a}
+.actions{display:flex;gap:6px} .btn{border:1px solid var(--border);background:#fff;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:none;color:inherit;display:inline-block}
+.btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.dest-grid{display:grid;gap:12px;margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.dest{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.dest-head{padding:12px 14px;border-bottom:1px solid var(--border);background:#faf6ec}
+.dest-head b{font-size:13px} .dest-head span{display:block;font-size:11px;color:var(--muted-fg);margin-top:2px}
+.dest-body{padding:12px 14px;font-size:12px}
+.mini{border:1px solid var(--border);border-radius:8px;background:#fbf9f4;padding:10px;margin-top:8px;font-size:11.5px}
+.mini b{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-fg);margin-bottom:6px}
+.flow{text-align:center;font-size:11px;color:var(--muted-fg);margin:4px 0}
+.goto{font-size:11px;color:#2f4fb3}
+.overlay{position:fixed;inset:0;background:rgb(0 0 0/.45);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+.overlay.open{display:flex}
+.sheet{background:#fff;border-radius:14px;max-width:720px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgb(0 0 0/.3)}
+.sheet-h{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.sheet-b{padding:16px 18px}
+.x{border:1px solid var(--border);border-radius:7px;padding:4px 10px;background:#fff;cursor:pointer}
+.fullview{background:var(--background);position:fixed;inset:0;z-index:100;display:none;overflow:auto}
+.fullview.open{display:block}
+.footer{position:fixed;left:0;right:0;bottom:0;background:#2b1d1a;color:#f5e9d4;padding:10px 18px;font-size:12px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<div class="banner"><span class="tag">Mockup only</span><span><b>Pipeline Overview</b> — not wired to API. Review layout only, nothing is saved.</span></div>
+<div class="wrap">
+  <p style="font-size:11px;letter-spacing:.18em;color:#7a6f67">ADMIN — RECRUITMENT / APPLICANT MANAGEMENT</p>
+  <h1>Applicant Management</h1>
+  <p class="sub">spaCy NER resume screening, candidate ranking, interview scheduling and evaluation.</p>
+
+  <div class="tabs">
+    <span class="tab">🏆 Ranking &amp; Applicants</span>
+    <span class="tab">🕘 Interview Scheduling</span>
+    <span class="tab active mock">▣ Pipeline Overview ← NEW (mockup)</span>
+    <span class="tab">🕘 History &amp; Audit</span>
+  </div>
+
+  <div class="card">
+    <div class="card-h">
+        <div><h2>Pipeline Overview</h2><p class="sub">One row per applicant — follow Screening → Interview → Assessment → Practical → Final. Mockup data only.</p></div>
+      <div class="actions"><button class="btn">⭳ Generate Report</button><button class="btn primary">Book an Interview</button></div>
+    </div>
+    <div class="filters">
+      <input value="Search applicant…" readonly>
+      <select><option>All positions</option><option>Front Desk Receptionist</option><option>Line Cook</option></select>
+      <select><option>All stages</option><option>Interview Scheduled</option><option>Assessed</option><option>Assessment Test</option><option>Practical Test</option><option>Final Evaluation</option></select>
+      <select><option>Any result</option><option>Passed</option><option>Failed</option><option>Pending</option></select>
+    </div>
+    <div class="note" style="border-style:solid">V2 — plain list (like Applicant List): no inner cards/boxes, just <b>label + pill + text button</b>. Same data as V1, boxes removed.</div>
+    <div class="tablewrap">
+    <table class="plain-list">
+      <thead><tr>
+        <th>Applicant</th><th>Current Stage</th><th>1 · Screening</th><th>2 · Interview</th><th>3 · Assessment</th><th>4 · Practical</th><th>5 · Final</th><th style="text-align:right">Actions</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><div class="applicant"><span class="avatar">MC</span><span><b>Maria Cruz</b><br><span class="stage">APP-1041 · Front Desk Receptionist</span></span></div></td>
+          <td><span class="pill sched">Assessment Test</span></td>
+          <td class="plain"><b>88%</b><span>Passed</span></td>
+          <td class="plain"><b>Jul 28 · 09:00 AM</b><span>Ana Ramos · On-site</span><span class="pill pass">Passed 87%</span><br><button class="link" onclick="show('v-view')">Details</button></td>
+          <td class="plain"><b>91%</b><span>Passed · Front-office quiz</span></td>
+          <td class="plain"><span>Skipped</span><span>Not required</span></td>
+          <td class="plain"><span class="pill sched">Ready</span><br><button class="link" onclick="show('v-evaluate')">Evaluate</button></td>
+          <td style="text-align:right"><div class="actions" style="justify-content:flex-end"><button class="btn primary" onclick="show('v-view')">View</button></div></td>
+        </tr>
+        <tr>
+          <td><div class="applicant"><span class="avatar">JS</span><span><b>Jose Santos</b><br><span class="stage">APP-1042 · Line Cook</span></span></div></td>
+          <td><span class="pill pass">Final Evaluation</span></td>
+          <td class="plain"><b>85%</b><span>Passed</span></td>
+          <td class="plain"><b>Jul 27 · 02:00 PM</b><span>Chef Mendoza · On-site</span><span class="pill pass">Passed 82%</span></td>
+          <td class="plain"><b>78%</b><span>Passed</span></td>
+          <td class="plain"><b>74%</b><span>Passed · Adobo demo</span></td>
+          <td class="plain"><b>Hire track</b><span>Recommended 88%</span></td>
+          <td style="text-align:right"><div class="actions" style="justify-content:flex-end"><button class="btn primary" onclick="show('v-view')">View</button><button class="btn" onclick="show('v-report')">Report</button></div></td>
+        </tr>
+        <tr>
+          <td><div class="applicant"><span class="avatar">AR</span><span><b>Ana Reyes</b><br><span class="stage">APP-1043 · Housekeeper</span></span></div></td>
+          <td><span class="pill fail">Assessed</span></td>
+          <td class="plain"><b>62%</b><span>Below passing</span></td>
+          <td class="plain"><b>Jul 29 · 11:00 AM</b><span>Virtual</span><span class="pill fail">Failed 58%</span></td>
+          <td class="plain"><span>Waiting…</span></td>
+          <td class="plain"><span>Skipped</span></td>
+          <td class="plain"><span>Waiting…</span></td>
+          <td style="text-align:right"><button class="btn primary" onclick="show('v-view')">View</button></td>
+        </tr>
+        <tr>
+          <td><div class="applicant"><span class="avatar">KL</span><span><b>Karl Lim</b><br><span class="stage">APP-1044 · Bartender</span></span></div></td>
+          <td><span class="pill sched">Interview Scheduled</span></td>
+          <td class="plain"><b>80%</b><span>Passed</span></td>
+          <td class="plain"><b>Aug 02 · 10:30 AM</b><span>Virtual · Scheduled</span><br><button class="link" onclick="show('v-schedule')">Reschedule</button></td>
+          <td class="plain"><span>Waiting…</span></td>
+          <td class="plain"><span>Waiting…</span><span>Required</span></td>
+          <td class="plain"><span>Waiting…</span></td>
+          <td style="text-align:right"><div class="actions" style="justify-content:flex-end"><button class="btn primary" onclick="show('v-view')">View</button><button class="btn" onclick="show('v-interview')">Start interview</button></div></td>
+        </tr>
+        <tr>
+          <td><div class="applicant"><span class="avatar">DP</span><span><b>Dana Poe</b><br><span class="stage">APP-1045 · Waiter</span></span></div></td>
+          <td><span class="pill pend">Accepted</span></td>
+          <td class="plain"><b>77%</b><span>Passed</span></td>
+          <td class="plain"><span>Accepted — no date yet</span><br><button class="link" onclick="show('v-schedule')">Schedule</button></td>
+          <td class="plain"><span>Waiting…</span></td>
+          <td class="plain"><span>Skipped</span></td>
+          <td class="plain"><span>Waiting…</span></td>
+          <td style="text-align:right"><button class="btn primary" onclick="show('v-view')">View</button></td>
+        </tr>
+        <tr>
+          <td><div class="applicant"><span class="avatar">RJ</span><span><b>Rico Jose</b><br><span class="stage">APP-1046 · Bellman</span></span></div></td>
+          <td><span class="pill fail">Cancelled</span></td>
+          <td class="plain"><b>70%</b><span>Passed</span></td>
+          <td class="plain"><b>Jul 25 · 10:00 AM</b><span>Cancelled</span><br><button class="link" onclick="show('v-schedule')">Re-book</button></td>
+          <td class="plain"><span>Waiting…</span></td>
+          <td class="plain"><span>Skipped</span></td>
+          <td class="plain"><span>Waiting…</span></td>
+          <td style="text-align:right"><button class="btn primary" onclick="show('v-view')">View</button></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--success)"></i>Passed</span>
+      <span><i class="dot" style="background:var(--destructive)"></i>Failed</span>
+      <span><i class="dot" style="background:#2f4fb3"></i>Scheduled / Ready</span>
+      <span><i class="dot" style="background:#b9ad97"></i>Waiting / Skipped</span>
+      <span style="margin-left:auto">Each stage unlocks after the previous one is passed · Practical is skipped for roles that don't need it</span>
+    </div>
+  </div>
+
+  <div class="note">Prototype: click the buttons in the table — <b>View / Evaluate / Report / Start interview</b> — to open where each one goes.</div>
+</div>
+<!-- PROTOTYPE DESTINATIONS (click targets only, no explanations) -->
+<div class="fullview" id="v-view"><div class="wrap">
+  <p style="margin:14px 0"><button class="btn" onclick="hide('v-view')">← Back to Applicants</button></p>
+  <div class="card" style="padding:18px"><h2 style="font-family:var(--display)">Applicant View Screen</h2>
+    <p class="sub">Screening › Interview › Assessment Test › Practical › Final › Decision</p>
+    <div class="filters" style="border:0;padding:12px 0 0">
+      <button class="btn primary">Current Stage</button><button class="btn">Interview</button><button class="btn">Assessment Test</button><button class="btn">Practical</button><button class="btn">Final Evaluation</button>
+    </div>
+  </div>
+</div></div>
+<div class="overlay" id="v-interview"><div class="sheet"><div class="sheet-h"><b>Interview</b><button class="x" onclick="hide('v-interview')">✕</button></div><div class="sheet-b">[ Assessor ▾ ]&nbsp;&nbsp;[ Date 📅 ]<br><br>Communication — 4/5<br>Service attitude — 4/5<br><br><button class="btn primary">Passed</button> <button class="btn">Failed</button></div></div></div>
+<div class="overlay" id="v-evaluate"><div class="sheet"><div class="sheet-h"><b>Complete Final Evaluation</b><button class="x" onclick="hide('v-evaluate')">✕</button></div><div class="sheet-b"><button class="btn primary">Recommended for Hire</button> <button class="btn">For Another Position</button> <button class="btn">Not Recommended</button></div></div></div>
+<div class="overlay" id="v-report"><div class="sheet"><div class="sheet-h"><b>Generate Report</b><button class="x" onclick="hide('v-report')">✕</button></div><div class="sheet-b">Pipeline — [ Generate ▾ ]<br>Assessment — [ Generate ▾ ]<br>Final evaluation — [ Generate ▾ ]</div></div></div>
+<div class="overlay" id="v-schedule"><div class="sheet"><div class="sheet-h"><b>Book an Interview</b><button class="x" onclick="hide('v-schedule')">✕</button></div><div class="sheet-b">[ Applicant ▾ ]&nbsp;&nbsp;[ Date 📅 ]&nbsp;&nbsp;[ Time ▾ ]<br><br>[ Interviewer ▾ ]&nbsp;&nbsp;[ On-site / Virtual ▾ ]<br><br><button class="btn primary">Confirm booking</button></div></div></div>
+<script>function show(id){document.getElementById(id).classList.add('open')}function hide(id){document.getElementById(id).classList.remove('open')}</script>
+<div class="footer"><span>docs/mockups/pipeline-overview-mockup.html — MOCKUP ONLY</span><span>Reply: approve column layout / request changes / approve to build</span></div>
+</body>
+</html>

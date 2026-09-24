@@ -18,6 +18,7 @@ class StoreInterviewRequest extends FormRequest
             'scheduled_date'          => ['required', 'date'],
             'scheduled_time'          => ['required', 'date_format:H:i'],
             'mode'                    => ['required', 'string', 'in:On-site,Virtual'],
+            'facility_id'             => ['nullable', 'integer', 'exists:facilities,facility_id'],
             'interviewer_employee_id' => ['nullable', 'integer', 'exists:employees,employee_id'],
             'interviewer_name'        => ['nullable', 'string', 'max:160'],
             'status'                  => ['sometimes', 'string', 'in:Scheduled,Completed,No Show'],

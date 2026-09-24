@@ -3,50 +3,119 @@
 namespace Modules\RecruitmentManagement\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Services\AuditLogger;
+use App\Services\JobContentGenerator;
+use App\Services\PosterTextMetrics;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Modules\RecruitmentManagement\Http\Requests\StoreJobPostRequest;
 use Modules\RecruitmentManagement\Http\Requests\UpdateJobPostRequest;
 use Modules\RecruitmentManagement\Http\Resources\JobPostResource;
 use Modules\RecruitmentManagement\Models\JobPost;
 use Modules\RecruitmentManagement\Models\JobPostPlatform;
-use App\Services\AuditLogger;
 
 class RecruitmentManagementController extends Controller
 {
+    /**
+     * GET /api/v1/job-posts/template-picture?title=...
+     *
+     * Hiring poster with the position name burned into it.
+     *
+     * storage/jobpost_picture/template.png is a design file: it still carries the
+     * dashed 3-row guide box (verticals x 77 and 525, rules at y 535 / 588 / 642 /
+     * 695) the designer drew to show where the position text belongs. That guide
+     * must never reach the public page, so the poster is re-composed as SVG: a white
+     * sheet covers the guide box and the title is drawn on the first row, auto-shrunk
+     * so it always stops before the building photo (x ≈ 537) - exactly like
+     * storage/jobpost_picture/sample.png.
+     */
     public function templatePicture()
+    {
+        return $this->posterResponse((string) request()->query('title', 'Position'));
+    }
+
+    /** Compose the hiring poster for one position title. */
+    private function posterResponse(string $title): Response
     {
         $path = storage_path('jobpost_picture/template.png');
         abort_unless(is_file($path), 404);
 
-        $title = htmlspecialchars(strtoupper(trim((string) request()->query('title', 'Position'))), ENT_XML1, 'UTF-8');
         $imageData = base64_encode((string) file_get_contents($path));
-        $words = preg_split('/\s+/', $title) ?: ['POSITION'];
-        $lines = [];
-        $line = '';
-        foreach ($words as $word) {
-            $candidate = trim($line . ' ' . $word);
-            if ($line !== '' && strlen($candidate) > 18) {
-                $lines[] = $line;
-                $line = $word;
-            } else {
-                $line = $candidate;
-            }
+
+        $sheet = [70, 525, 460, 175];   // covers every guide line of the template
+        $textX = 76;                    // sample.png headline starts at x 77, tick badge ends at 62
+        $maxTextWidth = 455;            // the building photo starts around x = 537
+        $baseline = 579;                // sample.png baseline of the 60px reference headline
+
+        $lines = [$title = $this->posterTitle($title)];
+        $fontSize = PosterTextMetrics::fitFontSize($title, $maxTextWidth, 60, 26);
+
+        // Freakishly long titles: two balanced rows, both shrunk to the same size.
+        if (PosterTextMetrics::width($title, 26) > $maxTextWidth) {
+            $lines = PosterTextMetrics::splitBalanced($title);
+            $fontSize = count($lines) > 1
+                ? min(array_map(
+                    fn (string $line) => PosterTextMetrics::fitFontSize($line, $maxTextWidth, 40, 18),
+                    $lines,
+                ))
+                : 26;
+            $lines = array_map(
+                fn (string $line) => PosterTextMetrics::truncate($line, $maxTextWidth, $fontSize),
+                $lines,
+            );
         }
-        if ($line !== '') $lines[] = $line;
-        $titleSvg = collect($lines)->map(fn ($lineText, $index) =>
-            '<tspan x="78" dy="' . ($index === 0 ? '0' : '62') . '">' . $lineText . '</tspan>'
-        )->implode('');
+
         $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">'
             . '<image href="data:image/png;base64,' . $imageData . '" width="1080" height="1080"/>'
-            . '<rect x="70" y="525" width="460" height="175" fill="white"/>'
-            . '<text x="78" y="585" font-family="Arial, sans-serif" font-size="48" font-weight="700" fill="black">'
-            . $titleSvg . '</text></svg>';
+            . '<rect x="' . $sheet[0] . '" y="' . $sheet[1] . '" width="' . $sheet[2] . '" height="' . $sheet[3] . '" fill="white"/>'
+            . $this->posterHeadline($lines, $fontSize, $textX, $baseline)
+            . '</svg>';
 
-        return response($svg, 200, ['Content-Type' => 'image/svg+xml', 'Cache-Control' => 'no-store']);
+        return response($svg, 200, ['Content-Type' => 'image/svg+xml; charset=UTF-8', 'Cache-Control' => 'no-store']);
+    }
 
-        return response()->file($path);
+    /**
+     * Poster headline, kept in the casing the recruiter typed (sample.png does).
+     * Returns plain text: measured first, xml-escaped only when it reaches the SVG.
+     */
+    private function posterTitle(string $title): string
+    {
+        $title = trim((string) preg_replace('/\s+/u', ' ', $title));
+
+        // Only touch titles that carry no capital letter at all ("front desk").
+        if ($title !== '' && ! preg_match('/[A-Z]/', $title)) {
+            $title = ucwords($title);
+        }
+
+        return $title !== '' ? $title : 'Position';
+    }
+
+    /**
+     * The <text> node: one row sitting on the reference baseline, or two rows centred
+     * on the first two guide rows when the title had to be split.
+     *
+     * @param  array<int, string>  $lines
+     * @param  int  $baseline  sample.png baseline, valid for the 60px reference headline
+     */
+    private function posterHeadline(array $lines, int $fontSize, int $textX, int $baseline): string
+    {
+        $halfCap = (int) round($fontSize * 0.358); // half of Arial's 0.716 em cap height
+
+        $baselines = count($lines) > 1
+            ? [562 + $halfCap, 615 + $halfCap]                        // centres of guide rows 1 and 2
+            : [$baseline + (int) round(($fontSize - 60) * 0.358)];    // stays optically centred
+
+        $spans = '';
+        foreach (array_values($lines) as $index => $line) {
+            $spans .= '<tspan x="' . $textX . '" dy="' . ($index === 0 ? 0 : $baselines[$index] - $baselines[0]) . '">'
+                . htmlspecialchars($line, ENT_XML1, 'UTF-8') . '</tspan>';
+        }
+
+        return '<text x="' . $textX . '" y="' . $baselines[0] . '" font-family="Arial, Helvetica, sans-serif"'
+            . ' font-size="' . $fontSize . '" font-weight="700" fill="#000000">' . $spans . '</text>';
     }
 
     /* ------------------------------------------------------------------ */
@@ -186,9 +255,17 @@ class RecruitmentManagementController extends Controller
             base_path('../' . $relativePath),
         ];
 
+        $designTemplate = realpath(storage_path('jobpost_picture/template.png'));
+
         foreach ($candidates as $candidate) {
             $realCandidate = realpath($candidate);
             if ($realCandidate && is_file($realCandidate)) {
+                // A post pointed at the bundled design file would serve the dashed
+                // guide box to the career page - hand back the composed poster instead.
+                if ($designTemplate && $realCandidate === $designTemplate) {
+                    return $this->posterResponse($model->title);
+                }
+
                 return response()->file($realCandidate);
             }
         }
@@ -313,6 +390,158 @@ class RecruitmentManagementController extends Controller
         $this->syncPlatforms($model, $data['platforms']);
 
         return response()->json(new JobPostResource($model->load(['department', 'platforms'])));
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/job-posts/generate-draft                               */
+    /* One-click AI draft for the Job Post Builder (vocab-grounded).       */
+    /* Nothing is saved — the frontend fills the 6 builder blocks and HR   */
+    /* reviews before Save draft / Publish.                                */
+    /* ------------------------------------------------------------------ */
+
+    public function generateDraft(Request $request, JobContentGenerator $generator): JsonResponse
+    {
+        $validated = $request->validate([
+            'position_title' => ['required', 'string', 'max:150'],
+            'department' => ['nullable', 'string', 'max:150'],
+            'employment_type' => ['nullable', 'string', 'in:Full-time,Part-time,Contract,Seasonal'],
+            'schedule' => ['nullable', 'string', 'max:120'],
+            'vacancies' => ['nullable', 'integer', 'min:1', 'max:500'],
+            'experience_level' => ['nullable', 'string', 'max:60'],
+            'education_level' => ['nullable', 'string', 'max:60'],
+        ]);
+
+        if (! $generator->isConfigured()) {
+            return response()->json([
+                'message' => 'The AI generator is not configured. Set GEMINI_API_KEY (or OPENROUTER_API_KEY) on the API server.',
+            ], 422);
+        }
+
+        // Screening vocabulary — the same terms applicant screening scores
+        // against. Falls back to empty lists when the table is unavailable.
+        $skillsMap = [];
+        $certsMap = [];
+        try {
+            if (class_exists(\Modules\ApplicantManagement\Models\ScreeningReferenceData::class)) {
+                $skillsMap = \Modules\ApplicantManagement\Models\ScreeningReferenceData::mappingFor('skill');
+                $certsMap = \Modules\ApplicantManagement\Models\ScreeningReferenceData::mappingFor('certification');
+            }
+        } catch (\Throwable) {
+            $skillsMap = [];
+            $certsMap = [];
+        }
+
+        $vocabulary = [
+            'skills' => array_keys($skillsMap),
+            'certifications' => array_keys($certsMap),
+        ];
+
+        $result = $generator->generate([
+            'position_title' => $validated['position_title'],
+            'department' => $validated['department'] ?? null,
+            'employment_type' => $validated['employment_type'] ?? 'Full-time',
+            'schedule' => $validated['schedule'] ?? 'Shifting Schedule',
+            'vacancies' => $validated['vacancies'] ?? 1,
+            'experience_level' => $validated['experience_level'] ?? null,
+            'education_level' => $validated['education_level'] ?? null,
+        ], $vocabulary);
+
+        if (! $result['ok']) {
+            $code = (string) ($result['code'] ?? 'provider');
+            $retryAfter = $result['retry_after_seconds'] ?? null;
+
+            // Usage/limit failures answer 429 so the frontend can show the
+            // indicator countdown; everything else stays a provider error.
+            $status = in_array($code, JobContentGenerator::LIMIT_CODES, true) ? 429 : 502;
+
+            AuditLogger::log(
+                action: 'AI Draft Failed',
+                module: 'Recruitment Management',
+                severity: 'Warning',
+                targetType: 'Job Post Draft',
+                targetId: $validated['position_title'],
+                details: "AI draft for '{$validated['position_title']}' failed ({$code}): "
+                    . Str::limit((string) ($result['error'] ?? 'Generation failed.'), 300),
+            );
+
+            return response()->json([
+                'message' => $result['error'] ?? 'Generation failed.',
+                'code' => $code,
+                'retry_after_seconds' => $retryAfter,
+                'resets_at' => $result['resets_at'] ?? null,
+                'usage' => $result['usage'] ?? $generator->usageSnapshot(),
+            ], $status);
+        }
+
+        $data = $result['data'];
+
+        // House fallbacks so instructions/about are never blank.
+        if (trim((string) ($data['instructions'] ?? '')) === '') {
+            $data['instructions'] = 'Interested applicants may send their updated resume through this posting or walk-in for an interview at the HR Office, Oxford Suites Makati.';
+        }
+        if (trim((string) ($data['about'] ?? '')) === '') {
+            $data['about'] = 'Oxford Suites Makati is a premier all-suite hotel in the heart of Makati\'s business district, known for warm Filipino hospitality and dependable service.';
+        }
+
+        // Vocab grounding report: which generated skills already exist in the
+        // screening vocabulary vs. which are new (one-click-add candidates).
+        $known = [];
+        foreach ($skillsMap as $canonical => $aliases) {
+            $known[mb_strtolower(trim((string) $canonical))] = true;
+            foreach ((array) $aliases as $alias) {
+                $known[mb_strtolower(trim((string) $alias))] = true;
+            }
+        }
+        $matched = [];
+        $fresh = [];
+        foreach ((array) ($data['skills'] ?? []) as $skill) {
+            $key = mb_strtolower(trim((string) $skill));
+            if ($key !== '' && isset($known[$key])) {
+                $matched[] = $skill;
+            } elseif ($key !== '') {
+                $fresh[] = $skill;
+            }
+        }
+
+        AuditLogger::log(
+            action: 'Job Draft Generated',
+            module: 'Recruitment Management',
+            targetType: 'Job Post Draft',
+            targetId: $validated['position_title'],
+            details: "AI draft generated for '{$validated['position_title']}' (" . count($matched) . ' vocab skills matched, ' . count($fresh) . ' new) via ' . ($result['via']['service'] ?? 'AI service') . '.',
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
+            'meta' => [
+                'model' => $generator->modelName(),
+                'generated_via' => $result['via'] ?? null,
+                'vocabulary' => [
+                    'skills_count' => count($vocabulary['skills']),
+                    'certifications_count' => count($vocabulary['certifications']),
+                ],
+                'skills_matched' => array_values($matched),
+                'skills_new' => array_values($fresh),
+                // Usage/limit state after this generation — drives the builder's
+                // AI usage indicator without a second request.
+                'usage' => $result['usage'] ?? $generator->usageSnapshot(),
+            ],
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* GET /api/v1/job-posts/ai-usage                                      */
+    /* AI usage/limit snapshot for the builder's "Generate with AI"        */
+    /* indicator: config state, providers, drafts used today, cool-downs.  */
+    /* ------------------------------------------------------------------ */
+
+    public function aiUsage(JobContentGenerator $generator): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $generator->usageSnapshot(),
+        ]);
     }
 
     /* ------------------------------------------------------------------ */

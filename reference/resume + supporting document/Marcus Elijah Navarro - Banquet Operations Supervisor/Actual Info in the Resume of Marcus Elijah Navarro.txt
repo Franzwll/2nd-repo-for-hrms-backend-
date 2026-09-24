@@ -1,0 +1,302 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Marcus Elijah Navarro.txt
+TARGET CANDIDATE: Marcus Elijah Navarro
+TARGET ROLE: Banquet Operations Supervisor
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-09-18
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Marcus Elijah Navarro
+Target Position:       Banquet Operations Supervisor
+Contact Phone Number:  +63 917 552 8491
+Email Address:         marcus.navarro.hospitality@outlook.ph
+Residential Address:   Domestic Road, Pasay City, 1301 Metro Manila, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/marcus-navarro-hospitality
+
+[PROFESSIONAL SUMMARY]
+"Dedicated, results-driven Banquet Operations Supervisor with over 5 years of progressive hospitality leadership experience in luxury hotel convention centers and high-volume event venues. Proven expertise in Banquet Event Order (BEO) execution, floor logistics, VIP service protocols, team scheduling, and HACCP food safety standards. Adept at coordinating functions of up to 600 guests while ensuring seamless service delivery, minimal equipment breakage, and exceptional guest satisfaction."
+
+[CORE COMPETENCIES & SKILLS]
+1. Banquet Event Order (BEO) Floor Planning & Execution
+2. Function Room Turnover & Service Floor Logistics
+3. Staff Scheduling, Pre-Shift Briefings & Crew Leadership (up to 25 staff)
+4. Formal Plated Service, Buffet Management & Banquet Bar Protocols
+5. VIP Guest Relations & Protocol Handling
+6. Breakage Mitigation & Chinaware/Glassware/Silverware (CGS) Par Levels
+7. Food Safety, Sanitation, and HACCP Compliance
+8. Banquet Billing, Beverage Requisition & Cost Control
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Grand Crest Hotel & Suites
+   Location:     Pasay City, Metro Manila
+   Job Title:    Banquet Operations Supervisor
+   Duration:     June 2022 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Supervise banquet operations for 3 grand ballrooms and 5 multi-function rooms catering up to 600 attendees per event.
+   • Direct pre-shift briefings and manage a team of 18 full-time banquet servers, captains, and on-call catering staff.
+   • Coordinate directly with culinary and sales teams to review BEO specifications, ensuring 99% on-time food rollout.
+   • Reduced banquet equipment loss and chinaware breakage by 18% through standardized end-of-shift inventory protocols.
+
+2. Employer:     Harborview Hotel & Convention Center
+   Location:     Manila Bay, Manila
+   Job Title:    Banquet Team Leader / Captain
+   Duration:     January 2020 – May 2022
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Led floor teams of 12 banquet attendants during corporate conventions, diplomatic receptions, and wedding galas.
+   • Oversaw banquet table layouts, buffet staging, and silver service standards in compliance with luxury hotel guidelines.
+   • Conducted daily equipment inspections and enforced food temperature logs in coordination with kitchen quality control.
+
+3. Employer:     Bayfront Pavilion & Catering Services
+   Location:     Parañaque City, Metro Manila
+   Job Title:    Banquet Server / Function Attendant
+   Duration:     July 2018 – December 2019
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Delivered plated dinner service, replenished buffet lines, and executed room turnarounds for corporate and private events.
+   • Maintained high standards of table grooming, glassware polishing, and rapid function hall clearing.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Hospitality Management
+Institution:    Pamantasan ng Lungsod ng Maynila (PLM) — Intramuros, Manila
+Graduation:     2018
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   Certified Hospitality Supervisor (CHS)
+   Issuer:  Hospitality Operations Institute / FHCB
+   Date:    November 2021
+
+2. Title:   Food Safety & Sanitation Standards (HACCP Level 2)
+   Issuer:  Hospitality Training Council of the Philippines
+   Date:    August 2022
+
+3. Title:   Customer Service Excellence in Banquets and Events
+   Issuer:  Philippine Hospitality Development Center
+   Date:    March 2020
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Marcus_Elijah_Navarro_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - Color Palette: Deep Navy (#1A2B4C), Sky Blue (#38BDF8), Crisp White (#FFFFFF)
+   - Typographic System: Segoe UI / Arial Sans-Serif Hierarchy
+   - Layout Design: 205pt dark sidebar with contact channels, education, and certifications; 372pt main column with executive summary, 2-column competencies, and chronological experience.
+
+2. Marcus_Elijah_Navarro_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Color Palette: Classic Corporate Navy (#1B365D), Neutral Gray (#222222)
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, bottom paragraph borders for section dividers, 2-column borderless table for competencies, standard 0.75-inch margins.
+
+3. Marcus_Elijah_Navarro_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Color Palette: Charcoal (#222B38), Deep Slate Teal (#0F766E), Ice Teal (#F0FDFA)
+   - Typographic System: Arial Modern Sans-Serif
+   - Layout Design: Slate teal header box with candidate name and role badge, split grid with rounded badge skill tags and vertical timeline markers connecting experience nodes.
+
+4. Marcus_Elijah_Navarro_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Color Palette: Warm Burgundy (#800020), Bronze Accent (#B45309), Warm White (#FAFAFA)
+   - Typographic System: Calibri / Georgia Hybrid Typography
+   - Layout Design: Burgundy and bronze top bar, clean left-aligned typography, generous whitespace, rounded bordered experience cards with burgundy accent strips.
+
+5. Marcus_Elijah_Navarro_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction (0.94), subtle uniform scanner grain (3,500 jitter points).
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars, NO selective redaction boxes. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Marcus_Elijah_Navarro_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening (radius = 0.9), moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves hotel crest and gold/navy borders while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Marcus_Elijah_Navarro_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Grand Crest Hotel & Suites, Pasay City, Metro Manila
+   - Recipient / Employee: Marcus Elijah Navarro
+   - Certified Position: Banquet Operations Supervisor
+   - Certified Period: June 2022 – Present
+   - Reference Number: GCH-HRD-2024-0914
+   - Signatory: Maria Cristina Santos, CHRP (VP – Human Resources Management)
+   - Extractability: Crisp vector text, 100% OCR extractable.
+
+2. Marcus_Elijah_Navarro_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: Harborview Hotel & Convention Center, Manila Bay, Manila
+   - Recipient / Employee: Marcus Elijah Navarro
+   - Certified Position: Banquet Team Leader / Captain
+   - Certified Period: June 1, 2020 – May 25, 2022 (CONTROLLED DISCREPANCY)
+   - Reference Number: HHCC-HR-2022-0518
+   - Signatory: Rolando G. Alvarez, MHRM (Director of Human Capital)
+   - Extractability: Crisp vector text, 100% OCR extractable.
+
+3. Marcus_Elijah_Navarro_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: Pamantasan ng Lungsod ng Maynila (PLM) — Intramuros, Manila
+   - Conferred Graduate: Marcus Elijah Navarro
+   - Degree Conferred: Bachelor of Science in Hospitality Management
+   - Conformance Date: April 18, 2018
+   - Signatories: Atty. Corazon M. Bautista (Registrar), Dr. Manuel V. Fernandez (President)
+   - Extractability: Crisp vector text, 100% OCR extractable.
+
+4. Marcus_Elijah_Navarro_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: Hospitality Training Council of the Philippines (HTCP)
+   - Recipient Name: Marcus Elijah Navarro
+   - Training Title: Food Safety & Sanitation Standards (HACCP Level 2)
+   - Award Date: August 18, 2022
+   - Serial Number: HTCP-HACCP2-2022-8841
+   - Signatories: Chef Gabriel Mendoza (Lead Auditor), Dr. Patricia Cruz (Executive Director)
+   - Extractability: Crisp vector text, 100% OCR extractable.
+
+5. Marcus_Elijah_Navarro_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Philippine Hospitality Development Center (PHDC)
+   - Recipient Name: Marcus Elijah Navarro
+   - Certified Course: Foundations of Restaurant Food & Beverage Service (CONTROLLED DISCREPANCY)
+   - Training Dates: March 14–15, 2020
+   - Certificate Registration ID: PHDC-WS-2020-03-492
+   - Signatories: Eduardo R. Villanueva (Program Director), Ma. Teresa Ramos (Lead Facilitator)
+   - Extractability: Crisp vector text, 100% OCR extractable.
+
+6. Marcus_Elijah_Navarro_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Hospitality Operations Institute / FHCB
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN CORNER] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Certified Hospitality Supervisor (CHS)
+   - Issuance Date: November 24, 2021 (Valid through November 2026)
+   - Credential Registration ID: CHS-PH-2021-0982
+   - Extractability: Document body is extractable; recipient name token is physically severed/torn, simulating an incomplete document scan.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+--------------------------------------------------------------------------------
+CASE 1: Current Employment Claim Verification
+--------------------------------------------------------------------------------
+• Resume Claim:
+  - Employer: Grand Crest Hotel & Suites
+  - Position: Banquet Operations Supervisor
+  - Period: June 2022 – Present
+• Evidence Document:
+  - File: Marcus_Elijah_Navarro_COE_Current_Employer.pdf
+  - Certifies: Marcus Elijah Navarro employed as Banquet Operations Supervisor since June 2022 to Present.
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure dates.
+• Verification Engine Outcome: VERIFIED
+
+--------------------------------------------------------------------------------
+CASE 2: Previous Employment Claim Verification
+--------------------------------------------------------------------------------
+• Resume Claim:
+  - Employer: Harborview Hotel & Convention Center
+  - Position: Banquet Team Leader / Captain
+  - Period: January 2020 – May 2022
+• Evidence Document:
+  - File: Marcus_Elijah_Navarro_COE_Previous_Employer.pdf
+  - Certifies: Marcus Elijah Navarro employed as Banquet Team Leader / Captain from June 1, 2020 to May 25, 2022.
+• Comparison Result: DISCREPANCY DETECTED.
+  - Certified start date is June 2020, whereas resume claims January 2020 (6-month discrepancy).
+  - Position title and employer match; date range mismatch triggers verification flag for human HR review.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+--------------------------------------------------------------------------------
+CASE 3: Tertiary Education Claim Verification
+--------------------------------------------------------------------------------
+• Resume Claim:
+  - Degree: Bachelor of Science in Hospitality Management
+  - Institution: Pamantasan ng Lungsod ng Maynila (PLM) — Intramuros, Manila
+  - Graduation Year: 2018
+• Evidence Document:
+  - File: Marcus_Elijah_Navarro_Diploma.pdf
+  - Certifies: Conferred degree of Bachelor of Science in Hospitality Management to Marcus Elijah Navarro on April 18, 2018.
+• Comparison Result: EXACT MATCH across candidate name, degree title, academic institution, and graduation year.
+• Verification Engine Outcome: VERIFIED
+
+--------------------------------------------------------------------------------
+CASE 4: Food Safety & HACCP Training Claim Verification
+--------------------------------------------------------------------------------
+• Resume Claim:
+  - Course: Food Safety & Sanitation Standards (HACCP Level 2)
+  - Issuer: Hospitality Training Council of the Philippines
+  - Date: August 2022
+• Evidence Document:
+  - File: Marcus_Elijah_Navarro_Training_Certificate_FoodSafety.pdf
+  - Certifies: Marcus Elijah Navarro completed Food Safety & Sanitation Standards (HACCP Level 2) on August 18, 2022.
+• Comparison Result: EXACT MATCH across course title, issuing council, recipient name, and issuance month/year.
+• Verification Engine Outcome: VERIFIED
+
+--------------------------------------------------------------------------------
+CASE 5: Hospitality Service Training Claim Verification
+--------------------------------------------------------------------------------
+• Resume Claim:
+  - Course: Customer Service Excellence in Banquets and Events
+  - Issuer: Philippine Hospitality Development Center
+  - Date: March 2020
+• Evidence Document:
+  - File: Marcus_Elijah_Navarro_Training_Certificate_Service.pdf
+  - Certifies: Foundations of Restaurant Food & Beverage Service completed on March 14–15, 2020.
+• Comparison Result: DISCREPANCY DETECTED.
+  - Course title mismatch: Resume claims "Customer Service Excellence in Banquets and Events", but submitted official certificate certifies "Foundations of Restaurant Food & Beverage Service".
+  - Recipient, issuer, and date match; course curriculum mismatch requires HR review.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+--------------------------------------------------------------------------------
+CASE 6: Professional Credential (CHS) Claim Verification
+--------------------------------------------------------------------------------
+• Resume Claim:
+  - Credential: Certified Hospitality Supervisor (CHS)
+  - Issuer: Hospitality Operations Institute / FHCB
+  - Date: November 2021
+• Evidence Document:
+  - File: Marcus_Elijah_Navarro_Incomplete_Certificate.pdf
+  - Certifies: Certified Hospitality Supervisor (CHS) issued November 24, 2021 by Hospitality Operations Institute / FHCB.
+• Comparison Result: UNABLE TO ATTRIBUTE / INSUFFICIENT EVIDENCE.
+  - The document certifies the CHS credential for November 2021, but the recipient name is physically severed/torn off in the uploaded scan.
+  - The verification engine cannot deterministically bind the credential to Marcus Elijah Navarro without a legible name anchor.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+--------------------------------------------------------------------------------
+CASE 7: Historical Employment Claim (Bayfront Pavilion) Verification
+--------------------------------------------------------------------------------
+• Resume Claim:
+  - Employer: Bayfront Pavilion & Catering Services
+  - Position: Banquet Server / Function Attendant
+  - Period: July 2018 – December 2019
+• Evidence Document:
+  - [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION.
+  - The candidate declared historical employment, but no supporting COE, contract, or clearance was submitted.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

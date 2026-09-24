@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Alyssa Marie Valdez.txt
+TARGET CANDIDATE: Alyssa Marie Valdez
+TARGET ROLE: Executive Housekeeper / Floor Supervisor
+EXTRACTION MODE: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-09-18
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Alyssa Marie Valdez
+Target Position:       Executive Housekeeper / Floor Supervisor
+Contact Phone Number:  +63 919 782 4310
+Email Address:         alyssa.valdez.hospitality@outlook.ph
+Residential Address:   45 Commonwealth Avenue, Diliman, 1101 Quezon City, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/alyssa-valdez-hospitality
+
+[PROFESSIONAL SUMMARY]
+"Proactive and meticulous Housekeeping Floor Supervisor with 5+ years of operational excellence in luxury hotel accommodations, public area cleanliness, and laundry management. Highly skilled in conducting 50+ daily room inspections, optimizing linen turnarounds, enforcing OSHA/HACCP chemical safety guidelines, and directing housekeeping attendant teams of up to 25 staff. Dedicated to maximizing room cleanliness audit scores and delivering pristine guest accommodations."
+
+[CORE COMPETENCIES & SKILLS]
+1. Luxury Guestroom & Suite Inspection Standards (Forbes 5-Star Checklist)
+2. Housekeeping Crew Scheduling, Task Assignment & Productivity Tracking
+3. Linen Inventory Control, Par Stock Auditing & Laundry Turnaround Flow
+4. Chemical Safety, MSDS Protocols & Infection Control Compliance
+5. Lost & Found Logging, Security Reporting & Custody Chain Protocols
+6. Turndown Service Coordination & VIP Preference Staging
+7. Public Area Maintenance & Deep Cleaning Schedule Execution
+8. Defect Logging & Maintenance Dispatch (HotSOS / FCS Housekeeping)
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Conrad Manila
+   Location:     Pasay City, Metro Manila
+   Job Title:    Housekeeping Floor Supervisor
+   Duration:     October 2022 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Supervise daily housekeeping floor operations across 140 luxury guestrooms and executive suites.
+   • Direct morning briefings, assign room sections, and monitor room status updates via HotSOS mobile terminals.
+   • Raised guest cleanliness rating score from 91.2% to 96.8% within 9 months through stringent 40-point checklist reviews.
+   • Coordinated linen replenishment with laundry plant, reducing linen deficit write-offs by 15%.
+
+2. Employer:     Shangri-La at the Fort
+   Location:     Taguig City, Metro Manila
+   Job Title:    Housekeeping Team Leader
+   Duration:     January 2021 – September 2022
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Led a crew of 14 room attendants and housemen maintaining guest floors and executive club lounges.
+   • Conducted weekly chemical safety and dilution audits in accordance with environmental standards.
+   • Managed evening turndown service and coordinated special guest bedding preference requests.
+
+3. Employer:     Belmont Hotel Manila
+   Location:     Pasay City, Metro Manila
+   Job Title:    Housekeeping Attendant
+   Duration:     June 2019 – December 2020
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Cleaned, serviced, and replenished 16 guestrooms per 8-hour shift maintaining company quality benchmarks.
+   • Accurately inventoried room minibars and promptly reported guestroom maintenance deficiencies.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Hospitality and Tourism Management
+Institution:    Far Eastern University (FEU) — Nicanor Reyes St., Manila
+Graduation:     2019
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   Certified Hospitality Housekeeping Executive (CHHE)
+   Issuer:  Hospitality Operations Institute / FHCB
+   Date:    May 2022
+
+2. Title:   Chemical Safety & Infection Control Standards
+   Issuer:  Philippine Safety & Hygiene Council
+   Date:    November 2021
+
+3. Title:   Housekeeping Room Inspection Mastery
+   Issuer:  Philippine Hospitality Development Center
+   Date:    July 2020
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Alyssa_Marie_Valdez_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Alyssa_Marie_Valdez_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Alyssa_Marie_Valdez_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Alyssa_Marie_Valdez_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Alyssa_Marie_Valdez_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Alyssa_Marie_Valdez_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Alyssa_Marie_Valdez_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Conrad Manila
+   - Recipient / Employee: Alyssa Marie Valdez
+   - Certified Position: Housekeeping Floor Supervisor
+   - Certified Period: October 2022 – Present
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+2. Alyssa_Marie_Valdez_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: Shangri-La at the Fort
+   - Recipient / Employee: Alyssa Marie Valdez
+   - Certified Position: Housekeeping Team Leader
+   - Certified Period: May 1, 2021 – September 15, 2022 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+3. Alyssa_Marie_Valdez_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: Far Eastern University (FEU) — Nicanor Reyes St., Manila
+   - Conferred Graduate: Alyssa Marie Valdez
+   - Degree Conferred: Bachelor of Science in Hospitality and Tourism Management
+   - Graduation Year: 2019
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+4. Alyssa_Marie_Valdez_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: Hospitality Operations Institute / FHCB
+   - Recipient Name: Alyssa Marie Valdez
+   - Training Title: Certified Hospitality Housekeeping Executive (CHHE)
+   - Award Date: May 2022
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+5. Alyssa_Marie_Valdez_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Philippine Hospitality Development Center
+   - Recipient Name: Alyssa Marie Valdez
+   - Certified Course: Foundations of Commercial Laundry & Dry Cleaning Operations (CONTROLLED DISCREPANCY)
+   - Training Date: July 2020
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+6. Alyssa_Marie_Valdez_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Philippine Safety & Hygiene Council
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Certified Hospitality Housekeeping Executive (CHHE)
+   - Issuance Date: November 2021
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Conrad Manila | Housekeeping Floor Supervisor | October 2022 – Present
+• Evidence: Alyssa_Marie_Valdez_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: Shangri-La at the Fort | Housekeeping Team Leader | January 2021 – September 2022
+• Evidence: Alyssa_Marie_Valdez_COE_Previous_Employer.pdf (May 1, 2021 – September 15, 2022)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from May 2021 to September 2022, whereas resume claims start date of January 2021 (4-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Bachelor of Science in Hospitality and Tourism Management | Far Eastern University (FEU) — Nicanor Reyes St., Manila | 2019
+• Evidence: Alyssa_Marie_Valdez_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: Certified Hospitality Housekeeping Executive (CHHE) | Hospitality Operations Institute / FHCB | May 2022
+• Evidence: Alyssa_Marie_Valdez_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Housekeeping Room Inspection Mastery | Philippine Hospitality Development Center | July 2020
+• Evidence: Alyssa_Marie_Valdez_Training_Certificate_Service.pdf (Foundations of Commercial Laundry & Dry Cleaning Operations)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'Housekeeping Room Inspection Mastery', but certificate certifies 'Foundations of Commercial Laundry & Dry Cleaning Operations'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: Chemical Safety & Infection Control Standards | Philippine Safety & Hygiene Council | November 2021
+• Evidence: Alyssa_Marie_Valdez_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is severed/torn off in the uploaded scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: Belmont Hotel Manila | Housekeeping Attendant | June 2019 – December 2020
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Maria Cristina Santos.txt
+TARGET CANDIDATE: Maria Cristina Santos
+TARGET ROLE: Director of Spa & Wellness Operations
+EXTRACTION MODE: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-09-18
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Maria Cristina Santos
+Target Position:       Director of Spa & Wellness Operations
+Contact Phone Number:  +63 918 642 1109
+Email Address:         cristina.santos.spa@outlook.ph
+Residential Address:   88 5th Avenue, Bonifacio Global City, 1634 Taguig City, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/cristina-santos-spa
+
+[PROFESSIONAL SUMMARY]
+"Visionary, holistic-minded Director of Spa & Wellness Operations with over 9 years of luxury resort and five-star hotel spa leadership experience. Certified Spa Director (CSD) with deep expertise in signature treatment curation, hydrothermal facility compliance, therapist productivity engineering, and luxury retail revenue generation. Consistently elevated guest wellness satisfaction ratings to 97.4% while generating over PHP 36M in annual spa revenues."
+
+[CORE COMPETENCIES & SKILLS]
+1. Luxury Spa Facility Management, Treatment Protocol Curation & SOP Design
+2. Therapist Roster Scheduling, Commission Structuring & Technical Training (up to 30 staff)
+3. Spa Retail Inventory Control, High-End Skincare Sourcing & Margin Yielding
+4. Hydrothermal, Sauna, Steam & Vitality Pool Hygiene Compliance
+5. Guest Wellness Consultations, Medical Contraindication Screening & Privacy
+6. Spa Booking Software Administration (Book4Time / ResortSuite)
+7. Cross-Marketing Wellness Packages with Hotel Rooms, Bridal & F&B Suites
+8. Strict Sanitation, Towel / Linen Cleanliness & Infection Control Standards
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Shangri-La The Fort, Manila
+   Location:     BGC, Taguig City
+   Job Title:    Director of Spa & Wellness Operations
+   Duration:     August 2021 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Direct end-to-end operations of an ultra-luxury 16-treatment-room wellness sanctuary, hydrotherapy zone, and salon.
+   • Manage a team of 28 certified therapists, aestheticians, and reception concierges, surpassing annual budget by 19%.
+   • Launched organic botanical facial therapies delivering PHP 4.8M in retail skincare product sales during 2023.
+   • Achieved a 98.1% guest cleanliness and therapist professionalism audit score in Forbes hospitality reviews.
+
+2. Employer:     Nobu Hotel Manila / City of Dreams
+   Location:     Parañaque City, Metro Manila
+   Job Title:    Spa Operations Manager
+   Duration:     March 2017 – July 2021
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Oversaw daily operations, treatment room turnover, and inventory par levels for signature integrated resort spa.
+   • Designed specialized pre-flight and jet-lag restorative treatments for international VIP casino guests.
+   • Enforced rigid sanitization protocols and supervised linen laundering cycles with zero hygiene infractions.
+
+3. Employer:     The Farm at San Benito
+   Location:     Lipa City, Batangas
+   Job Title:    Senior Holistic Therapist & Supervisor
+   Duration:     May 2014 – February 2017
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Conducted personalized holistic wellness therapies, hydrotherapy sessions, and detox body scrubs.
+   • Trained junior therapists on international Swedish, Shiatsu, and traditional Filipino Hilot techniques.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Physical Therapy (Hospitality Spa Administration)
+Institution:    University of Santo Tomas (UST) — España, Manila
+Graduation:     2014
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   Certified Spa Director (CSD)
+   Issuer:  International SPA Association (ISPA)
+   Date:    November 2019
+
+2. Title:   Holistic Aromatherapy & Luxury Hydrotherapy Protocols
+   Issuer:  Asian Spa and Wellness Institute
+   Date:    August 2021
+
+3. Title:   Spa Sanitation & OSHA Safety in Wellness Operations
+   Issuer:  Philippine Safety & Hygiene Council
+   Date:    February 2018
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Maria_Cristina_Santos_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Maria_Cristina_Santos_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Maria_Cristina_Santos_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Maria_Cristina_Santos_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Maria_Cristina_Santos_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Maria_Cristina_Santos_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Maria_Cristina_Santos_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Shangri-La The Fort, Manila
+   - Recipient / Employee: Maria Cristina Santos
+   - Certified Position: Director of Spa & Wellness Operations
+   - Certified Period: August 2021 – Present
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+2. Maria_Cristina_Santos_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: Nobu Hotel Manila / City of Dreams
+   - Recipient / Employee: Maria Cristina Santos
+   - Certified Position: Spa Operations Manager
+   - Certified Period: June 1, 2017 – July 20, 2021 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+3. Maria_Cristina_Santos_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: University of Santo Tomas (UST) — España, Manila
+   - Conferred Graduate: Maria Cristina Santos
+   - Degree Conferred: Bachelor of Science in Physical Therapy (Hospitality Spa Administration)
+   - Graduation Year: 2014
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+4. Maria_Cristina_Santos_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: International SPA Association (ISPA)
+   - Recipient Name: Maria Cristina Santos
+   - Training Title: Certified Spa Director (CSD)
+   - Award Date: November 2019
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+5. Maria_Cristina_Santos_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Philippine Safety & Hygiene Council
+   - Recipient Name: Maria Cristina Santos
+   - Certified Course: Foundations of Basic Swedish Massage and Towel Folding (CONTROLLED DISCREPANCY)
+   - Training Date: February 2018
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+6. Maria_Cristina_Santos_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Asian Spa and Wellness Institute
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Certified Spa Director (CSD)
+   - Issuance Date: August 2021
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Shangri-La The Fort, Manila | Director of Spa & Wellness Operations | August 2021 – Present
+• Evidence: Maria_Cristina_Santos_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: Nobu Hotel Manila / City of Dreams | Spa Operations Manager | March 2017 – July 2021
+• Evidence: Maria_Cristina_Santos_COE_Previous_Employer.pdf (June 1, 2017 – July 20, 2021)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from June 2017 to July 2021, whereas resume claims start date of March 2017 (3-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Bachelor of Science in Physical Therapy (Hospitality Spa Administration) | University of Santo Tomas (UST) — España, Manila | 2014
+• Evidence: Maria_Cristina_Santos_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: Certified Spa Director (CSD) | International SPA Association (ISPA) | November 2019
+• Evidence: Maria_Cristina_Santos_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Spa Sanitation & OSHA Safety in Wellness Operations | Philippine Safety & Hygiene Council | February 2018
+• Evidence: Maria_Cristina_Santos_Training_Certificate_Service.pdf (Foundations of Basic Swedish Massage and Towel Folding)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'Spa Sanitation & OSHA Safety in Wellness Operations', but certificate certifies 'Foundations of Basic Swedish Massage and Towel Folding'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: Holistic Aromatherapy & Luxury Hydrotherapy Protocols | Asian Spa and Wellness Institute | August 2021
+• Evidence: Maria_Cristina_Santos_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is severed/torn off in the uploaded scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: The Farm at San Benito | Senior Holistic Therapist & Supervisor | May 2014 – February 2017
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

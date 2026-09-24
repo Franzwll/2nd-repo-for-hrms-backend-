@@ -67,6 +67,9 @@ function JobDetail() {
   const [resumeDragActive, setResumeDragActive] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [resumePreviewUrl, setResumePreviewUrl] = useState<string | null>(null);
+  /** Verification documents proving the content claimed in the resume/CV
+   *  (COE, certificates, credentials, others). Attached to the application. */
+  const [verifyDocs, setVerifyDocs] = useState<{ type: string; file: File }[]>([]);
   const previewRef = useRef<HTMLDivElement>(null);
 
   // Normalize PH phone (+63 → 0) for auto-fill
@@ -314,6 +317,12 @@ function JobDetail() {
                           fd.append("source", "Landing Page");
                           fd.append("summary", cover);
                           fd.append("resume", resumeFile);
+                          // Verification documents (COE / Certificate /
+                          // Credential / Others) proving the resume content.
+                          verifyDocs.forEach((d, i) => {
+                            fd.append(`verification_doc_types[${i}]`, d.type);
+                            fd.append(`verification_docs[${i}]`, d.file);
+                          });
                           res = await landingApi.apply(fd);
                         } else {
                           res = await landingApi.apply({
@@ -524,6 +533,76 @@ function JobDetail() {
                           rows={4}
                           placeholder="Tell us why you're a great fit."
                         />
+                      </div>
+
+                      {/* VERIFICATION DOCUMENTS — prove the content claimed in
+                          the resume/CV (COE, certificates, credentials, others) */}
+                      <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3">
+                        <p className="text-xs font-semibold tracking-wide text-muted-foreground">
+                          VERIFICATION DOCUMENTS (OPTIONAL)
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Upload proof of the content claimed in your resume/CV: COE (work
+                          experience), Certificates (trainings), Credentials (diploma, license,
+                          TOR), and Others (awards, portfolio). Original copies are prioritized for
+                          verification.
+                        </p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {["COE", "Certificate", "Credential", "Others"].map((type) => (
+                            <label
+                              key={type}
+                              className="flex cursor-pointer items-center justify-between gap-2 rounded-md border border-border/70 bg-background px-3 py-2 text-xs hover:border-primary/40"
+                            >
+                              <span className="font-medium">{type}</span>
+                              <span className="flex items-center gap-1 text-primary">
+                                <Upload className="h-3 w-3" />
+                                {verifyDocs.filter((d) => d.type === type).length > 0
+                                  ? `${verifyDocs.filter((d) => d.type === type).length} file(s)`
+                                  : "Upload"}
+                              </span>
+                              <input
+                                type="file"
+                                className="hidden"
+                                multiple
+                                accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                                onChange={(e) => {
+                                  const files = Array.from(e.target.files ?? []);
+                                  if (files.length) {
+                                    setVerifyDocs((prev) => [
+                                      ...prev.filter((d) => d.type !== type),
+                                      ...files.map((file) => ({ type, file })),
+                                    ]);
+                                  }
+                                  e.target.value = "";
+                                }}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                        {verifyDocs.length > 0 && (
+                          <div className="space-y-1">
+                            {verifyDocs.map((d, i) => (
+                              <div
+                                key={i}
+                                className="flex items-center justify-between gap-2 rounded border border-border/60 bg-background px-2 py-1 text-xs"
+                              >
+                                <span className="min-w-0 flex-1 truncate">
+                                  <span className="font-medium text-primary">{d.type}</span> —{" "}
+                                  {d.file.name}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="shrink-0 text-destructive hover:underline"
+                                  onClick={() =>
+                                    setVerifyDocs((prev) => prev.filter((_, xi) => xi !== i))
+                                  }
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
 

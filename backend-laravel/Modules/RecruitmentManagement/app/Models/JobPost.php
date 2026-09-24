@@ -51,6 +51,7 @@ class JobPost extends Model
         'qualifications_json',
         'skills_json',
         'picture',
+        'requires_practical',
     ];
 
     protected $casts = [
@@ -58,6 +59,7 @@ class JobPost extends Model
         'qualifications_json' => 'array',
         'skills_json' => 'array',
         'active' => 'boolean',
+        'requires_practical' => 'boolean',
         'salary_min' => 'decimal:2',
         'salary_max' => 'decimal:2',
         'posted_date' => 'date',

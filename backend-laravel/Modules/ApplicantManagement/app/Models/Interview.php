@@ -16,6 +16,8 @@ class Interview extends Model
         'scheduled_date',
         'scheduled_time',
         'mode',
+        'facility_id',
+        'facility_status',
         'interviewer_employee_id',
         'interviewer_name',
         'status',
@@ -32,6 +34,11 @@ class Interview extends Model
     public function applicant(): BelongsTo
     {
         return $this->belongsTo(Applicant::class, 'applicant_id', 'applicant_id');
+    }
+
+    public function facility(): BelongsTo
+    {
+        return $this->belongsTo(Facility::class, 'facility_id', 'facility_id');
     }
 
     /* ------------------------------------------------------------------ */

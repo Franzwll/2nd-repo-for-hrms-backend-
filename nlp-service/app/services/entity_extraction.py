@@ -89,11 +89,32 @@ MONTHS = {
 }
 
 DATE_RANGE_RE = re.compile(
-    r"(?P<start>(?:(?P<sm>[A-Za-z]{3,9})\.?\s+)?(?P<sy>(?:19|20)\d{2}))\s*(?:-|–|—|to|until|through|\?|\ufffd)\s*"
-    r"(?P<end>(?:(?P<em>[A-Za-z]{3,9})\.?\s+)?(?:(?P<ey>(?:19|20)\d{2})|present|current|now))\b",
+    r"(?P<start>(?:(?P<sm>[A-Za-z]{3,9})\.?\s+(?:\d{1,2}(?:st|nd|rd|th)?,?\s+)?)?(?P<sy>(?:19|20)\d{2}))\s*(?:-|–|—|to|until|through|\?|\ufffd)\s*"
+    r"(?P<end>(?:(?P<em>[A-Za-z]{3,9})\.?\s+(?:\d{1,2}(?:st|nd|rd|th)?,?\s+)?)?(?:(?P<ey>(?:19|20)\d{2})|present|current|now))\b",
     re.I,
 )
 YEARS_PHRASE_RE = re.compile(r"(\d{1,2}(?:\.\d+)?)\+?\s*(?:years?|yrs?)(?:\s+of\s+experience)?\b", re.I)
+
+# Calendar-only fragments that the section rules sometimes pick up as if they
+# were entities: "(October 2020)", "Conducted On March 2019", "Issued: 2022-03".
+# A date is metadata attached to an entry, never the name of a credential.
+_DATE_ONLY_FRAGMENT_RE = re.compile(
+    r"^(?:(?:conducted|issued|given|dated|held|taken|obtained|earned|completed|awarded|"
+    r"valid|conferred|attended|finished|on|last|since|the)\b[\s:,-]*)*"
+    r"(?:(?:(?:[A-Za-z]{3,9})\.?\s+)?(?:\d{1,2}(?:st|nd|rd|th)?,?\s+)?(?:19|20)\d{2}"
+    r"|(?:19|20)\d{2}[-/.]\d{1,2}(?:[-/.]\d{1,2})?"
+    r"|\d{1,2}[-/.]\d{1,2}[-/.](?:19|20)\d{2})$",
+    re.I,
+)
+
+
+def is_date_only_fragment(value: str) -> bool:
+    """True when a string carries nothing but a date (with optional lead-in words)."""
+    text = (value or "").strip().strip("()[]{} .,;:-|•*")
+    if not text:
+        return False
+    return bool(_DATE_ONLY_FRAGMENT_RE.match(text))
+
 WORD_NUMS = {
     "one": 1.0, "two": 2.0, "three": 3.0, "four": 4.0, "five": 5.0,
     "six": 6.0, "seven": 7.0, "eight": 8.0, "nine": 9.0, "ten": 10.0,
@@ -328,6 +349,9 @@ class EntityExtractor:
             "entities": entities,
             "sections_detected": sorted(sections.keys()),
             "estimated_years_experience": experience,
+            # Same figure expressed in whole months, so downstream consumers can
+            # show "10 years 4 months" without re-deriving it from the decimal.
+            "estimated_experience_months": int(round(experience * 12)),
             "work_history": work_history,
             "name": name,
             "address": address,
@@ -776,6 +800,9 @@ class EntityExtractor:
             clean = canonical.strip(" .,-;:|–—✓▸◆►▹●•·")
             low = clean.lower()
             if not clean or len(clean) < 4:
+                return
+            # Dates are entry metadata ("(October 2020)"), not credential names.
+            if is_date_only_fragment(clean):
                 return
             if low in {
                 "& training", "and training", "and seminars", "& seminars",
@@ -1254,6 +1281,10 @@ class EntityExtractor:
                         add_title(canonical, "reference_scan")
                         break
 
+        from app.services.credential_verification import parse_date_range
+        for h in history:
+            h["date_range"] = parse_date_range(h.get("period"))
+
         return titles[:8], orgs, history[:8]
 
     # ------------------------------------------------------------------
@@ -1293,9 +1324,12 @@ class EntityExtractor:
             else:
                 merged.append([start, end])
 
+        # Every employment period counts inclusively — a stint written as
+        # "June 2016 - March 2018" is 22 months of service, not 21. Overlapping
+        # entries are merged above first, so no month is counted twice.
         months_total = 0
         for start, end in merged:
-            months_total += (end.year - start.year) * 12 + (end.month - start.month)
+            months_total += (end.year - start.year) * 12 + (end.month - start.month) + 1
 
         phrase_years = 0.0
         for m in YEARS_PHRASE_RE.finditer(text):
@@ -1305,10 +1339,18 @@ class EntityExtractor:
             if re.search(rf"\b(?:over|more\s+than|around|about)?\s*{word}\s*(?:\+?\s*)?(?:years?|yrs?)(?:\s+of\s+experience)?\b", text, re.I):
                 phrase_years = max(phrase_years, val)
 
-        range_years = round(months_total / 12.0, 1)
-        years = range_years if range_years > 0 else phrase_years
-        if range_years > 0 and phrase_years > 0:
-            years = max(min(range_years, phrase_years * 1.25), min(phrase_years, range_years))
+        range_years = round(months_total / 12.0, 2)
+        if range_years > 0:
+            # Dated employment history is the evidence, so it drives the number.
+            # A claimed summary ("8 years of experience") may raise the estimate
+            # by at most 25% but never shrink verified employment.
+            years = (
+                max(range_years, min(phrase_years, range_years * 1.25))
+                if phrase_years > 0
+                else range_years
+            )
+        else:
+            years = phrase_years
 
         return min(years, 45.0)
 

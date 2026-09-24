@@ -122,10 +122,15 @@ export interface ApiApplicant {
   summary: string | null;
   flags_json: string[];
   resume_url: string | null;
+  /** Number of uploaded supporting documents (added by withCount). */
+  documents_count?: number;
   job_post?: {
     job_post_id: number;
     title: string;
     department?: string;
+    /** Whether this position takes a practical assessment (job_posts
+     *  .requires_practical, or a designated hands-on position). */
+    requires_practical?: boolean;
   };
   screening_entities?: { entity_id: number; label: string; value: string }[];
   screening_scores?: { score_id: number; criterion: string; score: number }[];
@@ -134,12 +139,51 @@ export interface ApiApplicant {
   assessment?: ApiAssessment;
 }
 
+/** Supporting-document evidence blended into the ranking score. Produced by
+ *  the NLP service (`verification_scoring.py`) from the applicant's verified
+ *  COE / Certificate / Credential rows and persisted on the screening record. */
+export interface ApiDocumentEvidence {
+  /** NOT_PROVIDED | PENDING | VERIFIED | PARTIAL | DISCREPANCY */
+  status?: string;
+  /** Evidence share of the ranking score (0.15 = 15%). */
+  weight?: number;
+  documents_total?: number;
+  decisive_count?: number;
+  verified_count?: number;
+  discrepancy_count?: number;
+  unable_count?: number;
+  pending_count?: number;
+  ignored_count?: number;
+  credit_ratio?: number | null;
+  /** Mean document credit as a percentage (VERIFIED 100, UNABLE 50, DISCREPANCY 0). */
+  documents_score?: number | null;
+  /** Points the evidence moved the resume score (positive = reduction). */
+  score_penalty?: number;
+  escalate_invalid?: boolean;
+  mismatched_fields?: string[];
+  flags?: string[];
+  per_document?: {
+    applicant_document_id?: number | null;
+    doc_type?: string;
+    verification_status?: string;
+    counted?: boolean;
+    credit?: number | null;
+    mismatched_fields?: string[];
+    summary?: string | null;
+    ignored_reason?: string | null;
+  }[];
+}
+
 export interface ApiScreening {
   screening_id?: number;
   success?: boolean;
   processing_status: "PROCESSED" | "PARTIALLY_PROCESSED" | "FAILED" | "PENDING" | "PROCESSING";
   screening_result: "fit" | "other-role" | "credential" | "not-fit" | null;
   match_score: number | null;
+  /** Resume-only score before the supporting-document evidence was blended in. */
+  resume_match_score?: number | null;
+  /** Supporting-document evidence behind the ranking score. */
+  document_verification?: ApiDocumentEvidence | null;
   screening_status?: string;
   mandatory_requirements_met?: boolean;
   matched_summary?: string | null;
@@ -209,6 +253,17 @@ export interface ApiScreeningPreview extends ApiScreening {
   success: boolean;
 }
 
+export interface ApiFacility {
+  facility_id: number;
+  name: string;
+  type: "On-site" | "Virtual";
+  location: string | null;
+  capacity: number;
+  icon: string | null;
+  description: string | null;
+  is_active: boolean;
+}
+
 export interface ApiInterview {
   interview_id: number;
   interview_code: string;
@@ -216,6 +271,16 @@ export interface ApiInterview {
   scheduled_date: string;
   scheduled_time: string;
   mode: "On-site" | "Virtual";
+  facility_id: number | null;
+  facility_status: "Not Required" | "Waiting for Facility Approval" | "Facility Approved" | "Facility Declined" | null;
+  facility?: {
+    facility_id: number;
+    name: string;
+    type: "On-site" | "Virtual";
+    location: string | null;
+    capacity: number;
+    icon: string | null;
+  } | null;
   interviewer_employee_id: number | null;
   interviewer_name: string | null;
   status: "Scheduled" | "Completed" | "No Show";
@@ -238,8 +303,10 @@ export interface ApiAssessment {
   assessor_user_id: number | null;
   assessment_date: string;
   scores_json: Record<string, number>;
+  comments_json: Record<string, string>;
   total_score: number | null;
   outcome: "Recommended" | "Hold" | "Not Recommended";
+  result: "Passed" | "Failed" | null;
   remarks: string | null;
   applicant?: {
     applicant_id: number;
@@ -251,9 +318,131 @@ export interface ApiAssessment {
   } | null;
 }
 
+export interface ApiAssessmentTest {
+  assessment_test_id: number;
+  applicant_id: number;
+  assessor_user_id: number | null;
+  test_title: string;
+  questions_json: { question: string; points: number }[];
+  scores_json: Record<string, number>;
+  total_score: number | null;
+  passing_score: number | null;
+  result: "Passed" | "Failed";
+  test_date: string;
+  remarks: string | null;
+  applicant?: {
+    applicant_id: number;
+    applicant_code: string;
+    name: string;
+    position?: string;
+    department?: string;
+    stage?: string;
+    requires_practical?: boolean;
+  } | null;
+}
+
+export interface ApiPracticalTest {
+  practical_test_id: number;
+  applicant_id: number;
+  assessor_user_id: number | null;
+  task_title: string;
+  criteria_json: { criterion: string; max_points: number }[];
+  scores_json: Record<string, number>;
+  total_score: number | null;
+  result: "Passed" | "Failed";
+  test_date: string;
+  remarks: string | null;
+  applicant?: {
+    applicant_id: number;
+    applicant_code: string;
+    name: string;
+    position?: string;
+    department?: string;
+    stage?: string;
+  } | null;
+}
+
+export interface ApiFinalEvaluation {
+  final_evaluation_id: number;
+  applicant_id: number;
+  evaluated_by_user_id: number | null;
+  evaluation_date: string;
+  screening_score: number | null;
+  screening_status: string | null;
+  interview_score: number | null;
+  interview_result: "Passed" | "Failed" | null;
+  assessment_test_score: number | null;
+  assessment_test_result: "Passed" | "Failed" | null;
+  practical_required: boolean;
+  practical_test_score: number | null;
+  practical_test_result: "Passed" | "Failed" | null;
+  recommendation: "Recommended for Hire" | "For Another Position" | "Not Recommended";
+  overall_remarks: string | null;
+  applicant?: {
+    applicant_id: number;
+    applicant_code: string;
+    name: string;
+    position?: string;
+    department?: string;
+    stage?: string;
+  } | null;
+}
+
+/* Supporting-document verification (NLP comparison of an uploaded COE /
+ * Certificate / Credential against the applicant's resume claims). */
+export type DocumentVerificationStatus =
+  | "PENDING"
+  | "PROCESSING"
+  | "VERIFIED"
+  | "DISCREPANCY_FOUND"
+  | "UNABLE_TO_VERIFY";
+
+export interface ApiDocumentVerificationCheck {
+  resume_value: string | null;
+  document_value: string | null;
+  normalized_resume?: string | null;
+  normalized_document?: string | null;
+  match_method?: "exact" | "canonical_alias" | "fuzzy" | "date_tolerance" | "unable" | string;
+  result: "MATCH" | "MISMATCH" | "UNABLE_TO_EXTRACT" | string;
+  /** Human-readable reason for the verdict (e.g. why two dates within the
+   *  tolerance window still count as the same period). */
+  note?: string | null;
+}
+
+export interface ApiDocumentVerificationResult {
+  success?: boolean;
+  document_type?: string;
+  verification_status?: DocumentVerificationStatus | string;
+  checks?: Record<string, ApiDocumentVerificationCheck>;
+  summary?: string;
+  error?: string | null;
+}
+
+export interface ApiApplicantDocument {
+  applicant_document_id: number;
+  applicant_id: number;
+  doc_type: "COE" | "Certificate" | "Credential" | "Others";
+  title: string | null;
+  original_copy: boolean;
+  file_path: string | null;
+  original_name: string | null;
+  uploaded_at: string | null;
+  verification_status?: DocumentVerificationStatus | string | null;
+  verification_result?: ApiDocumentVerificationResult | null;
+  extracted_profile?: Record<string, unknown> | null;
+  verified_at?: string | null;
+}
+
 export function resolveStorageUrl(value: string | null): string | null {
   if (!value) return null;
-  const origin = new URL(BASE_URL).origin;
+  // BASE_URL may be relative ("/api/v1") so this works on any dev port.
+  // Fall back to the page origin when it is not an absolute URL.
+  let origin: string;
+  try {
+    origin = new URL(BASE_URL, typeof window !== "undefined" ? window.location.origin : "http://localhost").origin;
+  } catch {
+    origin = typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:8000";
+  }
   try {
     const normalized = value.replace(/\\/g, "/").replace(/^\.\//, "");
     const u = new URL(normalized, origin);
@@ -314,6 +503,14 @@ export const applicantsApi = {
     }),
   getScreening: (id: number | string) =>
     request<{ data: ApiScreening }>(`/applicants/${id}/screening`),
+  /** Re-runs the screening classification with the current supporting-document
+   *  evidence (after uploading / re-verifying / removing a document) so the
+   *  ranking percentage, rank order and official status stay in sync. */
+  recomputeScreening: (id: number | string) =>
+    request<{ data: ApiScreening; applicant: ApiApplicant }>(
+      `/applicants/${id}/screening/recompute`,
+      { method: "POST" },
+    ),
   /** Streams the applicant's stored resume from the backend — always
    *  accessible, independent of the public/storage symlink, and same-origin
    *  (relative) so the review dialog's preview <iframe>/<img> renders PDFs
@@ -451,6 +648,108 @@ export const interviewsApi = {
     }),
   delete: (id: number | string) =>
     request<{ message: string }>(`/interviews/${id}`, { method: "DELETE" }),
+  /** Confirms the facility request (mock auto-approval) — flips the status
+   *  from "Waiting for Facility Approval" to "Facility Approved" and
+   *  automatically emails the applicant their confirmed schedule. */
+  facilityApprove: (id: number | string) =>
+    request<ApiInterview>(`/interviews/${id}/facility-approve`, { method: "POST" }),
+};
+
+/* ========================================================================= */
+/* 1b. FACILITIES / EVALUATION PIPELINE / VERIFICATION DOCUMENTS             */
+/* ========================================================================= */
+
+export const facilitiesApi = {
+  list: (params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiFacility[]; meta: any }>(`/facilities${qs ? `?${qs}` : ""}`);
+  },
+};
+
+export const assessmentTestsApi = {
+  list: (params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiAssessmentTest[]; meta: any }>(`/assessment-tests${qs ? `?${qs}` : ""}`);
+  },
+  create: (applicantId: number | string, data: Record<string, any>) =>
+    request<ApiAssessmentTest>(`/applicants/${applicantId}/assessment-tests`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (id: number | string, data: Record<string, any>) =>
+    request<ApiAssessmentTest>(`/assessment-tests/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+};
+
+export const practicalTestsApi = {
+  list: (params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiPracticalTest[]; meta: any }>(`/practical-tests${qs ? `?${qs}` : ""}`);
+  },
+  create: (applicantId: number | string, data: Record<string, any>) =>
+    request<ApiPracticalTest>(`/applicants/${applicantId}/practical-tests`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (id: number | string, data: Record<string, any>) =>
+    request<ApiPracticalTest>(`/practical-tests/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+};
+
+export const finalEvaluationsApi = {
+  list: (params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiFinalEvaluation[]; meta: any }>(`/final-evaluations${qs ? `?${qs}` : ""}`);
+  },
+  create: (applicantId: number | string, data: Record<string, any>) =>
+    request<ApiFinalEvaluation>(`/applicants/${applicantId}/final-evaluations`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (id: number | string, data: Record<string, any>) =>
+    request<ApiFinalEvaluation>(`/final-evaluations/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+};
+
+export const applicantDocumentsApi = {
+  list: (applicantId: number | string, params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiApplicantDocument[]; meta: any }>(
+      `/applicants/${applicantId}/documents${qs ? `?${qs}` : ""}`,
+    );
+  },
+  /** Multipart upload of a verification document (COE, Certificate,
+   *  Credential, Others) used to verify the resume/CV content. */
+  upload: (applicantId: number | string, formData: FormData) =>
+    request<ApiApplicantDocument>(`/applicants/${applicantId}/documents`, {
+      method: "POST",
+      body: formData,
+    }),
+  delete: (id: number | string) =>
+    request<{ message: string }>(`/applicant-documents/${id}`, { method: "DELETE" }),
+  /** Re-runs supporting-document verification against the applicant's
+   *  resume claims (e.g. after the resume was re-screened). */
+  verify: (id: number | string) =>
+    request<ApiApplicantDocument>(`/applicant-documents/${id}/verify`, { method: "POST" }),
+  /** Streams the stored supporting-document file from the backend —
+   *  same-origin (relative) so PDFs/images render inline in a new tab,
+   *  with ?token= auth like the resume preview. Pass download=true to
+   *  force a file download instead of inline preview. The Vite dev proxy
+   *  forwards /api to Laravel. */
+  fileUrl: (id: number | string, download = false) => {
+    const token = getToken();
+    const qs = new URLSearchParams();
+    if (token) qs.set("token", token);
+    if (download) qs.set("download", "1");
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return `/api/v1/applicant-documents/${id}/file${suffix}`;
+  },
 };
 
 /* ========================================================================= */
@@ -502,7 +801,90 @@ export interface ApiRequisition {
   converted_job_post_id: number | null;
 }
 
+export interface JobDraftPayload {
+  position_title: string;
+  department?: string | undefined;
+  employment_type?: string | undefined;
+  schedule?: string | undefined;
+  vacancies?: number | undefined;
+  experience_level?: string | undefined;
+  education_level?: string | undefined;
+}
+
+export interface JobDraftResult {
+  description: string;
+  responsibilities: string[];
+  qualifications: string[];
+  skills: string[];
+  instructions: string;
+  about: string;
+}
+
+/** One provider in the AI chain (Gemini → second key → OpenRouter). */
+export interface JobAiProvider {
+  service: string;
+  model: string;
+  kind: "gemini" | "openrouter";
+  blocked: boolean;
+  blocked_until: string | null;
+  blocked_reason: string | null;
+}
+
+/** Usage/limit snapshot behind the builder's "Generate with AI" indicator. */
+export interface JobAiUsage {
+  configured: boolean;
+  primary_model: string;
+  /** App-level cap (0 = unlimited). */
+  daily_limit: number;
+  used_today: number;
+  remaining_today: number | null;
+  attempts_today: number;
+  failures_today: number;
+  tokens_today: number;
+  /** Set only when every provider is cooling down (usage limit / dead key). */
+  blocked_until: string | null;
+  blocked_code: string | null;
+  blocked_reason: string | null;
+  providers: JobAiProvider[];
+  last_success: { service: string; model: string; at: string } | null;
+  last_error: {
+    code: string;
+    message: string;
+    retry_after_seconds: number | null;
+    resets_at: string | null;
+    at: string;
+  } | null;
+}
+
+/** Body the API returns when a draft generation fails (429 for usage limits). */
+export interface JobDraftErrorPayload {
+  message?: string;
+  code?: string;
+  retry_after_seconds?: number | null;
+  resets_at?: string | null;
+  usage?: JobAiUsage;
+}
+
 export const jobPostsApi = {
+  /** AI draft for the Job Post Builder — fills the 6 content blocks, HR reviews before saving. */
+  generateDraft: (payload: JobDraftPayload) =>
+    request<{
+      success: boolean;
+      data: JobDraftResult;
+      meta: {
+        model: string;
+        generated_via: { service: string; model: string; free: boolean } | null;
+        vocabulary: { skills_count: number; certifications_count: number };
+        skills_matched: string[];
+        skills_new: string[];
+        usage?: JobAiUsage;
+      };
+    }>("/job-posts/generate-draft", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  /** Usage/limit snapshot for the AI draft indicator (triggers no generation). */
+  aiUsage: () => request<{ success: boolean; data: JobAiUsage }>("/job-posts/ai-usage"),
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
     return request<{ data: ApiJobPost[]; meta: any }>(`/job-posts${qs ? `?${qs}` : ""}`);
@@ -606,6 +988,12 @@ export const coreHcmApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  salaryGrades: {
+    list: (params?: Record<string, any>) => {
+      const qs = new URLSearchParams(params).toString();
+      return request<{ data: ApiSalaryGrade[]; meta: any }>(`/salary-grades${qs ? `?${qs}` : ''}`);
+    },
+  },
 };
 
 /* ========================================================================= */
@@ -822,6 +1210,14 @@ export interface ApiSystemUser {
   full_name: string;
   username: string;
   department_name: string | null;
+}
+
+export interface ApiBackupEntry {
+  id: string;
+  timestamp: string;
+  size: string;
+  type: string;
+  filename: string;
 }
 
 export const settingsApi = {

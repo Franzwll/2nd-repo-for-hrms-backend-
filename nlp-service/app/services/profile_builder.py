@@ -61,6 +61,10 @@ def build_profile(
         "certifications": cert_classes["recognized"] + cert_classes["unrecognized"],
         "unrecognized_certifications": cert_classes["unrecognized"],
         "estimated_years_experience": extraction.get("estimated_years_experience", 0),
+        "estimated_experience_months": extraction.get(
+            "estimated_experience_months",
+            int(round(float(extraction.get("estimated_years_experience", 0) or 0) * 12)),
+        ),
         "job_roles": role_classes,
         "unrecognized_skills": skill_classes["unrecognized"],
     }

@@ -1,0 +1,362 @@
+# HOSPITALITY RESUME + SUPPORTING DOCUMENT DATASET GENERATION TASK (SINGLE PROFILE)
+
+You are a **file-generation agent**, not a writing consultant.
+
+Your task is to **ACTUALLY CREATE the requested resume files, supporting documents, ground-truth file, organize them into the specified folder, verify them, and package everything into one `.rar` archive.**
+
+This dataset will be used for testing:
+
+* HRMS Applicant Management
+* Resume Upload & Multi-Format Ingestion (PDF, DOCX, PNG, JPG)
+* Single-Profile Cross-Format Consistency (evaluating whether identical applicant data extracts reliably across completely different document templates and file types)
+* Resume OCR & Text Extraction
+* Supporting Document Upload & OCR
+* spaCy NER & Information Extraction:
+  * Person Name Extraction
+  * Contact Information (Phone Number, Email, Address, Portfolio)
+  * Job Title / Target Position Extraction
+  * Work Experience / Employment History Extraction
+  * Education & Degree Extraction
+  * Skills & Competencies Extraction
+  * Certification & Training Extraction
+* Credential Verification & Comparison (Resume ↔ Supporting Document)
+* Document Discrepancy & Anomaly Detection
+* Low-Quality & Degraded OCR Processing (blurred image formats)
+* Verification Engine Status Handling (`VERIFIED`, `DISCREPANCY_FOUND`, `UNABLE_TO_VERIFY`, `PENDING`)
+
+---
+
+# IMPORTANT EXECUTION RULES
+
+**DO NOT:**
+
+* Explain how you would create the files.
+* Give sample documents instead of actual files.
+* Ask for confirmation between generation steps.
+* Stop after generating only the text.
+* Alter the candidate's name, phone number, email, address, target position, work history, education, skills, or certifications between resume formats.
+* Use placeholders such as `[Name]`, `[Company]`, `[Date]`, `[Address]`, `[Phone]`, etc. All details must be fully realized.
+* Reuse the same visual template or layout between resume formats (each format must have its own distinct visual template).
+* Selectively blur only personal information or add black censor bars.
+* Invent information in the TXT ground-truth file that does not exist in the corresponding resumes/documents.
+* Create fake additional files outside the requested directory structure.
+* Automatically declare an applicant fraudulent when a discrepancy is detected.
+* Use real people's personal information or real government-issued license numbers.
+* Copy real company, university, hotel, restaurant, or certification documents.
+
+**ACTUALLY CREATE THE FILES.**
+
+If a technical limitation prevents generating everything in one operation, work in logical batches and continue until the entire dataset is complete.
+
+Do not ask for confirmation between batches.
+
+---
+
+# 1. TECHNOLOGY / PROJECT CONTEXT
+
+The dataset is intended for a hospitality HRMS application using:
+
+* React / Vite / TypeScript frontend
+* Laravel / PHP backend
+* Python FastAPI service
+* spaCy NER
+* Tesseract / OCR Engine
+* MySQL
+
+The resumes and supporting documents must contain realistic, structured information suitable for OCR, NLP extraction, entity normalization, and verification comparison.
+
+A core benchmark objective is **Single-Profile Multi-Format Ingestion**:
+The exact same applicant profile is submitted across 6 different file types and visual templates. The HRMS parsing engine must be tested on whether it extracts identical, consistent structured data regardless of visual styling, layout columns, or document format.
+
+---
+
+# 2. CANDIDATE SPECIFICATION (EXACTLY 1 PROFILE)
+
+Create exactly **ONE fictional candidate master profile**.
+
+### Candidate Master Profile Details:
+
+* **Full Name:** Marcus Elijah Navarro
+* **Fixed Target Position:** Banquet Operations Supervisor
+* **Contact Phone Number:** +63 917 552 8491
+* **Email Address:** marcus.navarro.hospitality@outlook.ph
+* **Residential Address:** Domestic Road, Pasay City, 1301 Metro Manila, Philippines
+* **LinkedIn / Profile:** linkedin.com/in/marcus-navarro-hospitality
+
+### Professional Summary:
+"Dedicated, results-driven Banquet Operations Supervisor with over 5 years of progressive hospitality leadership experience in luxury hotel convention centers and high-volume event venues. Proven expertise in Banquet Event Order (BEO) execution, floor logistics, VIP service protocols, team scheduling, and HACCP food safety standards. Adept at coordinating functions of up to 600 guests while ensuring seamless service delivery, minimal equipment breakage, and exceptional guest satisfaction."
+
+### Core Competencies & Skills:
+* Banquet Event Order (BEO) Floor Planning & Execution
+* Function Room Turnover & Service Floor Logistics
+* Staff Scheduling, Pre-Shift Briefings & Crew Leadership (up to 25 staff)
+* Formal Plated Service, Buffet Management & Banquet Bar Protocols
+* VIP Guest Relations & Protocol Handling
+* Breakage Mitigation & Chinaware/Glassware/Silverware (CGS) Par Levels
+* Food Safety, Sanitation, and HACCP Compliance
+* Banquet Billing, Beverage Requisition & Cost Control
+
+### Work Experience:
+1. **Grand Crest Hotel & Suites** — Pasay City, Metro Manila
+   * *Position:* Banquet Operations Supervisor
+   * *Duration:* June 2022 – Present
+   * *Responsibilities/Achievements:*
+     - Supervise banquet operations for 3 grand ballrooms and 5 multi-function rooms catering up to 600 attendees per event.
+     - Direct pre-shift briefings and manage a team of 18 full-time banquet servers, captains, and on-call catering staff.
+     - Coordinate directly with culinary and sales teams to review BEO specifications, ensuring 99% on-time food rollout.
+     - Reduced banquet equipment loss and chinaware breakage by 18% through standardized end-of-shift inventory protocols.
+
+2. **Harborview Hotel & Convention Center** — Manila Bay, Manila
+   * *Position:* Banquet Team Leader / Captain
+   * *Duration:* January 2020 – May 2022
+   * *Responsibilities/Achievements:*
+     - Led floor teams of 12 banquet attendants during corporate conventions, diplomatic receptions, and wedding galas.
+     - Oversaw banquet table layouts, buffet staging, and silver service standards in compliance with luxury hotel guidelines.
+     - Conducted daily equipment inspections and enforced food temperature logs in coordination with kitchen quality control.
+
+3. **Bayfront Pavilion & Catering Services** — Parañaque City, Metro Manila
+   * *Position:* Banquet Server / Function Attendant
+   * *Duration:* July 2018 – December 2019
+   * *Responsibilities/Achievements:*
+     - Delivered plated dinner service, replenished buffet lines, and executed room turnarounds for corporate and private events.
+     - Maintained high standards of table grooming, glassware polishing, and rapid function hall clearing.
+
+### Education:
+* **Degree:** Bachelor of Science in Hospitality Management
+* **Institution:** Pamantasan ng Lungsod ng Maynila (PLM) — Intramuros, Manila
+* **Year of Graduation:** 2018
+
+### Training & Certifications:
+1. **Certified Hospitality Supervisor (CHS)** — Hospitality Operations Institute / FHCB (November 2021)
+2. **Food Safety & Sanitation Standards (HACCP Level 2)** — Hospitality Training Council of the Philippines (August 2022)
+3. **Customer Service Excellence in Banquets and Events** — Philippine Hospitality Development Center (March 2020)
+
+---
+
+# 3. RESUME REQUIREMENTS — SINGLE PROFILE, 6 FORMATS & TEMPLATES
+
+Generate exactly **six resume files** for Marcus Elijah Navarro.
+
+### CRITICAL RULE — IDENTICAL INFORMATION CONTENT:
+Across all 6 resume files, the textual data MUST BE 100% IDENTICAL:
+* Same Full Name: Marcus Elijah Navarro
+* Same Target Position: Banquet Operations Supervisor
+* Same Phone Number: +63 917 552 8491
+* Same Email Address: marcus.navarro.hospitality@outlook.ph
+* Same Address: Domestic Road, Pasay City, Metro Manila
+* Same Professional Summary
+* Same Core Skills
+* Same Work Experience (same companies, positions, dates, and bullet points)
+* Same Education (same degree, university, graduation year)
+* Same Certifications and Trainings
+
+### CRITICAL RULE — DISTINCT VISUAL TEMPLATES:
+While the underlying profile text is completely identical, each resume MUST use a **completely unique visual design template, typographic hierarchy, and layout style**:
+
+| File Name | Format | Visual Design & Template Style |
+| :--- | :--- | :--- |
+| `Marcus_Elijah_Navarro_Resume.pdf` | PDF | **Template 1: Modern Executive Two-Column Layout** (Dark navy sidebar with contact/skills/education, crisp white main column with experience & summary). |
+| `Marcus_Elijah_Navarro_Resume.docx` | DOCX | **Template 2: Corporate Single-Column Traditional** (Formal serif typography, horizontal accent divider lines, centered header, structured standard margins). |
+| `Marcus_Elijah_Navarro_Resume.png` | PNG | **Template 3: Contemporary Split-Grid Layout** (Charcoal & slate teal accents, badge-style skill tags, timeline bullet markers, modern sans-serif). |
+| `Marcus_Elijah_Navarro_Resume.jpg` | JPG | **Template 4: Hospitality Clean Minimalist** (Warm bronze/burgundy accent header, bordered experience cards, clean left-aligned typography). |
+| `Marcus_Elijah_Navarro_Resume_Blurred.png` | PNG (Degraded) | **Template 5: Infographic / Accent-Bar Layout** (Visual icons, competency progress blocks, left-sidebar structure) with **light, uniform full-page degradation**. |
+| `Marcus_Elijah_Navarro_Resume_Blurred.jpg` | JPG (Degraded) | **Template 6: Elegant Hotelier Formal Layout** (Gold/navy borders, header crest styling, two-tone sections) with **light, uniform scan degradation**. |
+
+---
+
+# 4. BLURRED RESUME SPECIFICATIONS (FOR LOW-QUALITY OCR BENCHMARKING)
+
+The two blurred files (`Marcus_Elijah_Navarro_Resume_Blurred.png` and `Marcus_Elijah_Navarro_Resume_Blurred.jpg`) simulate real-world low-quality applicant submissions:
+
+1. Render the complete resume image first with all profile text.
+2. Apply a **mild, uniform degradation to the ENTIRE page** (simulating a slight camera blur, 150 DPI scanner softening, or moderate JPEG compression).
+3. The degradation must cover the **entire page uniformly** (header, contact info, body text, experience, education).
+4. **DO NOT** selectively blur only personal information.
+5. **DO NOT** use black censor bars, redaction boxes, or cover text with shapes.
+6. The resulting image must remain **partially OCR-readable** (so OCR can extract portions with minor noise/confidence drops).
+
+---
+
+# 5. SUPPORTING DOCUMENTS (EVIDENCE VERIFICATION)
+
+Generate exactly **six synthetic supporting documents** that act as verification evidence for Marcus Elijah Navarro's resume claims.
+
+The verification process follows:
+```text
+RESUME CLAIM
+     ↓
+SUPPORTING DOCUMENT
+     ↓
+FIELD-LEVEL NORMALIZATION & COMPARISON
+     ↓
+OUTCOME: VERIFIED | DISCREPANCY_FOUND | UNABLE_TO_VERIFY | PENDING
+```
+
+### The 6 Supporting Documents:
+
+#### 1. `Marcus_Elijah_Navarro_COE_Current_Employer.pdf`
+* **Type:** Certificate of Employment (COE)
+* **Visual Style:** Formal Grand Crest Hotel & Suites HR letterhead with official seal, header logo, corporate signature.
+* **Content:**
+  - Employee: Marcus Elijah Navarro
+  - Position: Banquet Operations Supervisor
+  - Period of Employment: June 2022 – Present
+* **Verification Status:** `VERIFIED` (Matches current job title, employer, and start date exactly).
+
+#### 2. `Marcus_Elijah_Navarro_COE_Previous_Employer.pdf`
+* **Type:** Certificate of Employment (COE)
+* **Visual Style:** Harborview Hotel & Convention Center formal HR certification document.
+* **Content:**
+  - Employee: Marcus Elijah Navarro
+  - Position: Banquet Team Leader / Captain
+  - Period of Employment: **June 2020 – May 2022** *(Controlled Discrepancy)*
+* **Verification Status:** `DISCREPANCY_FOUND`
+  - Reason: Resume claims start date of January 2020, but official COE certifies start date as June 2020 (6-month discrepancy requiring HR review).
+
+#### 3. `Marcus_Elijah_Navarro_Diploma.pdf`
+* **Type:** Academic Diploma
+* **Visual Style:** Formal university diploma layout with classic decorative border, Latin motto, university seal, registrar and university president signatures.
+* **Content:**
+  - Graduate: Marcus Elijah Navarro
+  - Degree: Bachelor of Science in Hospitality Management
+  - Institution: Pamantasan ng Lungsod ng Maynila
+  - Year: 2018
+* **Verification Status:** `VERIFIED` (Matches degree, institution, candidate name, and graduation year).
+
+#### 4. `Marcus_Elijah_Navarro_Training_Certificate_FoodSafety.pdf`
+* **Type:** Training Certificate
+* **Visual Style:** Professional landscape certificate with gold ribbon emblem, training council header, issue date, and authorized trainer signature.
+* **Content:**
+  - Recipient: Marcus Elijah Navarro
+  - Training: Food Safety and Sanitation Standards (HACCP Level 2)
+  - Date: August 18, 2022
+* **Verification Status:** `VERIFIED` (Matches training course title, recipient name, and year).
+
+#### 5. `Marcus_Elijah_Navarro_Training_Certificate_Service.pdf`
+* **Type:** Training Certificate
+* **Visual Style:** Modern workshop completion certificate layout with certificate ID number.
+* **Content:**
+  - Recipient: Marcus Elijah Navarro
+  - Training Course: **Foundations of Restaurant Food & Beverage Service** *(Controlled Discrepancy)*
+  - Date: March 2020
+* **Verification Status:** `DISCREPANCY_FOUND`
+  - Reason: Resume lists "Customer Service Excellence in Banquets and Events", but submitted certificate indicates "Foundations of Restaurant Food & Beverage Service".
+
+#### 6. `Marcus_Elijah_Navarro_Incomplete_Certificate.pdf`
+* **Type:** Professional Credential / Certification Document
+* **Visual Style:** Degraded / clipped certificate scan simulating a damaged or badly scanned upload.
+* **Content:**
+  - Issuing Body: Hospitality Operations Institute / FHCB
+  - Credential: Certified Hospitality Supervisor (CHS)
+  - Date: November 2021
+  - Recipient Name: **[MISSING / CUT OFF DUE TO TORN CORNER]** *(Controlled Data Inadequacy)*
+* **Verification Status:** `UNABLE_TO_VERIFY`
+  - Reason: Document certifies CHS credential for 2021, but recipient name is cut off/missing, preventing definitive attribution to Marcus Elijah Navarro.
+
+#### 7. Pending Case Handling:
+* Marcus's historical resume claim for **Bayfront Pavilion & Catering Services (July 2018 – December 2019)** has no uploaded document in the folder.
+* **Verification Status:** `PENDING` (Expected supporting evidence has not yet been submitted by the candidate).
+
+---
+
+# 6. GROUND-TRUTH FILE SPECIFICATION
+
+Create exactly **one comprehensive ground-truth TXT file**:
+```text
+Actual Info in the Resume of Marcus Elijah Navarro.txt
+```
+
+This file is the benchmark source of truth for automated testing of OCR, NER, entity extraction, and document verification. It must contain:
+
+### PART 1 — CANDIDATE MASTER PROFILE
+* Full Name, Fixed Target Position, Phone, Email, Address, LinkedIn
+* Full Professional Summary
+* Complete List of Core Competencies & Skills
+* Complete Work History Details (Companies, Job Titles, Dates, Detailed Responsibilities)
+* Education Details (Degree, Institution, Graduation Year)
+* Training & Certification List
+
+### PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+* Exact filenames of all 6 resumes (`.pdf`, `.docx`, `.png`, `.jpg`, `_Blurred.png`, `_Blurred.jpg`)
+* Underlying text verification confirming that all 6 files share 100% identical textual data
+* Template style documentation describing the visual layout of each file
+* Low-quality degradation parameters for the blurred files
+
+### PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT
+* Exact underlying text and key extracted fields for each of the 6 supporting documents:
+  - Document filename and type
+  - Issuer / Organization
+  - Recipient / Employee Name
+  - Certified Role / Degree / Credential Title
+  - Certified Dates / Years
+  - Extractability & OCR condition notes
+
+### PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+Document each comparison case explicitly:
+* **Case 1 (Current Employment):** Resume vs. `Marcus_Elijah_Navarro_COE_Current_Employer.pdf` → `VERIFIED`
+* **Case 2 (Previous Employment):** Resume vs. `Marcus_Elijah_Navarro_COE_Previous_Employer.pdf` → `DISCREPANCY_FOUND` (Start date mismatch: June 2020 vs. January 2020)
+* **Case 3 (Tertiary Education):** Resume vs. `Marcus_Elijah_Navarro_Diploma.pdf` → `VERIFIED`
+* **Case 4 (Food Safety Training):** Resume vs. `Marcus_Elijah_Navarro_Training_Certificate_FoodSafety.pdf` → `VERIFIED`
+* **Case 5 (Service Training):** Resume vs. `Marcus_Elijah_Navarro_Training_Certificate_Service.pdf` → `DISCREPANCY_FOUND` (Course title mismatch)
+* **Case 6 (CHS Certification):** Resume vs. `Marcus_Elijah_Navarro_Incomplete_Certificate.pdf` → `UNABLE_TO_VERIFY` (Missing recipient anchor)
+* **Case 7 (Historical Employment):** Resume vs. [No Document Submitted] → `PENDING` (Pending candidate submission)
+
+---
+
+# 7. FILE ORGANIZATION & DIRECTORY STRUCTURE
+
+All generated files must be organized inside a single candidate directory:
+
+```text
+Hotel_Restaurant_Hospitality_Verification_Dataset_Single/
+└── Marcus Elijah Navarro - Hospitality Resume and Documents/
+    ├── Marcus_Elijah_Navarro_Resume.pdf
+    ├── Marcus_Elijah_Navarro_Resume.docx
+    ├── Marcus_Elijah_Navarro_Resume.png
+    ├── Marcus_Elijah_Navarro_Resume.jpg
+    ├── Marcus_Elijah_Navarro_Resume_Blurred.png
+    ├── Marcus_Elijah_Navarro_Resume_Blurred.jpg
+    ├── Marcus_Elijah_Navarro_COE_Current_Employer.pdf
+    ├── Marcus_Elijah_Navarro_COE_Previous_Employer.pdf
+    ├── Marcus_Elijah_Navarro_Diploma.pdf
+    ├── Marcus_Elijah_Navarro_Training_Certificate_FoodSafety.pdf
+    ├── Marcus_Elijah_Navarro_Training_Certificate_Service.pdf
+    ├── Marcus_Elijah_Navarro_Incomplete_Certificate.pdf
+    └── Actual Info in the Resume of Marcus Elijah Navarro.txt
+```
+
+### Exact Dataset File Count:
+* Resumes: **6 files** (1 single profile rendered across 6 distinct templates/formats)
+* Supporting Documents: **6 files** (Evidence documents matching & testing verification states)
+* Ground Truth: **1 TXT file**
+* **Total = Exactly 13 files**
+
+Package the entire directory into:
+```text
+Hotel_Restaurant_Hospitality_Verification_Dataset_Single.rar
+```
+
+---
+
+# 8. QUALITY CONTROL & VERIFICATION CHECKLIST
+
+Before archiving, verify:
+
+* [ ] **Single Profile:** Exactly 1 candidate profile (Marcus Elijah Navarro) is used.
+* [ ] **Data Identity:** Target position ("Banquet Operations Supervisor"), contact phone, email, address, work history, education, and skills are 100% identical across all 6 resume formats.
+* [ ] **Visual Diversity:** All 6 resumes use completely distinct visual templates and layouts (columns, typography, color palettes).
+* [ ] **Degraded Resumes:** Both blurred resumes have uniform full-page degradation without black censor bars or selective blurring.
+* [ ] **Supporting Documents:** Each of the 6 supporting documents has an authentic layout appropriate for its type (letterhead, formal diploma, certificate).
+* [ ] **Verification Outcomes:** All 4 verification outcomes (`VERIFIED`, `DISCREPANCY_FOUND`, `UNABLE_TO_VERIFY`, `PENDING`) are represented and documented.
+* [ ] **Ground Truth Integrity:** The TXT ground-truth file accurately mirrors the text in the generated documents without invented data.
+* [ ] **File Count & Cleanliness:** Exactly 13 files exist inside the designated folder with zero extra temporary files.
+* [ ] **Archive:** `Hotel_Restaurant_Hospitality_Verification_Dataset_Single.rar` opens cleanly and matches the directory structure.
+
+---
+
+# 9. FINAL DELIVERABLE
+
+After creation and verification, produce and deliver the final archive:
+```text
+Hotel_Restaurant_Hospitality_Verification_Dataset_Single.rar
+```

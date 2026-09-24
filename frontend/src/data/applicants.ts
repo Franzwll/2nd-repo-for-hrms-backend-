@@ -5,6 +5,27 @@ export type ScreeningDetail = {
   processing_status?: string;
   screening_result?: string | null;
   match_score?: number | null;
+  /** Resume-only score before the supporting-document evidence was blended in. */
+  resume_match_score?: number | null;
+  /** Supporting-document evidence behind the ranking score (documents score,
+   *  verified / discrepancy / unable counts, applied penalty and flags). */
+  document_verification?: {
+    status?: string;
+    weight?: number;
+    documents_total?: number;
+    decisive_count?: number;
+    verified_count?: number;
+    discrepancy_count?: number;
+    unable_count?: number;
+    pending_count?: number;
+    ignored_count?: number;
+    credit_ratio?: number | null;
+    documents_score?: number | null;
+    score_penalty?: number;
+    escalate_invalid?: boolean;
+    mismatched_fields?: string[];
+    flags?: string[];
+  } | null;
   score_breakdown?: Record<
     string,
     {
@@ -12,6 +33,7 @@ export type ScreeningDetail = {
       max?: number;
       matched_required?: string[];
       missing_required?: string[];
+      fuzzy_matched_required?: Record<string, string>;
       matched_preferred?: string[];
       missing_preferred?: string[];
       estimated_years?: number;
@@ -30,6 +52,7 @@ export type ScreeningDetail = {
     work_experience?: { job_title?: string; period?: string | null }[];
     skills?: string[];
     certifications?: string[];
+    unrecognized_certifications?: string[];
     estimated_years_experience?: number;
     job_roles?: { recognized?: string[]; unrecognized?: string[] };
   };
@@ -64,7 +87,16 @@ export type Applicant = {
   score: number;
   status: ApplicantStatus;
   stage:
-    "Screened" | "Interview Scheduled" | "Assessed" | "Offer" | "Hired" | "Rejected" | "Accepted";
+    | "Screened"
+    | "Interview Scheduled"
+    | "Assessed"
+    | "Assessment Test"
+    | "Practical Test"
+    | "Final Evaluation"
+    | "Offer"
+    | "Hired"
+    | "Rejected"
+    | "Accepted";
   source: "Online Portal" | "Walk-in" | "Referral" | "Indeed" | "Facebook";
   entities: { label: string; value: string }[];
   breakdown: { criterion: string; score: number }[];
@@ -73,6 +105,12 @@ export type Applicant = {
   screening_detail?: ScreeningDetail | null;
   resumeUrl?: string | null;
   resumeOriginalName?: string | null;
+  /** Number of uploaded supporting documents (COE / Certificate /
+   *  Credential / Others). Absent (undefined) when unknown, e.g. mock rows. */
+  docCount?: number;
+  /** Whether this position takes a practical assessment (from the API's job
+   *  post flag / designated positions). Undefined on mock rows. */
+  requiresPractical?: boolean;
 };
 
 export const statusMeta: Record<
@@ -394,6 +432,73 @@ export const interviewers = [
   { id: "S4", name: "Juan Dela Cruz", role: "HR Officer", department: "Administration / HR" },
 ];
 
+export type PassFail = "Passed" | "Failed";
+
+export type Facility = {
+  id: string;
+  dbId?: number;
+  name: string;
+  type: "On-site" | "Virtual";
+  location: string;
+  capacity: number;
+  icon: "room" | "online";
+  description: string;
+};
+
+/**
+ * Mock facilities — mirrors the `facilities` table seeded by the
+ * 2026_09_05_000001_create_facilities_table migration (Room 1-3 for on-site
+ * interviews and the Online Interview virtual room).
+ */
+export const facilities: Facility[] = [
+  {
+    id: "FAC-1",
+    dbId: 1,
+    name: "Room 1",
+    type: "On-site",
+    location: "Oxford Suites Makati, HR Office, 3rd Floor",
+    capacity: 1,
+    icon: "room",
+    description: "Primary on-site interview room with guest-facing setup.",
+  },
+  {
+    id: "FAC-2",
+    dbId: 2,
+    name: "Room 2",
+    type: "On-site",
+    location: "Oxford Suites Makati, HR Office, 3rd Floor",
+    capacity: 1,
+    icon: "room",
+    description: "Secondary on-site interview room for panel interviews.",
+  },
+  {
+    id: "FAC-3",
+    dbId: 3,
+    name: "Room 3",
+    type: "On-site",
+    location: "Oxford Suites Makati, HR Office, 3rd Floor",
+    capacity: 2,
+    icon: "room",
+    description: "Practical demonstration room for hands-on assessments.",
+  },
+  {
+    id: "FAC-4",
+    dbId: 4,
+    name: "Online Interview",
+    type: "Virtual",
+    location: "meet.oxfordsuites.ph/interview-room",
+    capacity: 5,
+    icon: "online",
+    description: "Virtual interview room hosted on the company meeting platform.",
+  },
+];
+
+export const getFacilityById = (dbId?: number | null) =>
+  facilities.find((f) => f.dbId === dbId) ?? null;
+
+export type FacilityStatus =
+  "Not Required" | "Waiting for Facility Approval" | "Facility Approved" | "Facility Declined";
+
 export type Interview = {
   id: string;
   dbId?: number;
@@ -404,6 +509,9 @@ export type Interview = {
   mode: "On-site" | "Virtual";
   interviewer: string;
   status: "Scheduled" | "Completed" | "Cancelled" | "No Show";
+  /** Reserved facility for this schedule (request facility feature). */
+  facilityName?: string | null;
+  facilityStatus?: FacilityStatus;
 };
 
 export const interviews: Interview[] = [
@@ -416,6 +524,8 @@ export const interviews: Interview[] = [
     mode: "On-site",
     interviewer: "Ana Ramos",
     status: "Scheduled",
+    facilityName: "Room 1",
+    facilityStatus: "Facility Approved",
   },
   {
     id: "INT-202",
@@ -426,6 +536,8 @@ export const interviews: Interview[] = [
     mode: "Virtual",
     interviewer: "Juan Dela Cruz",
     status: "Scheduled",
+    facilityName: "Online Interview",
+    facilityStatus: "Facility Approved",
   },
   {
     id: "INT-203",
@@ -436,6 +548,8 @@ export const interviews: Interview[] = [
     mode: "On-site",
     interviewer: "Chef Gabriel Mendoza",
     status: "Scheduled",
+    facilityName: "Room 2",
+    facilityStatus: "Waiting for Facility Approval",
   },
   {
     id: "INT-204",
@@ -446,6 +560,8 @@ export const interviews: Interview[] = [
     mode: "On-site",
     interviewer: "Chef Gabriel Mendoza",
     status: "Completed",
+    facilityName: "Room 3",
+    facilityStatus: "Facility Approved",
   },
   {
     id: "INT-205",
@@ -456,8 +572,176 @@ export const interviews: Interview[] = [
     mode: "On-site",
     interviewer: "Ana Ramos",
     status: "Scheduled",
+    facilityName: "Room 1",
+    facilityStatus: "Facility Approved",
   },
 ];
+
+/** Assessment test row — job-specific test after the interview assessment. */
+export type AssessmentTestRow = {
+  id: string;
+  dbId?: number;
+  applicantId: string;
+  name: string;
+  position: string;
+  title: string;
+  questions: { question: string; points: number }[];
+  scores: Record<string, number>;
+  total: number;
+  passing: number;
+  result: PassFail;
+  date: string;
+  remarks: string;
+};
+
+/** Practical assessment row — position-based hands-on exam. */
+export type PracticalTestRow = {
+  id: string;
+  dbId?: number;
+  applicantId: string;
+  name: string;
+  position: string;
+  taskTitle: string;
+  criteria: { criterion: string; maxPoints: number; comment?: string | null }[];
+  scores: Record<string, number>;
+  total: number;
+  result: PassFail;
+  date: string;
+  remarks: string;
+};
+
+export type FinalRecommendation =
+  "Recommended for Hire" | "For Another Position" | "Not Recommended";
+
+/** Final evaluation row — whole-process verdict with a stage snapshot. */
+export type FinalEvaluationRow = {
+  id: string;
+  dbId?: number;
+  applicantId: string;
+  name: string;
+  position: string;
+  screeningScore: number | null;
+  screeningStatus: string | null;
+  interviewScore: number | null;
+  interviewResult: PassFail | null;
+  assessmentTestScore: number | null;
+  assessmentTestResult: PassFail | null;
+  practicalRequired: boolean;
+  practicalTestScore: number | null;
+  practicalTestResult: PassFail | null;
+  recommendation: FinalRecommendation;
+  overallRemarks: string;
+  date: string;
+  /** Evaluator recorded with the final evaluation (name + system user id). */
+  evaluatedBy?: string | null;
+  evaluatedById?: number | null;
+};
+
+/** Verification document uploaded against the resume/CV content. */
+export type VerificationDocType = "COE" | "Certificate" | "Credential" | "Others";
+
+export type ApplicantDocumentDoc = {
+  id: string;
+  dbId?: number;
+  applicantId: string;
+  docType: VerificationDocType;
+  title: string;
+  originalCopy: boolean;
+  fileName: string;
+  uploadedAt: string;
+};
+
+/**
+ * What each document type verifies in the resume/CV:
+ * COE proves employment claims, Certificates/Credentials prove training and
+ * qualification claims, Others covers awards, portfolios and similar proofs.
+ */
+export const VERIFICATION_DOC_TYPES: {
+  type: VerificationDocType;
+  label: string;
+  verifies: string;
+}[] = [
+  {
+    type: "COE",
+    label: "COE (Certificate of Employment)",
+    verifies: "Proves the work experience and job titles claimed in the resume.",
+  },
+  {
+    type: "Certificate",
+    label: "Certificate of Training",
+    verifies: "Proves the trainings and seminars claimed in the resume.",
+  },
+  {
+    type: "Credential",
+    label: "Credentials (Diploma, License, TOR)",
+    verifies: "Proves the educational attainment and licenses claimed in the resume.",
+  },
+  {
+    type: "Others",
+    label: "Others (Awards, Portfolio)",
+    verifies: "Supports achievements, awards and other resume claims.",
+  },
+];
+
+/** Default criteria for the position-based practical assessment. Each criterion
+ *  is rated on the same 1-5 scale as the interview (Rate dropdown "n / 5"). */
+export const DEFAULT_PRACTICAL_CRITERIA = [
+  { criterion: "Task Execution & Accuracy", maxPoints: 5 },
+  { criterion: "Position-Specific Skill", maxPoints: 5 },
+  { criterion: "Work Standards & Procedures", maxPoints: 5 },
+  { criterion: "Time Management", maxPoints: 5 },
+];
+
+/**
+ * Positions designated to take a practical assessment. The database flag
+ * (`job_posts.requires_practical`) is authoritative when the API reports it —
+ * pass it as `dbFlag`; this list is the fallback for posts that were never
+ * configured, and mirrors `PracticalRequirement::POSITIONS` on the backend so
+ * the UI never offers a practical the API will refuse to save.
+ */
+export const PRACTICAL_POSITIONS = [
+  "Line Cook",
+  "Bartender",
+  "Front Desk Receptionist",
+  "Restaurant Server",
+];
+
+export const requiresPractical = (position: string, dbFlag?: boolean | null) =>
+  dbFlag === true || PRACTICAL_POSITIONS.includes(position);
+
+/** Top-candidate tiers per the ranking rules:
+ * 1 — completed proof of resume content (COE/certificates/credentials/others,
+ *     all original copies) and perfect for the job
+ * 2 — a few proofs (not completed) but original copies and perfect for the job
+ * 3 — perfect for the job even without proof of content
+ */
+export type TopCandidateTier = 1 | 2 | 3;
+
+export const topCandidateTierMeta: Record<TopCandidateTier, { label: string; className: string }> =
+  {
+    1: { label: "Top Candidate", className: "bg-gold text-gold-foreground" },
+    2: { label: "Strong Candidate", className: "bg-primary/15 text-primary border-primary/30" },
+    3: { label: "Perfect for the Job", className: "bg-success/15 text-success border-success/30" },
+  };
+
+/**
+ * Computes the top-candidate tier from the screening status and the uploaded
+ * verification documents (COE / Certificate / Credential / Others, original
+ * copies). Falls back to tier 3 when the position is only "perfect for the
+ * job" without any proof of content.
+ */
+export const computeTopCandidateTier = (
+  status: ApplicantStatus,
+  docs: { docType: VerificationDocType; originalCopy: boolean }[],
+): TopCandidateTier => {
+  if (status !== "fit") return 3;
+  const completed = ["COE", "Certificate", "Credential"].every((required) =>
+    docs.some((d) => d.docType === required && d.originalCopy),
+  );
+  if (completed) return 1;
+  if (docs.length > 0) return 2;
+  return 3;
+};
 
 export const assessmentCriteria = [
   "Guest Service Orientation",
@@ -474,6 +758,7 @@ export type AuditActionType =
   | "Interview Cancelled"
   | "Interview Rescheduled"
   | "Interview No-Show"
+  | "Facility Request Approved"
   | "Applicant Accepted"
   | "Applicant Rejected"
   | "Applicant Transferred"
@@ -481,6 +766,10 @@ export type AuditActionType =
   | "Assessment Completed"
   | "Assessment Accepted"
   | "Assessment Rejected"
+  | "Assessment Test Recorded"
+  | "Practical Assessment Recorded"
+  | "Final Evaluation Completed"
+  | "Verification Document Uploaded"
   | "Status Change"
   | "Applicant Added";
 

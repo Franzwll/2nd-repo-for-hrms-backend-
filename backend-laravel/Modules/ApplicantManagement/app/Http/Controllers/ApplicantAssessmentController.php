@@ -74,7 +74,9 @@ class ApplicantAssessmentController extends Controller
             severity: 'Info',
             targetType: 'Assessment',
             targetId: (string) $assessment->assessment_id,
-            details: "Recorded assessment for {$model->name} with total score {$assessment->total_score}% and outcome {$assessment->outcome}."
+            details: "Recorded interview assessment for {$model->name} with total score {$assessment->total_score}%" .
+                ($assessment->result ? " and verdict {$assessment->result}" : "") .
+                " — overall evaluation: {$assessment->outcome}."
         );
 
         \App\Services\NotificationService::send(
@@ -99,8 +101,10 @@ class ApplicantAssessmentController extends Controller
 
         $data = $request->validate([
             'scores_json'  => ['nullable', 'array'],
+            'comments_json'=> ['nullable', 'array'],
             'total_score'  => ['nullable', 'numeric', 'min:0', 'max:100'],
             'outcome'      => ['sometimes', 'string', 'in:Recommended,Hold,Not Recommended'],
+            'result'       => ['nullable', 'string', 'in:Passed,Failed'],
             'remarks'      => ['nullable', 'string'],
         ]);
 

@@ -27,6 +27,9 @@ class ApplicantResource extends JsonResource
                                     ? 'storage/resumes/' . basename($this->resume_file_path)
                                     : null,
             'resume_original_name' => $this->resume_original_name ?? ($this->resume_file_path ? basename($this->resume_file_path) : null),
+            /* Number of uploaded supporting documents (COE / Certificate /
+               Credential / Others) — 0 when the count was not loaded. */
+            'documents_count'   => (int) ($this->documents_count ?? 0),
             'created_at'      => $this->created_at?->toISOString(),
             'updated_at'      => $this->updated_at?->toISOString(),
 
@@ -35,6 +38,13 @@ class ApplicantResource extends JsonResource
                 'job_post_id' => $this->jobPost->job_post_id,
                 'title'       => $this->jobPost->title,
                 'department'  => optional($this->jobPost->department)->name,
+                /* Whether this position takes a practical assessment — the UI
+                   uses it so the practical stage is only offered when the API
+                   will accept the record. */
+                'requires_practical' => \Modules\ApplicantManagement\Services\PracticalRequirement::required(
+                    $this->jobPost,
+                    $this->jobPost->title,
+                ),
             ]),
             'screening_entities'  => ScreeningEntityResource::collection($this->whenLoaded('screeningEntities')),
             'screening_scores'    => ScreeningScoreResource::collection($this->whenLoaded('screeningScores')),
@@ -43,6 +53,15 @@ class ApplicantResource extends JsonResource
                 'processing_status'  => $this->latestScreening->processing_status,
                 'screening_result'   => $this->latestScreening->screening_result,
                 'match_score'        => $this->latestScreening->match_score !== null ? (float) $this->latestScreening->match_score : null,
+                /* Resume-only score before the supporting-document evidence was
+                   blended into match_score (the ranking percentage). */
+                'resume_match_score' => $this->latestScreening->resume_match_score !== null
+                                            ? (float) $this->latestScreening->resume_match_score
+                                            : null,
+                /* Supporting-document evidence behind the ranking score:
+                   documents score, verified / discrepancy / unable counts,
+                   applied penalty, flags and the per-document breakdown. */
+                'document_verification' => $this->latestScreening->document_verification_json,
                 'score_breakdown'    => $this->latestScreening->score_breakdown_json,
                 'profile'            => $this->latestScreening->profile_json,
                 'missing_information'=> $this->latestScreening->missing_information_json ?? [],
@@ -55,6 +74,7 @@ class ApplicantResource extends JsonResource
             ]),
             'interviews'          => InterviewResource::collection($this->whenLoaded('interviews')),
             'assessment'          => new AssessmentResource($this->whenLoaded('assessment')),
+            'documents'           => ApplicantDocumentResource::collection($this->whenLoaded('documents')),
         ];
     }
 }

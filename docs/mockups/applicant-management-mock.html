@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Applicant Management — UI Mockup (Oxford Suites HRMS)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --primary: #6b1f2a;
+    --primary-hover: #571922;
+    --primary-dark: #3d1218;
+    --sidebar: #43141c;
+    --sidebar-hover: #571922;
+    --cream: #faf6f0;
+    --beige: #f3ece2;
+    --gold: #b8892e;
+    --gold-soft: #f7ecd7;
+    --success: #1f7a4d;
+    --success-soft: #e3f2ea;
+    --warning: #b45309;
+    --warning-soft: #fdf0dd;
+    --info-soft: #e8eef8;
+    --info: #35548f;
+    --danger: #b3261e;
+    --danger-soft: #fbe5e3;
+    --border: #e8e0d5;
+    --text: #33272a;
+    --muted: #8a7c7f;
+    --card: #ffffff;
+    --radius: 12px;
+    --shadow-sm: 0 1px 2px rgba(51,39,42,.05), 0 1px 3px rgba(51,39,42,.04);
+    --shadow-md: 0 4px 12px rgba(51,39,42,.08), 0 2px 4px rgba(51,39,42,.05);
+    --ring: 0 0 0 3px rgba(107,31,42,.13);
+    --row-line: #f2ece3;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    background:
+      radial-gradient(1100px 380px at 88% -160px, rgba(184,137,46,.06), transparent 60%),
+      var(--cream);
+    color: var(--text);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, .display { font-family: "Cormorant Garamond", Georgia, "Times New Roman", serif; letter-spacing: .01em; }
+  ::selection { background: rgba(107,31,42,.15); }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-thumb { background: #d8cfc2; border-radius: 999px; border: 2px solid var(--cream); }
+  *::-webkit-scrollbar-thumb:hover { background: #c7bba9; }
+
+  /* ===== Layout ===== */
+  .app { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 240px; background: linear-gradient(180deg, #4a161f 0%, var(--sidebar) 45%, #370f15 100%); color: #e9dcd6;
+    display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; flex-shrink: 0;
+    box-shadow: 1px 0 0 rgba(255,255,255,.04), 4px 0 16px rgba(61,18,24,.16);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 18px 16px; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .brand-logo {
+    width: 38px; height: 38px; border-radius: 50%; background: var(--gold); color: #3d1218;
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-family: Georgia, serif;
+    flex-shrink: 0;
+  }
+  .brand-name { font-family: Georgia, serif; font-size: 15px; letter-spacing: .3px; line-height: 1.2; }
+  .brand-name small { display: block; font-size: 11px; color: #c9a9a0; font-weight: 400; }
+  .nav { padding: 12px 10px; flex: 1; overflow-y: auto; }
+  .nav a {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px;
+    color: #dcc9c3; text-decoration: none; font-size: 13.5px; margin-bottom: 2px; cursor: pointer;
+    transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+  }
+  .nav a:hover { background: rgba(255,255,255,.06); color: #f3e6e0; }
+  .nav a.active { background: var(--primary); color: #fff; box-shadow: inset 2px 0 0 var(--gold), 0 1px 3px rgba(0,0,0,.22); }
+  .nav .nav-group {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px; color: #a9888f;
+    padding: 14px 12px 6px;
+  }
+  .nav .icon { width: 17px; text-align: center; }
+  .sidebar-foot { padding: 14px 16px; border-top: 1px solid rgba(255,255,255,.08); font-size: 12px; color: #a9888f; }
+
+  .main { flex: 1; min-width: 0; }
+  .topbar {
+    padding: 14px 24px; background: rgba(250,246,240,.85); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 20;
+  }
+  .crumbs { font-size: 12.5px; color: var(--muted); }
+  .crumbs b { color: var(--text); font-weight: 600; }
+  .content { padding: 20px 24px 48px; }
+  /* ===== Generic components ===== */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+  .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+  .page-title { font-size: 28px; font-weight: 700; line-height: 1.08; letter-spacing: .01em; }
+  .page-sub { color: var(--muted); font-size: 13px; margin-top: 5px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); background: #fff;
+    color: var(--text); padding: 8px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: 500;
+    transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, transform .06s ease;
+  }
+  .btn:hover { background: var(--beige); border-color: #ddd2c2; }
+  .btn:active { transform: translateY(1px); }
+  .btn:focus-visible { outline: none; box-shadow: var(--ring); }
+  .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: 0 1px 2px rgba(61,18,24,.25); }
+  .btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); box-shadow: 0 2px 6px rgba(61,18,24,.3); }
+  .btn-sm { padding: 6px 11px; font-size: 12.5px; border-radius: 7px; }
+  .btn-block { width: 100%; justify-content: center; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+  .stat { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; display: flex; gap: 13px; align-items: center; transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease; }
+  .stat:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: #ddd2c2; }
+  .stat-ico { width: 42px; height: 42px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,.04); }
+  .stat-label { font-size: 12px; color: var(--muted); letter-spacing: .01em; }
+  .stat-value { font-size: 23px; font-weight: 700; margin-top: 2px; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+  .stat-hint { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+
+  .filter-row { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .input, .select {
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 13px; background: #fff; color: var(--text);
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .input { flex: 1; min-width: 220px; }
+  .input::placeholder { color: #b3a79f; }
+  .input:focus, .select:focus { outline: none; border-color: #b06a72; box-shadow: var(--ring); }
+  .select {
+    cursor: pointer; appearance: none; padding-right: 30px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238a7c7f' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 11px center;
+  }
+
+  table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .tbl th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .7px; color: var(--muted);
+    padding: 11px 16px; border-bottom: 1px solid var(--border); font-weight: 600; background: #fdfbf8; white-space: nowrap;
+  }
+  .tbl td { padding: 13px 16px; border-bottom: 1px solid var(--row-line); vertical-align: middle; white-space: nowrap; }
+  .tbl tr:last-child td { border-bottom: none; }
+  .tbl tbody tr { transition: background .12s ease; }
+  .tbl tbody tr:hover td { background: #fdfaf6; }
+
+  .person { display: flex; align-items: center; gap: 10px; }
+  .avatar {
+    width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(145deg, #7d2833, var(--primary) 62%); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.14), 0 1px 2px rgba(61,18,24,.2);
+  }
+  .avatar.sm { width: 28px; height: 28px; font-size: 10px; }
+  .avatar.gold { background: var(--gold); }
+  .avatar.dark { background: #4a3f42; }
+  .person b { font-weight: 600; display: block; }
+  .person span { font-size: 11.5px; color: var(--muted); }
+
+  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3.5px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600; letter-spacing: .01em; box-shadow: inset 0 0 0 1px rgba(0,0,0,.045); }
+  .badge.success { background: var(--success-soft); color: var(--success); }
+  .badge.warning { background: var(--warning-soft); color: var(--warning); }
+  .badge.info    { background: var(--info-soft); color: var(--info); }
+  .badge.gold    { background: var(--gold-soft); color: #8a6420; }
+  .badge.danger  { background: var(--danger-soft); color: var(--danger); }
+  .badge.stage   { background: var(--beige); color: var(--primary); }
+  .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .tbl-foot { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; font-size: 12.5px; color: var(--muted); }
+  .pager { display: flex; gap: 5px; }
+  .pager button {
+    min-width: 28px; height: 28px; border: 1px solid var(--border); background: #fff; border-radius: 7px;
+    cursor: pointer; font-size: 12.5px; color: var(--text); transition: background .15s ease, border-color .15s ease;
+  }
+  .pager button:hover { background: var(--beige); border-color: #ddd2c2; }
+  .pager button.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .kebab { color: var(--muted); cursor: pointer; letter-spacing: 2px; font-weight: 700; }
+  /* ===== Stepper (screen 2) ===== */
+  .stepper { display: flex; align-items: center; gap: 0; margin: 18px 0; flex-wrap: wrap; }
+  .step { display: flex; align-items: center; gap: 8px; }
+  .step-circle {
+    width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; border: 2px solid var(--border); color: var(--muted); background: #fff; flex-shrink: 0;
+    transition: box-shadow .18s ease, border-color .18s ease;
+  }
+  .step.done .step-circle { background: var(--success); border-color: var(--success); color: #fff; box-shadow: 0 0 0 3px rgba(31,122,77,.13); }
+  .step.current .step-circle { border-color: var(--primary); color: var(--primary); background: var(--gold-soft); box-shadow: 0 0 0 3px rgba(107,31,42,.11); }
+  .step-meta b { display: block; font-size: 12.5px; font-weight: 600; }
+  .step-meta span { font-size: 11px; color: var(--muted); }
+  .step-line { width: 34px; height: 2px; background: var(--border); margin: 0 10px; border-radius: 2px; }
+  .step-line.done { background: var(--success); }
+
+  .two-col { display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; }
+  .panel-title { font-weight: 600; font-size: 14px; padding: 14px 16px 4px; }
+  .timeline { list-style: none; padding: 8px 16px 14px; }
+  .timeline li { display: flex; gap: 12px; padding: 9px 0; }
+  .tl-ico {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+  }
+  .tl-ico.done { background: var(--success-soft); color: var(--success); }
+  .tl-ico.cur  { background: var(--gold-soft); color: var(--primary); border: 2px solid var(--primary); }
+  .tl-ico.wait { background: var(--beige); color: var(--muted); }
+  .tl-body b { display: block; font-size: 13px; font-weight: 600; }
+  .tl-body .tl-status { font-size: 11.5px; color: var(--success); font-weight: 600; }
+  .tl-body .tl-status.wait { color: var(--muted); font-weight: 500; }
+  .tl-body small { color: var(--muted); font-size: 11.5px; display: block; margin-top: 2px; }
+  .prog-wrap { padding: 6px 16px 16px; }
+  .prog-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .prog-ico { width: 40px; height: 40px; border-radius: 10px; background: var(--gold-soft); display: flex; align-items: center; justify-content: center; font-size: 17px; }
+  .prog-label { font-size: 12px; color: var(--muted); }
+  .prog-name { font-weight: 600; font-size: 14.5px; }
+  .progress { height: 9px; background: var(--beige); border-radius: 999px; overflow: hidden; margin: 10px 0 14px; box-shadow: inset 0 1px 2px rgba(0,0,0,.06); }
+  .progress > div { height: 100%; width: 55%; background: linear-gradient(90deg, var(--primary), #8d2f3d); border-radius: 999px; }
+  .prev-step { display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-top: 1px solid #f1ebe2; }
+  .prev-step .check { color: var(--success); font-weight: 700; }
+  .prev-step .grow { flex: 1; }
+  .prev-step small { display: block; color: var(--muted); font-size: 11.5px; }
+  /* ===== Calendar (screen 3) ===== */
+  .cal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 8px; }
+  .cal-head b { font-size: 14.5px; }
+  .cal-nav { display: flex; gap: 6px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 6px 16px 16px; }
+  .cal-dow { text-align: center; font-size: 11px; color: var(--muted); font-weight: 600; padding: 4px 0; }
+  .cal-day {
+    aspect-ratio: 1; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-size: 12.5px; color: var(--text); cursor: pointer; position: relative;
+  }
+  .cal-day:hover { background: var(--beige); box-shadow: inset 0 0 0 1px #e0d5c5; }
+  .cal-day.muted { color: #c9beb2; }
+  .cal-day.today { background: var(--primary); color: #fff; font-weight: 700; box-shadow: 0 2px 6px rgba(61,18,24,.32); }
+  .cal-day.has-event::after {
+    content: ""; position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
+    width: 5px; height: 5px; border-radius: 50%; background: var(--gold);
+  }
+  .cal-day.today.has-event::after { background: #fff; }
+  .cal-legend { display: flex; gap: 16px; padding: 0 16px 14px; font-size: 11.5px; color: var(--muted); }
+  .cal-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+
+  .day-item { display: flex; gap: 10px; padding: 11px 16px; border-top: 1px solid #f1ebe2; }
+  .day-time { font-size: 12px; font-weight: 700; color: var(--primary); width: 44px; flex-shrink: 0; }
+  .day-item .grow { flex: 1; min-width: 0; }
+  .day-item b { font-size: 13px; font-weight: 600; display: block; }
+  .day-item small { color: var(--muted); font-size: 11.5px; }
+  /* ===== Tabs ===== */
+  .tabs { display: flex; gap: 6px; background: var(--beige); padding: 4px; border-radius: 10px; width: max-content; margin-bottom: 14px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.035); }
+  .tab { padding: 7px 14px; border-radius: 8px; font-size: 13px; color: var(--muted); cursor: pointer; font-weight: 500; transition: background .15s ease, color .15s ease, box-shadow .15s ease; }
+  .tab:hover { color: var(--text); background: rgba(255,255,255,.55); }
+  .tab.on { background: #fff; color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(51,39,42,.1); }
+
+  /* ===== Top-level module tabs ===== */
+  .toptabs {
+    display: flex; gap: 4px; background: var(--beige); padding: 4px; border-radius: 12px;
+    margin-bottom: 18px; width: max-content; box-shadow: inset 0 0 0 1px rgba(0,0,0,.04), var(--shadow-sm);
+  }
+  .toptabs .tab { padding: 8px 18px; font-size: 13.5px; border-radius: 9px; }
+  .toptabs .tab.on { box-shadow: 0 1px 4px rgba(51,39,42,.12); }
+
+
+  .info-list { padding: 6px 16px 16px; }
+  .info-item { display: flex; gap: 11px; padding: 9px 0; align-items: flex-start; }
+  .info-item .ico { font-size: 15px; }
+  .info-item b { font-size: 13px; display: block; }
+  .info-item small { color: var(--muted); font-size: 11.5px; }
+  /* ===== Final evaluation ===== */
+  .radio-opt { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px; margin-bottom: 8px; font-size: 13px; cursor: pointer; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+  .radio-opt:hover { border-color: #d8cbb8; background: #fffdf9; }
+  .radio-opt.sel { border-color: var(--primary); background: var(--gold-soft); font-weight: 600; box-shadow: 0 0 0 3px rgba(107,31,42,.08); }
+  .radio-dot { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0; }
+  .radio-opt.sel .radio-dot { border-color: var(--primary); background: radial-gradient(circle, var(--primary) 40%, transparent 45%); }
+  .textarea { width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; font: inherit; font-size: 13px; color: var(--text); min-height: 74px; background: #fff; transition: border-color .15s ease, box-shadow .15s ease; }
+  .textarea:focus { outline: none; border-color: #b06a72; box-shadow: var(--ring); }
+  .detail-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .detail-cell { border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; }
+  .detail-cell label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 600; }
+  .detail-cell div { font-size: 13.5px; margin-top: 3px; }
+
+  .list-row { display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-top: 1px solid #f1ebe2; }
+  .list-row .grow { flex: 1; min-width: 0; }
+  .list-row b { font-size: 13px; display: block; }
+  .list-row small { color: var(--muted); font-size: 11.5px; }
+
+  .screen { display: none; }
+  .screen.active { display: block; }
+  .mock-banner {
+    background: var(--gold-soft); border: 1px dashed var(--gold); color: #7a5a1c;
+    padding: 9px 14px; border-radius: 10px; font-size: 12.5px; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px; letter-spacing: .01em;
+  }
+  @media (max-width: 1100px) {
+    .stat-grid, .detail-grid { grid-template-columns: repeat(2, 1fr); }
+    .two-col { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">O</div>
+      <div class="brand-name">Oxford Suites<br><small>Makati — HRMS</small></div>
+    </div>
+    <nav class="nav" id="nav">
+      <a data-nav="dashboard"><span class="icon">⌂</span> Dashboard</a>
+      <div class="nav-group">Recruitment &amp; Onboarding</div>
+      <a class="active" data-nav="s1"><span class="icon">☰</span> Applicants</a>
+      <div class="nav-group">Organization</div>
+      <a><span class="icon">👥</span> Employees</a>
+      <a><span class="icon">📄</span> Reports</a>
+      <a><span class="icon">⚙️</span> Settings</a>
+    </nav>
+    <div class="sidebar-foot">UI Mockup — v1 (pre-implementation)</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="crumbs" id="crumbs">Recruitment &amp; Onboarding / <b>Applicant Management</b></div>
+      <button class="btn btn-primary btn-sm">⬇ Generate Report</button>
+    </div>
+    <div class="content">
+      <div class="mock-banner">⚠ Interactive mockup with static sample data — flows are illustrative only, no backend calls.</div>
+      <!-- ============ TOP-LEVEL MODULE TABS ============ -->
+      <div class="toptabs" id="toptabs">
+        <div class="tab on" data-nav="s1">☰ Applicants</div>
+        <div class="tab" data-nav="s3">🗓 Interview Scheduling</div>
+        <div class="tab" data-nav="s8">🕘 History &amp; Audit</div>
+      </div>
+
+      <!-- ============ SCREEN 1: APPLICANTS MAIN LIST ============ -->
+      <section class="screen active" id="s1">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">Applicant Management</h1>
+            <p class="page-sub">Manage and track all job applicants through the hiring process.</p>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat">
+            <div class="stat-ico" style="background:var(--beige);color:var(--primary)">👤</div>
+            <div><div class="stat-label">Total Applicants</div><div class="stat-value">128</div></div>
+          </div>
+          <div class="stat">
+            <div class="stat-ico" style="background:var(--success-soft);color:var(--success)">✓</div>
+            <div><div class="stat-label">Passed Screening</div><div class="stat-value">96 <span style="font-size:12px;color:var(--muted);font-weight:500">(75%)</span></div></div>
+          </div>
+          <div class="stat">
+            <div class="stat-ico" style="background:var(--info-soft);color:var(--info)">🗓</div>
+            <div><div class="stat-label">Today's Interviews</div><div class="stat-value">12</div></div>
+          </div>
+          <div class="stat">
+            <div class="stat-ico" style="background:var(--gold-soft);color:var(--gold)">⏱</div>
+            <div><div class="stat-label">Ready for Interview</div><div class="stat-value">18</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="filter-row" style="padding:14px 14px 0">
+            <input class="input" placeholder="🔍 Search by name, ID, or email…" />
+            <select class="select"><option>All Positions</option><option>Line Cook</option><option>Front Desk Receptionist</option><option>Bartender</option><option>Restaurant Server</option></select>
+            <select class="select"><option>All Statuses</option><option>Screened</option><option>Passed</option><option>Failed</option></select>
+            <select class="select"><option>All Stages</option><option>Screening</option><option>Interview</option><option>Assessment</option><option>Practical</option><option>Final Evaluation</option></select>
+          </div>
+          <table class="tbl">
+            <thead>
+              <tr><th>Applicant</th><th>Contact</th><th>Position</th><th>Applied Date</th><th>Score</th><th>Status</th><th>Stage</th><th>Action</th><th></th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div class="person"><div class="avatar">JD</div><div><b>Juan Dela Cruz</b><span>APP-00124</span></div></div></td>
+                <td>juan@email.com<br><small style="color:var(--muted)">+63 912 345 6789</small></td>
+                <td>Line Cook</td><td>Sep 5, 2025</td><td>89%</td>
+                <td><span class="badge success">● Passed</span></td>
+                <td><span class="badge stage">Interview</span></td>
+                <td><button class="btn btn-primary btn-sm" onclick="show('s2')">Process</button></td>
+                <td class="kebab">⋮</td>
+              </tr>
+              <tr>
+                <td><div class="person"><div class="avatar gold">MS</div><div><b>Maria Santos</b><span>APP-00123</span></div></div></td>
+                <td>maria@email.com<br><small style="color:var(--muted)">+63 917 111 2222</small></td>
+                <td>Front Desk Receptionist</td><td>Sep 4, 2025</td><td>92%</td>
+                <td><span class="badge success">● Passed</span></td>
+                <td><span class="badge stage">Assessment</span></td>
+                <td><button class="btn btn-primary btn-sm" onclick="show('s2')">Process</button></td>
+                <td class="kebab">⋮</td>
+              </tr>
+              <tr>
+                <td><div class="person"><div class="avatar dark">PR</div><div><b>Pedro Reyes</b><span>APP-00118</span></div></div></td>
+                <td>pedro@email.com<br><small style="color:var(--muted)">+63 918 333 4444</small></td>
+                <td>Bartender</td><td>Sep 3, 2025</td><td>87%</td>
+                <td><span class="badge success">● Passed</span></td>
+                <td><span class="badge stage">Practical</span></td>
+                <td><button class="btn btn-primary btn-sm" onclick="show('s6')">Process</button></td>
+                <td class="kebab">⋮</td>
+              </tr>
+              <tr>
+                <td><div class="person"><div class="avatar">AC</div><div><b>Ana Cruz</b><span>APP-00115</span></div></div></td>
+                <td>ana@email.com<br><small style="color:var(--muted)">+63 916 555 6666</small></td>
+                <td>Restaurant Server</td><td>Sep 2, 2025</td><td>94%</td>
+                <td><span class="badge success">● Passed</span></td>
+                <td><span class="badge stage">Final Evaluation</span></td>
+                <td><button class="btn btn-primary btn-sm" onclick="show('s7')">Process</button></td>
+                <td class="kebab">⋮</td>
+              </tr>
+              <tr>
+                <td><div class="person"><div class="avatar dark">LM</div><div><b>Luis Martinez</b><span>APP-00112</span></div></div></td>
+                <td>luis@email.com<br><small style="color:var(--muted)">+63 917 777 8888</small></td>
+                <td>Front Desk Receptionist</td><td>Sep 1, 2025</td><td>76%</td>
+                <td><span class="badge info">● Screened</span></td>
+                <td><span class="badge stage">Screening</span></td>
+                <td><button class="btn btn-primary btn-sm" onclick="show('s2')">Process</button></td>
+                <td class="kebab">⋮</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tbl-foot">
+            <span>Showing 1–5 of 128 applicants</span>
+            <div class="pager"><button>‹</button><button class="on">1</button><button>2</button><button>3</button><button>4</button><button>5</button><button>…</button><button>26</button><button>›</button></div>
+          </div>
+        </div>
+      </section>
+      <!-- ============ SCREEN 2: APPLICANT PROCESSING OVERVIEW ============ -->
+      <section class="screen" id="s2">
+        <a class="btn btn-sm" style="margin-bottom:14px" onclick="show('s1')">← Back to Applicants</a>
+        <div class="page-head" style="margin-bottom:8px">
+          <div class="person" style="gap:14px">
+            <div class="avatar" style="width:52px;height:52px;font-size:16px">JD</div>
+            <div>
+              <h1 class="page-title" style="font-size:24px">Juan Dela Cruz</h1>
+              <p class="page-sub">APP-00124 · Line Cook</p>
+            </div>
+          </div>
+          <div style="display:flex;gap:26px;align-items:center">
+            <div style="text-align:right"><div class="stat-label">Applied Date</div><b>Sep 5, 2025</b></div>
+            <div style="text-align:right"><div class="stat-label">Overall Score</div><b style="font-size:18px">89%</b></div>
+            <span class="badge success">✓ Passed Screening</span>
+          </div>
+        </div>
+
+        <div class="stepper">
+          <div class="step done"><div class="step-circle">✓</div><div class="step-meta"><b>Screening</b><span>89%</span></div></div>
+          <div class="step-line done"></div>
+          <div class="step done"><div class="step-circle">✓</div><div class="step-meta"><b>Interview</b><span>91%</span></div></div>
+          <div class="step-line done"></div>
+          <div class="step current"><div class="step-circle">✎</div><div class="step-meta"><b>Assessment Test</b><span>Pending</span></div></div>
+          <div class="step-line"></div>
+          <div class="step"><div class="step-circle">4</div><div class="step-meta"><b>Practical Assessment</b><span>Waiting</span></div></div>
+          <div class="step-line"></div>
+          <div class="step"><div class="step-circle">5</div><div class="step-meta"><b>Final Evaluation</b><span>Waiting</span></div></div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <div class="panel-title">Application Process</div>
+            <ul class="timeline">
+              <li>
+                <div class="tl-ico done">✓</div>
+                <div class="tl-body"><b>Screening</b><div class="tl-status">Passed · 89%</div><small>Sep 5, 2025</small></div>
+              </li>
+              <li>
+                <div class="tl-ico done">✓</div>
+                <div class="tl-body"><b>Interview</b><div class="tl-status">Passed · 91%</div><small>Sep 7, 2025</small></div>
+              </li>
+              <li>
+                <div class="tl-ico cur">✎</div>
+                <div class="tl-body"><b>Assessment Test</b><div class="tl-status wait">Pending</div><small>After interview is passed</small></div>
+              </li>
+              <li>
+                <div class="tl-ico wait">4</div>
+                <div class="tl-body"><b>Practical Assessment</b><div class="tl-status wait">Waiting</div><small>(Required for Line Cook)</small></div>
+              </li>
+              <li>
+                <div class="tl-ico wait">5</div>
+                <div class="tl-body"><b>Final Evaluation</b><div class="tl-status wait">Waiting for previous stages</div></div>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <div class="card" style="margin-bottom:16px">
+              <div class="panel-title">Current Step</div>
+              <div class="prog-wrap">
+                <div class="prog-head">
+                  <div class="prog-ico">📝</div>
+                  <div>
+                    <div class="prog-label">Assessment Test</div>
+                    <div class="prog-name">Job-specific test after passing the interview.</div>
+                  </div>
+                </div>
+                <div class="prog-label">Passing Score: 75%</div>
+                <div class="progress"><div></div></div>
+                <button class="btn btn-primary btn-block">▶ Start Assessment</button>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="panel-title">Previous Steps</div>
+              <div class="prev-step">
+                <span class="check">✓</span>
+                <div class="grow"><b style="font-size:13px">Screening</b><small>Sep 5, 2025</small></div>
+                <span>89%</span>
+                <span class="badge success">Passed</span>
+              </div>
+              <div class="prev-step">
+                <span class="check">✓</span>
+                <div class="grow"><b style="font-size:13px">Interview</b><small>Sep 7, 2025</small></div>
+                <span>91%</span>
+                <span class="badge success">Passed</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <!-- ============ SCREEN 3: INTERVIEW SCHEDULING ============ -->
+      <section class="screen" id="s3">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">Interview Scheduling</h1>
+          </div>
+        </div>
+
+        <div class="two-col" style="grid-template-columns: 1fr 340px; margin-bottom:16px">
+          <div class="card">
+            <div class="cal-head">
+              <b>September 2025</b>
+              <div class="cal-nav">
+                <button class="btn btn-sm">Today</button>
+                <button class="btn btn-sm">‹</button>
+                <button class="btn btn-sm">›</button>
+              </div>
+            </div>
+            <div class="cal-grid">
+              <div class="cal-dow">Sun</div><div class="cal-dow">Mon</div><div class="cal-dow">Tue</div><div class="cal-dow">Wed</div><div class="cal-dow">Thu</div><div class="cal-dow">Fri</div><div class="cal-dow">Sat</div>
+              <div class="cal-day muted">31</div><div>1</div><div class="cal-day has-event">2</div><div>3</div><div class="cal-day has-event">4</div><div class="cal-day has-event">5</div><div class="cal-day has-event">6</div>
+              <div class="cal-day has-event">7</div><div>8</div><div class="cal-day has-event">9</div><div class="cal-day today has-event">10</div><div>11</div><div>12</div><div class="cal-day has-event">13</div>
+              <div>14</div><div class="cal-day has-event">15</div><div>16</div><div>17</div><div class="cal-day has-event">18</div><div>19</div><div class="cal-day has-event">20</div>
+              <div>21</div><div class="cal-day has-event">22</div><div>23</div><div>24</div><div>25</div><div class="cal-day has-event">26</div><div>27</div>
+              <div>28</div><div>29</div><div class="cal-day has-event">30</div><div class="cal-day muted">1</div><div class="cal-day muted">2</div><div class="cal-day muted">3</div><div class="cal-day muted">4</div>
+            </div>
+            <div class="cal-legend">
+              <span><i style="background:var(--beige);border:1px solid var(--border)"></i>Booked</span>
+              <span><i style="background:var(--gold)"></i>Suggested</span>
+              <span><i style="background:#d9d2c7"></i>Unavailable</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="panel-title">Interviews on Sep 10, 2025</div>
+            <div class="day-item">
+              <div class="day-time">10:00 AM</div>
+              <div class="grow"><b>Juan Dela Cruz</b><small>Line Cook · On-site · Room 204</small></div>
+              <span class="badge success">Confirmed</span>
+            </div>
+            <div class="day-item">
+              <div class="day-time">10:30 AM</div>
+              <div class="grow"><b>Maria Santos</b><small>Front Desk · Virtual</small></div>
+              <span class="badge success">Confirmed</span>
+            </div>
+            <div class="day-item">
+              <div class="day-time">1:00 PM</div>
+              <div class="grow"><b>Pedro Reyes</b><small>Bartender · On-site · Room 201</small></div>
+              <span class="badge warning">Pending</span>
+            </div>
+            <div style="padding:14px 16px">
+              <button class="btn btn-primary btn-block">＋ Book an Interview</button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="filter-row" style="padding:14px 14px 0">
+            <input class="input" placeholder="🔍 Search applicant…" />
+            <select class="select"><option>All Departments</option><option>F&amp;B Kitchen</option><option>Front Office</option></select>
+            <select class="select"><option>All Positions</option><option>Line Cook</option><option>Front Desk</option><option>Bartender</option></select>
+            <select class="select"><option>Date ↓</option><option>Date ↑</option></select>
+          </div>
+          <table class="tbl">
+            <thead>
+              <tr><th>Applicant</th><th>Position</th><th>Dept.</th><th>Date &amp; Time</th><th>Mode</th><th>Interviewer</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div class="person"><div class="avatar sm">JD</div><b>Juan Dela Cruz</b></div></td>
+                <td>Line Cook</td><td>F&amp;B Kitchen</td><td>Sep 8, 2025 · 10:00 AM</td><td>On-site</td><td>Arvin Cruz</td>
+                <td><span class="badge success">Confirmed</span></td><td class="kebab">⋮</td>
+              </tr>
+              <tr>
+                <td><div class="person"><div class="avatar sm gold">MS</div><b>Maria Santos</b></div></td>
+                <td>Front Desk</td><td>Front Office</td><td>Sep 8, 2025 · 10:30 AM</td><td>Virtual</td><td>Jane Dizon</td>
+                <td><span class="badge success">Confirmed</span></td><td class="kebab">⋮</td>
+              </tr>
+              <tr>
+                <td><div class="person"><div class="avatar sm dark">PR</div><b>Pedro Reyes</b></div></td>
+                <td>Bartender</td><td>F&amp;B Service</td><td>Sep 9, 2025 · 1:00 PM</td><td>On-site</td><td>Mike Cruz</td>
+                <td><span class="badge warning">Pending</span></td><td class="kebab">⋮</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tbl-foot">
+            <span>Showing 1–3 of 12</span>
+            <div class="pager"><button>‹</button><button class="on">1</button><button>2</button><button>3</button><button>›</button></div>
+          </div>
+        </div>
+      </section>
+      <!-- ============ SCREEN 4: INTERVIEW ============ -->
+      <section class="screen" id="s4">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">Interview</h1>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab on">⏱ Ready for Interview (5)</div>
+          <div class="tab">Already Interviewed (12)</div>
+        </div>
+
+        <div class="card">
+          <div class="filter-row" style="padding:14px 14px 0">
+            <input class="input" placeholder="🔍 Search by name or ID…" />
+            <select class="select"><option>All Departments</option><option>F&amp;B Kitchen</option><option>Front Office</option></select>
+            <select class="select"><option>All Outcomes</option><option>Pending</option><option>Passed</option><option>Failed</option></select>
+          </div>
+          <table class="tbl">
+            <thead>
+              <tr><th>Candidate</th><th>Position</th><th>Dept.</th><th>Score</th><th>Status</th><th>Date &amp; Time</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div class="person"><div class="avatar sm">JD</div><div><b>Juan Dela Cruz</b><span>APP-00124</span></div></div></td>
+                <td>Line Cook</td><td>F&amp;B</td><td>89%</td>
+                <td><span class="badge warning">● Ready</span></td>
+                <td>Sep 10, 10:00 AM</td>
+                <td><button class="btn btn-primary btn-sm" onclick="show('s2')">Evaluate</button></td>
+              </tr>
+              <tr>
+                <td><div class="person"><div class="avatar sm gold">MS</div><div><b>Maria Santos</b><span>APP-00123</span></div></div></td>
+                <td>Front Desk</td><td>Front Office</td><td>86%</td>
+                <td><span class="badge warning">● Ready</span></td>
+                <td>Sep 10, 10:30 AM</td>
+                <td><button class="btn btn-primary btn-sm" onclick="show('s2')">Evaluate</button></td>
+              </tr>
+              <tr>
+                <td><div class="person"><div class="avatar sm dark">PR</div><div><b>Pedro Reyes</b><span>APP-00118</span></div></div></td>
+                <td>Bartender</td><td>F&amp;B</td><td>85%</td>
+                <td><span class="badge warning">● Ready</span></td>
+                <td>Sep 10, 1:00 PM</td>
+                <td><button class="btn btn-primary btn-sm" onclick="show('s2')">Evaluate</button></td>
+              </tr>
+              <tr>
+                <td><div class="person"><div class="avatar sm">LM</div><div><b>Luis Martinez</b><span>APP-00112</span></div></div></td>
+                <td>Server</td><td>F&amp;B</td><td>82%</td>
+                <td><span class="badge warning">● Ready</span></td>
+                <td>Sep 11, 9:00 AM</td>
+                <td><button class="btn btn-primary btn-sm" onclick="show('s2')">Evaluate</button></td>
+              </tr>
+              <tr>
+                <td><div class="person"><div class="avatar sm dark">AC</div><div><b>Ana Cruz</b><span>APP-00115</span></div></div></td>
+                <td>Server</td><td>F&amp;B</td><td>78%</td>
+                <td><span class="badge warning">● Ready</span></td>
+                <td>Sep 11, 10:00 AM</td>
+                <td><button class="btn btn-primary btn-sm" onclick="show('s2')">Evaluate</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tbl-foot">
+            <span>Showing 1–5 of 5</span>
+            <div class="pager"><button>‹</button><button class="on">1</button><button>›</button></div>
+          </div>
+        </div>
+      </section>
+      <!-- ============ SCREEN 5: ASSESSMENT TEST ============ -->
+      <section class="screen" id="s5">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">Assessment Test</h1>
+          </div>
+        </div>
+
+        <div class="two-col" style="grid-template-columns: 1fr 300px; margin-bottom:16px">
+          <div>
+            <div class="tabs">
+              <div class="tab on">⏱ Waiting List (5)</div>
+              <div class="tab">Test Results (10)</div>
+            </div>
+            <div class="card">
+              <div class="filter-row" style="padding:14px 14px 0">
+                <input class="input" placeholder="🔍 Search by name or ID…" />
+                <select class="select"><option>All Positions</option><option>Line Cook</option><option>Server</option><option>Bartender</option></select>
+              </div>
+              <table class="tbl">
+                <thead>
+                  <tr><th>Candidate</th><th>Position</th><th>Applied Date</th><th>Status</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><div class="person"><div class="avatar sm gold">MS</div><div><b>Maria Santos</b><span>APP-00123</span></div></div></td>
+                    <td>Front Desk</td><td>Sep 4, 2025</td>
+                    <td><span class="badge warning">● Ready</span></td>
+                    <td><button class="btn btn-primary btn-sm">Start Test</button></td>
+                  </tr>
+                  <tr>
+                    <td><div class="person"><div class="avatar sm">LM</div><div><b>Luis Martinez</b><span>APP-00112</span></div></div></td>
+                    <td>Server</td><td>Sep 1, 2025</td>
+                    <td><span class="badge warning">● Ready</span></td>
+                    <td><button class="btn btn-primary btn-sm">Start Test</button></td>
+                  </tr>
+                  <tr>
+                    <td><div class="person"><div class="avatar sm dark">AC</div><div><b>Ana Cruz</b><span>APP-00115</span></div></div></td>
+                    <td>Server</td><td>Aug 28, 2025</td>
+                    <td><span class="badge warning">● Waiting</span></td>
+                    <td><button class="btn btn-sm">View</button></td>
+                  </tr>
+                  <tr>
+                    <td><div class="person"><div class="avatar sm">CL</div><div><b>Carlos Lopez</b><span>APP-00109</span></div></div></td>
+                    <td>Bartender</td><td>Aug 27, 2025</td>
+                    <td><span class="badge warning">● Waiting</span></td>
+                    <td><button class="btn btn-sm">View</button></td>
+                  </tr>
+                  <tr>
+                    <td><div class="person"><div class="avatar sm dark">RS</div><div><b>Rafael Santos</b><span>APP-00107</span></div></div></td>
+                    <td>Line Cook</td><td>Aug 25, 2025</td>
+                    <td><span class="badge warning">● Waiting</span></td>
+                    <td><button class="btn btn-sm">View</button></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="tbl-foot">
+                <span>Showing 1–5 of 5</span>
+                <div class="pager"><button>‹</button><button class="on">1</button><button>›</button></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="panel-title">Test Information ⓘ</div>
+            <div class="info-list">
+              <div class="info-item"><span class="ico">📝</span><div><b>Job-specific test</b><small>After passing interview</small></div></div>
+              <div class="info-item"><span class="ico">⏱</span><div><b>Auto-scored</b><small>10 items, auto-score</small></div></div>
+              <div class="info-item"><span class="ico">🎯</span><div><b>Passing Score</b><small>75%</small></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <!-- ============ SCREEN 6: PRACTICAL ASSESSMENT ============ -->
+      <section class="screen" id="s6">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">Practical Assessment</h1>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab on">⏱ Waiting List (3)</div>
+          <div class="tab">Completed (7)</div>
+        </div>
+
+        <div class="two-col" style="grid-template-columns: 1fr 300px; margin-bottom:16px">
+          <div>
+            <div class="filter-row">
+              <input class="input" placeholder="🔍 Search by name or ID…" />
+              <select class="select"><option>All Positions</option><option>Line Cook</option><option>Bartender</option></select>
+            </div>
+            <div class="card">
+              <table class="tbl">
+                <thead>
+                  <tr><th>Candidate</th><th>Position</th><th>Applied Date</th><th>Status</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><div class="person"><div class="avatar sm">JD</div><div><b>Juan Dela Cruz</b><span>APP-00124</span></div></div></td>
+                    <td>Line Cook</td><td>Sep 5, 2025</td>
+                    <td><span class="badge warning">● Ready</span></td>
+                    <td><button class="btn btn-primary btn-sm">Start Assessment</button></td>
+                  </tr>
+                  <tr>
+                    <td><div class="person"><div class="avatar sm dark">PR</div><div><b>Pedro Reyes</b><span>APP-00118</span></div></div></td>
+                    <td>Bartender</td><td>Sep 3, 2025</td>
+                    <td><span class="badge warning">● Ready</span></td>
+                    <td><button class="btn btn-primary btn-sm">Start Assessment</button></td>
+                  </tr>
+                  <tr>
+                    <td><div class="person"><div class="avatar sm">LM</div><div><b>Luis Martinez</b><span>APP-00112</span></div></div></td>
+                    <td>Server</td><td>Sep 1, 2025</td>
+                    <td><span class="badge warning">● Waiting</span></td>
+                    <td><button class="btn btn-sm">View</button></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="tbl-foot">
+                <span>Showing 1–3 of 3</span>
+                <div class="pager"><button>‹</button><button class="on">1</button><button>›</button></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="panel-title">Designated Positions</div>
+            <div class="info-list">
+              <div class="info-item"><span class="ico">🍳</span><div><b>Line Cook</b></div></div>
+              <div class="info-item"><span class="ico">🍹</span><div><b>Bartender</b></div></div>
+              <div class="info-item"><span class="ico">🛎</span><div><b>Front Desk Receptionist</b></div></div>
+              <div class="info-item"><span class="ico">🍽</span><div><b>Restaurant Server</b></div></div>
+            </div>
+            <div style="padding:0 16px 16px"><small style="color:var(--muted)">Practical assessment is required for these positions only.</small></div>
+          </div>
+        </div>
+      </section>
+      <!-- ============ SCREEN 7: FINAL EVALUATION ============ -->
+      <section class="screen" id="s7">
+        <div class="page-head" style="margin-bottom:8px">
+          <div class="person" style="gap:14px">
+            <div class="avatar" style="width:52px;height:52px;font-size:16px">JD</div>
+            <div>
+              <h1 class="page-title" style="font-size:24px">Juan Dela Cruz</h1>
+              <p class="page-sub">APP-00124 · Line Cook</p>
+            </div>
+          </div>
+          <div style="display:flex;gap:26px;align-items:center">
+            <div style="text-align:right"><div class="stat-label">Overall Score</div><b style="font-size:20px">89%</b></div>
+            <span class="badge success">● Recommended</span>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <div class="panel-title">Process Summary</div>
+            <table class="tbl">
+              <thead><tr><th>Stage</th><th>Score</th><th>Status</th><th>Date</th></tr></thead>
+              <tbody>
+                <tr><td>Screening</td><td>89%</td><td><span class="badge success">Passed</span></td><td>Sep 5, 2025</td></tr>
+                <tr><td>Interview</td><td>91%</td><td><span class="badge success">Passed</span></td><td>Sep 7, 2025</td></tr>
+                <tr><td>Assessment Test</td><td>88%</td><td><span class="badge success">Passed</span></td><td>Sep 8, 2025</td></tr>
+                <tr><td>Practical Assessment</td><td>92%</td><td><span class="badge success">Passed</span></td><td>Sep 9, 2025</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card">
+            <div class="panel-title">Recommendation</div>
+            <div class="info-list">
+              <div class="radio-opt sel"><span class="radio-dot"></span> Recommended for Hire</div>
+              <div class="radio-opt"><span class="radio-dot"></span> For Another Position</div>
+              <div class="radio-opt"><span class="radio-dot"></span> Not Recommended</div>
+              <label class="stat-label" style="display:block;margin:12px 0 6px">Remarks</label>
+              <div class="textarea">Add remarks…</div>
+              <button class="btn btn-primary btn-block" style="margin-top:12px">Complete Evaluation</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <!-- ============ SCREEN 8: HISTORY & AUDIT ============ -->
+      <section class="screen" id="s8">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">History &amp; Audit</h1>
+            <p class="page-sub">Complete trail of all activities and actions in the applicant management process.</p>
+          </div>
+          <button class="btn btn-sm">⬇ Export</button>
+        </div>
+
+        <div class="card">
+          <div class="filter-row" style="padding:14px 14px 0">
+            <input class="input" placeholder="🔍 Search by name, action…" />
+            <select class="select"><option>All Positions</option><option>Line Cook</option><option>Front Desk</option></select>
+            <select class="select"><option>All Departments</option><option>F&amp;B Kitchen</option><option>Front Office</option></select>
+            <select class="select"><option>All Users</option><option>HR Admin</option><option>System</option></select>
+          </div>
+          <table class="tbl">
+            <thead>
+              <tr><th>Date &amp; Time</th><th>Performed By</th><th>Position</th><th>Dept.</th><th>Action</th><th>Applicant</th><th>Module</th><th>Details</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Sep 7, 2025 · 10:24 AM</td><td>HR Admin</td><td>Line Cook</td><td>Kitchen</td>
+                <td><span class="badge gold">Interview Completed</span></td><td>Juan Dela Cruz</td><td>Interview</td>
+                <td style="white-space:normal">Interview result: Passed (91%)</td>
+              </tr>
+              <tr>
+                <td>Sep 6, 2025 · 02:15 PM</td><td>HR Admin</td><td>Line Cook</td><td>Kitchen</td>
+                <td><span class="badge info">Assessment Started</span></td><td>Juan Dela Cruz</td><td>Assessment</td>
+                <td style="white-space:normal">Assessment test started</td>
+              </tr>
+              <tr>
+                <td>Sep 5, 2025 · 09:00 AM</td><td>HR Admin</td><td>Line Cook</td><td>Kitchen</td>
+                <td><span class="badge success">Interview Scheduled</span></td><td>Juan Dela Cruz</td><td>Interview</td>
+                <td style="white-space:normal">Scheduled: Sep 7, 2025, 10:00 AM</td>
+              </tr>
+              <tr>
+                <td>Sep 3, 2025 · 11:10 AM</td><td>System</td><td>Line Cook</td><td>Kitchen</td>
+                <td><span class="badge info">Screening Passed</span></td><td>Juan Dela Cruz</td><td>Screening</td>
+                <td style="white-space:normal">Score: 89%</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tbl-foot">
+            <span>Showing 1–4 of 4</span>
+            <div class="pager"><button>‹</button><button class="on">1</button><button>›</button></div>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+  const crumbs = {
+    s1: 'Recruitment &amp; Onboarding / <b>Applicant Management</b>',
+    s2: 'Recruitment &amp; Onboarding / <b>Applicant Management</b> / Juan Dela Cruz',
+    s3: 'Recruitment &amp; Onboarding / <b>Interview Scheduling</b>',
+    s4: 'Recruitment &amp; Onboarding / <b>Interview</b>',
+    s5: 'Recruitment &amp; Onboarding / <b>Assessment Test</b>',
+    s6: 'Recruitment &amp; Onboarding / <b>Practical Assessment</b>',
+    s7: 'Recruitment &amp; Onboarding / <b>Final Evaluation</b>',
+    s8: 'Recruitment &amp; Onboarding / <b>History &amp; Audit</b>'
+  };
+  const navMap = { s1:'s1', s2:'s1', s4:'s1', s5:'s1', s6:'s1', s7:'s1', s3:'s3', s8:'s8' };
+
+  function show(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    const target = document.getElementById(id);
+    if (target) target.classList.add('active');
+    document.getElementById('crumbs').innerHTML = crumbs[id] || crumbs.s1;
+    const activeNav = navMap[id] || id;
+    document.querySelectorAll('#nav a').forEach(a => {
+      a.classList.toggle('active', a.dataset.nav === activeNav);
+    });
+    document.querySelectorAll('#toptabs .tab').forEach(t => {
+      t.classList.toggle('on', t.dataset.nav === activeNav);
+    });
+    window.scrollTo({ top: 0 });
+  }
+
+  document.querySelectorAll('#nav a[data-nav]').forEach(a => {
+    a.addEventListener('click', () => show(a.dataset.nav));
+  });
+
+  document.querySelectorAll('#toptabs .tab').forEach(t => {
+    t.addEventListener('click', () => show(t.dataset.nav));
+  });
+
+  // Simple tab toggle (visual only)
+  document.querySelectorAll('.tabs').forEach(tabs => {
+    tabs.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+        tab.classList.add('on');
+      });
+    });
+  });
+
+  // Recommendation radio (visual only)
+  document.querySelectorAll('.radio-opt').forEach(opt => {
+    opt.addEventListener('click', () => {
+      opt.parentElement.querySelectorAll('.radio-opt').forEach(o => o.classList.remove('sel'));
+      opt.classList.add('sel');
+    });
+  });
+</script>
+</body>
+</html>
