@@ -7,6 +7,19 @@ import { clearSession, getToken } from "./auth";
 const BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string) || "http://127.0.0.1:8000/api/v1";
 export const API_BASE_URL = BASE_URL;
 
+/** Never show raw SQL / DB internals to users — collapse them to a generic message. */
+function sanitizeErrorMessage(raw: unknown): string {
+  const text = String(raw ?? "");
+  if (
+    /SQLSTATE|SQL:|select .* from|target machine actively refused|Connection refused|PDOException|QueryException|oxford-suites-hrms-cache/i.test(
+      text,
+    )
+  ) {
+    return "Something went wrong. Please try again later.";
+  }
+  return text || "Something went wrong. Please try again later.";
+}
+
 /* Lightweight GET cache: dedupes in-flight requests and caches responses for
    a short TTL so overlapping module fetches don't hit the server repeatedly. */
 const GET_CACHE_TTL_MS = 15_000;
@@ -52,9 +65,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       } catch {
         // response wasn't JSON
       }
-      const message =
+      const message = sanitizeErrorMessage(
         errorData?.message ||
-        `Request failed with status ${response.status}: ${response.statusText}`;
+          `Request failed with status ${response.status}: ${response.statusText}`,
+      );
       const error = new Error(message) as Error & {
         status?: number;
         code?: string;
@@ -117,7 +131,8 @@ export interface ApiApplicant {
   applied_at: string | null;
   fit_score: number | null;
   status: "fit" | "other-role" | "credential" | "not-fit";
-  stage: "Screened" | "Interview Scheduled" | "Assessed" | "Offer" | "Hired" | "Rejected" | "Accepted";
+  stage:
+    "Screened" | "Interview Scheduled" | "Assessed" | "Offer" | "Hired" | "Rejected" | "Accepted";
   source: string | null;
   summary: string | null;
   flags_json: string[];
@@ -282,16 +297,18 @@ export const applicantsApi = {
       // PHP never populates $_POST for raw multipart PUT bodies, so Laravel
       // sees an empty request. Send POST with a _method=PUT override field —
       // the standard Laravel pattern for multipart updates.
-      data.append('_method', 'PUT');
+      data.append("_method", "PUT");
     }
     return request<ApiApplicant>(`/applicants/${id}`, {
       method: isForm ? "POST" : "PUT",
       body: isForm ? data : JSON.stringify(data),
     });
   },
-  delete: (id: number | string) => request<{ message: string }>(`/applicants/${id}`, { method: 'DELETE' }),
-  hire: (id: number | string) => request<ApiApplicant>(`/applicants/${id}/hire`, { method: 'POST' }),
-  stats: () => request<any>('/applicants/stats'),
+  delete: (id: number | string) =>
+    request<{ message: string }>(`/applicants/${id}`, { method: "DELETE" }),
+  hire: (id: number | string) =>
+    request<ApiApplicant>(`/applicants/${id}/hire`, { method: "POST" }),
+  stats: () => request<any>("/applicants/stats"),
   extractResume: (formData: FormData) =>
     request<{
       success: boolean;
@@ -303,13 +320,13 @@ export const applicantsApi = {
         address?: string | null;
       };
       error_message?: string;
-    }>('/applicants/extract-resume', {
-      method: 'POST',
+    }>("/applicants/extract-resume", {
+      method: "POST",
       body: formData,
     }),
   screenResume: (formData: FormData) =>
-    request<ApiScreeningPreview>('/applicants/screen-resume', {
-      method: 'POST',
+    request<ApiScreeningPreview>("/applicants/screen-resume", {
+      method: "POST",
       body: formData,
     }),
   getScreening: (id: number | string) =>
@@ -328,7 +345,7 @@ export const applicantsApi = {
   },
   createAssessment: (applicantId: number | string, data: Record<string, any>) =>
     request<ApiAssessment>(`/applicants/${applicantId}/assessments`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify(data),
     }),
 };
@@ -336,7 +353,7 @@ export const applicantsApi = {
 export const assessmentsApi = {
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
-    return request<{ data: ApiAssessment[]; meta: any }>(`/assessments${qs ? `?${qs}` : ''}`);
+    return request<{ data: ApiAssessment[]; meta: any }>(`/assessments${qs ? `?${qs}` : ""}`);
   },
 };
 
@@ -510,8 +527,8 @@ export const jobPostsApi = {
   get: (id: number | string) => request<ApiJobPost>(`/job-posts/${id}`),
   create: (data: FormData | Record<string, any>) => {
     const isForm = data instanceof FormData;
-    return request<ApiJobPost>('/job-posts', {
-      method: 'POST',
+    return request<ApiJobPost>("/job-posts", {
+      method: "POST",
       body: isForm ? data : JSON.stringify(data),
     });
   },
@@ -521,10 +538,10 @@ export const jobPostsApi = {
       // PHP never populates $_POST for raw multipart PUT bodies, so Laravel
       // sees an empty request. Send POST with a _method=PUT override field —
       // the standard Laravel pattern for multipart updates.
-      data.append('_method', 'PUT');
+      data.append("_method", "PUT");
     }
     return request<ApiJobPost>(`/job-posts/${id}`, {
-      method: isForm ? 'POST' : 'PUT',
+      method: isForm ? "POST" : "PUT",
       body: isForm ? data : JSON.stringify(data),
     });
   },
@@ -590,20 +607,20 @@ export interface ApiPosition {
 export const coreHcmApi = {
   departments: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
-    return request<{ data: ApiDepartment[]; meta: any }>(`/departments${qs ? `?${qs}` : ''}`);
+    return request<{ data: ApiDepartment[]; meta: any }>(`/departments${qs ? `?${qs}` : ""}`);
   },
   createDepartment: (data: Record<string, any>) =>
-    request<ApiDepartment>('/departments', {
-      method: 'POST',
+    request<ApiDepartment>("/departments", {
+      method: "POST",
       body: JSON.stringify(data),
     }),
   positions: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
-    return request<{ data: ApiPosition[]; meta: any }>(`/positions${qs ? `?${qs}` : ''}`);
+    return request<{ data: ApiPosition[]; meta: any }>(`/positions${qs ? `?${qs}` : ""}`);
   },
   createPosition: (data: Record<string, any>) =>
-    request<ApiPosition>('/positions', {
-      method: 'POST',
+    request<ApiPosition>("/positions", {
+      method: "POST",
       body: JSON.stringify(data),
     }),
 };
@@ -720,7 +737,7 @@ export const checklistTemplatesApi = {
       body: JSON.stringify(data),
     }),
   delete: (id: number | string) =>
-    request<{ message: string }>(`/checklist-templates/${id}`, { method: 'DELETE' }),
+    request<{ message: string }>(`/checklist-templates/${id}`, { method: "DELETE" }),
   addItem: (templateId: number | string, item: { item_text: string; sort_order: number }) =>
     request<any>(`/checklist-templates/${templateId}/items`, {
       method: "POST",
@@ -753,14 +770,20 @@ export const onboardingItemsApi = {
       body: JSON.stringify({ template_id: templateId }),
     }),
   materialize: (newHireId: number | string, templateItemId: number | string) =>
-    request<{ employee_onboarding_item_id: number; template_item_id: number; item_text: string; done: boolean; phase: string }>(
-      `/new-hires/${newHireId}/onboarding-items`,
-      { method: 'POST', body: JSON.stringify({ template_item_id: templateItemId }) }
-    ),
+    request<{
+      employee_onboarding_item_id: number;
+      template_item_id: number;
+      item_text: string;
+      done: boolean;
+      phase: string;
+    }>(`/new-hires/${newHireId}/onboarding-items`, {
+      method: "POST",
+      body: JSON.stringify({ template_item_id: templateItemId }),
+    }),
   toggle: (itemId: number | string, body?: { done: boolean }) =>
     request<{ employee_onboarding_item_id: number; done: boolean; completed_at: string | null }>(
       `/onboarding-items/${itemId}/toggle`,
-      { method: 'PATCH', ...(body ? { body: JSON.stringify(body) } : {}) }
+      { method: "PATCH", ...(body ? { body: JSON.stringify(body) } : {}) },
     ),
   upload: (itemId: number | string, formData: FormData) =>
     request<{
@@ -985,10 +1008,9 @@ export interface MfaStatus {
 export const mfaApi = {
   status: () => request<MfaStatus>("/auth/mfa/status"),
   setup: () =>
-    request<{ otpauth_url: string; qr_svg: string; manual_key: string }>(
-      "/auth/mfa/totp/setup",
-      { method: "POST" },
-    ),
+    request<{ otpauth_url: string; qr_svg: string; manual_key: string }>("/auth/mfa/totp/setup", {
+      method: "POST",
+    }),
   confirm: (code: string, password: string) =>
     request<{ message: string; recovery_codes: string[] }>("/auth/mfa/totp/confirm", {
       method: "POST",
@@ -1795,12 +1817,12 @@ export interface ApiEssRequestItem {
   date_from?: string;
   date_to?: string;
   status:
-  | "Pending"
-  | "Under Review"
-  | "Approved"
-  | "Rejected"
-  | "Completed"
-  | "Returned for Clarification";
+    | "Pending"
+    | "Under Review"
+    | "Approved"
+    | "Rejected"
+    | "Completed"
+    | "Returned for Clarification";
   assignedTo?: string;
   assigned_to?: string;
   details: string;
@@ -1820,8 +1842,9 @@ export interface ApiEssCategory {
 
 export const essApi = {
   // Employee Portal
-  overview: () => request<ApiEssOverview>('/ess/my-overview'),
-  schedule: () => request<{ employee: ApiEssEmployee; weekly_roster: ApiScheduleDay[] }>('/ess/my-schedule'),
+  overview: () => request<ApiEssOverview>("/ess/my-overview"),
+  schedule: () =>
+    request<{ employee: ApiEssEmployee; weekly_roster: ApiScheduleDay[] }>("/ess/my-schedule"),
   myAttendance: () =>
     request<{
       summary: {
@@ -1844,7 +1867,7 @@ export const essApi = {
         device: string;
         remarks: string;
       }[];
-    }>('/ess/my-attendance'),
+    }>("/ess/my-attendance"),
   myDocuments: () =>
     request<{
       documents: {
@@ -1860,10 +1883,10 @@ export const essApi = {
         fileType: string;
         downloadUrl: string | null;
       }[];
-    }>('/ess/my-documents'),
+    }>("/ess/my-documents"),
   uploadDocument: (data: { title: string; category: string; file_path?: string }) =>
-    request<{ message: string; document: any }>('/ess/my-documents/upload', {
-      method: 'POST',
+    request<{ message: string; document: any }>("/ess/my-documents/upload", {
+      method: "POST",
       body: JSON.stringify(data),
     }),
   myPerformance: () =>
@@ -1891,7 +1914,7 @@ export const essApi = {
         duration: string;
         completedDate: string | null;
       }[];
-    }>('/ess/my-performance'),
+    }>("/ess/my-performance"),
   getCategories: () =>
     request<{
       categories: {
@@ -1901,21 +1924,28 @@ export const essApi = {
         description: string | null;
         is_open: boolean;
       }[];
-    }>('/ess/categories'),
-  leaves: () => request<{ balances: ApiLeaveBalance[]; history: any[] }>('/ess/my-leaves'),
-  benefits: () => request<{ benefits: ApiEssBenefit[] }>('/ess/my-benefits'),
-  myPayroll: () => request<ApiPayrollData>('/ess/my-payroll'),
-  recognitions: () => request<{ recognitions: ApiRecognitionItem[] }>('/ess/recognitions'),
+    }>("/ess/categories"),
+  leaves: () => request<{ balances: ApiLeaveBalance[]; history: any[] }>("/ess/my-leaves"),
+  benefits: () => request<{ benefits: ApiEssBenefit[] }>("/ess/my-benefits"),
+  myPayroll: () => request<ApiPayrollData>("/ess/my-payroll"),
+  recognitions: () => request<{ recognitions: ApiRecognitionItem[] }>("/ess/recognitions"),
   sendKudos: (data: { recipient: string; badge: string; message: string }) =>
-    request<{ message: string; recognition: ApiRecognitionItem; recognitions: ApiRecognitionItem[] }>('/ess/recognitions', {
-      method: 'POST',
+    request<{
+      message: string;
+      recognition: ApiRecognitionItem;
+      recognitions: ApiRecognitionItem[];
+    }>("/ess/recognitions", {
+      method: "POST",
       body: JSON.stringify(data),
     }),
-  reactKudos: (id: string, reaction: 'clap' | 'heart' | 'fire' | 'star') =>
-    request<{ message: string; reactions: Record<string, number> }>(`/ess/recognitions/${id}/react`, {
-      method: 'POST',
-      body: JSON.stringify({ reaction }),
-    }),
+  reactKudos: (id: string, reaction: "clap" | "heart" | "fire" | "star") =>
+    request<{ message: string; reactions: Record<string, number> }>(
+      `/ess/recognitions/${id}/react`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reaction }),
+      },
+    ),
   myRequests: (params?: Record<string, any>) => {
     const qs = params ? new URLSearchParams(params).toString() : "";
     return request<{ requests: ApiEssRequestItem[] }>(`/ess/my-requests${qs ? `?${qs}` : ""}`);
@@ -1938,8 +1968,7 @@ export const essApi = {
       method: "POST",
       body: JSON.stringify({ action }),
     }),
-  myPromotionRequests: () =>
-    request<{ data: ApiPromotionRequest[] }>("/ess/my-promotion-requests"),
+  myPromotionRequests: () => request<{ data: ApiPromotionRequest[] }>("/ess/my-promotion-requests"),
   createPromotionRequest: (data: {
     requested_position_id?: number | null;
     requested_salary_grade_id?: number | null;
@@ -2108,10 +2137,8 @@ export const chatbotFaqApi = {
     }),
   remove: (id: number | string) =>
     request<{ message: string }>(`/chatbot/faqs/${id}`, { method: "DELETE" }),
-  analytics: () =>
-    request<{ data: ApiChatbotAnalytics }>("/chatbot/analytics"),
-  unanswered: () =>
-    request<{ data: ApiChatbotUnanswered[] }>("/chatbot/unanswered"),
+  analytics: () => request<{ data: ApiChatbotAnalytics }>("/chatbot/analytics"),
+  unanswered: () => request<{ data: ApiChatbotUnanswered[] }>("/chatbot/unanswered"),
   dismissUnanswered: (hash: string) =>
     request<{ message: string }>(`/chatbot/unanswered/${hash}`, { method: "DELETE" }),
   messageFeedback: (messageId: number, value: 1 | -1 | 0) =>
@@ -2146,4 +2173,28 @@ export const notificationsApi = {
     request<{ message: string }>(`/notifications/${id}/read`, { method: "PATCH" }),
   markAllRead: () =>
     request<{ message: string }>("/notifications/mark-all-read", { method: "POST" }),
+};
+
+/* ========================================================================= */
+/* 12. GLOBAL SITE SEARCH (non-confidential, role-gated)                      */
+/* ========================================================================= */
+
+export interface SearchHit {
+  id: number | string;
+  title: string;
+  subtitle: string | null;
+}
+
+export interface GlobalSearchResult {
+  departments: SearchHit[];
+  positions: SearchHit[];
+  jobs: SearchHit[];
+  statuses: { title: string; subtitle: string }[];
+  employees: SearchHit[];
+  employees_hidden: boolean;
+}
+
+export const searchApi = {
+  global: (q: string, limit = 6) =>
+    request<{ data: GlobalSearchResult }>(`/search?q=${encodeURIComponent(q)}&limit=${limit}`),
 };

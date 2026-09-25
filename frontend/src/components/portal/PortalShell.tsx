@@ -21,6 +21,7 @@ import {
 import { Logo } from "@/components/brand/Logo";
 import { AnnouncementDialog } from "@/components/portal/AnnouncementDialog";
 import { AiConciergeWidget } from "@/components/portal/AiConciergeWidget";
+import { GlobalSearch } from "@/components/portal/GlobalSearch";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { isVisibleTo, usePortalState } from "@/components/portal/portal-state";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -319,6 +320,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
           </div>
 
           <div className="flex items-center gap-3 sm:gap-4">
+            <GlobalSearch base={meta.base} />
             {/* Live Digital Clock & Date — minimal, no border */}
             <div className="flex items-center gap-2.5">
               <div className="hidden sm:flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">

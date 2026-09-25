@@ -16,6 +16,13 @@ const links = [
   { label: "Contact", to: "/contact" },
 ];
 
+const legalLinks = [
+  { label: "Support", to: "/support" },
+  { label: "Privacy Notice", to: "/privacy" },
+  { label: "Terms of Service", to: "/terms" },
+  { label: "Cookie Preferences", to: "/cookies" },
+];
+
 export function PublicShell({ children }: { children: ReactNode }) {
   const { company } = useCompany();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -90,7 +97,7 @@ export function PublicShell({ children }: { children: ReactNode }) {
       <main className="flex-1">{children}</main>
 
       <footer className="mt-16 border-t border-border bg-secondary/60">
-        <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 md:grid-cols-4 md:px-8">
+        <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:grid-cols-2 md:grid-cols-5 md:px-8">
           <div className="md:col-span-2">
             <Logo mark="maroon" />
             <p className="mt-4 max-w-md text-sm text-muted-foreground">{company.overview}</p>
@@ -100,6 +107,19 @@ export function PublicShell({ children }: { children: ReactNode }) {
             <p className="eyebrow mb-3">Explore</p>
             <ul className="space-y-2 text-sm">
               {links.map((l) => (
+                <li key={l.to}>
+                  <Link to={l.to} className="text-muted-foreground hover:text-primary">
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <p className="eyebrow mb-3">Legal</p>
+            <ul className="space-y-2 text-sm">
+              {legalLinks.map((l) => (
                 <li key={l.to}>
                   <Link to={l.to} className="text-muted-foreground hover:text-primary">
                     {l.label}

@@ -26,12 +26,24 @@ export interface ReportColumn {
   width?: string;
 }
 
+export interface ReportChart {
+  type: "bar" | "pie";
+  title?: string;
+  labels: string[];
+  values: number[];
+}
+
 export interface ReportData {
   title: string;
   subtitle?: string;
   columns: ReportColumn[];
   rows: Record<string, any>[];
   summary?: { label: string; value: string | number }[];
+  /**
+   * Optional chart rendered above the table in PDF / DOCX / print,
+   * and as a ChartData worksheet in Excel. Ignored by CSV.
+   */
+  chart?: ReportChart;
   /**
    * Confidential reports (payroll, 201 files, applicant PII…).
    * ReportMenu requires a password confirmation before exporting these.
@@ -100,6 +112,112 @@ function escapeXml(value: any): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
+}
+
+/* ------------------------------------------------------------------ */
+/* Charts — dependency-free canvas renderer → PNG data URI             */
+/* ------------------------------------------------------------------ */
+
+const CHART_COLORS = [
+  "#520c19",
+  "#7a1226",
+  "#d4af37",
+  "#2f6f4f",
+  "#31597f",
+  "#8a5a2b",
+  "#6b7280",
+  "#b45309",
+];
+
+export function renderChartPng(chart: ReportChart, width = 640, height = 300): string | null {
+  try {
+    if (typeof document === "undefined") return null;
+    const labels = chart.labels.slice(0, 8);
+    const values = chart.values.slice(0, 8);
+    if (!labels.length || labels.length !== values.length) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+    const padL = 46,
+      padR = 16,
+      padT = 30,
+      padB = 44;
+    const max = Math.max(...values, 1);
+
+    ctx.fillStyle = "#520c19";
+    ctx.font = "bold 14px Georgia, serif";
+    ctx.textAlign = "center";
+    if (chart.title) ctx.fillText(chart.title.slice(0, 60), width / 2, 18);
+
+    if (chart.type === "pie") {
+      const total = values.reduce((a, b) => a + b, 0) || 1;
+      const cx = width / 2 - 90,
+        cy = height / 2 + 10,
+        r = Math.min(width, height) / 2 - 50;
+      let angle = -Math.PI / 2;
+      values.forEach((v, i) => {
+        const slice = (v / total) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, angle, angle + slice);
+        ctx.closePath();
+        ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length] ?? "#520c19";
+        ctx.fill();
+        angle += slice;
+      });
+      // legend
+      ctx.textAlign = "left";
+      ctx.font = "11px system-ui, sans-serif";
+      labels.forEach((lb, i) => {
+        const y = padT + 12 + i * 20;
+        ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length] ?? "#520c19";
+        ctx.fillRect(cx + r + 24, y - 9, 12, 12);
+        ctx.fillStyle = "#374151";
+        ctx.fillText(`${lb.slice(0, 22)} (${values[i] ?? 0})`, cx + r + 42, y);
+      });
+      return canvas.toDataURL("image/png");
+    }
+
+    // bar
+    const plotW = width - padL - padR,
+      plotH = height - padT - padB;
+    const n = values.length,
+      gap = 14;
+    const barW = Math.max(18, (plotW - gap * (n + 1)) / n);
+    ctx.strokeStyle = "#e5e7eb";
+    ctx.fillStyle = "#6b7280";
+    ctx.font = "10px system-ui, sans-serif";
+    ctx.textAlign = "right";
+    for (let g = 0; g <= 4; g++) {
+      const y = padT + (plotH * g) / 4;
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(width - padR, y);
+      ctx.stroke();
+      ctx.fillText(String(Math.round((max * (4 - g)) / 4)), padL - 6, y + 3);
+    }
+    ctx.textAlign = "center";
+    values.forEach((v, i) => {
+      const h = (v / max) * plotH;
+      const x = padL + gap + i * (barW + gap);
+      const y = padT + plotH - h;
+      ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length] ?? "#520c19";
+      ctx.fillRect(x, y, barW, h);
+      ctx.fillStyle = "#111827";
+      ctx.font = "bold 11px system-ui, sans-serif";
+      ctx.fillText(String(v), x + barW / 2, y - 5);
+      ctx.fillStyle = "#4b5563";
+      ctx.font = "10px system-ui, sans-serif";
+      ctx.fillText((labels[i] ?? "").slice(0, 14), x + barW / 2, padT + plotH + 14);
+    });
+    return canvas.toDataURL("image/png");
+  } catch {
+    return null;
+  }
 }
 
 /** Long-form date, e.g. "31 August 2026" — formal documents avoid numeric dates. */
@@ -212,6 +330,29 @@ function letterheadHtml(opts: { inline?: boolean }): string {
 /* ------------------------------------------------------------------ */
 /* EXCEL — native workbook via SpreadsheetML 2003 (.xls)               */
 /* ------------------------------------------------------------------ */
+/** Second worksheet backing the chart — select it in Excel and Insert → Chart. */
+function chartSheetXml(report: ReportData): string {
+  if (!report.chart) return "";
+  const rows = report.chart.labels
+    .map(
+      (lb, i) => `
+     <Row>
+       <Cell ss:StyleID="Cell"><Data ss:Type="String">${escapeXml(lb)}</Data></Cell>
+       <Cell ss:StyleID="Cell"><Data ss:Type="Number">${Number(report.chart?.values[i] ?? 0)}</Data></Cell>
+     </Row>`,
+    )
+    .join("");
+  return `
+  <Worksheet ss:Name="ChartData">
+    <Table>
+     <Row>
+       <Cell ss:StyleID="Head"><Data ss:Type="String">${escapeXml(report.chart.title || "Category")}</Data></Cell>
+       <Cell ss:StyleID="Head"><Data ss:Type="String">Value</Data></Cell>
+     </Row>${rows}
+    </Table>
+  </Worksheet>`;
+}
+
 function exportToExcel(
   report: ReportData,
   generatedAt: string,
@@ -301,16 +442,17 @@ function exportToExcel(
    <Style ss:ID="SumVal"><Font ss:Bold="1" ss:Size="14" ss:Color="${BRAND_COLOR}"/></Style>
    <Style ss:ID="Cell"><Font ss:Size="10"/></Style>
  </Styles>
- <Worksheet ss:Name="Report">
-   <Table>
-    ${metaRows}
-    <Row><Cell><Data ss:Type="String"></Data></Cell></Row>
-    ${summaryRows}
-    <Row><Cell><Data ss:Type="String"></Data></Cell></Row>
-    ${headerRow}
-    ${dataRows}
-   </Table>
- </Worksheet>
+  <Worksheet ss:Name="Report">
+    <Table>
+     ${metaRows}
+     <Row><Cell><Data ss:Type="String"></Data></Cell></Row>
+     ${summaryRows}
+     <Row><Cell><Data ss:Type="String"></Data></Cell></Row>
+     ${headerRow}
+     ${dataRows}
+    </Table>
+  </Worksheet>
+  ${chartSheetXml(report)}
 </Workbook>`;
 
   const blob = new Blob(["\uFEFF" + xml], {
@@ -374,6 +516,13 @@ function exportToWord(
   const filename = buildFilename(report, "doc");
   const logo = LOGO_DATA_URI
     ? `<img src="${LOGO_DATA_URI}" width="46" alt="Oxford Suites Makati" style="display:block;" />`
+    : "";
+  const chartPng = report.chart ? renderChartPng(report.chart) : null;
+  const chartHtml = chartPng
+    ? `<div style="text-align:center;margin:16px 0 8px 0;">
+         ${report.chart?.title ? `<p style="font-size:12px;font-weight:bold;color:${BRAND_COLOR};margin:0 0 6px 0;font-family:'Times New Roman',serif;">${escapeHtml(report.chart.title)}</p>` : ""}
+         <img src="${chartPng}" width="560" alt="Report chart" />
+       </div>`
     : "";
 
   const metaBlock = `
@@ -477,6 +626,7 @@ function exportToWord(
     </div>
     ${titleBlock}
     ${summaryHtml}
+    ${chartHtml}
     <table class="data">
       <thead><tr>${tableHeaders}</tr></thead>
       <tbody>${tableRows}${emptyRowNote}</tbody>
@@ -505,7 +655,11 @@ function exportToPdfDownload(
   preparedByDept: string,
 ): void {
   const landscape = report.columns.length > 6;
-  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: landscape ? "landscape" : "portrait" });
+  const doc = new jsPDF({
+    unit: "mm",
+    format: "a4",
+    orientation: landscape ? "landscape" : "portrait",
+  });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 14;
@@ -564,6 +718,22 @@ function exportToPdfDownload(
       y += 5;
     }
     y += 2;
+  }
+
+  // Chart (PNG rendered from the report.chart definition)
+  if (report.chart) {
+    const png = renderChartPng(report.chart, 640, 300);
+    if (png) {
+      const imgW = pageW - margin * 2;
+      const imgH = (imgW * 300) / 640;
+      ensureSpace(imgH + 6);
+      try {
+        doc.addImage(png, "PNG", margin, y, imgW, imgH);
+        y += imgH + 4;
+      } catch {
+        /* chart is decorative — never block the export */
+      }
+    }
   }
 
   // Table
@@ -673,6 +843,14 @@ function buildPrintableHtml(
     </div>`
     : "";
 
+  const printChartPng = report.chart ? renderChartPng(report.chart) : null;
+  const printChartHtml = printChartPng
+    ? `<div class="chart-block">
+         ${report.chart?.title ? `<div class="chart-title">${escapeHtml(report.chart.title)}</div>` : ""}
+         <img src="${printChartPng}" alt="Report chart" />
+       </div>`
+    : "";
+
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -698,6 +876,9 @@ function buildPrintableHtml(
     .summary-card { flex: 1; min-width: 132px; background: #faf7f0; border: 1px solid #e0d5bd; border-top: 2px solid ${BRAND_COLOR}; padding: 9px 12px; text-align: center; }
     .summary-label { font-size: 9px; color: #854d0e; text-transform: uppercase; font-weight: 700; letter-spacing: 0.09em; }
     .summary-value { font-size: 17px; font-weight: 700; color: ${BRAND_COLOR}; margin-top: 3px; }
+    .chart-block { text-align: center; margin: 14px 0 8px; }
+    .chart-title { font-size: 12px; font-weight: 700; color: ${BRAND_COLOR}; margin-bottom: 6px; }
+    .chart-block img { max-width: 100%; height: auto; border: 1px solid #e0d5bd; }
     table.doc-table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 10.5px; }
     table.doc-table th { background: ${BRAND_COLOR}; color: #ffffff; text-align: left; padding: 8px 9px; border: 1px solid ${BRAND_COLOR_LIGHT}; font-weight: 700; letter-spacing: 0.02em; }
     table.doc-table td { padding: 7px 9px; border: 1px solid #b8b2a8; }
@@ -733,6 +914,7 @@ function buildPrintableHtml(
     <p class="doc-subtitle">${escapeHtml(report.subtitle || `${BRAND} · ${BRAND_SUB}`)}</p>
   </div>
   ${summaryHtml}
+  ${printChartHtml}
   <table class="doc-table">
     <thead><tr>${tableHeaders}</tr></thead>
     <tbody>${tableRows}${emptyRowNote}</tbody>
