@@ -206,6 +206,10 @@ export const orgChart: OrgNode = {
 export type NewHire = {
   id: string;
   dbId?: number;
+  /** Database applicant id this hire was created from (when handed over from
+   *  Applicant Management) — lets the applicant View profile link the hire's
+   *  requirements checklist to the offered / hired candidate. */
+  applicantId?: number | null;
   name: string;
   position: string;
   department: string;

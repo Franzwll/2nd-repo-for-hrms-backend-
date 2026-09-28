@@ -10,6 +10,7 @@ use Modules\ApplicantManagement\Http\Controllers\FacilityController;
 use Modules\ApplicantManagement\Http\Controllers\PracticalTestController;
 use Modules\ApplicantManagement\Http\Controllers\ScreeningEvaluationController;
 use Modules\ApplicantManagement\Http\Controllers\ScreeningReferenceController;
+use Modules\ApplicantManagement\Http\Controllers\ScreeningRequirementTemplateController;
 use Modules\ApplicantManagement\Http\Controllers\InterviewController;
 
 /*
@@ -92,6 +93,19 @@ Route::prefix('v1')
                ->name('screening.reference-data.toggle');
           Route::delete('screening/reference-data/{id}', [ScreeningReferenceController::class, 'destroy'])
                ->name('screening.reference-data.destroy');
+
+          // Requirement templates (Screening Setup) — reusable per-position
+          // requirement entities applied to a job post in the Job Post Builder.
+          Route::get('screening/requirement-templates', [ScreeningRequirementTemplateController::class, 'index'])
+               ->name('screening.requirement-templates.index');
+          Route::post('screening/requirement-templates', [ScreeningRequirementTemplateController::class, 'store'])
+               ->name('screening.requirement-templates.store');
+          Route::put('screening/requirement-templates/{id}', [ScreeningRequirementTemplateController::class, 'update'])
+               ->name('screening.requirement-templates.update');
+          Route::patch('screening/requirement-templates/{id}/toggle', [ScreeningRequirementTemplateController::class, 'toggle'])
+               ->name('screening.requirement-templates.toggle');
+          Route::delete('screening/requirement-templates/{id}', [ScreeningRequirementTemplateController::class, 'destroy'])
+               ->name('screening.requirement-templates.destroy');
 
           Route::apiResource('applicants', ApplicantManagementController::class)
                ->parameters(['applicants' => 'applicant'])

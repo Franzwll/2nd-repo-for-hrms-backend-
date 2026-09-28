@@ -10,11 +10,17 @@ class ScreeningReferenceData extends Model
     public const TYPE_SKILL = 'skill';
     public const TYPE_JOB_ROLE = 'job_role';
     public const TYPE_CERTIFICATION = 'certification';
+    /** Education entries (degrees / courses) recognized from resumes. */
+    public const TYPE_EDUCATION = 'education';
+    /** Experience entries (role / tenure phrasings) recognized from resumes. */
+    public const TYPE_EXPERIENCE = 'experience';
 
     public const TYPES = [
+        self::TYPE_EDUCATION,
+        self::TYPE_CERTIFICATION,
         self::TYPE_SKILL,
         self::TYPE_JOB_ROLE,
-        self::TYPE_CERTIFICATION,
+        self::TYPE_EXPERIENCE,
     ];
 
     protected $table = 'screening_reference_data';

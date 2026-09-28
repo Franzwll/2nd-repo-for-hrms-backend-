@@ -137,6 +137,7 @@ HR managers have full control over the screening criteria per vacancy:
 - **Component Weights**: Adjust the 100-point formula (Skills, Experience, Education, Certifications).
 - **Passing Threshold**: Configure passing scores (e.g., 75% for rank-and-file, 85% for supervisors).
 - **Skill Reference Manager**: Add custom hospitality skills, aliases, and certification synonyms directly through the web UI without modifying code.
+- **Requirement Templates**: Save a position's requirement entities (skills, job roles, certifications, education and experience) as a reusable template in the Screening Setup, then apply it to a job post from the Job Post Builder — the post's Required Skills, Qualifications and education / experience levels are filled in one click.
 
 ### 4.3. Alternative Job Recommendation (`FIT_FOR_OTHER_JOB`)
 When an applicant applies for a role where they fail minimum requirements (e.g., applying for *Restaurant Manager* with only 1 year experience), the NLP engine automatically scores their profile against **all other currently active job vacancies**. If the candidate qualifies for another position (e.g., *Food & Beverage Attendant*), the system marks them as `Fit for Other Job` and provides a one-click re-assignment option for HR.

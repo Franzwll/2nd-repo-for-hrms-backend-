@@ -16,6 +16,7 @@ import {
   Briefcase,
   CheckCircle2,
   ChevronsUpDown,
+  ClipboardList,
   Clock,
   Copy,
   Database,
@@ -25,6 +26,7 @@ import {
   FileCheck,
   FilePlus2,
   FileText,
+  Flag,
   Globe,
   GraduationCap,
   GripVertical,
@@ -120,12 +122,20 @@ import {
   resolveStorageUrl,
   screeningApi,
   type ApiJobPost,
+  type ApiRequirementTemplate,
   type ApiScreeningPreview,
   type ApiScreeningReference,
   type JobAiUsage,
   type JobDraftErrorPayload,
   type ScreeningConfiguration,
+  type ScreeningRequirementEntityType,
 } from "@/lib/api";
+import {
+  reportedEntitiesStore,
+  useReportedEntities,
+  type ReportedEntity,
+  type ReportedEntityType,
+} from "@/data/reported-entities";
 import {
   isValidEmail,
   isValidName,
@@ -204,6 +214,258 @@ function guessRefType(term: string): "skill" | "certification" {
   )
     ? "certification"
     : "skill";
+}
+
+/** Entity types the reported-entity queue can be promoted into. */
+const REPORTED_TYPES: ReportedEntityType[] = [
+  "education",
+  "certification",
+  "skill",
+  "job_role",
+  "experience",
+];
+
+const REPORTED_TYPE_LABELS: Record<ReportedEntityType, string> = {
+  education: "Education",
+  certification: "Certificate",
+  skill: "Skill",
+  job_role: "Job Role",
+  experience: "Experience",
+};
+
+/** Structured job-post levels the education / experience requirement entities map to. */
+const EDUCATION_LEVEL_OPTIONS = [
+  "High School Graduate",
+  "Vocational / TESDA",
+  "College Level",
+  "Bachelor's Degree",
+] as const;
+
+const EXPERIENCE_LEVEL_OPTIONS = [
+  "No Experience",
+  "1-2 Years",
+  "3-5 Years",
+  "5+ Years",
+] as const;
+
+/**
+ * Requirement-template entity types — the screening entity set (skill, job
+ * role, certification, education, experience) plus the job post target each
+ * one fills when a template is applied in the builder.
+ */
+const REQUIREMENT_ENTITY_META: {
+  value: ScreeningRequirementEntityType;
+  label: string;
+  className: string;
+  appliesTo: string;
+}[] = [
+  {
+    value: "skill",
+    label: "Skill",
+    className: "border-primary/40 bg-primary/10 text-primary",
+    appliesTo: "Required Skills block",
+  },
+  {
+    value: "certification",
+    label: "Certification",
+    className: "border-warning/40 bg-warning/20 text-warning-foreground",
+    appliesTo: "Qualifications — screened as required certifications",
+  },
+  {
+    value: "job_role",
+    label: "Job role",
+    className: "border-success/40 bg-success/10 text-success",
+    appliesTo: "Qualifications — “Experience as …”",
+  },
+  {
+    value: "education",
+    label: "Education",
+    className: "border-border bg-muted text-muted-foreground",
+    appliesTo: "Job post education level",
+  },
+  {
+    value: "experience",
+    label: "Experience",
+    className: "border-border bg-muted text-muted-foreground",
+    appliesTo: "Job post experience level",
+  },
+];
+
+const requirementEntityMeta = (type: ScreeningRequirementEntityType) =>
+  REQUIREMENT_ENTITY_META.find((m) => m.value === type) ?? REQUIREMENT_ENTITY_META[0]!;
+
+/** The same levels the Core HCM / job_posts columns accept (case-insensitive match). */
+const isEducationLevel = (value: string) =>
+  EDUCATION_LEVEL_OPTIONS.find((l) => l.toLowerCase() === value.trim().toLowerCase());
+
+const isExperienceLevel = (value: string) =>
+  EXPERIENCE_LEVEL_OPTIONS.find((l) => l.toLowerCase() === value.trim().toLowerCase());
+
+/**
+ * Reported Entities — the queue filled by the flag buttons on UNRECOGNIZED
+ * entities in every Resume Screening Result. HR either promotes a report into
+ * the DB-managed screening vocabulary (type + optional aliases) or dismisses
+ * it; promoted entries are recognized by the NLP service on the next run.
+ */
+export function ReportedEntitiesManager() {
+  const reports = useReportedEntities();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [typeDrafts, setTypeDrafts] = useState<Record<string, ReportedEntityType>>({});
+  const [aliasDrafts, setAliasDrafts] = useState<Record<string, string>>({});
+
+  const pending = reports.filter((r) => r.status === "pending");
+  const handled = reports.filter((r) => r.status !== "pending");
+  const typeOf = (r: ReportedEntity) => typeDrafts[r.id] ?? r.suggestedType;
+
+  const promote = async (r: ReportedEntity) => {
+    setBusyId(r.id);
+    try {
+      await screeningApi.referenceData.create({
+        data_type: typeOf(r),
+        canonical_value: r.value,
+        aliases_json: (aliasDrafts[r.id] ?? "")
+          .split(",")
+          .map((a) => a.trim())
+          .filter(Boolean),
+        active: true,
+      });
+      reportedEntitiesStore.markProcessed(r.id);
+      toast.success(`"${r.value}" added to the screening vocabulary`, {
+        description: "Future screenings will classify it as recognized.",
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (/unique|already|duplicate/i.test(msg)) {
+        reportedEntitiesStore.markProcessed(r.id);
+        toast.info(`"${r.value}" is already in the vocabulary — marked as processed`);
+      } else {
+        toast.error(`"${r.value}" could not be added — ${msg || "please try again."}`);
+      }
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="flex items-center gap-2 font-display text-base font-semibold">
+            <Flag className="h-4 w-4 text-warning-foreground" /> Reported Entities
+            {pending.length > 0 && <Badge variant="secondary">{pending.length} pending</Badge>}
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Entities HR flagged as UNRECOGNIZED from a Resume Screening Result. Promote them into
+            the vocabulary so every future screening recognizes them.
+          </p>
+        </div>
+        {handled.length > 0 && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="cursor-pointer"
+            onClick={() => reportedEntitiesStore.clearProcessed()}
+          >
+            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Clear handled ({handled.length})
+          </Button>
+        )}
+      </div>
+
+      {pending.length === 0 ? (
+        <p className="rounded-md border border-dashed border-border bg-muted/20 p-6 text-center text-xs text-muted-foreground">
+          Nothing reported yet. Open a Resume Screening Result and use the flag button on an
+          UNRECOGNIZED skill, job role, certificate, education or experience entry.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {pending.map((r) => (
+            <div key={r.id} className="rounded-lg border border-border p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{r.value}</p>
+                  <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
+                    {r.source}
+                    {r.applicant ? ` · ${r.applicant}` : ""} · reported{" "}
+                    {new Date(r.reportedAt).toLocaleString()}
+                  </p>
+                </div>
+                <Badge variant="outline" className="text-[0.65rem]">
+                  Suggested: {REPORTED_TYPE_LABELS[r.suggestedType]}
+                </Badge>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Select
+                  value={typeOf(r)}
+                  onValueChange={(v) =>
+                    setTypeDrafts((p) => ({ ...p, [r.id]: v as ReportedEntityType }))
+                  }
+                >
+                  <SelectTrigger className="h-8 w-40 cursor-pointer text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REPORTED_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {REPORTED_TYPE_LABELS[t]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  className="h-8 min-w-0 flex-1 text-xs"
+                  placeholder="Aliases (comma separated, optional)"
+                  value={aliasDrafts[r.id] ?? ""}
+                  onChange={(e) => setAliasDrafts((p) => ({ ...p, [r.id]: e.target.value }))}
+                />
+                <Button
+                  size="sm"
+                  className="h-8 cursor-pointer"
+                  disabled={busyId === r.id}
+                  onClick={() => promote(r)}
+                >
+                  {busyId === r.id ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  Add to vocabulary
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 cursor-pointer"
+                  disabled={busyId === r.id}
+                  onClick={() => reportedEntitiesStore.dismiss(r.id)}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {handled.length > 0 && (
+        <div className="rounded-md border border-border/70 bg-muted/20 p-3">
+          <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
+            Handled ({handled.length})
+          </p>
+          <ul className="mt-1.5 space-y-1 text-xs text-muted-foreground">
+            {handled.slice(0, 10).map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-2">
+                <CheckCircle2
+                  className={
+                    r.status === "processed" ? "h-3.5 w-3.5 text-success" : "h-3.5 w-3.5"
+                  }
+                />
+                <span className="font-medium text-foreground">{r.value}</span>
+                <span>· {r.status === "processed" ? "added to vocabulary" : "dismissed"}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -829,6 +1091,9 @@ type Draft = {
   skills: string;
   instructions: string;
   about: string;
+  /** Structured screening levels — the exact fields the NLP match scoring reads. */
+  educationLevel: Job["education"];
+  experienceLevel: Job["experience"];
 };
 
 const blankDraft: Draft = {
@@ -845,6 +1110,8 @@ const blankDraft: Draft = {
   skills: "",
   instructions: "",
   about: "",
+  educationLevel: "High School Graduate",
+  experienceLevel: "1-2 Years",
 };
 
 const defaultAbout =
@@ -867,6 +1134,8 @@ function jobToDraft(j: Job): Draft {
     skills: j.skills.join("\n"),
     instructions: defaultInstructions,
     about: defaultAbout,
+    educationLevel: j.education,
+    experienceLevel: j.experience,
   };
 }
 
@@ -899,6 +1168,625 @@ function hasContentFor(id: BlockId, d: Draft): boolean {
 
 function snapshotOf(d: Draft, b: BlockId[]) {
   return JSON.stringify({ d, b });
+}
+
+/* ===================================================================== */
+/* Requirement Templates (Screening Setup)                               */
+/* ===================================================================== */
+
+type RequirementTemplateForm = {
+  name: string;
+  /** "none" = any position, otherwise the Core HCM position_id as a string. */
+  positionId: string;
+  description: string;
+  active: boolean;
+  items: { entity_type: ScreeningRequirementEntityType; value: string }[];
+};
+
+const blankRequirementForm: RequirementTemplateForm = {
+  name: "",
+  positionId: "none",
+  description: "",
+  active: true,
+  items: [],
+};
+
+/**
+ * Screening Setup → Requirement Templates.
+ *
+ * HR defines, per position entity, the requirement entities a resume must
+ * satisfy (skill, job role, certification, education, experience) and applies
+ * a template to a job post — "Use in job post" merges it into the Job Post
+ * Builder draft (Required Skills, Qualifications and the structured education
+ * / experience levels the NLP screening scores against).
+ */
+export function RequirementTemplateManager({
+  templates,
+  loading,
+  error,
+  positions,
+  refValues,
+  busyId,
+  onReload,
+  onToggleActive,
+  onUseTemplate,
+  onAddToVocabulary,
+}: {
+  templates: ApiRequirementTemplate[];
+  loading: boolean;
+  error: string | null;
+  positions: Position[];
+  refValues: Set<string>;
+  busyId: number | null;
+  onReload: () => void;
+  onToggleActive: (template: ApiRequirementTemplate) => void;
+  onUseTemplate: (template: ApiRequirementTemplate) => void;
+  onAddToVocabulary: (
+    term: string,
+    type: "skill" | "job_role" | "certification",
+  ) => Promise<void>;
+}) {
+  const [search, setSearch] = useState("");
+  const [positionFilter, setPositionFilter] = useState("all");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState<RequirementTemplateForm>(blankRequirementForm);
+  const [itemType, setItemType] = useState<ScreeningRequirementEntityType>("skill");
+  const [itemValue, setItemValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ApiRequirementTemplate | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const isRecognized = (value: string) => refValues.has(value.trim().toLowerCase());
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return templates.filter((t) => {
+      if (positionFilter === "unassigned" && t.position_id !== null) return false;
+      if (
+        positionFilter !== "all" &&
+        positionFilter !== "unassigned" &&
+        String(t.position_id) !== positionFilter
+      ) {
+        return false;
+      }
+      if (!q) return true;
+      const haystack = [
+        t.name,
+        t.position_title ?? "",
+        t.description ?? "",
+        ...t.items.map((i) => i.value),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [templates, search, positionFilter]);
+
+  const openCreate = () => {
+    setEditingId(null);
+    setForm(blankRequirementForm);
+    setItemType("skill");
+    setItemValue("");
+    setEditorOpen(true);
+  };
+
+  const openEdit = (template: ApiRequirementTemplate) => {
+    setEditingId(template.template_id);
+    setForm({
+      name: template.name,
+      positionId: template.position_id === null ? "none" : String(template.position_id),
+      description: template.description ?? "",
+      active: template.active,
+      items: template.items.map((i) => ({ entity_type: i.entity_type, value: i.value })),
+    });
+    setItemType("skill");
+    setItemValue("");
+    setEditorOpen(true);
+  };
+
+  const addItem = (type: ScreeningRequirementEntityType, value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    setForm((f) => {
+      const duplicate = f.items.some(
+        (i) => i.entity_type === type && i.value.toLowerCase() === trimmed.toLowerCase(),
+      );
+      if (duplicate) {
+        toast.info(`"${trimmed}" is already in this template`);
+        return f;
+      }
+      return { ...f, items: [...f.items, { entity_type: type, value: trimmed }] };
+    });
+  };
+
+  const removeItem = (index: number) =>
+    setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== index) }));
+
+  /** Curated starter keywords for the selected position (screening keyword library). */
+  const suggestions = useMemo(() => {
+    if (form.positionId === "none") return [] as string[];
+    const title = positions.find((p) => String(p.dbId) === form.positionId)?.title;
+    return title ? (keywordLibrary[title] ?? []) : [];
+  }, [form.positionId, positions]);
+
+  const save = async () => {
+    if (!form.name.trim()) {
+      toast.error("Give the requirement template a name.");
+      return;
+    }
+    if (form.items.length === 0) {
+      toast.error("Add at least one requirement entity to the template.");
+      return;
+    }
+    setSaving(true);
+    const payload = {
+      name: form.name.trim(),
+      position_id: form.positionId === "none" ? null : Number(form.positionId),
+      description: form.description.trim() || null,
+      active: form.active,
+      items: form.items.map((i) => ({ entity_type: i.entity_type, value: i.value, required: true })),
+    };
+    try {
+      if (editingId !== null) {
+        await screeningApi.requirementTemplates.update(editingId, payload);
+      } else {
+        await screeningApi.requirementTemplates.create(payload);
+      }
+      toast.success(
+        editingId !== null
+          ? `Requirement template "${payload.name}" updated`
+          : `Requirement template "${payload.name}" created`,
+        {
+          description:
+            "Apply it from the Job Post Builder picker below, or press “Use in job post”.",
+        },
+      );
+      setEditorOpen(false);
+      onReload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "The requirement template could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await screeningApi.requirementTemplates.remove(deleteTarget.template_id);
+      toast.success(`Deleted requirement template "${deleteTarget.name}"`);
+      setDeleteTarget(null);
+      onReload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "The template could not be deleted.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">Requirement templates per position</h3>
+          <p className="text-xs text-muted-foreground">
+            What to <span className="font-medium text-foreground">require</span> for a role. Each template lists
+            screening entities — skill, job role, certification, education, experience — and can be applied to a job
+            post, seeding Required Skills, Qualifications and the education / experience levels.
+          </p>
+        </div>
+        <Button size="sm" className="cursor-pointer" onClick={openCreate}>
+          <Plus className="mr-1.5 h-3.5 w-3.5" /> New template
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={positionFilter} onValueChange={setPositionFilter}>
+          <SelectTrigger className="h-9 w-64 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All positions</SelectItem>
+            <SelectItem value="unassigned">Any position (not position-bound)</SelectItem>
+            {positions
+              .filter((p) => p.dbId !== undefined)
+              .map((p) => (
+                <SelectItem key={p.id} value={String(p.dbId)}>
+                  {p.title}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            className="h-9 w-56 pl-8 text-xs"
+            placeholder="Search templates…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <span className="text-[0.7rem] text-muted-foreground">
+          {filtered.length} of {templates.length} template{templates.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {loading ? (
+        <p className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-6 text-xs text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading requirement templates…
+        </p>
+      ) : error ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
+          <Button size="sm" variant="outline" className="ml-3 cursor-pointer" onClick={onReload}>
+            Retry
+          </Button>
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
+          {templates.length === 0
+            ? "No requirement templates yet — create one so every job post for that position reuses the same screening requirements."
+            : "No templates match your filters."}
+        </p>
+      ) : (
+        <div className="max-h-[24rem] space-y-3 overflow-y-auto pr-1">
+          {filtered.map((template) => (
+            <div
+              key={template.template_id}
+              className={cn(
+                "rounded-md border p-3",
+                template.active ? "border-border" : "border-dashed border-border bg-muted/30",
+              )}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                    {template.name}
+                    <Badge variant="outline">{template.position_title ?? "Any position"}</Badge>
+                    {!template.active && <Badge variant="secondary">Inactive</Badge>}
+                  </p>
+                  {template.description && (
+                    <p className="mt-0.5 text-[0.7rem] text-muted-foreground">{template.description}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 cursor-pointer"
+                    disabled={!template.active}
+                    title={
+                      template.active
+                        ? "Apply this template's requirements to the job post draft"
+                        : "Activate the template to use it in a job post"
+                    }
+                    onClick={() => onUseTemplate(template)}
+                  >
+                    <FilePlus2 className="mr-1.5 h-3.5 w-3.5" /> Use in job post
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 cursor-pointer"
+                    title="Edit template"
+                    onClick={() => openEdit(template)}
+                  >
+                    <PencilRuler className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 cursor-pointer text-destructive"
+                    title="Delete template"
+                    onClick={() => setDeleteTarget(template)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                  <Switch
+                    checked={template.active}
+                    disabled={busyId === template.template_id}
+                    onCheckedChange={() => onToggleActive(template)}
+                  />
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1.5">
+                {REQUIREMENT_ENTITY_META.flatMap((meta) => {
+                  const values = template.items.filter((i) => i.entity_type === meta.value);
+                  if (values.length === 0) return [];
+                  return [
+                    <span
+                      key={`${template.template_id}-${meta.value}`}
+                      className="flex flex-wrap items-center gap-1"
+                    >
+                      <Badge variant="outline" className={cn("text-[0.65rem]", meta.className)}>
+                        {meta.label}
+                      </Badge>
+                      {values.map((item) => (
+                        <Badge
+                          key={item.item_id}
+                          variant="secondary"
+                          className="gap-1 text-[0.65rem]"
+                          title={
+                            isRecognized(item.value)
+                              ? "Recognized by the screening model"
+                              : "Not in the screening vocabulary yet"
+                          }
+                        >
+                          {item.value}
+                          {isRecognized(item.value) ? (
+                            <span className="text-success">✓</span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={busyId !== null}
+                              title={`Add "${item.value}" to the screening vocabulary`}
+                              className="cursor-pointer font-bold text-primary hover:underline disabled:opacity-50"
+                              onClick={() => onAddToVocabulary(item.value, guessRefType(item.value))}
+                            >
+                              +
+                            </button>
+                          )}
+                        </Badge>
+                      ))}
+                    </span>,
+                  ];
+                })}
+                {template.items.length === 0 && (
+                  <span className="text-[0.7rem] text-muted-foreground">
+                    No requirement entities in this template yet — edit it to add some.
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {editingId !== null ? "Edit requirement template" : "New requirement template"}
+            </DialogTitle>
+            <DialogDescription>
+              Pick the position this template belongs to, then add the requirement entities a resume must satisfy.
+              Applying the template to a job post seeds the Required Skills block, the Qualifications block and the
+              structured education / experience levels the screening scores against.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Template name</Label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g. Front Desk Receptionist — Core Requirements"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Position (entity)</Label>
+                <Select
+                  value={form.positionId}
+                  onValueChange={(v) => setForm({ ...form, positionId: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Any position</SelectItem>
+                    {positions
+                      .filter((p) => p.dbId !== undefined)
+                      .map((p) => (
+                        <SelectItem key={p.id} value={String(p.dbId)}>
+                          {p.title}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Description (optional)</Label>
+              <Input
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="What this template covers"
+              />
+            </div>
+
+            <div className="space-y-3 rounded-md border border-border p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label className="text-xs">Requirement entities</Label>
+                <label className="flex items-center gap-2 text-[0.7rem] text-muted-foreground">
+                  Active for the builder
+                  <Switch
+                    checked={form.active}
+                    onCheckedChange={(v) => setForm({ ...form, active: v })}
+                  />
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={itemType}
+                  onValueChange={(v) => setItemType(v as ScreeningRequirementEntityType)}
+                >
+                  <SelectTrigger className="h-9 w-40 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REQUIREMENT_ENTITY_META.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  className="h-9 min-w-0 flex-1 text-xs"
+                  placeholder={
+                    itemType === "skill"
+                      ? "e.g. Guest Relations"
+                      : itemType === "job_role"
+                        ? "e.g. Front Desk Receptionist"
+                        : itemType === "certification"
+                          ? "e.g. TESDA Cookery NC II"
+                          : itemType === "education"
+                            ? "e.g. Bachelor's Degree"
+                            : "e.g. 1-2 Years"
+                  }
+                  value={itemValue}
+                  onChange={(e) => setItemValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && itemValue.trim()) {
+                      e.preventDefault();
+                      addItem(itemType, itemValue);
+                      setItemValue("");
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9 cursor-pointer"
+                  disabled={!itemValue.trim()}
+                  onClick={() => {
+                    addItem(itemType, itemValue);
+                    setItemValue("");
+                  }}
+                >
+                  <Plus className="mr-1.5 h-3.5 w-3.5" /> Add entity
+                </Button>
+              </div>
+
+              <p className="text-[0.7rem] text-muted-foreground">
+                {requirementEntityMeta(itemType).appliesTo} · education / experience values matching{" "}
+                {EDUCATION_LEVEL_OPTIONS.join(" / ")} or {EXPERIENCE_LEVEL_OPTIONS.join(" / ")} fill the job
+                post&apos;s structured levels; any other value is added as a qualification line.
+              </p>
+
+              {suggestions.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border/70 bg-muted/30 p-2">
+                  <span className="text-[0.65rem] font-medium text-muted-foreground">
+                    Suggested for this position:
+                  </span>
+                  {suggestions.map((s) => (
+                    <Badge
+                      key={s}
+                      variant="outline"
+                      className="cursor-pointer gap-1 text-[0.65rem] hover:border-primary/60"
+                      title={`Add "${s}" as a requirement entity`}
+                      onClick={() => addItem(guessRefType(s), s)}
+                    >
+                      <Plus className="h-3 w-3" /> {s}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              {form.items.length === 0 ? (
+                <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-[0.7rem] text-muted-foreground">
+                  No entities yet — add the skills, certifications, education and experience this role requires.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {REQUIREMENT_ENTITY_META.flatMap((meta) =>
+                    form.items.map((item, index) =>
+                      item.entity_type === meta.value ? (
+                        <div
+                          key={`${item.entity_type}-${index}`}
+                          className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5"
+                        >
+                          <Badge variant="outline" className={cn("text-[0.65rem]", meta.className)}>
+                            {meta.label}
+                          </Badge>
+                          <span className="min-w-0 flex-1 truncate text-xs">{item.value}</span>
+                          {isRecognized(item.value) ? (
+                            <span
+                              className="text-[0.65rem] text-success"
+                              title="Recognized by the screening model"
+                            >
+                              ✓ in vocabulary
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="cursor-pointer text-[0.65rem] font-semibold text-primary hover:underline"
+                              title={`Add "${item.value}" to the screening vocabulary`}
+                              onClick={() => onAddToVocabulary(item.value, guessRefType(item.value))}
+                            >
+                              + vocabulary
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="cursor-pointer text-muted-foreground hover:text-destructive"
+                            title="Remove entity"
+                            onClick={() => removeItem(index)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : null,
+                    ),
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" className="cursor-pointer" onClick={() => setEditorOpen(false)}>
+              Cancel
+            </Button>
+            <Button className="cursor-pointer" disabled={saving} onClick={save}>
+              {saving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…
+                </>
+              ) : editingId !== null ? (
+                "Save template"
+              ) : (
+                "Create template"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete this requirement template?</DialogTitle>
+            <DialogDescription>
+              &quot;{deleteTarget?.name}&quot; will be removed from Screening Setup. Job posts already built with it
+              keep their content.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" className="cursor-pointer" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="cursor-pointer"
+              disabled={deleting}
+              onClick={confirmDelete}
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting…
+                </>
+              ) : (
+                "Delete template"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }
 
 export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }) {
@@ -1046,7 +1934,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   /** Screening setup dialog (moved from Applicant Management header). */
   const [screeningOpen, setScreeningOpen] = useState(false);
   /** Active tab inside the Screening Setup dialog. */
-  const [screeningTab, setScreeningTab] = useState("scoring");
+  const [screeningTab, setScreeningTab] = useState("templates");
   const [criteria, setCriteria] = useState(screeningCriteria);
   const [passing, setPassing] = useState(75);
   /** Minimum fraction of a post's required skills that must match (0—100%). */
@@ -1059,23 +1947,49 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   } | null>(null);
   /** True while the screening configuration is being saved. */
   const [savingConfig, setSavingConfig] = useState(false);
-  /** Requirement Templates tab — selected position + custom-entry form. */
-  const [keywordPosition, setKeywordPosition] = useState(positions[0]!.title);
   /** Vocabulary (Reference Data) lookup so template chips can show which
    *  terms the model already recognizes — loaded when the dialog opens. */
   const [refValues, setRefValues] = useState<Set<string>>(new Set());
-  const [customTerm, setCustomTerm] = useState("");
-  const [customTermType, setCustomTermType] = useState<"skill" | "job_role" | "certification">(
-    "skill",
-  );
   const [addingTerm, setAddingTerm] = useState(false);
+  /** Requirement templates (Screening Setup) — shared by the manager and the
+   *  Job Post Builder picker. */
+  const [requirementTemplates, setRequirementTemplates] = useState<ApiRequirementTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+  const [templateBusyId, setTemplateBusyId] = useState<number | null>(null);
+  /** Builder "Requirement template" picker (reset after a template is applied). */
+  const [builderTemplatePick, setBuilderTemplatePick] = useState("");
   const totalWeight = criteria.reduce((t, c) => t + (c.enabled ? c.weight : 0), 0);
+
+  /** Loads the requirement templates used by the Screening Setup manager and
+   *  the Job Post Builder picker. */
+  const loadRequirementTemplates = useCallback(() => {
+    setTemplatesLoading(true);
+    setTemplatesError(null);
+    screeningApi.requirementTemplates
+      .list()
+      .then((res) => setRequirementTemplates(res.data ?? []))
+      .catch((e) => {
+        console.warn("Could not load requirement templates:", e);
+        setTemplatesError(
+          e instanceof Error && e.message ? e.message : "Could not load requirement templates.",
+        );
+      })
+      .finally(() => setTemplatesLoading(false));
+  }, []);
+
+  useEffect(() => {
+    loadRequirementTemplates();
+  }, [loadRequirementTemplates]);
 
   /** Loads the live screening configuration + NLP service status when the
    *  Screening Setup dialog opens — no fake defaults, everything shown is
    *  what screenings actually run with. The fast vocabulary lookup is fired
    *  first so it is not stuck behind the slow NLP health probe. */
   const loadScreeningStatus = useCallback(() => {
+    // Requirement templates + vocabulary lookup fire first so the manager and
+    // the chips have data without waiting for the slow NLP health probe.
+    loadRequirementTemplates();
     // Vocabulary lookup for the Requirement Templates tab — lets each chip
     // show whether the model already recognizes that term.
     screeningApi.referenceData
@@ -1107,7 +2021,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         setCoverageMin(Math.round((effective.required_skills_coverage_min ?? 0.6) * 100));
       })
       .catch((e) => console.warn("Could not load screening configuration status:", e));
-  }, []);
+  }, [loadRequirementTemplates]);
 
   useEffect(() => {
     if (screeningOpen) loadScreeningStatus();
@@ -1140,6 +2054,116 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     } finally {
       setSavingConfig(false);
     }
+  };
+
+  /** Activates / deactivates a requirement template (builder availability). */
+  const toggleRequirementTemplate = async (template: ApiRequirementTemplate) => {
+    setTemplateBusyId(template.template_id);
+    try {
+      const res = await screeningApi.requirementTemplates.toggleActive(template.template_id);
+      setRequirementTemplates((prev) =>
+        prev.map((t) => (t.template_id === res.data.template_id ? res.data : t)),
+      );
+      toast.success(
+        `Requirement template "${res.data.name}" ${res.data.active ? "activated" : "deactivated"}`,
+        {
+          description: res.data.active
+            ? "It is available in the Job Post Builder picker again."
+            : "It is hidden from the Job Post Builder picker.",
+        },
+      );
+    } catch (e) {
+      toast.error(
+        e instanceof Error && e.message ? e.message : "The template could not be updated.",
+      );
+    } finally {
+      setTemplateBusyId(null);
+    }
+  };
+
+  /** Applies a requirement template to the Job Post Builder draft: skills seed
+   *  Required Skills, certifications / job roles seed Qualifications (roles as
+   *  an "Experience as …" line) and education / experience entities fill the
+   *  structured levels the NLP screening scores against. Non-standard education
+   *  / experience values become qualification lines instead of being lost. */
+  const applyRequirementTemplateToDraft = (template: ApiRequirementTemplate) => {
+    const mergeLines = (current: string, additions: string[]) => {
+      const existing = new Set(
+        current
+          .split("\n")
+          .map((l) => l.trim().toLowerCase())
+          .filter(Boolean),
+      );
+      return [
+        ...current
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean),
+        ...additions.filter((a) => !existing.has(a.trim().toLowerCase())),
+      ];
+    };
+
+    const skills = template.items
+      .filter((i) => i.entity_type === "skill")
+      .map((i) => i.value);
+    const qualificationLines = [
+      ...template.items.filter((i) => i.entity_type === "certification").map((i) => i.value),
+      ...template.items
+        .filter((i) => i.entity_type === "job_role")
+        .map((i) => `Experience as ${i.value}`),
+      ...template.items
+        .filter((i) => i.entity_type === "education" && !isEducationLevel(i.value))
+        .map((i) => `Education: ${i.value}`),
+      ...template.items
+        .filter((i) => i.entity_type === "experience" && !isExperienceLevel(i.value))
+        .map((i) => `Experience: ${i.value}`),
+    ];
+    const educationLevel = template.items
+      .filter((i) => i.entity_type === "education")
+      .map((i) => isEducationLevel(i.value))
+      .find((level) => level !== undefined);
+    const experienceLevel = template.items
+      .filter((i) => i.entity_type === "experience")
+      .map((i) => isExperienceLevel(i.value))
+      .find((level) => level !== undefined);
+
+    const nextSkills = mergeLines(draft.skills, skills);
+    const nextQualifications = mergeLines(draft.qualifications, qualificationLines);
+
+    setDraft((d) => ({
+      ...d,
+      skills: nextSkills.join("\n"),
+      qualifications: nextQualifications.join("\n"),
+      ...(educationLevel ? { educationLevel } : {}),
+      ...(experienceLevel ? { experienceLevel } : {}),
+    }));
+    // Make sure the seeded blocks sit on the builder canvas and are active.
+    setBlocks((b) => {
+      const needed = (["skills", "qualifications"] as BlockId[]).filter((id) => !b.includes(id));
+      return needed.length ? [...b, ...needed] : b;
+    });
+    setActiveBlock("skills");
+    setScreeningOpen(false);
+    setTab("builder");
+    setBuilderStarted(true);
+    setBuilderTemplatePick("");
+
+    const summary: string[] = [];
+    if (skills.length) summary.push(`${skills.length} skill${skills.length === 1 ? "" : "s"}`);
+    if (qualificationLines.length) {
+      summary.push(
+        `${qualificationLines.length} qualification line${
+          qualificationLines.length === 1 ? "" : "s"
+        }`,
+      );
+    }
+    if (educationLevel) summary.push(`education level ${educationLevel}`);
+    if (experienceLevel) summary.push(`experience level ${experienceLevel}`);
+    toast.success(`Requirement template "${template.name}" applied to the job post`, {
+      description: summary.length
+        ? `${summary.join(" · ")} — review them in the builder before saving.`
+        : "Review the builder draft before saving.",
+    });
   };
 
   /** Adds a template term to the Reference Data vocabulary (skill/role/cert)
@@ -1175,32 +2199,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     } finally {
       setAddingTerm(false);
     }
-  };
-
-  /** Injects the selected position's template keywords into the Job Post
-   *  Builder's Required Skills block (deduplicated against what's already
-   *  drafted) and jumps straight there — one click instead of copy-paste. */
-  const applyTemplateToBuilder = (templateKeywords: string[]) => {
-    if (templateKeywords.length === 0) return;
-    const existing = new Set(draft.skills.split("\n").map((l) => l.trim().toLowerCase()));
-    const merged = [
-      ...draft.skills
-        .split("\n")
-        .map((l) => l.trim())
-        .filter(Boolean),
-      ...templateKeywords.filter((k) => !existing.has(k.trim().toLowerCase())),
-    ];
-    setDraft((d) => ({ ...d, skills: merged.join("\n") }));
-    // Make sure the Required Skills block is on the builder canvas and active,
-    // so the injected keywords are immediately visible.
-    setBlocks((b) => (b.includes("skills") ? b : [...b, "skills" as BlockId]));
-    setActiveBlock("skills");
-    setScreeningOpen(false);
-    setTab("builder");
-    setBuilderStarted(true);
-    toast.success(`Added ${templateKeywords.length} template keyword(s) to Required Skills`, {
-      description: "Review them in the Job Post Builder, then publish or save the post.",
-    });
   };
 
   /** Maps the NLP service's official status codes to the UI status values. */
@@ -1698,6 +2696,21 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const reqsLoading = useRequisitionsLoading();
 
   const [draft, setDraft] = useState<Draft>(blankDraft);
+
+  /** Active requirement templates for the builder picker — the draft's own
+   *  position is listed first so the matching template is one click away. */
+  const builderTemplateOptions = useMemo(() => {
+    const draftPositionId = knownPositions.find((p) => p.title === draft.title)?.dbId;
+    return requirementTemplates
+      .filter((t) => t.active)
+      .sort((a, b) => {
+        const aMatch = a.position_id !== null && a.position_id === draftPositionId ? 0 : 1;
+        const bMatch = b.position_id !== null && b.position_id === draftPositionId ? 0 : 1;
+        if (aMatch !== bMatch) return aMatch - bMatch;
+        return a.name.localeCompare(b.name);
+      });
+  }, [requirementTemplates, draft.title, knownPositions]);
+
   const [platforms, setPlatforms] = useState<Record<string, boolean>>({
     Website: true,
     Facebook: true,
@@ -2222,8 +3235,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         : new Date().toISOString().slice(0, 10),
       status: chosen.length ? "Open" : "Draft",
       active: chosen.length > 0,
-      experience: "1-2 Years",
-      education: "High School Graduate",
+      experience: draft.experienceLevel,
+      education: draft.educationLevel,
       summary: draft.description,
       description: draft.description,
       responsibilities: lines(draft.responsibilities),
@@ -2334,6 +3347,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         vacancies: jobPayload.vacancies,
         status: jobPayload.status,
         active: jobPayload.active,
+        /* Structured screening levels — the NLP match scoring reads them. */
+        experience_level: jobPayload.experience,
+        education_level: jobPayload.education,
         summary: jobPayload.summary,
         description: jobPayload.description,
         responsibilities: jobPayload.responsibilities,
@@ -3971,6 +4987,41 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 >
                   {draft.title || "Untitled position"}
                 </button>
+
+                {/* Requirement template picker — seeds the post's screening
+                    requirements from a Screening Setup template. */}
+                <div className="ml-auto flex items-center gap-2">
+                  <ClipboardList className="h-3.5 w-3.5 text-primary" />
+                  <Select
+                    value={builderTemplatePick}
+                    onValueChange={(v) => {
+                      const template = requirementTemplates.find(
+                        (t) => String(t.template_id) === v,
+                      );
+                      if (template) applyRequirementTemplateToDraft(template);
+                    }}
+                  >
+                    <SelectTrigger
+                      className="h-7 w-64 text-xs"
+                      title="Apply a requirement template to this job post"
+                    >
+                      <SelectValue placeholder="Use requirement template…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {builderTemplateOptions.map((t) => (
+                        <SelectItem key={t.template_id} value={String(t.template_id)}>
+                          {t.name}
+                          {t.position_title ? ` · ${t.position_title}` : ""}
+                        </SelectItem>
+                      ))}
+                      {builderTemplateOptions.length === 0 && (
+                        <SelectItem value="__no_templates" disabled>
+                          No active templates — create one in Screening setup
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="grid gap-4 xl:grid-cols-[190px_minmax(0,1fr)_360px]">
@@ -4456,6 +5507,54 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                           })
                                         }
                                       />
+                                    </div>
+                                    {/* Structured screening levels — filled by requirement
+                                        templates and scored by the NLP match analysis. */}
+                                    <div className="space-y-1">
+                                      <Label className="text-[0.7rem]">Education level</Label>
+                                      <Select
+                                        value={draft.educationLevel}
+                                        onValueChange={(v) =>
+                                          setDraft({
+                                            ...draft,
+                                            educationLevel: v as Job["education"],
+                                          })
+                                        }
+                                      >
+                                        <SelectTrigger className="h-8 text-xs">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {EDUCATION_LEVEL_OPTIONS.map((level) => (
+                                            <SelectItem key={level} value={level}>
+                                              {level}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <Label className="text-[0.7rem]">Experience level</Label>
+                                      <Select
+                                        value={draft.experienceLevel}
+                                        onValueChange={(v) =>
+                                          setDraft({
+                                            ...draft,
+                                            experienceLevel: v as Job["experience"],
+                                          })
+                                        }
+                                      >
+                                        <SelectTrigger className="h-8 text-xs">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {EXPERIENCE_LEVEL_OPTIONS.map((level) => (
+                                            <SelectItem key={level} value={level}>
+                                              {level}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
                                     </div>
                                   </div>
                                 )}
@@ -6023,9 +7122,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   <ScanLine className="h-5 w-5 text-primary" /> Screening Setup
                 </DialogTitle>
                 <DialogDescription>
-                  Scoring — how resumes are scored. Requirement Templates — what to require per
-                  position. Reference Data — the vocabulary the model recognizes in resumes. Saved
-                  settings apply to every new screening run.
+                  Requirement Templates — the requirement entities a resume must satisfy per position,
+                  ready to apply in a job post. Scoring — how resumes are scored. Reference Data — the
+                  vocabulary the model recognizes in resumes, one section per entity type with bulk
+                  upload. Reported Entities — unrecognized entities flagged from screening results, ready
+                  to add. Saved settings apply to every new screening run.
                 </DialogDescription>
               </DialogHeader>
 
@@ -6070,9 +7171,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
               <TabsList className="h-auto w-full justify-start rounded-lg border border-border/70 bg-muted/70 p-1">
                 {[
+                  { value: "templates", label: "Requirement Templates", icon: ClipboardList },
                   { value: "scoring", label: "Scoring", icon: Sliders },
-                  { value: "keywords", label: "Requirement Templates", icon: FilePlus2 },
                   { value: "reference", label: "Reference Data", icon: Database },
+                  { value: "reported", label: "Reported Entities", icon: Flag },
                 ].map((t) => (
                   <TabsTrigger
                     key={t.value}
@@ -6240,169 +7342,19 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 </div>
               </TabsContent>
 
-              <TabsContent value="keywords" className="mt-0">
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-sm font-semibold">Requirement templates per position</h3>
-                    <p className="text-xs text-muted-foreground">
-                      What to <span className="font-medium text-foreground">require</span> for this
-                      role — use the chips to seed a job post&apos;s requirements, or add a term to
-                      the vocabulary so the model recognizes it in resumes.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-xs">Job position</Label>
-                    <Select value={keywordPosition} onValueChange={(v) => setKeywordPosition(v)}>
-                      <SelectTrigger className="max-w-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {positions.map((p) => (
-                          <SelectItem key={p.id} value={p.title}>
-                            {p.title}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {(() => {
-                    const template = keywordLibrary[keywordPosition] ?? [];
-                    const inVocab = (k: string) => refValues.has(k.trim().toLowerCase());
-                    const missing = template.filter((k) => !inVocab(k));
-                    return (
-                      <>
-                        <div className="flex flex-wrap gap-1.5 rounded-md border border-border bg-muted/30 p-3">
-                          {template.map((k) => (
-                            <Badge
-                              key={k}
-                              variant={inVocab(k) ? "secondary" : "outline"}
-                              className="group gap-1 py-1 pl-2 pr-1 text-xs"
-                            >
-                              {k}
-                              {inVocab(k) ? (
-                                <span
-                                  className="text-[0.6rem] text-success"
-                                  title="Already in the screening vocabulary"
-                                >
-                                  ✓
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  disabled={addingTerm}
-                                  title={`Add "${k}" to the screening vocabulary so the model recognizes it in resumes`}
-                                  className="rounded-sm px-0.5 text-[0.65rem] font-bold text-primary transition-colors hover:bg-primary/15 disabled:opacity-50"
-                                  onClick={() => addTermToVocabulary(k, guessRefType(k))}
-                                >
-                                  +
-                                </button>
-                              )}
-                            </Badge>
-                          ))}
-                          {template.length === 0 && (
-                            <span className="text-xs text-muted-foreground">
-                              No template keywords for this position yet — add custom terms below.
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button
-                            size="sm"
-                            className="cursor-pointer"
-                            disabled={template.length === 0}
-                            onClick={() => applyTemplateToBuilder(template)}
-                          >
-                            <FilePlus2 className="mr-1.5 h-3.5 w-3.5" /> Use in Job Post Builder
-                          </Button>
-                          {missing.length > 0 && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="cursor-pointer"
-                              disabled={addingTerm}
-                              onClick={() =>
-                                Promise.all(
-                                  missing.map((k) => addTermToVocabulary(k, guessRefType(k))),
-                                )
-                              }
-                            >
-                              <Plus className="mr-1.5 h-3.5 w-3.5" /> Add all {missing.length}{" "}
-                              missing to vocabulary
-                            </Button>
-                          )}
-                          <p className="text-[0.7rem] text-muted-foreground">
-                            {missing.length === 0 && template.length > 0
-                              ? "All template terms are already recognized by the model."
-                              : `${missing.length} of ${template.length} terms are not yet in the vocabulary — terms not in the vocabulary are flagged for review when found in resumes.`}
-                          </p>
-                        </div>
-                      </>
-                    );
-                  })()}
-
-                  <div className="space-y-2 rounded-md border border-border p-3">
-                    <Label className="text-xs">Add a custom term to the vocabulary</Label>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Select
-                        value={customTermType}
-                        onValueChange={(v) => setCustomTermType(v as typeof customTermType)}
-                      >
-                        <SelectTrigger className="h-9 w-40 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="skill">Skill</SelectItem>
-                          <SelectItem value="job_role">Job role</SelectItem>
-                          <SelectItem value="certification">Certification</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        className="h-9 min-w-0 flex-1 text-xs"
-                        placeholder="e.g. Opera Cloud, Micros POS, Guest Service Officer"
-                        value={customTerm}
-                        onChange={(e) => setCustomTerm(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && customTerm.trim()) {
-                            e.preventDefault();
-                            addTermToVocabulary(customTerm, customTermType).then(() =>
-                              setCustomTerm(""),
-                            );
-                          }
-                        }}
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-9 cursor-pointer"
-                        disabled={addingTerm || !customTerm.trim()}
-                        onClick={() =>
-                          addTermToVocabulary(customTerm, customTermType).then(() =>
-                            setCustomTerm(""),
-                          )
-                        }
-                      >
-                        {addingTerm ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Plus className="h-3.5 w-3.5" />
-                        )}
-                        Add
-                      </Button>
-                    </div>
-                    <p className="text-[0.7rem] text-muted-foreground">
-                      Terms added here appear on the Reference Data tab and are matched in every new
-                      screening — aliases can be managed there.
-                    </p>
-                  </div>
-
-                  <p className="text-[0.7rem] text-muted-foreground">
-                    Entities captured from every resume:{" "}
-                    {["PERSON", "EDUCATION", "JOB_TITLE", "SKILL", "CERTIFICATION"].join(" · ")}
-                  </p>
-                </div>
+              <TabsContent value="templates" className="mt-0">
+                <RequirementTemplateManager
+                  templates={requirementTemplates}
+                  loading={templatesLoading}
+                  error={templatesError}
+                  positions={knownPositions}
+                  refValues={refValues}
+                  busyId={templateBusyId}
+                  onReload={loadRequirementTemplates}
+                  onToggleActive={toggleRequirementTemplate}
+                  onUseTemplate={applyRequirementTemplateToDraft}
+                  onAddToVocabulary={addTermToVocabulary}
+                />
               </TabsContent>
 
               <TabsContent value="reference" className="mt-0">
@@ -6414,6 +7366,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 </p>
                 <ScreeningReferenceManager />
               </TabsContent>
+
+              <TabsContent value="reported" className="mt-0">
+                <ReportedEntitiesManager />
+              </TabsContent>
             </div>
 
             {/* Footer — sticky save bar for the scoring tab */}
@@ -6422,8 +7378,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 <p className="text-[0.7rem] text-muted-foreground">
                   {screeningTab === "scoring"
                     ? "Weights and thresholds apply to every new resume screening after saving."
-                    : screeningTab === "keywords"
-                      ? "Templates seed job post requirements; the + buttons add terms to the screening vocabulary."
+                    : screeningTab === "templates"
+                      ? "Templates seed a job post's requirements; the + buttons add terms to the screening vocabulary."
                       : "Reference Data changes apply to the next screening immediately."}
                 </p>
                 <Button

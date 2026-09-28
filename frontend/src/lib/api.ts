@@ -539,7 +539,7 @@ export const assessmentsApi = {
 
 export interface ApiScreeningReference {
   ref_id: number;
-  data_type: "skill" | "job_role" | "certification";
+  data_type: "skill" | "job_role" | "certification" | "education" | "experience";
   canonical_value: string;
   aliases_json: string[] | null;
   active: boolean;
@@ -564,6 +564,46 @@ export interface ScreeningConfiguration {
   required_skills_coverage_min: number;
 }
 
+/** Entity types a requirement template row can carry (mirrors the NLP entity set). */
+export type ScreeningRequirementEntityType =
+  | "skill"
+  | "job_role"
+  | "certification"
+  | "education"
+  | "experience";
+
+export interface ApiRequirementTemplateItem {
+  item_id: number;
+  entity_type: ScreeningRequirementEntityType;
+  value: string;
+  required: boolean;
+}
+
+/** A per-position requirement template created in Screening Setup and applied to a job post. */
+export interface ApiRequirementTemplate {
+  template_id: number;
+  name: string;
+  position_id: number | null;
+  position_title: string | null;
+  description: string | null;
+  active: boolean;
+  items: ApiRequirementTemplateItem[];
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface RequirementTemplatePayload {
+  name: string;
+  position_id: number | null;
+  description?: string | null;
+  active?: boolean;
+  items: {
+    entity_type: ScreeningRequirementEntityType;
+    value: string;
+    required?: boolean;
+  }[];
+}
+
 /** DB-managed spaCy screening vocabulary (skills / job roles / certifications + aliases). */
 export const screeningApi = {
   referenceData: {
@@ -571,7 +611,10 @@ export const screeningApi = {
     mapping: () =>
       request<{
         success: boolean;
-        data: Record<"skills" | "job_roles" | "certifications", Record<string, string[]>>;
+        data: Record<
+          "skills" | "job_roles" | "certifications" | "education" | "experience",
+          Record<string, string[]>
+        >;
         meta: { counts: Record<string, number> };
       }>("/screening/reference-data"),
     list: (params?: { data_type?: string; search?: string }) => {
@@ -627,6 +670,44 @@ export const screeningApi = {
       request<{ success: boolean; data: ScreeningConfiguration; message: string }>(
         "/screening/configuration",
         { method: "PUT", body: JSON.stringify({ configuration }) },
+      ),
+  },
+
+  /**
+   * Per-position requirement templates (Screening Setup → Requirement
+   * Templates). Each template lists the requirement entities — skills, job
+   * roles, certifications, education and experience — that the Job Post
+   * Builder can apply to a post draft.
+   */
+  requirementTemplates: {
+    list: (params?: { position_id?: number; active?: boolean }) => {
+      const qs = new URLSearchParams();
+      if (params?.position_id !== undefined) qs.set("position_id", String(params.position_id));
+      if (params?.active !== undefined) qs.set("active", String(params.active));
+      const query = qs.toString();
+      return request<{ success: boolean; data: ApiRequirementTemplate[] }>(
+        `/screening/requirement-templates${query ? `?${query}` : ""}`,
+      );
+    },
+    create: (payload: RequirementTemplatePayload) =>
+      request<{ success: boolean; data: ApiRequirementTemplate; message: string }>(
+        "/screening/requirement-templates",
+        { method: "POST", body: JSON.stringify(payload) },
+      ),
+    update: (id: number, payload: RequirementTemplatePayload) =>
+      request<{ success: boolean; data: ApiRequirementTemplate; message: string }>(
+        `/screening/requirement-templates/${id}`,
+        { method: "PUT", body: JSON.stringify(payload) },
+      ),
+    remove: (id: number) =>
+      request<{ success: boolean; message: string }>(
+        `/screening/requirement-templates/${id}`,
+        { method: "DELETE" },
+      ),
+    toggleActive: (id: number) =>
+      request<{ success: boolean; data: ApiRequirementTemplate }>(
+        `/screening/requirement-templates/${id}/toggle`,
+        { method: "PATCH" },
       ),
   },
 };
@@ -1301,13 +1382,23 @@ export interface ApiVerifyResponse {
 
 export const mySettingsApi = {
   get: (user: string) =>
-    request<{ notifications: Record<string, boolean>; preferences: Record<string, string> }>(
-      `/my/settings?user=${encodeURIComponent(user)}`,
-    ),
+    request<{
+      notifications: Record<string, boolean>;
+      preferences: Record<string, string>;
+      /** Personal OTP-at-login flag stored on system_users.otp_enabled. */
+      otp_enabled?: boolean;
+      user?: string | null;
+    }>(`/my/settings?user=${encodeURIComponent(user)}`),
   save: (scope: "notifications" | "preferences", user: string, value: any) =>
     request<{ setting_key: string; setting_value: any }>(`/my/settings/${scope}`, {
       method: "PUT",
       body: JSON.stringify({ user, value }),
+    }),
+  /** Toggles THIS account's OTP-at-login requirement (PUT /my/otp). */
+  toggleOtp: (user: string, enabled: boolean) =>
+    request<{ message: string; otp_enabled: boolean }>("/my/otp", {
+      method: "PUT",
+      body: JSON.stringify({ user, enabled }),
     }),
   changePassword: (user: string, currentPassword: string, newPassword: string) =>
     request<{ message: string }>("/my/change-password", {

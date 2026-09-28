@@ -205,6 +205,17 @@ _PH_CITIES = [
     "Cebu", "Davao", "Metro Manila", "NCR", "Iloilo", "Bacolod",
     "Baguio", "Angeles", "San Fernando", "General Santos", "Ilocos",
     "Bicol", "Nueva Ecija", "Tarlac", "Pangasinan", "Zambales", "Bataan",
+    # Unaccented spellings — PDF text extraction frequently drops the ñ
+    # ("Paranaque City", "Las Pinas") which used to fail every city check.
+    "Paranaque City", "Paranaque", "Las Pinas City", "Las Pinas",
+    "Dasmariñas", "Dasmariñas City", "Dasmariñas", "Binan", "Biñan",
+    "Sta. Rosa", "Santa Rosa", "Calamba", "Cabuyao", "Los Banos", "Los Baños",
+    "San Pedro", "Imus", "Bacoor", "Lipa City", "Lipa", "Lucena",
+    "Cagayan de Oro", "Iligan", "Zamboanga", "Dumaguete", "Naga",
+    "Legazpi", "Vigan", "Dagupan", "Urdaneta", "Malolos", "Meycauayan",
+    "Marilao", "Mandaue", "Lapu-Lapu", "Mactan", "Alabang", "Sucat",
+    "Novaliches", "Cubao", "Ermita", "Malate", "Bgc", "Ortigas",
+    "Silang", "Trece Martires", "Tanauan", "San Pablo", "Kawit",
 ]
 
 # Words that mark a token sequence as an organization rather than a person.
@@ -250,6 +261,19 @@ def _strip_contact_tokens(line: str) -> str:
     line = PHONE_RE.sub(" ", line)
     line = GENERIC_PHONE_RE.sub(" ", line)
     return line
+
+
+# Structural address markers. PDF text extraction routinely loses the line
+# breaks and city spellings resumes were written with, so a candidate line
+# counts as an address when it carries any of these even if no _PH_CITIES
+# entry matches ("78 Palm Grove Blvd, Brgy. Tambo, Paranaque").
+_ADDRESS_MARKERS = re.compile(
+    r"\b(barangay|brgy\.?|street|st\.|avenue|ave\.?|road|rd\.?|blvd\.?|boulevard|"
+    r"drive|dr\.?|lane|subdivision|subd\.?|village|vill\.?|compound|condo|tower|"
+    r"building|bldg\.?|unit|floor|purok|sitio|zone|district|province|city|cities|"
+    r"municipality|municipal|zip|postal code)\b",
+    re.I,
+)
 
 
 def _normalize_name_word(word: str) -> str:
@@ -607,13 +631,22 @@ class EntityExtractor:
 
         def clean_addr(cand: str) -> Optional[str]:
             cand = cand.strip(" ,|-•·:–—")
-            if not cand or len(cand) < 6 or len(cand) > 120:
+            if not cand or len(cand) < 6 or len(cand) > 150:
                 return None
             if "@" in cand or re.search(r"https?://|linkedin\.com|www\.", cand, re.I):
                 return None
             if " — " in cand:
                 cand = cand.split(" — ")[-1].strip()
-            if any(re.search(rf"\b{re.escape(c)}\b", cand, re.I) for c in _PH_CITIES) or "philippines" in cand.lower():
+            city_match = (
+                any(re.search(rf"\b{re.escape(c)}\b", cand, re.I) for c in _PH_CITIES)
+                or "philippines" in cand.lower()
+            )
+            # A structural marker (barangay/street/boulevard/city/postal code…)
+            # is enough even when the city itself is missing or misspelled.
+            marker_match = bool(_ADDRESS_MARKERS.search(cand)) or bool(
+                re.search(r"\b\d{4}\b", cand)
+            )
+            if city_match or marker_match:
                 # Reject lines that are clearly job bullets rather than an address
                 if re.search(r"\b(operations|management|experience|supervisor|coordinator)\b", cand, re.I) and "," not in cand:
                     return None
@@ -637,8 +670,14 @@ class EntityExtractor:
 
         # Mixed contact lines: "0917... a@b.com Makati City, PH linkedin.com/x".
         # Strip contact tokens, then test the remaining fragment(s).
-        for line in lines[:12]:
-            if not any(re.search(rf"\b{re.escape(c)}\b", line, re.I) for c in _PH_CITIES) and "philippines" not in line.lower():
+        # Contact-section lines are scanned too (PDF headers often keep the
+        # address in a "Contact Information" block further down the page).
+        for line in contact_lines[:24]:
+            if (
+                not any(re.search(rf"\b{re.escape(c)}\b", line, re.I) for c in _PH_CITIES)
+                and "philippines" not in line.lower()
+                and not _ADDRESS_MARKERS.search(line)
+            ):
                 continue
             residue = _strip_contact_tokens(line)
             if residue == line:
@@ -651,14 +690,14 @@ class EntityExtractor:
             if res:
                 return res
 
-        for line in lines[:12]:
+        for line in contact_lines[:24]:
             parts = re.split(r"[|•·]|\s{2,}", line)
             for part in parts:
                 res = clean_addr(part)
                 if res and not PHONE_RE.search(res):
                     return res
 
-        for line in lines[:15]:
+        for line in contact_lines[:24]:
             if line.startswith(("+", "09", "http", "linkedin", "www", "Tel")):
                 continue
             res = clean_addr(line)
