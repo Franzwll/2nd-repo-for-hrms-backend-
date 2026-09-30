@@ -3,6 +3,7 @@
 namespace Modules\Settings\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Settings\Services\BackupService;
@@ -39,6 +40,15 @@ class BackupController extends Controller
             ], 500);
         }
 
+        AuditLogger::log(
+            "Backup {$entry['id']} created ({$entry['type']})",
+            'Settings',
+            'Info',
+            'backup',
+            $entry['id'],
+            "Backup {$entry['id']} ({$entry['size']}) created successfully.",
+        );
+
         return response()->json([
             'message' => "Backup {$entry['id']} created successfully.",
             'backup'  => $entry,
@@ -65,6 +75,15 @@ class BackupController extends Controller
             return response()->json(['message' => 'Backup file is missing on the server.'], 404);
         }
 
+        AuditLogger::log(
+            "Backup {$entry['id']} downloaded",
+            'Settings',
+            'Info',
+            'backup',
+            $entry['id'],
+            "Backup file {$entry['id']}.sql downloaded.",
+        );
+
         return response()->download(
             $path,
             ($entry['id'] ?? $id) . '.sql',
@@ -84,6 +103,18 @@ class BackupController extends Controller
         } catch (\Throwable $e) {
             return response()->json(['message' => $e->getMessage()], 500);
         }
+
+        // Logged AFTER the restore: the replayed dump may overwrite the
+        // audit_logs table with the snapshot, which would wipe a pre-restore
+        // entry. A post-restore entry survives and proves the rollback.
+        AuditLogger::log(
+            "System restored from {$id}",
+            'Settings',
+            'Critical',
+            'backup',
+            $id,
+            "System restored from {$id}. Executed {$statements} statement(s). Changes made after this backup were lost.",
+        );
 
         return response()->json([
             'message'    => "System restored from {$id}. Executed {$statements} statement(s).",

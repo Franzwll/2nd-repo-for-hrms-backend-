@@ -7,6 +7,7 @@ import { Logo } from "@/components/brand/Logo";
 import { Chatbot } from "@/components/public/Chatbot";
 import { Button } from "@/components/ui/button";
 import { useCompany } from "@/lib/landing";
+import { useLightOnly } from "@/lib/theme";
 
 const links = [
   { label: "Home", to: "/" },
@@ -24,6 +25,7 @@ const legalLinks = [
 ];
 
 export function PublicShell({ children }: { children: ReactNode }) {
+  useLightOnly();
   const { company } = useCompany();
   const [menuOpen, setMenuOpen] = useState(false);
 

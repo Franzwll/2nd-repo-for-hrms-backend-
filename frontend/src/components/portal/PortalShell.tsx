@@ -41,6 +41,7 @@ import { cn } from "@/lib/utils";
 import { navForRole, roleMeta, type Role } from "@/lib/nav";
 import { authApi, mfaApi } from "@/lib/api";
 import { clearSession, getUser } from "@/lib/auth";
+import { applyInitialTheme } from "@/lib/theme";
 import type { Notification } from "@/components/portal/portal-state";
 
 /** Map a notification's target to an in-app route for the current role. */
@@ -84,6 +85,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
   useEffect(() => {
     setMounted(true);
+    applyInitialTheme();
     setTime(new Date());
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);

@@ -121,54 +121,79 @@
 }
 
 .dark {
-  --background: oklch(0.19 0.024 260);
-  --foreground: oklch(0.95 0.008 250);
-  --card: oklch(0.235 0.026 260);
-  --card-foreground: oklch(0.95 0.008 250);
-  --popover: oklch(0.235 0.026 260);
-  --popover-foreground: oklch(0.95 0.008 250);
+  /* Warm "midnight ember" to match the light Crimson & Ivory brand
+   * (light theme lives around hue 30-85; old dark was cold blue ~260). */
+  --background: oklch(0.215 0.022 38);
+  --foreground: oklch(0.95 0.012 72);
+  --card: oklch(0.265 0.028 38);
+  --card-foreground: oklch(0.95 0.012 72);
+  --popover: oklch(0.28 0.03 38);
+  --popover-foreground: oklch(0.95 0.012 72);
 
-  --primary: oklch(0.6 0.176 22.5);
+  --primary: oklch(0.66 0.185 22);
   --primary-foreground: oklch(0.985 0.006 85);
 
-  --secondary: oklch(0.29 0.028 258);
-  --secondary-foreground: oklch(0.95 0.008 250);
-  --muted: oklch(0.29 0.028 258);
-  --muted-foreground: oklch(0.71 0.02 254);
-  --accent: oklch(0.76 0.11 85);
-  --accent-foreground: oklch(0.2 0.024 260);
+  --secondary: oklch(0.315 0.032 42);
+  --secondary-foreground: oklch(0.95 0.012 72);
+  --muted: oklch(0.29 0.026 42);
+  --muted-foreground: oklch(0.76 0.022 68);
+  --accent: oklch(0.8 0.12 80);
+  --accent-foreground: oklch(0.23 0.03 40);
 
-  --gold: oklch(0.78 0.11 85);
-  --gold-foreground: oklch(0.2 0.024 260);
-  --gold-soft: oklch(0.33 0.045 85);
+  --gold: oklch(0.8 0.12 80);
+  --gold-foreground: oklch(0.23 0.03 40);
+  --gold-soft: oklch(0.36 0.05 75);
 
-  --destructive: oklch(0.63 0.19 26);
+  --destructive: oklch(0.66 0.19 26);
   --destructive-foreground: oklch(0.985 0.006 85);
-  --success: oklch(0.66 0.13 152);
+  --success: oklch(0.7 0.135 152);
   --success-foreground: oklch(0.18 0.02 152);
-  --warning: oklch(0.82 0.145 84);
-  --warning-foreground: oklch(0.22 0.03 60);
-  --caution: oklch(0.71 0.16 46);
+  --warning: oklch(0.84 0.145 84);
+  --warning-foreground: oklch(0.24 0.03 60);
+  --caution: oklch(0.73 0.16 46);
   --caution-foreground: oklch(0.18 0.02 46);
 
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.6 0.176 22.5);
+  --border: oklch(0.95 0.012 72 / 15%);
+  --input: oklch(0.95 0.012 72 / 20%);
+  --ring: oklch(0.66 0.185 22);
 
-  --chart-1: oklch(0.6 0.176 22.5);
-  --chart-2: oklch(0.78 0.11 85);
-  --chart-3: oklch(0.66 0.13 152);
-  --chart-4: oklch(0.71 0.16 46);
-  --chart-5: oklch(0.71 0.02 254);
+  --chart-1: oklch(0.66 0.185 22);
+  --chart-2: oklch(0.8 0.12 80);
+  --chart-3: oklch(0.7 0.135 152);
+  --chart-4: oklch(0.73 0.16 46);
+  --chart-5: oklch(0.72 0.022 68);
 
-  --sidebar: oklch(0.165 0.024 260);
-  --sidebar-foreground: oklch(0.93 0.01 250);
-  --sidebar-primary: oklch(0.6 0.176 22.5);
+  --sidebar: oklch(0.19 0.038 25);
+  --sidebar-foreground: oklch(0.94 0.014 68);
+  --sidebar-primary: oklch(0.66 0.185 22);
   --sidebar-primary-foreground: oklch(0.985 0.006 85);
-  --sidebar-accent: oklch(0.27 0.028 258);
-  --sidebar-accent-foreground: oklch(0.96 0.008 250);
-  --sidebar-border: oklch(1 0 0 / 12%);
-  --sidebar-ring: oklch(0.78 0.11 85);
+  --sidebar-accent: oklch(0.29 0.04 32);
+  --sidebar-accent-foreground: oklch(0.96 0.01 70);
+  --sidebar-border: oklch(0.95 0.012 72 / 13%);
+  --sidebar-ring: oklch(0.8 0.12 80);
+}
+
+@layer base {
+  .dark body {
+    /* faint warm ember glow so large empty pages don't look flat black */
+    background-image: radial-gradient(
+      1200px 500px at 50% -10%,
+      oklch(0.66 0.185 22 / 9%),
+      transparent 70%
+    );
+  }
+
+  .dark :is(.bg-card, [data-slot="card"]) {
+    /* lift cards off the page with a warm edge + soft shadow */
+    border-color: oklch(0.95 0.012 72 / 16%);
+    box-shadow:
+      0 1px 0 0 oklch(1 0 0 / 5%) inset,
+      0 12px 32px -18px oklch(0 0 0 / 65%);
+  }
+
+  .dark ::placeholder {
+    color: oklch(0.76 0.022 68 / 70%);
+  }
 }
 
 @utility gold-rule {
@@ -330,5 +355,21 @@
   [role="button"] {
     display: none !important;
   }
+}
+
+/* Single password toggle: hide the browser-native reveal/clear buttons so only
+ * the app's custom Eye/EyeOff button shows (login, reset, settings). */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+input[type="password"]::-webkit-credentials-auto-fill-button,
+input[type="password"]::-webkit-password-toggle-button,
+input[type="password"]::-webkit-clear-button {
+  display: none !important;
+  visibility: hidden;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
 }
 

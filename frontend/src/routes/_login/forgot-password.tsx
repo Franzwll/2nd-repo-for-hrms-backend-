@@ -9,6 +9,7 @@ import { FloatingInput } from "@/components/ui/floating-input";
 import { Turnstile, TURNSTILE_SITE_KEY } from "@/components/ui/turnstile";
 
 import { authApi } from "@/lib/api";
+import { useLightOnly } from "@/lib/theme";
 
 export const Route = createFileRoute("/_login/forgot-password")({
   head: () => ({
@@ -24,6 +25,7 @@ export const Route = createFileRoute("/_login/forgot-password")({
 });
 
 function ForgotPasswordPage() {
+  useLightOnly();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);

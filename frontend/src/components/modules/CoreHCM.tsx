@@ -3486,11 +3486,13 @@ function LifecycleLogsViewer() {
    ========================================================================= */
 
 export function DeptPosModule({ role = "admin" }: { role?: Role }) {
-  const [activeTab, setActiveTab] = useState<"deptpos" | "salary" | "reqs">(() => {
+  const [activeTab, setActiveTab] = useState<"depts" | "positions" | "salary" | "reqs">(() => {
     const saved =
       typeof window !== "undefined" ? window.sessionStorage.getItem("hcm-deptpos-tab") : null;
-    return (saved === "deptpos" || saved === "salary" || saved === "reqs" ? saved : "deptpos") as
-      "deptpos" | "salary" | "reqs";
+    if (saved === "deptpos") return "depts" as const;
+    return (saved === "depts" || saved === "positions" || saved === "salary" || saved === "reqs"
+      ? saved
+      : "depts") as "depts" | "positions" | "salary" | "reqs";
   });
 
   useEffect(() => {
@@ -3513,10 +3515,16 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
       <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
         <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
           <TabsTrigger
-            value="deptpos"
+            value="depts"
             className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
           >
-            <Building2 className="mr-1.5 h-4 w-4" /> Department and Position
+            <Building2 className="mr-1.5 h-4 w-4" /> Departments
+          </TabsTrigger>
+          <TabsTrigger
+            value="positions"
+            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+          >
+            <Briefcase className="mr-1.5 h-4 w-4" /> Positions
           </TabsTrigger>
           <TabsTrigger
             value="salary"
@@ -3532,8 +3540,12 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="deptpos" className="space-y-6">
-          <DepartmentAndPositionManager role={role} />
+        <TabsContent value="depts" className="space-y-6">
+          <DepartmentAndPositionManager role={role} section="depts" />
+        </TabsContent>
+
+        <TabsContent value="positions" className="space-y-6">
+          <DepartmentAndPositionManager role={role} section="positions" />
         </TabsContent>
 
         <TabsContent value="salary" className="space-y-6">
@@ -3550,7 +3562,15 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
 }
 
 /* --- Department and Position Manager --- */
-function DepartmentAndPositionManager({ role }: { role: Role }) {
+function DepartmentAndPositionManager({
+  role,
+  section = "all",
+}: {
+  role: Role;
+  section?: "all" | "depts" | "positions";
+}) {
+  const showDepts = section === "all" || section === "depts";
+  const showPositions = section === "all" || section === "positions";
   const hcm = useHcmData();
   const hcmLoading = useHcmLoading();
   const reqs = useRequisitions();
@@ -3893,6 +3913,8 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
   return (
     <div className="space-y-8">
       {/* 1. DEPARTMENTS SECTION CARD */}
+      {showDepts && (
+        <>
       {/* Generate Report aligned with the page title via HeaderActions portal */}
       <HeaderActions>
         <ReportMenu
@@ -4052,8 +4074,12 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
           </div>
         </CardContent>
       </Card>
+        </>
+      )}
 
       {/* 2. POSITIONS SECTION CARD */}
+      {showPositions && (
+        <>
       <HeaderActions>
         <ReportMenu
           size="sm"
@@ -4245,8 +4271,11 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
           </div>
         </CardContent>
       </Card>
+        </>
+      )}
 
       {/* EDIT / ADD DEPARTMENT MODAL */}
+      {showDepts && (
       <Dialog
         open={!!editingDept}
         onOpenChange={(open) => {
@@ -4376,8 +4405,10 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* EDIT / ADD POSITION MODAL */}
+      {showPositions && (
       <Dialog
         open={!!editingPos}
         onOpenChange={(open) => {
@@ -4496,6 +4527,7 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* CONFIRMATION ALERT DIALOG (SAVE DEPT / SAVE POS) */}
       <AlertDialog
@@ -4589,6 +4621,7 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
       </AlertDialog>
 
       {/* VACANCY REQUISITION DIALOG (per department) */}
+      {showDepts && (
       <Dialog open={!!reqDialogDept} onOpenChange={(open) => !open && setReqDialogDept(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -4704,6 +4737,7 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
           </div>
         </DialogContent>
       </Dialog>
+      )}
     </div>
   );
 }
