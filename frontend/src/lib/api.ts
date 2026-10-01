@@ -1044,6 +1044,12 @@ export interface ApiPosition {
   department?: string | null;
   /** Department name — returned by PositionResource when the relation is loaded. */
   department_name?: string | null;
+  salary_grade_id?: number | null;
+  salary_grade?: string | null;
+  salary_grade_code?: string | null;
+  salary_grade_title?: string | null;
+  salary_grade_min?: number | null;
+  salary_grade_max?: number | null;
   level: string;
   headcount: number;
   filled_count: number;
@@ -1559,12 +1565,16 @@ export interface ApiPosition {
   department_id: number;
   department_name?: string | null;
   department?: string | null;
-  salary_grade_id: number;
-  salary_grade?: string;
+  salary_grade_id?: number | null;
+  salary_grade?: string | null;
+  salary_grade_code?: string | null;
+  salary_grade_title?: string | null;
+  salary_grade_min?: number | null;
+  salary_grade_max?: number | null;
   level: string;
   headcount: number;
   filled_count: number;
-  vacancies: number;
+  vacancies?: number;
 }
 
 export interface ApiSalaryGrade {

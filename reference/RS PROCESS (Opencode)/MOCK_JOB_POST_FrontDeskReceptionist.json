@@ -1,0 +1,92 @@
+{
+  "mock_job_post": {
+    "job_post_id": 16,
+    "slug": "front-desk-receptionist",
+    "title": "Front Desk Receptionist",
+    "department": "Front Office (id=1)",
+    "position": "Receptionist (id=1)",
+    "employment_type": "Full-time",
+    "schedule": "Shifting Schedule",
+    "salary_range": { "min": 18000.0, "max": 25000.0, "currency": "PHP" },
+    "vacancies": 2,
+    "status": "Open",
+    "active": 1,
+    "experience_level": "1-2 Years",
+    "education_level": "Bachelor's Degree",
+    "summary": "Join Oxford Suites Makati as a Front Desk Receptionist — face of Filipino hospitality from arrival to departure.",
+    "responsibilities": [
+      "Perform efficient guest check-in and check-out operations following hotel standards",
+      "Handle guest inquiries, reservations, and requests promptly with warm Filipino hospitality",
+      "Manage cash handling, bill settlements, and accurate posting of charges using POS systems",
+      "Resolve guest complaints and coordinate guest recovery efforts effectively",
+      "Maintain accurate guest records documentation and proper turn-over during shift changes",
+      "Promote hotel amenities and maximize revenue through proactive upselling techniques"
+    ],
+    "qualifications_raw": [
+      "Bachelor degree in Hospitality or related field, or BS Tourism is preferred",
+      "TESDA Front Office NC II certification is a strong advantage",
+      "Prior experience in Front Office Operations or hotel guest services is preferred",
+      "Demonstrated proficiency in Property Management Systems and MS Office",
+      "Willingness to work on a shifting schedule, including weekends and holidays"
+    ],
+    "skills": [
+      "Check-in / Check-out",
+      "Front Office Operations",
+      "Guest Relations",
+      "Customer Service",
+      "Communication",
+      "Problem Solving",
+      "Property Management Systems",
+      "Upselling",
+      "Cash Handling"
+    ]
+  },
+  "screening_requirements_derived": {
+    "note": "Built by ScreeningService.php:buildRequirements() from the job_posts row above",
+    "job_post_id": 16,
+    "title": "Front Desk Receptionist",
+    "required_skills": [
+      "Check-in / Check-out",
+      "Front Office Operations",
+      "Guest Relations",
+      "Customer Service",
+      "Communication",
+      "Problem Solving",
+      "Property Management Systems",
+      "Upselling",
+      "Cash Handling"
+    ],
+    "preferred_skills": [],
+    "education_level": "Bachelor's Degree",
+    "experience_level": "1-2 Years",
+    "min_years_experience": 1.0,
+    "required_certifications": [
+      "TESDA Front Office NC II"
+    ],
+    "required_information": ["name", "email", "phone"],
+    "how_certifications_extracted": "extractRequiredCertifications() keeps qualification lines matching /nc|certificate|license/i — only the TESDA line qualifies"
+  },
+  "screening_settings": {
+    "weights": { "skills": 0.4, "experience": 0.3, "education": 0.2, "certifications": 0.1 },
+    "passing_score": 75.0,
+    "required_skills_coverage_min": 0.6,
+    "source": "system_settings.screening.configuration (defaults in nlp-service/app/config.py)"
+  },
+  "demo_candidate": {
+    "name": "Vincent Paul Soriano",
+    "resume_file_used": "reference/resume + supporting document/Vincent Paul Soriano - Hotel Night Auditor and Front Desk Operations Specialist/Vincent_Paul_Soriano_Resume.docx",
+    "resume_file_requested": "reference/resume + supporting document/Vincent Paul Soriano - Hotel Night Auditor and Front Desk Operations Specialist/Vincent_Paul_Soriano_Resume.pdf (SCANNED/IMAGE-ONLY — same text, forces OCR; .docx used for deterministic demo run)",
+    "email": "vincent.soriano.nightaudit@outlook.ph",
+    "phone": "+63 917 229 6504",
+    "address": "77 Padre Faura Street, Ermita, 1000 Manila, Philippines",
+    "applied_job_post_id": 16
+  },
+  "supporting_documents_ground_truth": [
+    { "file": "Vincent_Paul_Soriano_COE_Current_Employer.pdf", "doc_type": "COE", "claim": "The Peninsula Manila | Lead Night Auditor & Duty Night Manager | July 2021 – Present", "expected": "VERIFIED" },
+    { "file": "Vincent_Paul_Soriano_COE_Previous_Employer.pdf", "doc_type": "COE", "claim": "New World Manila Bay Hotel | Night Auditor & Rooms Cashier | Nov 2018 – Jun 2021 vs COE Feb 2019 – Jun 2021", "expected": "DISCREPANCY_FOUND (3-month start-date gap)" },
+    { "file": "Vincent_Paul_Soriano_Diploma.pdf", "doc_type": "Diploma", "claim": "BS Accountancy (Hospitality Financial Auditing) | PLM | 2017", "expected": "VERIFIED" },
+    { "file": "Vincent_Paul_Soriano_Training_Certificate_FoodSafety.pdf", "doc_type": "Certificate", "claim": "CHAE | HFTP | Oct 2020", "expected": "VERIFIED" },
+    { "file": "Vincent_Paul_Soriano_Training_Certificate_Service.pdf", "doc_type": "Certificate", "claim": "Resume: Hotel Fraud Detection & PCI-DSS vs Cert: Paper Ledger Posting", "expected": "DISCREPANCY_FOUND" },
+    { "file": "Vincent_Paul_Soriano_Incomplete_Certificate.pdf", "doc_type": "Certificate", "claim": "Opera PMS Night Audit Mastery | Oracle | Aug 2021 (name torn off)", "expected": "UNABLE_TO_VERIFY" }
+  ]
+}

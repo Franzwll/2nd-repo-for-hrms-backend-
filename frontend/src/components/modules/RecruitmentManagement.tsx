@@ -99,7 +99,12 @@ import { DEFAULT_PAGE_SIZE } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
 import { peso, type Job } from "@/data/jobs";
 import { departments, positions, type Department, type Position } from "@/data/hr";
-import { requisitionStore, useRequisitions, useRequisitionsLoading, type Requisition } from "@/data/requisitions";
+import {
+  requisitionStore,
+  useRequisitions,
+  useRequisitionsLoading,
+  type Requisition,
+} from "@/data/requisitions";
 import {
   assessmentCriteria,
   interviewers,
@@ -166,6 +171,12 @@ import {
 } from "@/components/modules/ApplicantManagement";
 
 function transformApiJob(j: ApiJobPost): Job {
+  const filled = Number(j.filled_count) || 0;
+  /* Hires can outnumber the posted vacancies (e.g. 7 filled / 4 posted) when
+     candidates arrive from other channels. The Core HCM positions table keeps
+     vacancies >= filled, so the posting is normalized the same way here — the
+     "n/m filled" badge and remaining-slot checks never see an impossible ratio. */
+  const vacancies = Math.max(Number(j.vacancies) || 1, filled);
   const job: Job = {
     id: j.slug || String(j.job_post_id),
     dbId: j.job_post_id,
@@ -175,8 +186,8 @@ function transformApiJob(j: ApiJobPost): Job {
     schedule: j.schedule || "Shifting Schedule",
     salaryMin: Number(j.salary_min) || 0,
     salaryMax: Number(j.salary_max) || 0,
-    vacancies: Number(j.vacancies) || 1,
-    filled: Number(j.filled_count) || 0,
+    vacancies,
+    filled,
     posted: j.posted_date || new Date().toISOString().slice(0, 10),
     status: j.status,
     active: Boolean(j.active),
@@ -241,12 +252,7 @@ const EDUCATION_LEVEL_OPTIONS = [
   "Bachelor's Degree",
 ] as const;
 
-const EXPERIENCE_LEVEL_OPTIONS = [
-  "No Experience",
-  "1-2 Years",
-  "3-5 Years",
-  "5+ Years",
-] as const;
+const EXPERIENCE_LEVEL_OPTIONS = ["No Experience", "1-2 Years", "3-5 Years", "5+ Years"] as const;
 
 /**
  * Requirement-template entity types — the screening entity set (skill, job
@@ -453,9 +459,7 @@ export function ReportedEntitiesManager() {
             {handled.slice(0, 10).map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-2">
                 <CheckCircle2
-                  className={
-                    r.status === "processed" ? "h-3.5 w-3.5 text-success" : "h-3.5 w-3.5"
-                  }
+                  className={r.status === "processed" ? "h-3.5 w-3.5 text-success" : "h-3.5 w-3.5"}
                 />
                 <span className="font-medium text-foreground">{r.value}</span>
                 <span>· {r.status === "processed" ? "added to vocabulary" : "dismissed"}</span>
@@ -666,10 +670,11 @@ function BuilderEntityGroup({
         <div className="mt-2 flex flex-wrap gap-1.5">
           {recognized.map(({ canonical, sample }) => (
             <Badge key={canonical} variant="secondary" className="gap-1 py-1 pl-2 pr-1 text-xs">
-              <span title={sample !== canonical ? `From: ${sample}` : undefined}>
-                {canonical}
-              </span>
-              <span className="text-[0.6rem] text-success" title="Recognized by the screening model">
+              <span title={sample !== canonical ? `From: ${sample}` : undefined}>{canonical}</span>
+              <span
+                className="text-[0.6rem] text-success"
+                title="Recognized by the screening model"
+              >
                 ✓
               </span>
             </Badge>
@@ -746,9 +751,7 @@ function BuilderEntitiesCard({
     ...splitLines(draft.qualifications),
     ...splitLines(draft.skills),
   ].filter((line) =>
-    /nc\s*(i{1,3}|iv|1-4)|tesda|certificate|certification|license|licence|food handler/i.test(
-      line,
-    ),
+    /nc\s*(i{1,3}|iv|1-4)|tesda|certificate|certification|license|licence|food handler/i.test(line),
   );
   const certResult = analyzeBuilderEntityLines(certCandidateLines, certsIndex);
 
@@ -820,9 +823,7 @@ function BuilderEntitiesCard({
                 ? [{ canonical: titleCanonical, sample: draft.title.trim() }]
                 : []
             }
-            unrecognized={
-              draft.title.trim() && !titleCanonical ? [draft.title.trim()] : []
-            }
+            unrecognized={draft.title.trim() && !titleCanonical ? [draft.title.trim()] : []}
             addType={() => "job_role"}
             addingTerm={addingTerm}
             onAdd={onAdd}
@@ -1082,6 +1083,8 @@ type Draft = {
   department: string;
   employmentType: string;
   schedule: string;
+  /** "" = follow the position's assigned grade; otherwise a salary_grade_id. */
+  salaryGradeId: string;
   salaryMin: string;
   salaryMax: string;
   vacancies: string;
@@ -1101,6 +1104,7 @@ const blankDraft: Draft = {
   department: "",
   employmentType: "Full-time",
   schedule: "Shifting Schedule",
+  salaryGradeId: "",
   salaryMin: "",
   salaryMax: "",
   vacancies: "1",
@@ -1125,9 +1129,13 @@ function jobToDraft(j: Job): Draft {
     department: j.department,
     employmentType: j.employmentType,
     schedule: j.schedule,
+    salaryGradeId: "",
     salaryMin: String(j.salaryMin),
     salaryMax: String(j.salaryMax),
-    vacancies: String(j.vacancies),
+    /* A post can never hold fewer vacancies than the hires it recorded — the
+       "7/4 filled" drift is repaired to "7/7" here as well (backend keeps the
+       stored column aligned on every save). */
+    vacancies: String(Math.max(j.vacancies, j.filled)),
     description: j.summary,
     responsibilities: j.responsibilities.join("\n"),
     qualifications: j.qualifications.join("\n"),
@@ -1147,6 +1155,7 @@ function hasContentFor(id: BlockId, d: Draft): boolean {
       return (
         d.salaryMin.trim() !== "" ||
         d.salaryMax.trim() !== "" ||
+        d.salaryGradeId.trim() !== "" ||
         (d.vacancies.trim() !== "" && d.vacancies !== "1")
       );
     case "description":
@@ -1221,10 +1230,7 @@ export function RequirementTemplateManager({
   onReload: () => void;
   onToggleActive: (template: ApiRequirementTemplate) => void;
   onUseTemplate: (template: ApiRequirementTemplate) => void;
-  onAddToVocabulary: (
-    term: string,
-    type: "skill" | "job_role" | "certification",
-  ) => Promise<void>;
+  onAddToVocabulary: (term: string, type: "skill" | "job_role" | "certification") => Promise<void>;
 }) {
   const [search, setSearch] = useState("");
   const [positionFilter, setPositionFilter] = useState("all");
@@ -1325,7 +1331,11 @@ export function RequirementTemplateManager({
       position_id: form.positionId === "none" ? null : Number(form.positionId),
       description: form.description.trim() || null,
       active: form.active,
-      items: form.items.map((i) => ({ entity_type: i.entity_type, value: i.value, required: true })),
+      items: form.items.map((i) => ({
+        entity_type: i.entity_type,
+        value: i.value,
+        required: true,
+      })),
     };
     try {
       if (editingId !== null) {
@@ -1372,9 +1382,10 @@ export function RequirementTemplateManager({
         <div>
           <h3 className="text-sm font-semibold">Requirement templates per position</h3>
           <p className="text-xs text-muted-foreground">
-            What to <span className="font-medium text-foreground">require</span> for a role. Each template lists
-            screening entities — skill, job role, certification, education, experience — and can be applied to a job
-            post, seeding Required Skills, Qualifications and the education / experience levels.
+            What to <span className="font-medium text-foreground">require</span> for a role. Each
+            template lists screening entities — skill, job role, certification, education,
+            experience — and can be applied to a job post, seeding Required Skills, Qualifications
+            and the education / experience levels.
           </p>
         </div>
         <Button size="sm" className="cursor-pointer" onClick={openCreate}>
@@ -1447,7 +1458,9 @@ export function RequirementTemplateManager({
                     {!template.active && <Badge variant="secondary">Inactive</Badge>}
                   </p>
                   {template.description && (
-                    <p className="mt-0.5 text-[0.7rem] text-muted-foreground">{template.description}</p>
+                    <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
+                      {template.description}
+                    </p>
                   )}
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -1522,7 +1535,9 @@ export function RequirementTemplateManager({
                               disabled={busyId !== null}
                               title={`Add "${item.value}" to the screening vocabulary`}
                               className="cursor-pointer font-bold text-primary hover:underline disabled:opacity-50"
-                              onClick={() => onAddToVocabulary(item.value, guessRefType(item.value))}
+                              onClick={() =>
+                                onAddToVocabulary(item.value, guessRefType(item.value))
+                              }
                             >
                               +
                             </button>
@@ -1549,9 +1564,10 @@ export function RequirementTemplateManager({
               {editingId !== null ? "Edit requirement template" : "New requirement template"}
             </DialogTitle>
             <DialogDescription>
-              Pick the position this template belongs to, then add the requirement entities a resume must satisfy.
-              Applying the template to a job post seeds the Required Skills block, the Qualifications block and the
-              structured education / experience levels the screening scores against.
+              Pick the position this template belongs to, then add the requirement entities a resume
+              must satisfy. Applying the template to a job post seeds the Required Skills block, the
+              Qualifications block and the structured education / experience levels the screening
+              scores against.
             </DialogDescription>
           </DialogHeader>
 
@@ -1662,8 +1678,9 @@ export function RequirementTemplateManager({
 
               <p className="text-[0.7rem] text-muted-foreground">
                 {requirementEntityMeta(itemType).appliesTo} · education / experience values matching{" "}
-                {EDUCATION_LEVEL_OPTIONS.join(" / ")} or {EXPERIENCE_LEVEL_OPTIONS.join(" / ")} fill the job
-                post&apos;s structured levels; any other value is added as a qualification line.
+                {EDUCATION_LEVEL_OPTIONS.join(" / ")} or {EXPERIENCE_LEVEL_OPTIONS.join(" / ")} fill
+                the job post&apos;s structured levels; any other value is added as a qualification
+                line.
               </p>
 
               {suggestions.length > 0 && (
@@ -1687,7 +1704,8 @@ export function RequirementTemplateManager({
 
               {form.items.length === 0 ? (
                 <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-[0.7rem] text-muted-foreground">
-                  No entities yet — add the skills, certifications, education and experience this role requires.
+                  No entities yet — add the skills, certifications, education and experience this
+                  role requires.
                 </p>
               ) : (
                 <div className="space-y-1.5">
@@ -1714,7 +1732,9 @@ export function RequirementTemplateManager({
                               type="button"
                               className="cursor-pointer text-[0.65rem] font-semibold text-primary hover:underline"
                               title={`Add "${item.value}" to the screening vocabulary`}
-                              onClick={() => onAddToVocabulary(item.value, guessRefType(item.value))}
+                              onClick={() =>
+                                onAddToVocabulary(item.value, guessRefType(item.value))
+                              }
                             >
                               + vocabulary
                             </button>
@@ -1737,7 +1757,11 @@ export function RequirementTemplateManager({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" className="cursor-pointer" onClick={() => setEditorOpen(false)}>
+            <Button
+              variant="outline"
+              className="cursor-pointer"
+              onClick={() => setEditorOpen(false)}
+            >
               Cancel
             </Button>
             <Button className="cursor-pointer" disabled={saving} onClick={save}>
@@ -1760,12 +1784,16 @@ export function RequirementTemplateManager({
           <DialogHeader>
             <DialogTitle>Delete this requirement template?</DialogTitle>
             <DialogDescription>
-              &quot;{deleteTarget?.name}&quot; will be removed from Screening Setup. Job posts already built with it
-              keep their content.
+              &quot;{deleteTarget?.name}&quot; will be removed from Screening Setup. Job posts
+              already built with it keep their content.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" className="cursor-pointer" onClick={() => setDeleteTarget(null)}>
+            <Button
+              variant="outline"
+              className="cursor-pointer"
+              onClick={() => setDeleteTarget(null)}
+            >
               Cancel
             </Button>
             <Button
@@ -1806,16 +1834,20 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       .finally(() => setJobsLoading(false));
   }, []);
 
-  /** Departments & positions straight from the Core HCM database. */
+  /** Departments, positions & salary grades straight from Core HCM. */
   const [apiDepartments, setApiDepartments] = useState<Department[]>([]);
   const [apiPositions, setApiPositions] = useState<Position[]>([]);
+  const [salaryGrades, setSalaryGrades] = useState<
+    { salary_grade_id: number; code: string; title: string; min_salary: number | null; max_salary: number | null }[]
+  >([]);
 
   useEffect(() => {
     Promise.allSettled([
       coreHcmApi.departments({ per_page: 100 }),
       coreHcmApi.positions({ per_page: 100 }),
+      coreHcmApi.salaryGrades.list({ per_page: 200 }),
     ])
-      .then(([deptRes, posRes]) => {
+      .then(([deptRes, posRes, gradeRes]) => {
         if (deptRes.status === "fulfilled") {
           setApiDepartments(
             (deptRes.value?.data ?? []).map((d) => ({
@@ -1830,19 +1862,53 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             })),
           );
         }
+        const gradeById = new Map<number, { code: string; title: string; min_salary: number | null; max_salary: number | null }>();
+        if (gradeRes.status === "fulfilled") {
+          const grades = (gradeRes.value?.data ?? []).map((g) => ({
+            salary_grade_id: g.salary_grade_id,
+            code: g.code,
+            title: g.title,
+            min_salary: g.min_salary !== null && g.min_salary !== undefined ? Number(g.min_salary) : null,
+            max_salary: g.max_salary !== null && g.max_salary !== undefined ? Number(g.max_salary) : null,
+          }));
+          setSalaryGrades(grades);
+          grades.forEach((g) => gradeById.set(g.salary_grade_id, g));
+        }
         if (posRes.status === "fulfilled") {
           setApiPositions(
-            (posRes.value?.data ?? []).map((p) => ({
-              id: p.position_code || `POS-${p.position_id}`,
-              title: p.title,
-              department: p.department_name ?? p.department ?? "General",
-              level: (p.level as Position["level"]) || "Rank & File",
-              headcount: p.headcount,
-              filled: p.filled_count,
-              salaryBand: "",
-              dbId: p.position_id,
-              departmentId: p.department_id,
-            })),
+            (posRes.value?.data ?? []).map((p) => {
+              const gradeId = p.salary_grade_id ?? null;
+              const grade = gradeId !== null ? gradeById.get(gradeId) : undefined;
+              // Prefer the embedded band the API already resolved; fall back
+              // to the freshly fetched grade list (list order isn't guaranteed).
+              const band =
+                p.salary_grade ||
+                (grade
+                  ? `${grade.code} (₱${Number(grade.min_salary ?? 0).toLocaleString()} – ₱${Number(grade.max_salary ?? 0).toLocaleString()})`
+                  : p.salary_grade_code && (p.salary_grade_min !== null || p.salary_grade_max !== null)
+                    ? `${p.salary_grade_code} (₱${Number(p.salary_grade_min ?? 0).toLocaleString()} – ₱${Number(p.salary_grade_max ?? 0).toLocaleString()})`
+                    : (p.salary_grade_code ?? ""));
+              return {
+                id: p.position_code || `POS-${p.position_id}`,
+                title: p.title,
+                department: p.department_name ?? p.department ?? "General",
+                level: (p.level as Position["level"]) || "Rank & File",
+                headcount: p.headcount,
+                filled: p.filled_count,
+                salaryBand: band,
+                dbId: p.position_id,
+                departmentId: p.department_id,
+                salaryGradeId: gradeId,
+                salaryGradeMin:
+                  p.salary_grade_min !== undefined && p.salary_grade_min !== null
+                    ? Number(p.salary_grade_min)
+                    : (grade?.min_salary ?? null),
+                salaryGradeMax:
+                  p.salary_grade_max !== undefined && p.salary_grade_max !== null
+                    ? Number(p.salary_grade_max)
+                    : (grade?.max_salary ?? null),
+              };
+            }),
           );
         }
       })
@@ -1898,8 +1964,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   /** True while a file is being dragged over the resume drop zone. */
   const [resumeDragActive, setResumeDragActive] = useState(false);
   /** Which verification row is currently being dragged over (for drop highlight). */
-  const [verificationDragType, setVerificationDragType] =
-    useState<VerificationDocType | null>(null);
+  const [verificationDragType, setVerificationDragType] = useState<VerificationDocType | null>(
+    null,
+  );
   /** Pending upload awaiting user confirmation to replace existing details. */
   const [pendingResume, setPendingResume] = useState<File | null>(null);
   const [replaceOpen, setReplaceOpen] = useState(false);
@@ -2103,9 +2170,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       ];
     };
 
-    const skills = template.items
-      .filter((i) => i.entity_type === "skill")
-      .map((i) => i.value);
+    const skills = template.items.filter((i) => i.entity_type === "skill").map((i) => i.value);
     const qualificationLines = [
       ...template.items.filter((i) => i.entity_type === "certification").map((i) => i.value),
       ...template.items
@@ -2286,7 +2351,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       const res = await applicantsApi.extractResume(fd);
       if (seq !== autofillSeq.current || !res.success) return;
       const pi = res.personal_information ?? {};
-      const filled: string[] = [];
+      // Compute the fields the resume actually supplied up-front: the state
+      // updater below runs asynchronously, so a `filled` array mutated inside
+      // it would still be empty when we check it for the toast.
+      const supplied = (["name", "email", "phone", "address"] as const).filter((key) => {
+        const raw = key === "phone" ? (normalizePHPhone(pi[key]) ?? "") : (pi[key]?.trim() ?? "");
+        return raw.length > 0;
+      });
       setAddForm((prev) => {
         const next = { ...prev };
         const put = (key: "name" | "email" | "phone" | "address", raw?: string | null) => {
@@ -2295,7 +2366,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           if (!opts.overwrite && next[key].trim()) return; // merge mode: keep user input
           if (next[key].trim() === value) return; // nothing to change
           next[key] = value;
-          filled.push(key);
         };
         put("name", pi.name);
         put("email", pi.email);
@@ -2303,9 +2373,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         put("address", pi.address);
         return next;
       });
-      if (filled.length) {
+      if (supplied.length) {
         toast.info(
-          `${opts.overwrite ? "Replaced" : "Auto-filled"} ${filled.length} field${filled.length === 1 ? "" : "s"} from "${file.name}" — review before continuing.`,
+          `${opts.overwrite ? "Replaced" : "Auto-filled"} ${supplied.length} field${supplied.length === 1 ? "" : "s"} from "${file.name}" — review before continuing.`,
         );
       }
     } catch (e) {
@@ -2387,7 +2457,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     return Array.from(seen.values());
   }, [knownPositions, addDept]);
 
-  /** True when the selected department/position pair has a live job post. */
+  /** A posting accepts applicants only while Open, active, and not fully filled. */
+  const isPostAvailable = (j: Job) =>
+    j.active &&
+    (j.status === "Open" || (j.status as string) === "published") &&
+    j.vacancies - j.filled > 0;
+
+  /** True when the department + position pair already has a job post (any status). */
+  const isPairTaken = (dept: string, positionTitle: string) =>
+    positionTitle !== "" && jobList.some((j) => j.department === dept && j.title === positionTitle);
+
+  /** True when the selected department/position pair has an available job post. */
   const postingIndicator = useCallback(
     (dept: string, positionTitle?: string) =>
       jobList.some(
@@ -2395,7 +2475,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           j.department === dept &&
           (!positionTitle || j.title === positionTitle) &&
           j.active &&
-          j.status === "Open",
+          (j.status === "Open" || (j.status as string) === "published") &&
+          j.vacancies - j.filled > 0,
       ),
     [jobList],
   );
@@ -2491,52 +2572,42 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
   /**
    * Resolves the job post the applicant will be attached to.
-   * Admin flow: the clicked job post. Super admin flow: an existing open post
-   * for the selected position; when none exists, a Draft post is created so
-   * the NLP screening and the applicant record always have a valid job_post_id.
+   * Applicants may only be added to an available post (Open, active, with
+   * remaining slots). Closed, Draft and fully-filled postings refuse new
+   * applicants — no draft post is auto-created anymore.
    */
   const resolveJobPostId = async (): Promise<number | null> => {
-    // Admin flow — the job post is known up-front.
-    if (addPresetJob?.dbId) return addPresetJob.dbId;
-
-    const positionId = knownPositions.find((p) => p.title === addForm.position)?.dbId;
-    const departmentId = knownDepartments.find((d) => d.name === addDept)?.dbId;
-
-    // Reuse an existing post for this position (any status).
-    const existing = jobList.find((j) => j.title === addForm.position && j.department === addDept);
-    if (existing?.dbId) return existing.dbId;
-
-    // No job post exists yet — create a minimal Draft so the applicant can
-    // still be screened and saved (super admin can apply to any position).
-    if (positionId && departmentId) {
-      try {
-        const created = await jobPostsApi.create({
-          position_id: positionId,
-          department_id: departmentId,
-          title: addForm.position,
-          employment_type: "Full-time",
-          schedule: "Shifting Schedule",
-          vacancies: 1,
-          status: "Draft",
-          active: false,
-          summary: `Auto-created draft post for ${addForm.position} (${addDept}) — created when an applicant was added.`,
-        });
-        const newJob = transformApiJob(created);
-        setJobList((prev) => [newJob, ...prev]);
-        toast.info(
-          `No job post existed for ${addForm.position} — a draft post was created so the applicant can be screened.`,
+    // Admin flow — the job post is known up-front; still verify availability.
+    if (addPresetJob?.dbId) {
+      const preset = jobList.find((j) => j.dbId === addPresetJob.dbId) ?? addPresetJob;
+      if (!isPostAvailable(preset)) {
+        toast.error(
+          `Cannot add applicant: the job post for ${preset.title} is ${
+            preset.status === "Open" || (preset.status as string) === "published"
+              ? "full"
+              : preset.status
+          } and is not accepting applications.`,
         );
-        return created.job_post_id;
-      } catch (e) {
-        console.warn("Could not auto-create draft job post:", e);
-        toast.error("No job post exists for this position and a draft could not be created.");
         return null;
       }
+      return addPresetJob.dbId;
     }
+
+    // Super admin flow — reuse only an available post for the position.
+    const available = jobList.find(
+      (j) => j.title === addForm.position && j.department === addDept && isPostAvailable(j),
+    );
+    if (available?.dbId) return available.dbId;
+
+    const existing = jobList.find((j) => j.title === addForm.position && j.department === addDept);
     toast.error(
       !addForm.position
         ? "Select a position first — this department has no defined positions."
-        : "No job post found for the selected position.",
+        : existing
+          ? `No available job post for ${addForm.position} in ${addDept} — the posting is ${
+              existing.status === "Open" ? "full" : existing.status
+            }. Reopen it before adding applicants.`
+          : `No job post exists for ${addForm.position} in ${addDept} — create and publish one before adding applicants.`,
     );
     return null;
   };
@@ -2828,13 +2899,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   }, [aiUsage?.blocked_until, loadAiUsage]);
 
   /** Adds an unrecognized builder term to the vocabulary, then reflects it locally. */
-  const addEntityTerm = async (
-    term: string,
-    type: "skill" | "job_role" | "certification",
-  ) => {
+  const addEntityTerm = async (term: string, type: "skill" | "job_role" | "certification") => {
     await addTermToVocabulary(term, type);
-    const key =
-      type === "skill" ? "skills" : type === "job_role" ? "job_roles" : "certifications";
+    const key = type === "skill" ? "skills" : type === "job_role" ? "job_roles" : "certifications";
     setEntityMapping((prev) =>
       prev ? { ...prev, [key]: { ...prev[key], [term.trim()]: [] } } : prev,
     );
@@ -2927,6 +2994,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       editingJobId ??
       `draft-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now().toString().slice(-4)}`;
     const existing = jobList.find((j) => j.id === draftId);
+    // One posting per position + department — refuse a new draft that
+    // duplicates another posting's pair (updates to the same post are fine).
+    const draftClash = jobList.find(
+      (j) => j.id !== draftId && j.title === title && j.department === draft.department,
+    );
+    if (!existing?.dbId && draftClash) {
+      toast.error(
+        `A job post already exists for ${title} in ${draft.department} (${draftClash.status}) — edit the existing post instead of creating a duplicate.`,
+      );
+      return;
+    }
     const payload: Job = {
       id: draftId,
       title,
@@ -3129,10 +3207,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         const seconds =
           payload.retry_after_seconds ??
           (payload.resets_at
-            ? Math.max(
-                0,
-                Math.ceil((new Date(payload.resets_at).getTime() - Date.now()) / 1000),
-              )
+            ? Math.max(0, Math.ceil((new Date(payload.resets_at).getTime() - Date.now()) / 1000))
             : null);
         toast.error(aiFailureLabel(payload.code), {
           duration: 12000,
@@ -3170,11 +3245,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       toast.error("Job title is required");
       return;
     }
-    const vac = Number(draft.vacancies);
-    if (isNaN(vac) || vac < 1) {
+    const rawVac = Number(draft.vacancies);
+    if (isNaN(rawVac) || rawVac < 1) {
       toast.error("Vacancies must be a valid positive number (at least 1).");
       return;
     }
+    const vac = rawVac;
     const sMin = Number(draft.salaryMin) || 0;
     const sMax = Number(draft.salaryMax) || 0;
     if (sMin < 0 || sMax < 0) {
@@ -3215,6 +3291,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       });
       return;
     }
+    const editingFilled = editingJobId ? (jobList.find((j) => j.id === editingJobId)?.filled ?? 0) : 0;
     const jobPayload: Job = {
       id:
         editingJobId ??
@@ -3228,7 +3305,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       salaryMin: Number(draft.salaryMin) || 0,
       salaryMax: Number(draft.salaryMax) || 0,
       vacancies: Number(draft.vacancies) || 1,
-      filled: editingJobId ? (jobList.find((j) => j.id === editingJobId)?.filled ?? 0) : 0,
+      filled: editingFilled,
       posted: editingJobId
         ? (jobList.find((j) => j.id === editingJobId)?.posted ??
           new Date().toISOString().slice(0, 10))
@@ -3306,25 +3383,26 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         }
       }
       if (!positionId) {
-        // Positions require a salary grade — pick the grade whose range fits
-        // the draft salary, falling back to the lowest grade. HR can adjust
-        // it later in Core HCM → Departments & Positions.
+        // Positions require a salary grade — prefer the Job Info grade picker,
+        // then the grade whose range fits the draft salary, falling back to
+        // the lowest grade. HR can adjust it later in Core HCM → Departments
+        // & Positions.
         const gradesRes = await coreHcmApi.salaryGrades.list({ per_page: 100 });
         const grades = gradesRes?.data ?? [];
+        const explicit = draft.salaryGradeId
+          ? grades.find((g) => String(g.salary_grade_id) === draft.salaryGradeId)
+          : undefined;
         const draftMin = Number(draft.salaryMin) || 0;
-        const byMin = [...grades].sort(
-          (a, b) => Number(a.min_salary) - Number(b.min_salary),
-        );
+        const byMin = [...grades].sort((a, b) => Number(a.min_salary) - Number(b.min_salary));
         const inRange = byMin.find((g) => {
           const lo = Number(g.min_salary) || 0;
-          const hi = g.max_salary === null || g.max_salary === undefined ? Infinity : Number(g.max_salary);
+          const hi =
+            g.max_salary === null || g.max_salary === undefined ? Infinity : Number(g.max_salary);
           return draftMin >= lo && draftMin <= hi;
         });
-        const gradePick = inRange ?? byMin[0];
+        const gradePick = explicit ?? inRange ?? byMin[0];
         if (!gradePick) {
-          throw new Error(
-            "No salary grade exists — create one in Core HCM → Salary Grades first.",
-          );
+          throw new Error("No salary grade exists — create one in Core HCM → Salary Grades first.");
         }
         const created = await coreHcmApi.createPosition({
           title: draft.title,
@@ -3379,6 +3457,20 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
       let createdJobId: number | undefined;
       const existing = editingJobId ? jobList.find((j) => j.id === editingJobId) : undefined;
+      // One posting per position + department — refuse a new post that
+      // duplicates another posting's pair (updates to the same post are fine).
+      const clash = jobList.find(
+        (j) =>
+          j.id !== jobPayload.id &&
+          j.title === jobPayload.title &&
+          j.department === jobPayload.department,
+      );
+      if (!(editingJobId && existing?.dbId) && clash) {
+        toast.error(
+          `A job post already exists for ${jobPayload.title} in ${jobPayload.department} (${clash.status}) — edit the existing post instead of creating a duplicate.`,
+        );
+        return;
+      }
       if (editingJobId && existing?.dbId) {
         await jobPostsApi.update(existing.dbId, payload);
       } else {
@@ -3409,7 +3501,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       if (err?.code === "DUPLICATE_JOB_POST" || err?.status === 409) {
         toast.error(
           err?.message ||
-            `An active posting already exists for “${jobPayload.title}” — edit the existing post instead of publishing a duplicate.`,
+            `A job post already exists for “${jobPayload.title}” — edit the existing post instead of creating a duplicate.`,
         );
       } else if (err?.message) {
         toast.error(`The job posting could not be saved to the database: ${err.message}`);
@@ -3419,8 +3511,39 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     }
   };
 
+  /** Seed salary grade/band + salary range from a Core HCM position. */
+  const seedFromPosition = (department: string, title: string, base: Draft): Draft => {
+    const departmentId = knownDepartments.find((d) => d.name === department)?.dbId;
+    const position = knownPositions.find(
+      (p) =>
+        (((departmentId !== undefined && p.departmentId === departmentId) ||
+          (p.departmentId === undefined && p.department === department)) &&
+          p.title === title),
+    );
+    if (!position) return base;
+    const grade = position.salaryGradeId
+      ? salaryGrades.find((g) => g.salary_grade_id === position.salaryGradeId)
+      : null;
+    return {
+      ...base,
+      salaryGradeId: position.salaryGradeId ? String(position.salaryGradeId) : base.salaryGradeId,
+      salaryMin:
+        base.salaryMin ||
+        (grade?.min_salary ?? position.salaryGradeMin ?? null)?.toString() ||
+        base.salaryMin,
+      salaryMax:
+        base.salaryMax ||
+        (grade?.max_salary ?? position.salaryGradeMax ?? null)?.toString() ||
+        base.salaryMax,
+    };
+  };
+
   const startNewPost = (department: string, position?: string) => {
-    const seeded: Draft = { ...blankDraft, department, title: position ?? "" };
+    const seeded: Draft = seedFromPosition(
+      department,
+      position ?? "",
+      { ...blankDraft, department, title: position ?? "" },
+    );
     setDraft(seeded);
     setBlocks(position ? ["title"] : []);
     setBuilderStarted(true);
@@ -3466,13 +3589,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const convertRequisition = (reqId: string) => {
     const req = requisitions.find((r) => r.id === reqId);
     if (!req) return;
-    const seeded: Draft = {
-      ...blankDraft,
-      title: req.position,
-      department: req.department,
-      vacancies: String(req.count),
-      description: `We are looking for ${req.count} ${req.position}(s) to join our ${req.department} team.`,
-    };
+    const seeded: Draft = seedFromPosition(
+      req.department,
+      req.position,
+      {
+        ...blankDraft,
+        title: req.position,
+        department: req.department,
+        vacancies: String(req.count),
+        description: `We are looking for ${req.count} ${req.position}(s) to join our ${req.department} team.`,
+      },
+    );
     setDraft(seeded);
     setBlocks(fullBlocks);
     setEditingJobId(null);
@@ -3514,7 +3641,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       }));
       return;
     }
-    if (id === "info") setDraft((d) => ({ ...d, salaryMin: "", salaryMax: "" }));
+    if (id === "info")
+      setDraft((d) => ({ ...d, salaryGradeId: "", salaryMin: "", salaryMax: "" }));
     if (id === "picture") handlePosterRemove();
   };
 
@@ -3637,7 +3765,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setPage(1);
   }, [search, statusFilter, deptFilter, dateFilter]);
 
-  const listGridCols = "md:grid-cols-[minmax(220px,1.5fr)_90px_150px_180px_minmax(180px,1fr)_130px_minmax(240px,auto)]";
+  const listGridCols =
+    "md:grid-cols-[minmax(220px,1.5fr)_90px_150px_180px_minmax(180px,1fr)_130px_minmax(240px,auto)]";
 
   // Metric cards jump to the postings list with the matching filter applied.
   const focusPostings = (status: "all" | "Open" | "Closed", sortBy?: "filled" | "applicants") => {
@@ -3928,6 +4057,79 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         (departmentId !== undefined && p.departmentId === departmentId) ||
         (p.departmentId === undefined && p.department === department),
     );
+  };
+
+  /** The Core HCM position behind the current draft (department + title). */
+  const draftPosition = useMemo(
+    () =>
+      positionsForDepartment(draft.department).find((p) => p.title === draft.title) ?? null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [draft.department, draft.title, knownPositions, knownDepartments],
+  );
+
+  /** Salary grade object currently selected in Job Info ("") = position grade. */
+  const draftGrade = useMemo(() => {
+    if (draft.salaryGradeId) {
+      return salaryGrades.find((g) => String(g.salary_grade_id) === draft.salaryGradeId) ?? null;
+    }
+    if (draftPosition?.salaryGradeId) {
+      return (
+        salaryGrades.find((g) => g.salary_grade_id === draftPosition.salaryGradeId) ?? null
+      );
+    }
+    return null;
+  }, [draft.salaryGradeId, draftPosition, salaryGrades]);
+
+  /**
+   * Applies a Core HCM position's assigned salary grade/band to the Job Info
+   * draft, filling salary min/max from the band. Explicit salary edits are
+   * kept — pass forceSalary to overwrite them (used when the position itself
+   * changes).
+   */
+  const applyPositionToDraft = (
+    department: string,
+    title: string,
+    opts: { forceSalary?: boolean } = {},
+  ) => {
+    const position =
+      knownPositions.find((p) => {
+        const departmentId = knownDepartments.find((d) => d.name === department)?.dbId;
+        const sameDept =
+          (departmentId !== undefined && p.departmentId === departmentId) ||
+          (p.departmentId === undefined && p.department === department);
+        return sameDept && p.title === title;
+      }) ?? null;
+
+    setDraft((d) => {
+      const next: Draft = { ...d, department, title };
+      if (position?.salaryGradeId) {
+        next.salaryGradeId = String(position.salaryGradeId);
+      }
+      const grade =
+        (position?.salaryGradeId &&
+          salaryGrades.find((g) => g.salary_grade_id === position.salaryGradeId)) ||
+        null;
+      const bandMin = grade?.min_salary ?? position?.salaryGradeMin ?? null;
+      const bandMax = grade?.max_salary ?? position?.salaryGradeMax ?? null;
+      if (opts.forceSalary || d.salaryMin.trim() === "") {
+        if (bandMin !== null && bandMin !== undefined) next.salaryMin = String(bandMin);
+      }
+      if (opts.forceSalary || d.salaryMax.trim() === "") {
+        if (bandMax !== null && bandMax !== undefined) next.salaryMax = String(bandMax);
+      }
+      return next;
+    });
+
+    if (position) {
+      const grade = position.salaryGradeId
+        ? salaryGrades.find((g) => g.salary_grade_id === position.salaryGradeId)
+        : null;
+      if (grade) {
+        toast.info(`Job Info synced from Core HCM — ${position.title}`, {
+          description: `${grade.code} (${peso(Number(grade.min_salary ?? 0))} – ${peso(Number(grade.max_salary ?? 0))})`,
+        });
+      }
+    }
   };
 
   const handlePosterUpload = (file: File | null) => {
@@ -4454,229 +4656,256 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               )
             ) : (
               <>
-            {viewMode === "list" && (
-              <div className="space-y-2 overflow-x-auto pb-1">
-                <div
-                  className={cn(
-                    "hidden min-w-[1240px] items-center gap-3 rounded-md border border-transparent px-3 py-1.5 md:grid",
-                    listGridCols,
-                  )}
-                >
-                  <ListSortHead sortKey="title">Position</ListSortHead>
-                  <ListSortHead sortKey="status">Status</ListSortHead>
-                  <ListSortHead sortKey="salary">Salary</ListSortHead>
-                  <ListSortHead sortKey="filled">Filled</ListSortHead>
-                  <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Published to
-                  </span>
-                  <ListSortHead sortKey="posted">Posted</ListSortHead>
-                  <span className="text-right text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Actions
-                  </span>
-                </div>
-                {pagedJobs.map((j) => {
-                  const pct = Math.min(
-                    100,
-                    Math.round((j.filled / Math.max(1, j.vacancies)) * 100),
-                  );
-                  return (
+                {viewMode === "list" && (
+                  <div className="space-y-2 overflow-x-auto pb-1">
+                    <div
+                      className={cn(
+                        "hidden min-w-[1240px] items-center gap-3 rounded-md border border-transparent px-3 py-1.5 md:grid",
+                        listGridCols,
+                      )}
+                    >
+                      <ListSortHead sortKey="title">Position</ListSortHead>
+                      <ListSortHead sortKey="status">Status</ListSortHead>
+                      <ListSortHead sortKey="salary">Salary</ListSortHead>
+                      <ListSortHead sortKey="filled">Filled</ListSortHead>
+                      <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Published to
+                      </span>
+                      <ListSortHead sortKey="posted">Posted</ListSortHead>
+                      <span className="text-right text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Actions
+                      </span>
+                    </div>
+                    {pagedJobs.map((j) => {
+                      const pct = Math.min(
+                        100,
+                        Math.round((j.filled / Math.max(1, j.vacancies)) * 100),
+                      );
+                      return (
+                        <Card
+                          key={j.id}
+                          className={cn(
+                            "md:min-w-[1240px]",
+                            j.active ? "border-success/40" : "border-border/70 opacity-80",
+                          )}
+                        >
+                          <CardContent
+                            className={cn("grid items-center gap-3 p-3 md:grid", listGridCols)}
+                          >
+                            <div className="min-w-0">
+                              <p className="eyebrow truncate">{j.department}</p>
+                              <h3 className="truncate font-display text-base font-semibold leading-tight">
+                                {j.title}
+                              </h3>
+                              <p className="truncate text-[0.7rem] text-muted-foreground">
+                                {j.employmentType} · {j.schedule}
+                              </p>
+                            </div>
+                            <div>
+                              <Badge
+                                variant="outline"
+                                className={
+                                  j.status === "Open"
+                                    ? "border-success/30 bg-success/15 text-success"
+                                    : "border-border"
+                                }
+                              >
+                                {j.status}
+                              </Badge>
+                            </div>
+                            <p className="truncate text-xs font-medium">
+                              {peso(j.salaryMin)} — {peso(j.salaryMax)}
+                            </p>
+                            <div>
+                              <div className="flex justify-between text-[0.65rem] text-muted-foreground">
+                                <span>
+                                  {j.filled}/{j.vacancies} filled
+                                </span>
+                                <span>{j.applicants} applicants</span>
+                              </div>
+                              <Progress value={pct} className="mt-1 h-1.5" />
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1">
+                              {j.platforms.map((p) => (
+                                <Badge key={p} variant="secondary" className="text-[0.6rem]">
+                                  {p}
+                                </Badge>
+                              ))}
+                            </div>
+                            <span
+                              className="whitespace-nowrap text-[0.7rem] text-muted-foreground"
+                              title={`Posted ${j.posted}`}
+                            >
+                              Posted {j.posted}
+                            </span>
+                            <div className="flex items-center justify-end gap-2">
+                              {role === "admin" && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => openAddApplicantForJob(j)}
+                                  disabled={!isPostAvailable(j)}
+                                  title={
+                                    isPostAvailable(j)
+                                      ? `Add applicant for ${j.title}`
+                                      : `Cannot add applicant — this posting is ${j.status === "Open" ? "full" : j.status}`
+                                  }
+                                >
+                                  <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add applicant
+                                </Button>
+                              )}
+                              <Button size="sm" variant="outline" onClick={() => editTemplate(j)}>
+                                Edit
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => copyAndUseTemplate(j)}
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                              <Switch
+                                checked={j.active}
+                                onCheckedChange={() => toggleActive(j.id)}
+                                aria-label={`Toggle posting for ${j.title}`}
+                              />
+                              {role === "superadmin" && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 border border-destructive/40 text-destructive hover:text-destructive"
+                                  onClick={() => deleteJob(j)}
+                                  aria-label={`Delete posting for ${j.title}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+                {viewMode === "grid" &&
+                  pagedJobs.map((j) => {
+                    const pct = Math.min(
+                      100,
+                      Math.round((j.filled / Math.max(1, j.vacancies)) * 100),
+                    );
+                    return (
                       <Card
                         key={j.id}
-                        className={cn(
-                          "md:min-w-[1240px]",
-                          j.active ? "border-success/40" : "border-border/70 opacity-80",
-                        )}
+                        className={j.active ? "border-success/40" : "border-border/70 opacity-80"}
                       >
-                        <CardContent className={cn("grid items-center gap-3 p-3 md:grid", listGridCols)}>
-                        <div className="min-w-0">
-                          <p className="eyebrow truncate">{j.department}</p>
-                          <h3 className="truncate font-display text-base font-semibold leading-tight">
-                            {j.title}
-                          </h3>
-                          <p className="truncate text-[0.7rem] text-muted-foreground">
-                            {j.employmentType} · {j.schedule}
-                          </p>
-                        </div>
-                        <div>
-                          <Badge
-                            variant="outline"
-                            className={
-                              j.status === "Open"
-                                ? "border-success/30 bg-success/15 text-success"
-                                : "border-border"
-                            }
-                          >
-                            {j.status}
-                          </Badge>
-                        </div>
-                        <p className="truncate text-xs font-medium">
-                          {peso(j.salaryMin)} — {peso(j.salaryMax)}
-                        </p>
-                        <div>
-                          <div className="flex justify-between text-[0.65rem] text-muted-foreground">
-                            <span>
-                              {j.filled}/{j.vacancies} filled
-                            </span>
-                            <span>{j.applicants} applicants</span>
+                        <CardContent className="flex h-full flex-col p-5">
+                          <div className="min-h-0 flex-1">
+                            <img
+                              src={
+                                j.picture ||
+                                `${API_BASE_URL}/job-posts/template-picture?title=${encodeURIComponent(j.title)}`
+                              }
+                              alt={`${j.title} hiring poster`}
+                              className="mb-3 aspect-video w-full rounded-md border border-border object-cover"
+                            />
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <p className="eyebrow">{j.department}</p>
+                                <h3 className="font-display text-xl font-semibold">{j.title}</h3>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {j.employmentType} · {j.schedule}
+                                </p>
+                              </div>
+                              <Badge
+                                variant="outline"
+                                className={
+                                  j.status === "Open"
+                                    ? "border-success/30 bg-success/15 text-success"
+                                    : "border-border"
+                                }
+                              >
+                                {j.status}
+                              </Badge>
+                            </div>
+
+                            <p className="mt-3 text-sm font-medium">
+                              {peso(j.salaryMin)} — {peso(j.salaryMax)}
+                            </p>
+
+                            <div className="mt-3 flex justify-between text-xs text-muted-foreground">
+                              <span>
+                                {j.filled} filled of {j.vacancies}
+                              </span>
+                              <span>{j.applicants} applicants</span>
+                            </div>
+                            <Progress value={pct} className="mt-2 h-2" />
+
+                            <div className="mt-3 flex flex-wrap gap-1">
+                              {j.platforms.map((p) => (
+                                <Badge key={p} variant="secondary" className="text-[0.65rem]">
+                                  {p}
+                                </Badge>
+                              ))}
+                            </div>
                           </div>
-                          <Progress value={pct} className="mt-1 h-1.5" />
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1">
-                          {j.platforms.map((p) => (
-                            <Badge key={p} variant="secondary" className="text-[0.6rem]">
-                              {p}
-                            </Badge>
-                          ))}
-                        </div>
-                        <span
-                          className="whitespace-nowrap text-[0.7rem] text-muted-foreground"
-                          title={`Posted ${j.posted}`}
-                        >
-                          Posted {j.posted}
-                        </span>
-                        <div className="flex items-center justify-end gap-2">
-                          {role === "admin" && (
+                          <div className="mt-4 flex min-h-[76px] flex-wrap content-end gap-2 border-t border-border pt-3">
+                            {role === "admin" && (
+                              <Button
+                                size="sm"
+                                onClick={() => openAddApplicantForJob(j)}
+                                disabled={!isPostAvailable(j)}
+                                title={
+                                  isPostAvailable(j)
+                                    ? `Add applicant for ${j.title}`
+                                    : `Cannot add applicant — this posting is ${j.status === "Open" ? "full" : j.status}`
+                                }
+                              >
+                                <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add applicant
+                              </Button>
+                            )}
+                            <Button size="sm" variant="outline" onClick={() => editTemplate(j)}>
+                              Edit Template
+                            </Button>
                             <Button
                               size="sm"
-                              onClick={() => openAddApplicantForJob(j)}
-                              title={`Add applicant for ${j.title}`}
+                              variant="outline"
+                              onClick={() => copyAndUseTemplate(j)}
                             >
-                              <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add applicant
+                              <Copy className="mr-1.5 h-3.5 w-3.5" /> Copy & Use Template
                             </Button>
-                          )}
-                          <Button size="sm" variant="outline" onClick={() => editTemplate(j)}>
-                            Edit
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => copyAndUseTemplate(j)}>
-                            <Copy className="h-3.5 w-3.5" />
-                          </Button>
-                          <Switch
-                            checked={j.active}
-                            onCheckedChange={() => toggleActive(j.id)}
-                            aria-label={`Toggle posting for ${j.title}`}
-                          />
-                          {role === "superadmin" && (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8 border border-destructive/40 text-destructive hover:text-destructive"
-                              onClick={() => deleteJob(j)}
-                              aria-label={`Delete posting for ${j.title}`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-            {viewMode === "grid" &&
-              pagedJobs.map((j) => {
-                const pct = Math.min(100, Math.round((j.filled / Math.max(1, j.vacancies)) * 100));
-                return (
-                  <Card
-                    key={j.id}
-                    className={j.active ? "border-success/40" : "border-border/70 opacity-80"}
-                  >
-                    <CardContent className="flex h-full flex-col p-5">
-                      <div className="min-h-0 flex-1">
-                        <img
-                          src={
-                            j.picture ||
-                            `${API_BASE_URL}/job-posts/template-picture?title=${encodeURIComponent(j.title)}`
-                          }
-                          alt={`${j.title} hiring poster`}
-                          className="mb-3 aspect-video w-full rounded-md border border-border object-cover"
-                        />
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="eyebrow">{j.department}</p>
-                            <h3 className="font-display text-xl font-semibold">{j.title}</h3>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {j.employmentType} · {j.schedule}
-                            </p>
+                            {role === "superadmin" && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="border border-destructive/40 text-destructive hover:text-destructive"
+                                onClick={() => deleteJob(j)}
+                              >
+                                <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
+                              </Button>
+                            )}
                           </div>
-                          <Badge
-                            variant="outline"
-                            className={
-                              j.status === "Open"
-                                ? "border-success/30 bg-success/15 text-success"
-                                : "border-border"
-                            }
-                          >
-                            {j.status}
-                          </Badge>
-                        </div>
 
-                        <p className="mt-3 text-sm font-medium">
-                          {peso(j.salaryMin)} — {peso(j.salaryMax)}
-                        </p>
-
-                        <div className="mt-3 flex justify-between text-xs text-muted-foreground">
-                          <span>
-                            {j.filled} filled of {j.vacancies}
-                          </span>
-                          <span>{j.applicants} applicants</span>
-                        </div>
-                        <Progress value={pct} className="mt-2 h-2" />
-
-                        <div className="mt-3 flex flex-wrap gap-1">
-                          {j.platforms.map((p) => (
-                            <Badge key={p} variant="secondary" className="text-[0.65rem]">
-                              {p}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="mt-4 flex min-h-[76px] flex-wrap content-end gap-2 border-t border-border pt-3">
-                        {role === "admin" && (
-                          <Button size="sm" onClick={() => openAddApplicantForJob(j)}>
-                            <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add applicant
-                          </Button>
-                        )}
-                        <Button size="sm" variant="outline" onClick={() => editTemplate(j)}>
-                          Edit Template
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => copyAndUseTemplate(j)}>
-                          <Copy className="mr-1.5 h-3.5 w-3.5" /> Copy & Use Template
-                        </Button>
-                        {role === "superadmin" && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="border border-destructive/40 text-destructive hover:text-destructive"
-                            onClick={() => deleteJob(j)}
-                          >
-                            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
-                          </Button>
-                        )}
-                      </div>
-
-                      <div className="mt-3 flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Posted {j.posted}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-medium">
-                            {j.active ? "Open" : "Closed"}
-                          </span>
-                          <Switch
-                            checked={j.active}
-                            onCheckedChange={() => toggleActive(j.id)}
-                            aria-label={`Toggle posting for ${j.title}`}
-                          />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            {filteredJobs.length === 0 && (
-              <div className="md:col-span-2 xl:col-span-3">
-                <ListEmptyState placeholder="Search posted positions…" />
-              </div>
-            )}
+                          <div className="mt-3 flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">Posted {j.posted}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium">
+                                {j.active ? "Open" : "Closed"}
+                              </span>
+                              <Switch
+                                checked={j.active}
+                                onCheckedChange={() => toggleActive(j.id)}
+                                aria-label={`Toggle posting for ${j.title}`}
+                              />
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                {filteredJobs.length === 0 && (
+                  <div className="md:col-span-2 xl:col-span-3">
+                    <ListEmptyState placeholder="Search posted positions…" />
+                  </div>
+                )}
               </>
             )}
           </ListBody>
@@ -4784,132 +5013,140 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   </Card>
                 ) : (
                   <>
-                <div
-                  className={cn(
-                    "hidden min-w-[960px] items-center gap-2 px-3 py-1.5 md:grid",
-                    reqGridCols,
-                  )}
-                >
-                  <RequisitionSortHead sortKey="id" sort={reqSort.sort} onSort={reqSort.toggle}>
-                    Ref Number
-                  </RequisitionSortHead>
-                  <RequisitionSortHead
-                    sortKey="department"
-                    sort={reqSort.sort}
-                    onSort={reqSort.toggle}
-                  >
-                    Department
-                  </RequisitionSortHead>
-                  <RequisitionSortHead sortKey="count" sort={reqSort.sort} onSort={reqSort.toggle}>
-                    Openings
-                  </RequisitionSortHead>
-                  <RequisitionSortHead
-                    sortKey="requestedAt"
-                    sort={reqSort.sort}
-                    onSort={reqSort.toggle}
-                  >
-                    Requested
-                  </RequisitionSortHead>
-                  <RequisitionSortHead
-                    sortKey="urgency"
-                    sort={reqSort.sort}
-                    onSort={reqSort.toggle}
-                  >
-                    Urgency
-                  </RequisitionSortHead>
-                  <RequisitionSortHead sortKey="status" sort={reqSort.sort} onSort={reqSort.toggle}>
-                    Status
-                  </RequisitionSortHead>
-                  <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Set status
-                  </span>
-                  <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Note
-                  </span>
-                  <span className="text-right text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Job post
-                  </span>
-                </div>
-                {visibleRequisitions.map((r) => (
-                  <Card key={r.id} className="border-border/70">
-                    <CardContent
+                    <div
                       className={cn(
-                        "grid min-w-[960px] items-center gap-2 px-3 py-2 md:grid",
+                        "hidden min-w-[960px] items-center gap-2 px-3 py-1.5 md:grid",
                         reqGridCols,
                       )}
                     >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="eyebrow shrink-0">{r.id}</span>
-                        <span className="truncate text-sm font-semibold leading-tight">
-                          {r.position}
-                        </span>
-                      </div>
-                      <p className="truncate text-sm text-muted-foreground">{r.department}</p>
-                      <p className="text-xs font-medium">{r.count}</p>
-                      <p className="truncate text-[0.7rem] text-muted-foreground">
-                        {r.requestedAt}
-                      </p>
-                      <div>
-                        <Badge variant="outline" className={urgencyBadge(r.urgency)}>
-                          {r.urgency}
-                        </Badge>
-                      </div>
-                      <div>
-                        <Badge
-                          variant="outline"
-                          className={
-                            r.status === "Done"
-                              ? "border-success/30 bg-success/15 text-success"
-                              : r.status === "Converted"
-                                ? "border-border bg-muted text-muted-foreground"
-                                : "border-caution/40 bg-caution/15 text-caution"
-                          }
+                      <RequisitionSortHead sortKey="id" sort={reqSort.sort} onSort={reqSort.toggle}>
+                        Ref Number
+                      </RequisitionSortHead>
+                      <RequisitionSortHead
+                        sortKey="department"
+                        sort={reqSort.sort}
+                        onSort={reqSort.toggle}
+                      >
+                        Department
+                      </RequisitionSortHead>
+                      <RequisitionSortHead
+                        sortKey="count"
+                        sort={reqSort.sort}
+                        onSort={reqSort.toggle}
+                      >
+                        Openings
+                      </RequisitionSortHead>
+                      <RequisitionSortHead
+                        sortKey="requestedAt"
+                        sort={reqSort.sort}
+                        onSort={reqSort.toggle}
+                      >
+                        Requested
+                      </RequisitionSortHead>
+                      <RequisitionSortHead
+                        sortKey="urgency"
+                        sort={reqSort.sort}
+                        onSort={reqSort.toggle}
+                      >
+                        Urgency
+                      </RequisitionSortHead>
+                      <RequisitionSortHead
+                        sortKey="status"
+                        sort={reqSort.sort}
+                        onSort={reqSort.toggle}
+                      >
+                        Status
+                      </RequisitionSortHead>
+                      <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Set status
+                      </span>
+                      <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Note
+                      </span>
+                      <span className="text-right text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Job post
+                      </span>
+                    </div>
+                    {visibleRequisitions.map((r) => (
+                      <Card key={r.id} className="border-border/70">
+                        <CardContent
+                          className={cn(
+                            "grid min-w-[960px] items-center gap-2 px-3 py-2 md:grid",
+                            reqGridCols,
+                          )}
                         >
-                          {r.status}
-                        </Badge>
-                      </div>
-                      <div>
-                        {r.status === "Converted" ? (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        ) : (
-                          <Select
-                            value={r.status}
-                            onValueChange={(v) =>
-                              requisitionStore.update(r.id, {
-                                status: v as Requisition["status"],
-                              })
-                            }
-                          >
-                            <SelectTrigger className="h-8 w-full text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Pending">Pending</SelectItem>
-                              <SelectItem value="Done">Mark as Done</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </div>
-                      <div className="flex min-w-0 items-center">
-                        <RequisitionNote req={r} />
-                      </div>
-                      <div className="flex items-center justify-end">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 gap-1.5 px-2 text-xs"
-                          title="Convert to job post"
-                          onClick={() => convertRequisition(r.id)}
-                        >
-                          <SquareArrowOutUpRight className="h-3.5 w-3.5" />
-                          Convert
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="eyebrow shrink-0">{r.id}</span>
+                            <span className="truncate text-sm font-semibold leading-tight">
+                              {r.position}
+                            </span>
+                          </div>
+                          <p className="truncate text-sm text-muted-foreground">{r.department}</p>
+                          <p className="text-xs font-medium">{r.count}</p>
+                          <p className="truncate text-[0.7rem] text-muted-foreground">
+                            {r.requestedAt}
+                          </p>
+                          <div>
+                            <Badge variant="outline" className={urgencyBadge(r.urgency)}>
+                              {r.urgency}
+                            </Badge>
+                          </div>
+                          <div>
+                            <Badge
+                              variant="outline"
+                              className={
+                                r.status === "Done"
+                                  ? "border-success/30 bg-success/15 text-success"
+                                  : r.status === "Converted"
+                                    ? "border-border bg-muted text-muted-foreground"
+                                    : "border-caution/40 bg-caution/15 text-caution"
+                              }
+                            >
+                              {r.status}
+                            </Badge>
+                          </div>
+                          <div>
+                            {r.status === "Converted" ? (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            ) : (
+                              <Select
+                                value={r.status}
+                                onValueChange={(v) =>
+                                  requisitionStore.update(r.id, {
+                                    status: v as Requisition["status"],
+                                  })
+                                }
+                              >
+                                <SelectTrigger className="h-8 w-full text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Pending">Pending</SelectItem>
+                                  <SelectItem value="Done">Mark as Done</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </div>
+                          <div className="flex min-w-0 items-center">
+                            <RequisitionNote req={r} />
+                          </div>
+                          <div className="flex items-center justify-end">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 gap-1.5 px-2 text-xs"
+                              title="Convert to job post"
+                              onClick={() => convertRequisition(r.id)}
+                            >
+                              <SquareArrowOutUpRight className="h-3.5 w-3.5" />
+                              Convert
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
 
-                {filteredRequisitions.length === 0 && <ListEmptyState subject="requisitions" />}
+                    {filteredRequisitions.length === 0 && <ListEmptyState subject="requisitions" />}
                   </>
                 )}
               </ListBody>
@@ -5132,552 +5369,643 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 <Card className="border-border/70">
                   {builderFlipped ? (
                     <CardContent className="space-y-3 p-4">
-                          <BuilderEntitiesCard
-                            draft={draft}
-                            mapping={entityMapping}
-                            loading={entityLoading}
-                            error={entityError}
-                            addingTerm={addingTerm}
-                            scoring={entityScoring}
-                            onAdd={addEntityTerm}
-                            onRetry={loadEntityMapping}
-                            onFlipBack={() => setBuilderFlipped(false)}
-                          />
+                      <BuilderEntitiesCard
+                        draft={draft}
+                        mapping={entityMapping}
+                        loading={entityLoading}
+                        error={entityError}
+                        addingTerm={addingTerm}
+                        scoring={entityScoring}
+                        onAdd={addEntityTerm}
+                        onRetry={loadEntityMapping}
+                        onFlipBack={() => setBuilderFlipped(false)}
+                      />
                     </CardContent>
                   ) : (
-                  <CardContent className="space-y-3 p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
-                        <FilePlus2 className="h-4 w-4 text-primary" />
-                        {editingJobId ? "Edit Your Job Post" : "Edit Your Job Post"}
-                      </h2>
-                      <div className="flex items-center gap-1.5">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={toggleBuilderFlip}
-                          title="See entities indicated from whatever is filled in the builder"
-                        >
-                          <Repeat className="mr-1.5 h-3.5 w-3.5" />
-                          Entities
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={generatingDraft || !draft.title.trim() || aiIndicator.limited}
-                          onClick={generateDraftWithAI}
-                          title={
-                            aiIndicator.limited
-                              ? aiIndicator.title
-                              : draft.title.trim()
-                                ? "Auto-fill description, responsibilities, qualifications, skills, instructions and about with Google AI (grounded in your screening vocabulary)"
-                                : "Select a job position first"
-                          }
-                        >
-                          {generatingDraft ? (
-                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                          )}
-                          {generatingDraft ? "Generating…" : "Generate with AI"}
-                        </Button>
-                        {/* Usage/limit indicator — ready · used today · limit reset countdown */}
-                        <span
-                          className={`hidden items-center gap-1.5 rounded-full border px-2 py-0.5 text-[0.65rem] font-medium sm:inline-flex ${AI_TONE_CLASS[aiIndicator.tone]}`}
-                          title={aiIndicator.title}
-                        >
-                          <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
-                          {aiIndicator.label}
-                        </span>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <button
-                              type="button"
-                              aria-label="How Generate with AI works"
-                              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                            >
-                              <Info className="h-4 w-4" />
-                            </button>
-                          </PopoverTrigger>
-                          <PopoverContent align="end" className="w-80 space-y-3 p-4 text-left">
-                            <div>
-                              <p className="font-display text-sm font-semibold">
-                                What Generate with AI fills
-                              </p>
-                              <p className="text-[0.7rem] text-muted-foreground">
-                                One click fills these 6 components on the canvas:
-                              </p>
-                            </div>
-                            <ul className="space-y-1">
-                              {AI_CONTENT_BLOCKS.map((id) => (
-                                <li
-                                  key={id}
-                                  className="flex items-center gap-1.5 text-xs text-muted-foreground"
-                                >
-                                  <CheckCircle2 className="h-3 w-3 shrink-0 text-gold" />
-                                  {blockLibrary.find((b) => b.id === id)?.label ?? id}
-                                </li>
-                              ))}
-                            </ul>
-                            <div className="space-y-1.5 rounded-md bg-secondary/40 p-3">
-                              <p className="text-[0.7rem] font-semibold">How it is built</p>
-                              <ol className="list-decimal space-y-1 pl-4 text-[0.7rem] leading-relaxed text-muted-foreground">
-                                <li>
-                                  <span className="font-medium text-foreground">Job input</span> —
-                                  position, department, type, schedule & vacancies from this
-                                  builder.
-                                </li>
-                                <li>
-                                  <span className="font-medium text-foreground">
-                                    + Screening vocabulary
-                                  </span>{" "}
-                                  — recognized skills & certifications, so applicant matching keeps
-                                  working. New terms (max 2) are flagged for your review.
-                                </li>
-                                <li>
-                                  <span className="font-medium text-foreground">
-                                    + Gemini 3.5 Flash-Lite
-                                  </span>{" "}
-                                  — server default model; writes the 6 components from the job +
-                                  vocabulary.
-                                </li>
-                              </ol>
-                            </div>
-                            {/* Usage & limits — the indicator's detail view */}
-                            <div className="space-y-1.5 rounded-md bg-secondary/40 p-3">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-[0.7rem] font-semibold">Usage &amp; limits</p>
-                                <button
-                                  type="button"
-                                  onClick={() => void loadAiUsage()}
-                                  className="text-[0.65rem] font-medium text-primary underline-offset-2 hover:underline"
-                                >
-                                  Refresh
-                                </button>
-                              </div>
-                              {aiUsage ? (
-                                <>
-                                  <p className="text-[0.7rem] leading-relaxed text-muted-foreground">
-                                    {aiUsage.used_today} draft(s) today
-                                    {aiUsage.daily_limit > 0
-                                      ? ` of ${aiUsage.daily_limit}`
-                                      : ""}
-                                    {aiUsage.failures_today > 0
-                                      ? ` · ${aiUsage.failures_today} failed`
-                                      : ""}
-                                    {aiUsage.tokens_today > 0
-                                      ? ` · ${aiUsage.tokens_today.toLocaleString()} tokens`
-                                      : ""}
-                                  </p>
-                                  {aiUsage.daily_limit > 0 && (
-                                    <Progress
-                                      value={Math.min(
-                                        100,
-                                        (aiUsage.used_today / aiUsage.daily_limit) * 100,
-                                      )}
-                                      className="h-1.5"
-                                    />
-                                  )}
-                                  <ul className="space-y-1">
-                                    {aiUsage.providers.map((p) => (
-                                      <li
-                                        key={`${p.kind}-${p.service}-${p.model}`}
-                                        className="flex items-start gap-1.5 text-[0.68rem] leading-relaxed text-muted-foreground"
-                                      >
-                                        {p.blocked ? (
-                                          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
-                                        ) : (
-                                          <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-success" />
-                                        )}
-                                        <span>
-                                          <span className="font-medium text-foreground">
-                                            {p.service}
-                                          </span>{" "}
-                                          — {p.model}
-                                          {p.blocked
-                                            ? ` · ${p.blocked_reason ?? "cooling down"}`
-                                            : ""}
-                                        </span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                  {aiUsage.blocked_until && aiBlockedSeconds > 0 && (
-                                    <p className="text-[0.68rem] font-medium text-amber-600">
-                                      Limit reached — ready again in{" "}
-                                      {aiCountdown(aiBlockedSeconds)}.
-                                    </p>
-                                  )}
-                                  {aiUsage.last_error && (
-                                    <p className="text-[0.68rem] leading-relaxed text-muted-foreground">
-                                      Last failure: {aiFailureLabel(aiUsage.last_error.code)} —{" "}
-                                      {aiUsage.last_error.message}
-                                    </p>
-                                  )}
-                                </>
-                              ) : (
-                                <p className="text-[0.7rem] italic text-muted-foreground">
-                                  Usage is unavailable right now — the indicator updates after the
-                                  next attempt.
-                                </p>
-                              )}
-                            </div>
-                            <p className="text-[0.65rem] italic text-muted-foreground">
-                              Nothing publishes automatically — review each block, then Save draft
-                              or Publish.
-                            </p>
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2" ref={composerRef}>
-                      {blocks.map((id) => {
-                        const meta = blockLibrary.find((b) => b.id === id)!;
-                        return (
-                          <div
-                            key={id}
-                            data-block-id={id}
-                            draggable
-                            onDragStart={() => setDragging(id)}
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={() => dropOn(id)}
-                            onClick={(e) => selectBlock(id, e)}
-                            className={`rounded-md border px-3 py-2 transition ${
-                              activeBlock === id
-                                ? "border-primary bg-secondary/40"
-                                : "border-border hover:border-primary/40"
-                            }`}
+                    <CardContent className="space-y-3 p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
+                          <FilePlus2 className="h-4 w-4 text-primary" />
+                          {editingJobId ? "Edit Your Job Post" : "Edit Your Job Post"}
+                        </h2>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={toggleBuilderFlip}
+                            title="See entities indicated from whatever is filled in the builder"
                           >
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center gap-2 text-xs font-medium">
-                                <GripVertical className="h-3 w-3 cursor-grab text-muted-foreground" />
-                                {meta.label}
-                                <span className="text-[0.65rem] font-normal text-muted-foreground">
-                                  {meta.hint}
-                                </span>
-                              </span>
+                            <Repeat className="mr-1.5 h-3.5 w-3.5" />
+                            Entities
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={generatingDraft || !draft.title.trim() || aiIndicator.limited}
+                            onClick={generateDraftWithAI}
+                            title={
+                              aiIndicator.limited
+                                ? aiIndicator.title
+                                : draft.title.trim()
+                                  ? "Auto-fill description, responsibilities, qualifications, skills, instructions and about with Google AI (grounded in your screening vocabulary)"
+                                  : "Select a job position first"
+                            }
+                          >
+                            {generatingDraft ? (
+                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                            )}
+                            {generatingDraft ? "Generating…" : "Generate with AI"}
+                          </Button>
+                          {/* Usage/limit indicator — ready · used today · limit reset countdown */}
+                          <span
+                            className={`hidden items-center gap-1.5 rounded-full border px-2 py-0.5 text-[0.65rem] font-medium sm:inline-flex ${AI_TONE_CLASS[aiIndicator.tone]}`}
+                            title={aiIndicator.title}
+                          >
+                            <span
+                              className="h-1.5 w-1.5 rounded-full bg-current"
+                              aria-hidden="true"
+                            />
+                            {aiIndicator.label}
+                          </span>
+                          <Popover>
+                            <PopoverTrigger asChild>
                               <button
                                 type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  requestRemoveBlock(id);
-                                }}
-                                aria-label={`Remove ${meta.label}`}
+                                aria-label="How Generate with AI works"
+                                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                               >
-                                <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                                <Info className="h-4 w-4" />
                               </button>
-                            </div>
-
-                            {activeBlock === id && (
-                              <div className="mt-2 space-y-2">
-                                {id === "title" && (
-                                  <div className="grid gap-2 sm:grid-cols-2">
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Department</Label>
-                                      <Select
-                                        value={draft.department}
-                                        onValueChange={(department) => {
-                                          const firstPosition =
-                                            positionsForDepartment(department)[0];
-                                          setDraft({
-                                            ...draft,
-                                            department,
-                                            title: firstPosition?.title ?? "",
-                                          });
-                                        }}
-                                      >
-                                        <SelectTrigger className="h-8 text-xs">
-                                          <SelectValue placeholder="Select a department" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {knownDepartments.map((d) => (
-                                            <SelectItem key={d.code} value={d.name}>
-                                              {d.name}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Job title</Label>
-                                      <Select
-                                        value={draft.title}
-                                        onValueChange={(v) => setDraft({ ...draft, title: v })}
-                                      >
-                                        <SelectTrigger className="h-8 text-xs">
-                                          <SelectValue placeholder="Select a position from Core HR" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {positionsForDepartment(draft.department).map((p) => (
-                                            <SelectItem key={p.id} value={p.title}>
-                                              {p.title}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                  </div>
-                                )}
-                                {id === "info" && (
-                                  <div className="grid gap-2 sm:grid-cols-3">
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Type</Label>
-                                      <Select
-                                        value={draft.employmentType}
-                                        onValueChange={(v) =>
-                                          setDraft({ ...draft, employmentType: v })
-                                        }
-                                      >
-                                        <SelectTrigger className="h-8 text-xs">
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {["Full-time", "Part-time", "Contract", "Seasonal"].map(
-                                            (t) => (
-                                              <SelectItem key={t} value={t}>
-                                                {t}
-                                              </SelectItem>
-                                            ),
+                            </PopoverTrigger>
+                            <PopoverContent align="end" className="w-80 space-y-3 p-4 text-left">
+                              <div>
+                                <p className="font-display text-sm font-semibold">
+                                  What Generate with AI fills
+                                </p>
+                                <p className="text-[0.7rem] text-muted-foreground">
+                                  One click fills these 6 components on the canvas:
+                                </p>
+                              </div>
+                              <ul className="space-y-1">
+                                {AI_CONTENT_BLOCKS.map((id) => (
+                                  <li
+                                    key={id}
+                                    className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                                  >
+                                    <CheckCircle2 className="h-3 w-3 shrink-0 text-gold" />
+                                    {blockLibrary.find((b) => b.id === id)?.label ?? id}
+                                  </li>
+                                ))}
+                              </ul>
+                              <div className="space-y-1.5 rounded-md bg-secondary/40 p-3">
+                                <p className="text-[0.7rem] font-semibold">How it is built</p>
+                                <ol className="list-decimal space-y-1 pl-4 text-[0.7rem] leading-relaxed text-muted-foreground">
+                                  <li>
+                                    <span className="font-medium text-foreground">Job input</span> —
+                                    position, department, type, schedule & vacancies from this
+                                    builder.
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-foreground">
+                                      + Screening vocabulary
+                                    </span>{" "}
+                                    — recognized skills & certifications, so applicant matching
+                                    keeps working. New terms (max 2) are flagged for your review.
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-foreground">
+                                      + Gemini 3.5 Flash-Lite
+                                    </span>{" "}
+                                    — server default model; writes the 6 components from the job +
+                                    vocabulary.
+                                  </li>
+                                </ol>
+                              </div>
+                              {/* Usage & limits — the indicator's detail view */}
+                              <div className="space-y-1.5 rounded-md bg-secondary/40 p-3">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-[0.7rem] font-semibold">Usage &amp; limits</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => void loadAiUsage()}
+                                    className="text-[0.65rem] font-medium text-primary underline-offset-2 hover:underline"
+                                  >
+                                    Refresh
+                                  </button>
+                                </div>
+                                {aiUsage ? (
+                                  <>
+                                    <p className="text-[0.7rem] leading-relaxed text-muted-foreground">
+                                      {aiUsage.used_today} draft(s) today
+                                      {aiUsage.daily_limit > 0 ? ` of ${aiUsage.daily_limit}` : ""}
+                                      {aiUsage.failures_today > 0
+                                        ? ` · ${aiUsage.failures_today} failed`
+                                        : ""}
+                                      {aiUsage.tokens_today > 0
+                                        ? ` · ${aiUsage.tokens_today.toLocaleString()} tokens`
+                                        : ""}
+                                    </p>
+                                    {aiUsage.daily_limit > 0 && (
+                                      <Progress
+                                        value={Math.min(
+                                          100,
+                                          (aiUsage.used_today / aiUsage.daily_limit) * 100,
+                                        )}
+                                        className="h-1.5"
+                                      />
+                                    )}
+                                    <ul className="space-y-1">
+                                      {aiUsage.providers.map((p) => (
+                                        <li
+                                          key={`${p.kind}-${p.service}-${p.model}`}
+                                          className="flex items-start gap-1.5 text-[0.68rem] leading-relaxed text-muted-foreground"
+                                        >
+                                          {p.blocked ? (
+                                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
+                                          ) : (
+                                            <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-success" />
                                           )}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Schedule</Label>
-                                      <Select
-                                        value={draft.schedule || "Shifting Schedule"}
-                                        onValueChange={(v) => setDraft({ ...draft, schedule: v })}
-                                      >
-                                        <SelectTrigger className="h-8 text-xs">
-                                          <SelectValue placeholder="Select work schedule" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {WORK_SCHEDULE_OPTIONS.map((s) => (
-                                            <SelectItem key={s} value={s}>
-                                              {s}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Vacancies</Label>
-                                      <Input
-                                        type="number"
-                                        min={1}
-                                        className="h-8 text-xs"
-                                        value={draft.vacancies}
-                                        disabled={role === "admin" && Boolean(sourceReqId)}
-                                        onChange={(e) =>
-                                          setDraft({
-                                            ...draft,
-                                            vacancies: sanitizeDigitsOnly(e.target.value),
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Salary min (₱)</Label>
-                                      <Input
-                                        type="number"
-                                        min={0}
-                                        className="h-8 text-xs"
-                                        value={draft.salaryMin}
-                                        onChange={(e) =>
-                                          setDraft({
-                                            ...draft,
-                                            salaryMin: sanitizeDecimalString(e.target.value),
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Salary max (₱)</Label>
-                                      <Input
-                                        type="number"
-                                        min={0}
-                                        className="h-8 text-xs"
-                                        value={draft.salaryMax}
-                                        onChange={(e) =>
-                                          setDraft({
-                                            ...draft,
-                                            salaryMax: sanitizeDecimalString(e.target.value),
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                    {/* Structured screening levels — filled by requirement
-                                        templates and scored by the NLP match analysis. */}
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Education level</Label>
-                                      <Select
-                                        value={draft.educationLevel}
-                                        onValueChange={(v) =>
-                                          setDraft({
-                                            ...draft,
-                                            educationLevel: v as Job["education"],
-                                          })
-                                        }
-                                      >
-                                        <SelectTrigger className="h-8 text-xs">
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {EDUCATION_LEVEL_OPTIONS.map((level) => (
-                                            <SelectItem key={level} value={level}>
-                                              {level}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Experience level</Label>
-                                      <Select
-                                        value={draft.experienceLevel}
-                                        onValueChange={(v) =>
-                                          setDraft({
-                                            ...draft,
-                                            experienceLevel: v as Job["experience"],
-                                          })
-                                        }
-                                      >
-                                        <SelectTrigger className="h-8 text-xs">
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {EXPERIENCE_LEVEL_OPTIONS.map((level) => (
-                                            <SelectItem key={level} value={level}>
-                                              {level}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                  </div>
-                                )}
-                                {id === "description" && (
-                                  <Textarea
-                                    autoFocus
-                                    rows={2}
-                                    className="text-xs"
-                                    value={draft.description}
-                                    onChange={(e) =>
-                                      setDraft({ ...draft, description: e.target.value })
-                                    }
-                                    placeholder="Short pitch of the role…"
-                                  />
-                                )}
-                                {id === "picture" && (
-                                  <div className="space-y-2">
-                                    <HiringPoster className="mx-auto max-w-md" />
-                                    <PosterUploadControl />
-                                  </div>
-                                )}
-                                {id === "responsibilities" && (
-                                  <Textarea
-                                    autoFocus
-                                    rows={3}
-                                    className="text-xs"
-                                    value={draft.responsibilities}
-                                    onChange={(e) =>
-                                      setDraft({ ...draft, responsibilities: e.target.value })
-                                    }
-                                    placeholder="One responsibility per line…"
-                                  />
-                                )}
-                                {id === "qualifications" && (
-                                  <Textarea
-                                    autoFocus
-                                    rows={3}
-                                    className="text-xs"
-                                    value={draft.qualifications}
-                                    onChange={(e) =>
-                                      setDraft({ ...draft, qualifications: e.target.value })
-                                    }
-                                    placeholder="One qualification per line…"
-                                  />
-                                )}
-                                {id === "skills" && (
-                                  <Textarea
-                                    autoFocus
-                                    rows={2}
-                                    className="text-xs"
-                                    value={draft.skills}
-                                    onChange={(e) => setDraft({ ...draft, skills: e.target.value })}
-                                    placeholder="One skill per line…"
-                                  />
-                                )}
-                                {id === "instructions" && (
-                                  <Textarea
-                                    autoFocus
-                                    rows={2}
-                                    className="text-xs"
-                                    value={draft.instructions}
-                                    onChange={(e) =>
-                                      setDraft({ ...draft, instructions: e.target.value })
-                                    }
-                                    placeholder="How should applicants apply?"
-                                  />
-                                )}
-                                {id === "about" && (
-                                  <Textarea
-                                    autoFocus
-                                    rows={2}
-                                    className="text-xs"
-                                    value={draft.about}
-                                    onChange={(e) => setDraft({ ...draft, about: e.target.value })}
-                                    placeholder="Company blurb…"
-                                  />
+                                          <span>
+                                            <span className="font-medium text-foreground">
+                                              {p.service}
+                                            </span>{" "}
+                                            — {p.model}
+                                            {p.blocked
+                                              ? ` · ${p.blocked_reason ?? "cooling down"}`
+                                              : ""}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                    {aiUsage.blocked_until && aiBlockedSeconds > 0 && (
+                                      <p className="text-[0.68rem] font-medium text-amber-600">
+                                        Limit reached — ready again in{" "}
+                                        {aiCountdown(aiBlockedSeconds)}.
+                                      </p>
+                                    )}
+                                    {aiUsage.last_error && (
+                                      <p className="text-[0.68rem] leading-relaxed text-muted-foreground">
+                                        Last failure: {aiFailureLabel(aiUsage.last_error.code)} —{" "}
+                                        {aiUsage.last_error.message}
+                                      </p>
+                                    )}
+                                  </>
+                                ) : (
+                                  <p className="text-[0.7rem] italic text-muted-foreground">
+                                    Usage is unavailable right now — the indicator updates after the
+                                    next attempt.
+                                  </p>
                                 )}
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                      <div
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={() => dragging && addBlock(dragging)}
-                        className="rounded-md border border-dashed border-border py-3 text-center text-[0.7rem] text-muted-foreground"
-                      >
-                        Drop a component here
+                              <p className="text-[0.65rem] italic text-muted-foreground">
+                                Nothing publishes automatically — review each block, then Save draft
+                                or Publish.
+                              </p>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="rounded-md border border-border p-3">
-                      <p className="eyebrow mb-2">Publish To</p>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {platformMeta.map((p) => (
-                          <div key={p.key} className="flex items-center justify-between">
-                            <span className="flex items-center gap-2 text-xs">
-                              <p.icon className="h-3.5 w-3.5 text-muted-foreground" /> {p.key}
-                            </span>
-                            <Switch
-                              checked={platforms[p.key] ?? false}
-                              onCheckedChange={(v) => setPlatforms({ ...platforms, [p.key]: v })}
-                            />
-                          </div>
-                        ))}
+                      <div className="space-y-2" ref={composerRef}>
+                        {blocks.map((id) => {
+                          const meta = blockLibrary.find((b) => b.id === id)!;
+                          return (
+                            <div
+                              key={id}
+                              data-block-id={id}
+                              draggable
+                              onDragStart={() => setDragging(id)}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={() => dropOn(id)}
+                              onClick={(e) => selectBlock(id, e)}
+                              className={`rounded-md border px-3 py-2 transition ${
+                                activeBlock === id
+                                  ? "border-primary bg-secondary/40"
+                                  : "border-border hover:border-primary/40"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="flex items-center gap-2 text-xs font-medium">
+                                  <GripVertical className="h-3 w-3 cursor-grab text-muted-foreground" />
+                                  {meta.label}
+                                  <span className="text-[0.65rem] font-normal text-muted-foreground">
+                                    {meta.hint}
+                                  </span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    requestRemoveBlock(id);
+                                  }}
+                                  aria-label={`Remove ${meta.label}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                                </button>
+                              </div>
+
+                              {activeBlock === id && (
+                                <div className="mt-2 space-y-2">
+                                  {id === "title" && (
+                                    <div className="space-y-2">
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                      <div className="space-y-1">
+                                        <Label className="text-[0.7rem]">Department</Label>
+                                        <Select
+                                          value={draft.department}
+                                          onValueChange={(department) => {
+                                            const firstPosition =
+                                              positionsForDepartment(department)[0];
+                                            if (firstPosition) {
+                                              applyPositionToDraft(department, firstPosition.title, {
+                                                forceSalary: true,
+                                              });
+                                            } else {
+                                              setDraft({ ...draft, department, title: "" });
+                                            }
+                                          }}
+                                        >
+                                          <SelectTrigger className="h-8 text-xs">
+                                            <SelectValue placeholder="Select a department" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {knownDepartments.map((d) => (
+                                              <SelectItem key={d.code} value={d.name}>
+                                                {d.name}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                      <div className="space-y-1">
+                                        <Label className="text-[0.7rem]">Job title</Label>
+                                        <Select
+                                          value={draft.title}
+                                          onValueChange={(v) =>
+                                            applyPositionToDraft(draft.department, v, {
+                                              forceSalary: true,
+                                            })
+                                          }
+                                        >
+                                          <SelectTrigger className="h-8 text-xs">
+                                            <SelectValue placeholder="Select a position from Core HR" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {positionsForDepartment(draft.department).map((p) => (
+                                              <SelectItem key={p.id} value={p.title}>
+                                                {p.title}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                    </div>
+                                    {draftPosition?.salaryBand && (
+                                      <p className="rounded-md bg-secondary/40 px-2.5 py-1.5 text-[0.65rem] leading-relaxed text-muted-foreground">
+                                        Core HCM salary band — {draftPosition.salaryBand}
+                                      </p>
+                                    )}
+                                    </div>
+                                  )}
+                                  {id === "info" && (
+                                    <div className="space-y-2">
+                                    <div className="grid gap-2 sm:grid-cols-3">
+                                        <div className="space-y-1 sm:col-span-1">
+                                          <Label className="text-[0.7rem]">Salary grade / band</Label>
+                                          <Select
+                                            value={draft.salaryGradeId || (draftPosition?.salaryGradeId ? String(draftPosition.salaryGradeId) : "position")}
+                                            onValueChange={(v) => {
+                                              if (v === "position") {
+                                                const posGrade = draftPosition?.salaryGradeId
+                                                  ? salaryGrades.find((g) => g.salary_grade_id === draftPosition.salaryGradeId)
+                                                  : null;
+                                                setDraft((d) => ({
+                                                  ...d,
+                                                  salaryGradeId: "",
+                                                  salaryMin: posGrade?.min_salary !== null && posGrade?.min_salary !== undefined ? String(posGrade.min_salary) : d.salaryMin,
+                                                  salaryMax: posGrade?.max_salary !== null && posGrade?.max_salary !== undefined ? String(posGrade.max_salary) : d.salaryMax,
+                                                }));
+                                              } else {
+                                                const grade = salaryGrades.find((g) => String(g.salary_grade_id) === v);
+                                                setDraft((d) => ({
+                                                  ...d,
+                                                  salaryGradeId: v,
+                                                  salaryMin: grade?.min_salary !== null && grade?.min_salary !== undefined ? String(grade.min_salary) : d.salaryMin,
+                                                  salaryMax: grade?.max_salary !== null && grade?.max_salary !== undefined ? String(grade.max_salary) : d.salaryMax,
+                                                }));
+                                              }
+                                            }}
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue placeholder="From position" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="position">
+                                                From position{draftPosition?.salaryBand ? ` — ${draftPosition.salaryBand}` : ""}
+                                              </SelectItem>
+                                              {salaryGrades.map((g) => (
+                                                <SelectItem key={g.salary_grade_id} value={String(g.salary_grade_id)}>
+                                                  {g.code} — {g.title} (₱{Number(g.min_salary ?? 0).toLocaleString()} – ₱{Number(g.max_salary ?? 0).toLocaleString()})
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <div className="space-y-1 sm:col-span-2">
+                                          <Label className="text-[0.7rem]">Band range</Label>
+                                          <div className="flex h-8 items-center justify-between gap-2 rounded-md border border-border bg-secondary/30 px-2.5 text-[0.7rem]">
+                                            <span className="truncate font-medium">
+                                              {draftGrade
+                                                ? `${draftGrade.code} · ${peso(Number(draftGrade.min_salary ?? 0))} – ${peso(Number(draftGrade.max_salary ?? 0))}`
+                                                : "No band — pick a grade or position"}
+                                            </span>
+                                            {draftGrade && (
+                                              <button
+                                                type="button"
+                                                className="shrink-0 font-medium text-primary hover:underline"
+                                                onClick={() =>
+                                                  setDraft((d) => ({
+                                                    ...d,
+                                                    salaryMin: draftGrade.min_salary !== null && draftGrade.min_salary !== undefined ? String(draftGrade.min_salary) : d.salaryMin,
+                                                    salaryMax: draftGrade.max_salary !== null && draftGrade.max_salary !== undefined ? String(draftGrade.max_salary) : d.salaryMax,
+                                                  }))
+                                                }
+                                              >
+                                                Apply band
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Type</Label>
+                                          <Select
+                                            value={draft.employmentType}
+                                            onValueChange={(v) =>
+                                              setDraft({ ...draft, employmentType: v })
+                                            }
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {[
+                                                "Full-time",
+                                                "Part-time",
+                                                "Contract",
+                                                "Seasonal",
+                                              ].map((t) => (
+                                                <SelectItem key={t} value={t}>
+                                                  {t}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Schedule</Label>
+                                          <Select
+                                            value={draft.schedule || "Shifting Schedule"}
+                                            onValueChange={(v) =>
+                                              setDraft({ ...draft, schedule: v })
+                                            }
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue placeholder="Select work schedule" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {WORK_SCHEDULE_OPTIONS.map((s) => (
+                                                <SelectItem key={s} value={s}>
+                                                  {s}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Vacancies</Label>
+                                          <Input
+                                            type="number"
+                                            min={1}
+                                            className="h-8 text-xs"
+                                            value={draft.vacancies}
+                                            disabled={role === "admin" && Boolean(sourceReqId)}
+                                            onChange={(e) =>
+                                              setDraft({
+                                                ...draft,
+                                                vacancies: sanitizeDigitsOnly(e.target.value),
+                                              })
+                                            }
+                                          />
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Salary min (₱)</Label>
+                                          <Input
+                                            type="number"
+                                            min={0}
+                                            className="h-8 text-xs"
+                                            value={draft.salaryMin}
+                                            onChange={(e) =>
+                                              setDraft({
+                                                ...draft,
+                                                salaryMin: sanitizeDecimalString(e.target.value),
+                                              })
+                                            }
+                                          />
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Salary max (₱)</Label>
+                                          <Input
+                                            type="number"
+                                            min={0}
+                                            className="h-8 text-xs"
+                                            value={draft.salaryMax}
+                                            onChange={(e) =>
+                                              setDraft({
+                                                ...draft,
+                                                salaryMax: sanitizeDecimalString(e.target.value),
+                                              })
+                                            }
+                                          />
+                                        </div>
+                                        {/* Structured screening levels — filled by requirement
+                                        templates and scored by the NLP match analysis. */}
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Education level</Label>
+                                          <Select
+                                            value={draft.educationLevel}
+                                            onValueChange={(v) =>
+                                              setDraft({
+                                                ...draft,
+                                                educationLevel: v as Job["education"],
+                                              })
+                                            }
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {EDUCATION_LEVEL_OPTIONS.map((level) => (
+                                                <SelectItem key={level} value={level}>
+                                                  {level}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Experience level</Label>
+                                          <Select
+                                            value={draft.experienceLevel}
+                                            onValueChange={(v) =>
+                                              setDraft({
+                                                ...draft,
+                                                experienceLevel: v as Job["experience"],
+                                              })
+                                            }
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {EXPERIENCE_LEVEL_OPTIONS.map((level) => (
+                                                <SelectItem key={level} value={level}>
+                                                  {level}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    )}
+                                  {id === "description" && (
+                                    <Textarea
+                                      autoFocus
+                                      rows={2}
+                                      className="text-xs"
+                                      value={draft.description}
+                                      onChange={(e) =>
+                                        setDraft({ ...draft, description: e.target.value })
+                                      }
+                                      placeholder="Short pitch of the role…"
+                                    />
+                                  )}
+                                  {id === "picture" && (
+                                    <div className="space-y-2">
+                                      <HiringPoster className="mx-auto max-w-md" />
+                                      <PosterUploadControl />
+                                    </div>
+                                  )}
+                                  {id === "responsibilities" && (
+                                    <Textarea
+                                      autoFocus
+                                      rows={3}
+                                      className="text-xs"
+                                      value={draft.responsibilities}
+                                      onChange={(e) =>
+                                        setDraft({ ...draft, responsibilities: e.target.value })
+                                      }
+                                      placeholder="One responsibility per line…"
+                                    />
+                                  )}
+                                  {id === "qualifications" && (
+                                    <Textarea
+                                      autoFocus
+                                      rows={3}
+                                      className="text-xs"
+                                      value={draft.qualifications}
+                                      onChange={(e) =>
+                                        setDraft({ ...draft, qualifications: e.target.value })
+                                      }
+                                      placeholder="One qualification per line…"
+                                    />
+                                  )}
+                                  {id === "skills" && (
+                                    <Textarea
+                                      autoFocus
+                                      rows={2}
+                                      className="text-xs"
+                                      value={draft.skills}
+                                      onChange={(e) =>
+                                        setDraft({ ...draft, skills: e.target.value })
+                                      }
+                                      placeholder="One skill per line…"
+                                    />
+                                  )}
+                                  {id === "instructions" && (
+                                    <Textarea
+                                      autoFocus
+                                      rows={2}
+                                      className="text-xs"
+                                      value={draft.instructions}
+                                      onChange={(e) =>
+                                        setDraft({ ...draft, instructions: e.target.value })
+                                      }
+                                      placeholder="How should applicants apply?"
+                                    />
+                                  )}
+                                  {id === "about" && (
+                                    <Textarea
+                                      autoFocus
+                                      rows={2}
+                                      className="text-xs"
+                                      value={draft.about}
+                                      onChange={(e) =>
+                                        setDraft({ ...draft, about: e.target.value })
+                                      }
+                                      placeholder="Company blurb…"
+                                    />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        <div
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => dragging && addBlock(dragging)}
+                          className="rounded-md border border-dashed border-border py-3 text-center text-[0.7rem] text-muted-foreground"
+                        >
+                          Drop a component here
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!canSaveDraft}
-                        onClick={saveDraftAction}
-                      >
-                        Save draft
-                      </Button>
-                      <Button size="sm" onClick={publish}>
-                        <Send className="mr-2 h-4 w-4" />
-                        {editingJobId ? "Update template" : "Publish job post"}
-                      </Button>
-                    </div>
-                  </CardContent>
+                      <div className="rounded-md border border-border p-3">
+                        <p className="eyebrow mb-2">Publish To</p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {platformMeta.map((p) => (
+                            <div key={p.key} className="flex items-center justify-between">
+                              <span className="flex items-center gap-2 text-xs">
+                                <p.icon className="h-3.5 w-3.5 text-muted-foreground" /> {p.key}
+                              </span>
+                              <Switch
+                                checked={platforms[p.key] ?? false}
+                                onCheckedChange={(v) => setPlatforms({ ...platforms, [p.key]: v })}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!canSaveDraft}
+                          onClick={saveDraftAction}
+                        >
+                          Save draft
+                        </Button>
+                        <Button size="sm" onClick={publish}>
+                          <Send className="mr-2 h-4 w-4" />
+                          {editingJobId ? "Update template" : "Publish job post"}
+                        </Button>
+                      </div>
+                    </CardContent>
                   )}
                 </Card>
 
@@ -5852,6 +6180,15 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   )}
                 </SelectContent>
               </Select>
+              {isPairTaken(pendingDept, pendingPosition) && (
+                <p className="flex items-start gap-1.5 text-xs font-medium text-destructive">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    A job post already exists for this position and department — edit the existing
+                    post instead of creating a duplicate.
+                  </span>
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -5865,7 +6202,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               <X className="mr-2 h-4 w-4" /> Cancel
             </Button>
             <Button
-              disabled={!pendingPosition}
+              disabled={!pendingPosition || isPairTaken(pendingDept, pendingPosition)}
+              title={
+                isPairTaken(pendingDept, pendingPosition)
+                  ? "A job post already exists for this position and department"
+                  : "Start a new job post"
+              }
               onClick={() => startNewPost(pendingDept, pendingPosition)}
             >
               <PencilRuler className="mr-2 h-4 w-4" /> Start job post
@@ -6068,11 +6410,23 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                     <span>
                       Position not listed? Create it first in Core HCM → Departments &amp;
-                      Positions — screening and saving need a matching position (a draft job
-                      post is auto-created when none exists).
+                      Positions, then create and publish a job post — applicants can only be added
+                      to open postings with remaining slots.
                     </span>
                   </p>
                 )}
+                {!addPresetJob &&
+                  addForm.position !== "" &&
+                  addDept !== "" &&
+                  !postingIndicator(addDept, addForm.position) && (
+                    <p className="flex items-start gap-1.5 text-xs font-medium text-destructive">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        No available job post for {addForm.position} in {addDept} — the posting is
+                        closed, in draft, or full. Reopen or publish it before adding applicants.
+                      </span>
+                    </p>
+                  )}
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -6343,10 +6697,23 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   Back
                 </Button>
                 <Button
+                  disabled={
+                    screeningLoading ||
+                    (!addPresetJob &&
+                      addForm.position !== "" &&
+                      addDept !== "" &&
+                      !postingIndicator(addDept, addForm.position))
+                  }
                   onClick={() => {
                     if (!addForm.position) {
                       toast.error(
                         "Select a position first — this department has no defined positions.",
+                      );
+                      return;
+                    }
+                    if (!addPresetJob && !postingIndicator(addDept, addForm.position)) {
+                      toast.error(
+                        `No available job post for ${addForm.position} in ${addDept} — reopen or publish the posting before adding applicants.`,
                       );
                       return;
                     }
@@ -6426,9 +6793,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                       <Users className="h-3.5 w-3.5 text-primary" />{" "}
                       {addForm.position || "Position"}
                     </span>
-                    <span className="inline-flex items-center gap-1">
-                      {addDept}
-                    </span>
+                    <span className="inline-flex items-center gap-1">{addDept}</span>
                   </p>
                 </div>
                 {addResumeFile && (
@@ -6476,108 +6841,108 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 )}
               >
                 {isPreviewableResume && (
-                <div className="flex h-full flex-col overflow-hidden rounded-md border border-border bg-card lg:sticky lg:top-0">
-                  <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2">
-                    <span
-                      className="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-medium"
-                      style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                    >
-                      {addMethod === "image" ? (
-                        <ImageIcon className="h-3.5 w-3.5 shrink-0 text-primary" />
-                      ) : (
-                        <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
-                      )}
+                  <div className="flex h-full flex-col overflow-hidden rounded-md border border-border bg-card lg:sticky lg:top-0">
+                    <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2">
                       <span
-                        className="min-w-0 flex-1 break-words whitespace-normal text-primary underline underline-offset-2"
+                        className="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-medium"
                         style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                        title={addFileName || `${addForm.name || "applicant"}_Resume`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          openResumePreview();
-                        }}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
+                      >
+                        {addMethod === "image" ? (
+                          <ImageIcon className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        ) : (
+                          <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        )}
+                        <span
+                          className="min-w-0 flex-1 break-words whitespace-normal text-primary underline underline-offset-2"
+                          style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+                          title={addFileName || `${addForm.name || "applicant"}_Resume`}
+                          onClick={(e) => {
                             e.preventDefault();
+                            e.stopPropagation();
                             openResumePreview();
-                          }
-                        }}
-                      >
-                        {addFileName || `${addForm.name || "applicant"}_Resume`}
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              openResumePreview();
+                            }
+                          }}
+                        >
+                          {addFileName || `${addForm.name || "applicant"}_Resume`}
+                        </span>
                       </span>
-                    </span>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        onClick={() => setAddPreviewZoom((z) => Math.max(50, z - 10))}
-                        disabled={addPreviewZoom <= 50}
-                        aria-label="Zoom out"
-                      >
-                        <ZoomOut className="h-3.5 w-3.5" />
-                      </Button>
-                      <span className="w-8 text-center text-[0.65rem] text-muted-foreground">
-                        {addPreviewZoom}%
-                      </span>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        onClick={() => setAddPreviewZoom((z) => Math.min(300, z + 10))}
-                        disabled={addPreviewZoom >= 300}
-                        aria-label="Zoom in"
-                      >
-                        <ZoomIn className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => setAddPreviewZoom((z) => Math.max(50, z - 10))}
+                          disabled={addPreviewZoom <= 50}
+                          aria-label="Zoom out"
+                        >
+                          <ZoomOut className="h-3.5 w-3.5" />
+                        </Button>
+                        <span className="w-8 text-center text-[0.65rem] text-muted-foreground">
+                          {addPreviewZoom}%
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => setAddPreviewZoom((z) => Math.min(300, z + 10))}
+                          disabled={addPreviewZoom >= 300}
+                          aria-label="Zoom in"
+                        >
+                          <ZoomIn className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="relative flex-1 min-h-[420px] overflow-auto bg-muted/30 p-3">
-                    {(() => {
-                      if (!resumePreviewUrl || !addResumeFile) return null;
-                      const name = addResumeFile.name;
-                      const isImage =
-                        /\.(jpe?g|png)$/i.test(name) || addResumeFile.type.startsWith("image/");
-                      if (isImage) {
+                    <div className="relative flex-1 min-h-[420px] overflow-auto bg-muted/30 p-3">
+                      {(() => {
+                        if (!resumePreviewUrl || !addResumeFile) return null;
+                        const name = addResumeFile.name;
+                        const isImage =
+                          /\.(jpe?g|png)$/i.test(name) || addResumeFile.type.startsWith("image/");
+                        if (isImage) {
+                          return (
+                            <div className="flex h-full w-full items-center justify-center">
+                              <img
+                                src={resumePreviewUrl}
+                                alt={`Uploaded resume: ${addFileName}`}
+                                className="max-h-full max-w-full rounded-sm border border-border object-contain shadow-sm transition-transform"
+                                style={{
+                                  transform: `scale(${addPreviewZoom / 100})`,
+                                  transformOrigin: "center center",
+                                }}
+                              />
+                            </div>
+                          );
+                        }
                         return (
-                          <div className="flex h-full w-full items-center justify-center">
-                            <img
-                              src={resumePreviewUrl}
-                              alt={`Uploaded resume: ${addFileName}`}
-                              className="max-h-full max-w-full rounded-sm border border-border object-contain shadow-sm transition-transform"
+                          <div className="h-full w-full overflow-auto">
+                            <div
                               style={{
                                 transform: `scale(${addPreviewZoom / 100})`,
-                                transformOrigin: "center center",
+                                transformOrigin: "top center",
+                                height:
+                                  addPreviewZoom !== 100
+                                    ? `${(100 / addPreviewZoom) * 100}%`
+                                    : "100%",
                               }}
-                            />
+                              className="h-full w-full"
+                            >
+                              <iframe
+                                src={resumePreviewUrl}
+                                title={`Uploaded resume: ${addFileName}`}
+                                className="h-full w-full rounded-sm border border-border bg-white"
+                              />
+                            </div>
                           </div>
                         );
-                      }
-                      return (
-                        <div className="h-full w-full overflow-auto">
-                          <div
-                            style={{
-                              transform: `scale(${addPreviewZoom / 100})`,
-                              transformOrigin: "top center",
-                              height:
-                                addPreviewZoom !== 100
-                                  ? `${(100 / addPreviewZoom) * 100}%`
-                                  : "100%",
-                            }}
-                            className="h-full w-full"
-                          >
-                            <iframe
-                              src={resumePreviewUrl}
-                              title={`Uploaded resume: ${addFileName}`}
-                              className="h-full w-full rounded-sm border border-border bg-white"
-                            />
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
+                      })()}
+                    </div>
                   </div>
                 )}
 
@@ -7122,11 +7487,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   <ScanLine className="h-5 w-5 text-primary" /> Screening Setup
                 </DialogTitle>
                 <DialogDescription>
-                  Requirement Templates — the requirement entities a resume must satisfy per position,
-                  ready to apply in a job post. Scoring — how resumes are scored. Reference Data — the
-                  vocabulary the model recognizes in resumes, one section per entity type with bulk
-                  upload. Reported Entities — unrecognized entities flagged from screening results, ready
-                  to add. Saved settings apply to every new screening run.
+                  Requirement Templates — the requirement entities a resume must satisfy per
+                  position, ready to apply in a job post. Scoring — how resumes are scored.
+                  Reference Data — the vocabulary the model recognizes in resumes, one section per
+                  entity type with bulk upload. Reported Entities — unrecognized entities flagged
+                  from screening results, ready to add. Saved settings apply to every new screening
+                  run.
                 </DialogDescription>
               </DialogHeader>
 

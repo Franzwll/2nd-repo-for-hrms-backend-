@@ -18,6 +18,7 @@ Robustness features beyond plain rules:
   family name land on separate interleaved lines.
 - Work-history lines of the form "Title <sep> Company, City | Date range".
 """
+import difflib
 import re
 from datetime import date
 from typing import Dict, List, Optional, Tuple
@@ -250,7 +251,49 @@ def _is_sectionish_token(normalized: str) -> bool:
         for prefix in _SECTION_WORD_PREFIXES:
             if normalized.startswith(prefix) or prefix.startswith(normalized):
                 return True
+    if len(normalized) >= 7 and _is_fuzzy_section_word(normalized):
+        return True
     return False
+
+
+# Long header words for OCR-truncation matching ("PROFESSIC" for
+# "PROFESSIONAL", "EXPERIENC" for "EXPERIENCE"). Short names ("Summer",
+# "Joshua") are excluded by the length gate so real names never match.
+_FUZZY_SECTION_WORDS = (
+    "professional", "experience", "education", "certification",
+    "competencies", "references", "curriculum", "qualifications",
+    "employment", "background", "information",
+)
+
+_FUZZY_SECTION_CACHE: Dict[str, bool] = {}
+
+
+def _is_fuzzy_section_word(normalized: str) -> bool:
+    """True when a long token is an OCR-mangled section word."""
+    cached = _FUZZY_SECTION_CACHE.get(normalized)
+    if cached is not None:
+        return cached
+    result = False
+    if len(normalized) >= 7:
+        best = difflib.get_close_matches(
+            normalized, _FUZZY_SECTION_WORDS, n=1, cutoff=0.75
+        )
+        result = bool(best)
+    _FUZZY_SECTION_CACHE[normalized] = result
+    return result
+
+
+# Name suffixes ignored by the case-uniformity check ("Maria S. Reyes" mixes
+# an upper initial into a title-case name but is still one name).
+_NAME_CASE_SUFFIXES = frozenset({"jr", "sr", "ii", "iii", "iv", "v"})
+
+# Education vocabulary: a row below a split name carrying these words is a
+# qualification line ("College Graduate"), never a third name row.
+_EDU_CONTINUATION_RE = re.compile(
+    r"\b(college|bachelor|master|diploma|degree|universit|school|graduate|"
+    r"tesda|vocational|education|high\s+school)\b",
+    re.I,
+)
 
 
 def _strip_contact_tokens(line: str) -> str:
@@ -267,11 +310,23 @@ def _strip_contact_tokens(line: str) -> str:
 # breaks and city spellings resumes were written with, so a candidate line
 # counts as an address when it carries any of these even if no _PH_CITIES
 # entry matches ("78 Palm Grove Blvd, Brgy. Tambo, Paranaque").
+# NOTE: "st" intentionally allows an optional dot ("Sampaguita St" without a
+# period is the norm in PH resumes); weak residential tokens (blk/lot/phase)
+# are included but callers must demand extra evidence (comma/digit/city) for
+# them so prose like "a lot of experience" is never mistaken for an address.
 _ADDRESS_MARKERS = re.compile(
-    r"\b(barangay|brgy\.?|street|st\.|avenue|ave\.?|road|rd\.?|blvd\.?|boulevard|"
+    r"\b(barangay|brgy\.?|street|st\.?|avenue|ave\.?|road|rd\.?|blvd\.?|boulevard|"
     r"drive|dr\.?|lane|subdivision|subd\.?|village|vill\.?|compound|condo|tower|"
-    r"building|bldg\.?|unit|floor|purok|sitio|zone|district|province|city|cities|"
-    r"municipality|municipal|zip|postal code)\b",
+    r"building|bldg\.?|unit|flr\.?|floor|room|rm\.?|suite|purok|sitio|zone|district|"
+    r"province|city|cities|municipality|municipal|zip|postal\s*code|"
+    r"plaza|park|court|terrace|loop|circle|highway|corner|extension|ext\.?)\b",
+    re.I,
+)
+
+# Weak residential tokens: meaningful only with extra evidence (comma, house
+# number or known city) because they also occur in ordinary prose.
+_WEAK_ADDRESS_MARKERS = re.compile(
+    r"\b(blk\.?|block|lot|phase|ph\.?|house|home)\b",
     re.I,
 )
 
@@ -497,6 +552,28 @@ class EntityExtractor:
             if not EMAIL_RE.search(l1) and not EMAIL_RE.search(l2) and not any(ch.isdigit() for ch in l1 + l2):
                 combined = f"{l1} {l2}".strip()
                 if self._looks_like_person(combined) and len(l1.split()) <= 3 and len(l2.split()) <= 2:
+                    # A split display name can continue on further rows
+                    # ("VINCENT" / "PAUL" / "SORIANO"): absorb following
+                    # name rows while they are clearly name parts rather
+                    # than a title, city or education line.
+                    for nxt in lines[2:5]:
+                        if len(combined.split()) >= 4:
+                            break
+                        nxt_words = nxt.split()
+                        if not nxt_words or len(nxt_words) > 2:
+                            break
+                        if EMAIL_RE.search(nxt) or any(ch.isdigit() for ch in nxt):
+                            break
+                        if _ADDRESS_MARKERS.search(nxt) or _WEAK_ADDRESS_MARKERS.search(nxt):
+                            break
+                        if any(re.search(rf"\b{re.escape(c)}\b", nxt, re.I) for c in _PH_CITIES):
+                            break
+                        if _EDU_CONTINUATION_RE.search(nxt):
+                            break
+                        extended = f"{combined} {nxt}".strip()
+                        if not self._looks_like_person(extended):
+                            break
+                        combined = extended
                     self.name_source = "rule"
                     return combined
 
@@ -566,6 +643,7 @@ class EntityExtractor:
             line = _NAME_HEADER_PREFIX_RE.sub(r"\1", line)
             words = line.split()
             taken = 0
+            line_case: Optional[str] = None
             for word in words[:4]:
                 clean = re.sub(r"^[^\w]+|[^\w]+$", "", word, flags=re.UNICODE)
                 if not clean:
@@ -582,6 +660,13 @@ class EntityExtractor:
                     break
                 if len(normalized) >= 13:
                     break  # OCR garbage tends to produce very long caps runs
+                # A case change inside one row marks the start of interleaved
+                # prose ("SORIANO Detail-obsesse"): stop before it.
+                word_case = "upper" if clean.isupper() else "other"
+                if taken == 0:
+                    line_case = word_case
+                elif word_case != line_case and len(normalized) > 2:
+                    break
                 tokens.append(clean)
                 taken += 1
             if taken:
@@ -619,6 +704,18 @@ class EntityExtractor:
                 return False
             if _is_sectionish_token(_normalize_name_word(core)):
                 return False
+        # Real names are uniformly cased (all "VINCENT PAUL SORIANO" or all
+        # "Vincent Paul Soriano"). A mixed row ("SORIANO Detail-obsesse") is a
+        # two-column interleave of name + summary prose, not a name.
+        case_classes = set()
+        for w in words:
+            core = re.sub(r"[^A-Za-z.'-]", "", w)
+            norm = _normalize_name_word(core)
+            if len(norm) <= 2 or norm in _NAME_CASE_SUFFIXES:
+                continue
+            case_classes.add("upper" if core.isupper() else "other")
+        if len(case_classes) > 1:
+            return False
         return True
 
     # ------------------------------------------------------------------
@@ -626,83 +723,473 @@ class EntityExtractor:
     # ------------------------------------------------------------------
 
     def _extract_address(self, head_text: str, full_text: str, sections: Dict[str, str]) -> Optional[str]:
-        """Extracts candidate contact address / location."""
-        lines = [l.strip() for l in head_text.split("\n") if l.strip()]
+        """Extracts candidate contact address / location.
 
-        def clean_addr(cand: str) -> Optional[str]:
-            cand = cand.strip(" ,|-•·:–—")
-            if not cand or len(cand) < 6 or len(cand) > 150:
+        Covers the header contact block (first lines), an explicit
+        "Contact Information" section wherever it sits, mid-line labels
+        ("... Address: 123 ..."), long two-column merged rows, and — as a
+        strict last resort — residential-looking lines elsewhere in the
+        document (work-history "Hotel, City | dates" rows are excluded).
+        """
+        # Label prefix ("Address:", "Location -", ...) anywhere in a fragment.
+        _label_prefix_re = re.compile(
+            r"(?:^|[\s|•·,;]+)(?:location|address|residence)\s*[:–—-]\s*(.+)$",
+            re.I,
+        )
+        # First house-number / residential anchor inside a long merged row:
+        # "Juan ... Address: 78 Palm Grove Blvd, ..." -> start at "78 ...".
+        _addr_start_re = re.compile(
+            r"\b(?:\d{1,5}[A-Za-z]?\s+[A-Za-z0-9][^,|•·\n]{0,40}"
+            r"|(?:blk\.?|block|lot|phase|purok|brgy\.?|barangay|sitio)\s*\.?\s*\d*[A-Za-z]*)",
+            re.I,
+        )
+        # Words that mark a row as employment history rather than a home address.
+        _work_row_re = re.compile(
+            r"\b(hotel|hotels|resort|resorts|restaurant|corp\.?|corporation|company|"
+            r"inc\.?|suites|inn\b|associate|attendant|supervisor|manager|intern|"
+            r"operations|management|experience|coordinator)\b",
+            re.I,
+        )
+        # Country names that terminate an address ("..., Manila, Philippines").
+        _country_re = re.compile(
+            r"\b(philippines|united\s+states|usa|u\.s\.a?\.?)\b", re.I
+        )
+        # Skill/noise vocabulary for dropping trailing comma-segments that are
+        # interleaved right-column skills, not address parts ("Credit Card
+        # Gateway Settlements", "Posting & City Ledger ... Flash Summaries").
+        _noise_seg_re = re.compile(
+            r"\b(credit|card|gateway|settlement|posting|ledger|executive|flash|"
+            r"summar|audit|revenue|balancing|compliance|security|processing|"
+            r"reception|emergency|duty|variance|report|financial|accounts|"
+            r"reconciliation|cashier|verification|keycard|lock|pre-authorization|"
+            r"chargeback|defense|privacy|rate|comp|safe|drop|float|cash)\b",
+            re.I,
+        )
+        # Bare label ("ADDRESS 77 Padre Faura ..." with no colon) — stripped
+        # only when the remainder carries address evidence, so prose like
+        # "Address guest concerns ..." is never promoted.
+        _bare_label_re = re.compile(
+            r"^(?:location|address|residence)\s+(.+)$", re.I
+        )
+
+        def _has_city(cand: str) -> bool:
+            return (
+                any(re.search(rf"\b{re.escape(c)}\b", cand, re.I) for c in _PH_CITIES)
+                or "philippines" in cand.lower()
+                or "united states" in cand.lower()
+                or re.search(r"\b(usa|u\.s\.a\.?|ph\b)", cand, re.I) is not None
+            )
+
+        def _trim_trailing_noise(cand: str) -> str:
+            # Cut job prose that got merged after the address
+            # ("... Paranaque 1701 Sales Associate with 3 years ...").
+            # NOTE: the first 4-digit run is often the house number ("1422
+            # Brickell Ave ... 33131"), so the postal code is searched from
+            # the end and only used to trim when the tail is short/location-
+            # like or clearly job prose. A house-number tail that continues
+            # with street/city words is kept intact.
+            zip_matches = list(re.finditer(r"\b\d{4,5}\b", cand))
+            if zip_matches:
+                zip_m = None
+                tail_after: str = ""
+                for m in reversed(zip_matches):
+                    tail = cand[m.end():]
+                    if len(tail.strip()) <= 60:
+                        zip_m = m
+                        tail_after = tail
+                        break
+                if zip_m is None:
+                    zip_m = zip_matches[-1]
+                    tail_after = cand[zip_m.end():]
+                # Keep at most a location tail (", Metro Manila, Philippines").
+                tail_keep = re.match(
+                    r"(?i)\s*,?\s*((?:metro\s+manila|ncr|philippines|united\s+states|usa"
+                    r"|manila|makati|taguig|pasig|quezon|pasay|rizal|laguna|cavite|cebu|davao"
+                    r"|florida|miami|fl)[\w\s.,-]{0,40})",
+                    tail_after,
+                )
+                if tail_keep:
+                    sep = ", " if tail_after.lstrip().startswith(",") else " "
+                    cand = cand[: zip_m.end()] + sep + tail_keep.group(1).strip(" ,-")
+                elif (
+                    len(tail_after.strip()) > 40
+                    and _work_row_re.search(tail_after)
+                ):
+                    cand = cand[: zip_m.end()]
+                # else: house-number-like match mid-address — keep full text.
+            else:
+                # No zip: drop a trailing " with ..." / " Sales Associate ..." tail.
+                cand = re.split(
+                    r"\s+(?:with\s+\d+|sales\s+associate|hotel\s+operations|"
+                    r"years?\s+of\s+experience|experience\s+in)\b",
+                    cand,
+                    flags=re.I,
+                )[0]
+            return cand.strip(" ,|-•·:–—")
+
+        def _seg_evidence(seg: str) -> bool:
+            """True when a comma-segment looks like part of an address."""
+            if _country_re.search(seg):
+                return True
+            if re.search(r"\b\d{4,5}\b", seg):
+                return True
+            if any(re.search(rf"\b{re.escape(c)}\b", seg, re.I) for c in _PH_CITIES):
+                return True
+            if re.search(r"\d", seg) and (
+                _ADDRESS_MARKERS.search(seg) or _WEAK_ADDRESS_MARKERS.search(seg)
+            ):
+                return True
+            if _ADDRESS_MARKERS.search(seg) or _WEAK_ADDRESS_MARKERS.search(seg):
+                return True
+            if re.search(r"\d", seg):
+                return True
+            return False
+
+        def _leading_portion(cand: str) -> str:
+            """Keeps the leading address comma-segments, dropping interleaved
+            right-column skill prose ("77 Padre Faura Street, Ermita,
+            1000 Manila, Credit Card Gateway Settlements, ..." ->
+            "77 Padre Faura Street, Ermita, 1000 Manila"). A country word ends
+            the address ("..., Manila, Philippines"). Short clean tails
+            ("Blk 7 Lot 22, San Isidro") are preserved."""
+            segs = [s.strip(" ") for s in cand.split(",")]
+            segs = [s for s in segs if s]
+            if not segs:
+                return ""
+            trimmed: List[str] = []
+            for seg in segs:
+                cm = _country_re.search(seg)
+                if cm:
+                    trimmed.append(seg[: cm.end()].strip())
+                    break
+                trimmed.append(seg)
+            segs = trimmed
+            if not _seg_evidence(segs[0]):
+                return ""
+            last = 0
+            for i, seg in enumerate(segs):
+                if _seg_evidence(seg):
+                    last = i
+            kept = segs[: last + 1]
+            for seg in segs[last + 1:]:
+                words = seg.split()
+                if len(words) <= 3 and not _noise_seg_re.search(seg):
+                    kept.append(seg)
+                else:
+                    break
+            return ", ".join(kept).strip(" ,")
+
+        def clean_addr(cand: str, strict_weak: bool = True) -> Optional[str]:
+            if not cand:
+                return None
+            cand = cand.strip(" ,|-•·:–—\"'")
+            if not cand or len(cand) < 6:
                 return None
             if "@" in cand or re.search(r"https?://|linkedin\.com|www\.", cand, re.I):
                 return None
+            # Strip a leading label wherever it appears ("Address: ...").
+            label_m = _label_prefix_re.search(cand)
+            if label_m and len(label_m.group(1).strip()) >= 6:
+                cand = label_m.group(1).strip(" ,|-•·:–—")
+            else:
+                # Bare label without colon ("ADDRESS 77 Padre Faura ...") —
+                # strip only when the remainder carries address evidence.
+                bare_m = _bare_label_re.match(cand)
+                if bare_m and len(bare_m.group(1).strip()) >= 6:
+                    rest = bare_m.group(1).strip()
+                    if (
+                        re.search(r"\d", rest)
+                        or _ADDRESS_MARKERS.search(rest)
+                        or _WEAK_ADDRESS_MARKERS.search(rest)
+                        or _has_city(rest)
+                    ):
+                        cand = rest
             if " — " in cand:
                 cand = cand.split(" — ")[-1].strip()
-            city_match = (
-                any(re.search(rf"\b{re.escape(c)}\b", cand, re.I) for c in _PH_CITIES)
-                or "philippines" in cand.lower()
-            )
-            # A structural marker (barangay/street/boulevard/city/postal code…)
-            # is enough even when the city itself is missing or misspelled.
-            marker_match = bool(_ADDRESS_MARKERS.search(cand)) or bool(
-                re.search(r"\b\d{4}\b", cand)
-            )
-            if city_match or marker_match:
-                # Reject lines that are clearly job bullets rather than an address
-                if re.search(r"\b(operations|management|experience|supervisor|coordinator)\b", cand, re.I) and "," not in cand:
+            # Long merged rows: start from the residential anchor and trim noise.
+            if len(cand) > 200:
+                start_m = _addr_start_re.search(cand)
+                if start_m:
+                    cand = cand[start_m.start(): start_m.start() + 200]
+                else:
                     return None
-                return cand
+            # Drop trailing interleaved skill comma-segments before validating.
+            cand = _leading_portion(cand)
+            cand = _trim_trailing_noise(cand)
+            if not cand or len(cand) < 6 or len(cand) > 200:
+                return None
+            city_match = _has_city(cand)
+            marker_match = bool(_ADDRESS_MARKERS.search(cand)) or bool(
+                re.search(r"\b\d{4,5}\b", cand)
+            )
+            weak_match = bool(_WEAK_ADDRESS_MARKERS.search(cand))
+            if not (city_match or marker_match or weak_match):
+                return None
+            if weak_match and not (city_match or marker_match):
+                # "Blk/Lot/Phase" alone is not enough ("a lot of experience").
+                if strict_weak and not (
+                    "," in cand or re.search(r"\d", cand) or city_match
+                ):
+                    return None
+            # A lone structural word without city/zip/comma/digit is not an
+            # address ("Posting & City Ledger ..." matches "City" but is an
+            # interleaved skill fragment).
+            if not city_match and not re.search(r"\b\d{4,5}\b", cand):
+                if "," not in cand and not re.search(r"\d", cand):
+                    return None
+            # Employer rows ("Front Desk Associate - Grand Hotel, Makati") are
+            # employment history, not a home address. Reject them even when
+            # they carry a comma, unless a residential anchor / zip / country
+            # proves the fragment is a home address.
+            _employer_re = re.compile(
+                r"\b(hotel|hotels|resort|resorts|restaurants?|corp\.?|corporation|"
+                r"company|inc\.?|suites|grill|bistro|caf[eé]|cafeteria|catering)\b",
+                re.I,
+            )
+            _title_re = re.compile(
+                r"\b(associate|attendant|supervisor|manager|intern|server|cook|"
+                r"clerk|crew|staff|officer|coordinator|specialist)\b",
+                re.I,
+            )
+            has_residential = bool(
+                _ADDRESS_MARKERS.search(cand)
+                or _WEAK_ADDRESS_MARKERS.search(cand)
+                or re.search(r"\b\d{4,5}\b", cand)
+                or "philippines" in cand.lower()
+                or "united states" in cand.lower()
+            )
+            # Strong home anchors: a bare "City" is not enough when employer
+            # vocabulary is present ("Seaside Grill Hotel, Taguig City" is a
+            # workplace, not a home address).
+            has_strong_home = bool(
+                re.search(
+                    r"\b(street|st\.?|avenue|ave\.?|road|rd\.?|blvd\.?|boulevard|"
+                    r"drive|dr\.?|lane|subdivision|subd\.?|village|vill\.?|barangay|"
+                    r"brgy\.?|purok|sitio|blk\.?|block|lot|phase|house|zip|postal\s*code)\b",
+                    cand, re.I,
+                )
+                or re.search(r"\b\d{4,5}\b", cand)
+                or "philippines" in cand.lower()
+                or "united states" in cand.lower()
+            )
+            if (_employer_re.search(cand) or _title_re.search(cand)) and not has_strong_home:
+                return None
+            if (_employer_re.search(cand) or _title_re.search(cand)) and not has_residential:
+                return None
+            # A bare city/province word without comma, digit or structural
+            # marker is too weak ("Jose Rizal" matches province "Rizal" but is
+            # a name). Accept it only when it exactly equals a known place.
+            if city_match and not marker_match and "," not in cand and not re.search(r"\d", cand):
+                norm = cand.strip().lower()
+                known = {c.lower() for c in _PH_CITIES} | {
+                    "philippines", "united states", "usa", "metro manila", "ncr",
+                }
+                if norm not in known:
+                    return None
+            # Reject lines that are clearly job bullets rather than an address.
+            if _work_row_re.search(cand) and "," not in cand:
+                return None
+            if DATE_RANGE_RE.search(cand):
+                return None
+            return cand or None
+
+        def _residue_candidates(line: str) -> List[str]:
+            residue = _strip_contact_tokens(line)
+            parts: List[str] = []
+            for part in re.split(r"[|•·]|\s{2,}|\t", residue):
+                part = part.strip()
+                if part:
+                    parts.append(part)
+            whole = re.sub(r"\s+", " ", residue).strip()
+            if whole and whole not in parts:
+                parts.append(whole)
+            # Also try the raw line split (for rows where nothing was stripped).
+            for part in re.split(r"[|•·]|\s{2,}|\t", line):
+                part = _strip_contact_tokens(part).strip()
+                part = re.sub(r"\s+", " ", part).strip()
+                if part and part not in parts:
+                    parts.append(part)
+            return parts
+
+        def _is_contact_only(line: str) -> bool:
+            """True for e-mail/phone/URL/linkedin rows (never address lines)."""
+            if "@" in line or "linkedin.com" in line.lower() or "www." in line.lower():
+                return True
+            if re.fullmatch(r"[\d\s()+.xXext-]{7,25}", line.strip()):
+                return True
+            return False
+
+        def _continuation_country(next_line: str) -> Optional[str]:
+            """Picks a country/zip/city continuation starting the next line
+            ("Philippines Pre-Authorization Audits ..." -> "Philippines")."""
+            if not next_line or _is_contact_only(next_line):
+                return None
+            portion = _leading_portion(next_line)
+            if not portion:
+                return None
+            first = portion.split(",")[0].strip()
+            if _country_re.match(first) or re.match(r"^\d{4,5}\b", first):
+                return first
+            if len(first.split()) <= 3 and _has_city(first) and "," not in portion:
+                return first
             return None
 
         contact_scope = sections.get("contact", "") + "\n" + head_text
         contact_lines = [l.strip() for l in contact_scope.split("\n") if l.strip()]
-        for i, line in enumerate(contact_lines):
-            low = line.lower()
-            if low in {"location", "address", "residence", "city"}:
-                if i + 1 < len(contact_lines):
-                    res = clean_addr(contact_lines[i + 1])
-                    if res:
-                        return res
-            m = re.match(r"^(?:location|address|residence)\s*[:–-]\s*(.+)", line, re.I)
+
+        # 1) Explicit labels, including mid-line
+        # ("Contact: ... | Address: 45 Marigold St ...").
+        for line in contact_lines:
+            m = _label_prefix_re.search(line)
             if m:
                 res = clean_addr(m.group(1))
                 if res:
                     return res
+        for i, line in enumerate(contact_lines):
+            if line.lower() in {"location", "address", "residence", "city"}:
+                if i + 1 < len(contact_lines):
+                    res = clean_addr(contact_lines[i + 1])
+                    if res:
+                        return res
 
-        # Mixed contact lines: "0917... a@b.com Makati City, PH linkedin.com/x".
-        # Strip contact tokens, then test the remaining fragment(s).
+        # 1b) Label-below: the ADDRESS label sits on its own row (often with
+        # interleaved right-column skills) and the real address follows on the
+        # next line(s), sometimes spanning two lines ("77 Padre Faura Street,
+        # Ermita, 1000 Manila," / "Philippines ...").
+        _label_line_re = re.compile(
+            r"^(?:location|address|residence)\b\s*[:–—-]?\s*(.*)$", re.I
+        )
+        search_lines = contact_lines + [
+            l.strip()
+            for l in full_text.split("\n")
+            if l.strip() and l.strip() not in set(contact_lines)
+        ]
+        for i, line in enumerate(search_lines):
+            lm = _label_line_re.match(line)
+            if not lm:
+                continue
+            remainder = lm.group(1).strip(" ,|-•·:–—")
+            if remainder and clean_addr(remainder):
+                return clean_addr(remainder)
+            # Gather the following address-bearing line(s), skipping contact rows.
+            for j in range(i + 1, min(i + 4, len(search_lines))):
+                nxt = search_lines[j]
+                if not nxt or _is_contact_only(nxt):
+                    continue
+                if DATE_RANGE_RE.search(nxt):
+                    continue
+                portion = _leading_portion(_strip_contact_tokens(nxt))
+                if not portion:
+                    portion = _leading_portion(nxt)
+                if not portion:
+                    continue
+                res = clean_addr(portion)
+                if not res:
+                    continue
+                # Append a country/zip/city continuation from the line below
+                # ("..., 1000 Manila," + "Philippines ...").
+                if j + 1 < len(search_lines) and not _country_re.search(res):
+                    cont = _continuation_country(search_lines[j + 1])
+                    if cont and cont.lower() not in res.lower():
+                        combined = res.rstrip(" ,") + ", " + cont
+                        res2 = clean_addr(combined)
+                        if res2:
+                            return res2
+                return res
+
+        # 2) Mixed contact rows: strip phones/e-mails/URLs, then test fragments.
         # Contact-section lines are scanned too (PDF headers often keep the
         # address in a "Contact Information" block further down the page).
-        for line in contact_lines[:24]:
+        for line in contact_lines[:40]:
             if (
                 not any(re.search(rf"\b{re.escape(c)}\b", line, re.I) for c in _PH_CITIES)
                 and "philippines" not in line.lower()
+                and "united states" not in line.lower()
                 and not _ADDRESS_MARKERS.search(line)
+                and not _WEAK_ADDRESS_MARKERS.search(line)
+                and not re.search(r"\b\d{4,5}\b", line)
             ):
                 continue
             residue = _strip_contact_tokens(line)
-            if residue == line:
-                continue  # nothing stripped; handled by the generic pass below
-            for part in re.split(r"[|•·]|\s{2,}", residue):
-                res = clean_addr(part)
+            if residue != line:
+                for part in re.split(r"[|•·]|\s{2,}|\t", residue):
+                    res = clean_addr(part)
+                    if res:
+                        return res
+                res = clean_addr(re.sub(r"\s+", " ", residue).strip())
                 if res:
                     return res
-            res = clean_addr(re.sub(r"\s+", " ", residue).strip())
-            if res:
-                return res
 
-        for line in contact_lines[:24]:
-            parts = re.split(r"[|•·]|\s{2,}", line)
-            for part in parts:
+        # 3) Generic pass over header/contact fragments.
+        for line in contact_lines[:40]:
+            for part in re.split(r"[|•·]|\s{2,}|\t", line):
                 res = clean_addr(part)
                 if res and not PHONE_RE.search(res):
                     return res
 
-        for line in contact_lines[:24]:
+        for line in contact_lines[:40]:
             if line.startswith(("+", "09", "http", "linkedin", "www", "Tel")):
+                # Still try the residue: "0917... Makati City" carries the
+                # address after the leading phone number.
+                for part in _residue_candidates(line):
+                    res = clean_addr(part)
+                    if res and not PHONE_RE.search(res):
+                        return res
                 continue
             res = clean_addr(line)
             if res and not PHONE_RE.search(res) and not self._looks_like_person(res):
                 return res
+
+        # 4) Full-document fallback for addresses outside the header
+        # (footers, sidebar blocks rendered late). Work-history rows are
+        # excluded: they carry date ranges or hotel/company vocabulary without
+        # residential markers.
+        full_lines = [l.strip() for l in full_text.split("\n") if l.strip()][:100]
+        seen_contact = set(contact_lines)
+        for line in full_lines:
+            if line in seen_contact:
+                continue
+            if DATE_RANGE_RE.search(line):
+                continue
+            low = line.lower()
+            has_residential = (
+                bool(_ADDRESS_MARKERS.search(line))
+                or bool(_WEAK_ADDRESS_MARKERS.search(line))
+                or bool(re.search(r"\b\d{4,5}\b", line))
+                or "philippines" in low
+                or "united states" in low
+            )
+            if not has_residential:
+                continue
+            # "Grand Harbor Hotel, Makati" is employment, not home — demand a
+            # residential anchor or zip/country before accepting it.
+            if _work_row_re.search(line) and not (
+                _WEAK_ADDRESS_MARKERS.search(line)
+                or re.search(r"\b(street|st\.?|avenue|ave\.?|barangay|brgy|village|"
+                             r"subdivision|purok|sitio|zip|postal|blk|block|lot|phase|"
+                             r"house)\b", line, re.I)
+                or re.search(r"\b\d{4,5}\b", line)
+                or "philippines" in low
+                or "united states" in low
+            ):
+                continue
+            label_m = _label_prefix_re.search(line)
+            if label_m:
+                res = clean_addr(label_m.group(1))
+                if res:
+                    return res
+            for part in _residue_candidates(line):
+                res = clean_addr(part)
+                if res and not PHONE_RE.search(res) and not self._looks_like_person(res):
+                    # Final guard: a bare "City" without comma/digit/marker is
+                    # usually a work location, not the applicant's address.
+                    if (
+                        res in _PH_CITIES
+                        and "," not in res
+                        and not re.search(r"\d", res)
+                    ):
+                        continue
+                    return res
 
         return None
 

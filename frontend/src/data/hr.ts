@@ -76,6 +76,10 @@ export type Position = {
   dbId?: number;
   /** Numeric department id (Core HCM) — set when positions come from the API. */
   departmentId?: number | null;
+  /** Assigned Core HCM salary grade (if the position came from the API). */
+  salaryGradeId?: number | null;
+  salaryGradeMin?: number | null;
+  salaryGradeMax?: number | null;
 };
 
 export const positions: Position[] = [

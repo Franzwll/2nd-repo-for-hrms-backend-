@@ -197,6 +197,57 @@ function firstId(string $table, string $column, string $where = '1=1', array $bi
     return $value === null ? null : (int) $value;
 }
 
+/**
+ * Free (position, department) pairs for the one-post-per-pair rule: positions
+ * whose own department has no job post yet. Falls back to any unused
+ * position x department combination when fewer than $limit pairs exist.
+ *
+ * @return array<int, array{position_id: int, department_id: int}>
+ */
+function freePositionDepartmentPairs(int $limit = 2): array
+{
+    $rows = DB::select("
+        SELECT p.position_id, p.department_id
+        FROM positions p
+        WHERE NOT EXISTS (
+            SELECT 1 FROM job_posts jp
+            WHERE jp.position_id = p.position_id AND jp.department_id = p.department_id
+        )
+        ORDER BY p.position_id
+        LIMIT {$limit}
+    ");
+
+    $pairs = array_map(fn ($r) => [
+        'position_id'   => (int) $r->position_id,
+        'department_id' => (int) $r->department_id,
+    ], $rows);
+
+    if (count($pairs) < $limit) {
+        $taken = array_map(fn ($p) => $p['position_id'] . ':' . $p['department_id'], $pairs);
+        $combos = DB::select('SELECT p.position_id, d.department_id FROM positions p CROSS JOIN departments d ORDER BY p.position_id, d.department_id');
+
+        foreach ($combos as $r) {
+            $key = ((int) $r->position_id) . ':' . ((int) $r->department_id);
+            if (in_array($key, $taken, true)) {
+                continue;
+            }
+            $exists = (int) scalar(
+                'SELECT COUNT(*) FROM job_posts WHERE position_id = ? AND department_id = ?',
+                [(int) $r->position_id, (int) $r->department_id]
+            );
+            if ($exists === 0) {
+                $pairs[] = ['position_id' => (int) $r->position_id, 'department_id' => (int) $r->department_id];
+                $taken[] = $key;
+                if (count($pairs) >= $limit) {
+                    break;
+                }
+            }
+        }
+    }
+
+    return $pairs;
+}
+
 function testResumeText(): string
 {
     return implode("\n", [
@@ -431,17 +482,17 @@ function section_lists_cards_b(): void
     $bk = api('GET', '/settings/backups');
     $dbEntries = json_decode((string) scalar("SELECT setting_value FROM system_settings WHERE setting_key = 'backups'"), true) ?: [];
     $apiEntries = $bk['json']['data'] ?? [];
-    $missingFiles = 0;
+    $missingFiles = [];
     foreach ($apiEntries as $entry) {
         if (! is_file(storage_path('app/backups') . DIRECTORY_SEPARATOR . ($entry['filename'] ?? ''))) {
-            $missingFiles++;
+            $missingFiles[] = $entry['id'] ?? '?';
         }
     }
     record(
         'lists',
         'Settings — Backup & Restore list matches DB + files exist',
-        $bk['status'] === 200 && count($apiEntries) === count($dbEntries) && $missingFiles === 0,
-        'api=' . count($apiEntries) . ' db=' . count($dbEntries) . " missing_files={$missingFiles}"
+        $bk['status'] === 200 && count($apiEntries) === count($dbEntries) && count($missingFiles) === 0,
+        'api=' . count($apiEntries) . ' db=' . count($dbEntries) . ' missing_files=' . count($missingFiles) . ($missingFiles ? ' [' . implode(', ', $missingFiles) . ']' : '')
     );
 
     $st = api('GET', '/screening/status');
@@ -488,12 +539,19 @@ function section_recruitment(): void
         return;
     }
 
-    $deptId = firstId('departments', 'department_id');
-    $posId  = firstId('positions', 'position_id');
-    if (! $deptId || ! $posId) {
-        record('recruitment', 'seed lookups (department/position)', false, 'no departments or positions in DB');
+    // One posting per position + department: pick pairs that have no job post
+    // yet (the first pair for the new post, the second for Copy & Use Template).
+    $pairs = freePositionDepartmentPairs(2);
+    if (count($pairs) < 2) {
+        record('recruitment', 'seed lookups (free department/position pairs)', false, 'fewer than 2 free position/department pairs in DB');
         return;
     }
+    $deptId = $pairs[0]['department_id'];
+    $posId  = $pairs[0]['position_id'];
+    $CTX['rec_dept_id'] = $deptId;
+    $CTX['rec_pos_id'] = $posId;
+    $CTX['rec_copy_dept_id'] = $pairs[1]['department_id'];
+    $CTX['rec_copy_pos_id'] = $pairs[1]['position_id'];
 
     /* 1. New job post — Save draft --------------------------------------- */
     $create = api('POST', '/job-posts', [
@@ -574,9 +632,13 @@ function section_recruitment_part2(int $jobId, int $deptId, int $posId): void
     global $TAG, $SUFFIX, $CTX;
 
     /* 5. Copy & Use Template — duplicates the post into a new draft ------- */
+    // After copying the template into the builder, the copy must be saved on a
+    // pair that has no post yet (the source pair is taken by $jobId).
+    $copyDeptId = (int) ($CTX['rec_copy_dept_id'] ?? $deptId);
+    $copyPosId  = (int) ($CTX['rec_copy_pos_id'] ?? $posId);
     $copy = api('POST', '/job-posts', [
-        'department_id'      => $deptId,
-        'position_id'        => $posId,
+        'department_id'      => $copyDeptId,
+        'position_id'        => $copyPosId,
         'employment_type'    => 'Full-time',
         'vacancies'          => 2,
         'status'             => 'Draft',
@@ -781,8 +843,11 @@ function section_applicant(): void
         return;
     }
 
-    $deptId     = firstId('departments', 'department_id');
-    $posId      = firstId('positions', 'position_id');
+    // Pick an unused (position, department) pair for the pipeline job post —
+    // duplicates of an existing pair are rejected by the controller.
+    $pairs      = freePositionDepartmentPairs(1);
+    $deptId     = $pairs[0]['department_id'] ?? null;
+    $posId      = $pairs[0]['position_id'] ?? null;
     $facilityId = firstId('facilities', 'facility_id');
     $userId     = (int) ($GLOBALS['ME']['system_user_id'] ?? 0) ?: (int) firstId('system_users', 'system_user_id');
 
@@ -835,6 +900,20 @@ function section_applicant(): void
     if (! $appId) {
         return;
     }
+
+    /* 1b. Second (reject) applicant created while the post still has a slot --
+     * Hiring fills the post's only vacancy and closes it, so the reject
+     * candidate must be captured before the pipeline runs to completion. */
+    $rejCreate = api('POST', '/applicants', [
+        'job_post_id' => $jobId,
+        'name'        => $TAG . ' Reject Candidate',
+        'email'       => 'test.reject.' . $SUFFIX . '@example.com',
+        'phone'       => '0917 555 2222',
+        'source'      => 'Integration Test',
+        'status'      => 'not-fit',
+        'stage'       => 'Screened',
+    ]);
+    $CTX['apl_reject_id'] = $rejCreate['json']['applicant_id'] ?? null;
 
     /* 2. Accept & Schedule — applicant moves to Accepted ------------------- */
     $acc = api('PUT', "/applicants/{$appId}", ['stage' => 'Accepted']);
@@ -1019,19 +1098,8 @@ function section_applicant(): void
         'UI-only: confirmVerifyFinal() stores the choice in local state; only the hire action writes to the DB (applicants.stage)'
     );
 
-    /* 13. Reject flow (separate applicant) ----------------------------------- */
-    $rejEmail = 'test.reject.' . $SUFFIX . '@example.com';
-    $rejCreate = api('POST', '/applicants', [
-        'job_post_id' => $jobId,
-        'name'        => $TAG . ' Reject Candidate',
-        'email'       => $rejEmail,
-        'phone'       => '0917 555 2222',
-        'source'      => 'Integration Test',
-        'status'      => 'not-fit',
-        'stage'       => 'Screened',
-    ]);
-    $rejId = $rejCreate['json']['applicant_id'] ?? null;
-    $CTX['apl_reject_id'] = $rejId;
+    /* 13. Reject flow (separate applicant, created in step 1b) --------------- */
+    $rejId = $CTX['apl_reject_id'] ?? null;
     $rej = $rejId ? api('PUT', "/applicants/{$rejId}", ['stage' => 'Rejected']) : ['status' => 0];
     $rejStage = $rejId ? scalar('SELECT stage FROM applicants WHERE applicant_id = ?', [$rejId]) : null;
     record('applicant', 'Reject applicant — stage Rejected persists', $rejId !== null && $rej['status'] === 200 && $rejStage === 'Rejected', "applicant_id={$rejId} http={$rej['status']} db stage={$rejStage}");
@@ -1134,25 +1202,37 @@ function section_onboarding(): void
     // __ONBOARDING_PART_B__
 
     /* 3. Edit checklist (update template + item sync) ------------------------ */
+    // Mirrors the UI's "Edit configuration → Save Configuration" dialog: title,
+    // phase, position scope and the rich item fields (instructions / upload
+    // requirement / placeholder) are all saved together and must persist.
     $upd = api('PUT', "/checklist-templates/{$tplId}", [
         'title'               => $TAG . ' Checklist Updated',
         'phase'               => 'Probationary',
-        'position_scope_json' => [],
+        'position_scope_json' => ['Front Desk Receptionist'],
         'status'              => 'Inactive',
         'items'               => [
-            ['item_text' => $TAG . ' Item One Updated', 'sort_order' => 0],
-            ['item_text' => $TAG . ' Item Three', 'sort_order' => 1],
+            ['item_text' => $TAG . ' Item One Updated', 'instructions' => 'Bring a copy and a valid ID', 'requires_upload' => true, 'upload_placeholder' => 'Upload signed contract', 'sort_order' => 0],
+            ['item_text' => $TAG . ' Item Three', 'instructions' => null, 'requires_upload' => false, 'upload_placeholder' => '', 'sort_order' => 1],
         ],
     ]);
     $updatedTitle = scalar('SELECT title FROM onboarding_checklist_templates WHERE template_id = ?', [$tplId]);
+    $updatedPhase = scalar('SELECT phase FROM onboarding_checklist_templates WHERE template_id = ?', [$tplId]);
+    $updatedScope = json_decode((string) scalar('SELECT position_scope_json FROM onboarding_checklist_templates WHERE template_id = ?', [$tplId]), true);
     $itemTexts = DB::table('onboarding_checklist_items')->where('template_id', $tplId)->orderBy('sort_order')->pluck('item_text')->toArray();
+    $itemOne = DB::table('onboarding_checklist_items')->where('template_id', $tplId)->where('item_text', $TAG . ' Item One Updated')->first();
     record(
         'onboarding',
-        'Edit checklist — title + items updated in DB',
+        'Edit checklist / configuration — title, phase, position scope + item fields saved',
         $upd['status'] === 200 && $updatedTitle === $TAG . ' Checklist Updated'
+            && $updatedPhase === 'Probationary'
+            && in_array('Front Desk Receptionist', (array) $updatedScope, true)
             && in_array($TAG . ' Item Three', $itemTexts, true)
-            && ! in_array($TAG . ' Item Two', $itemTexts, true),
-        "http={$upd['status']} db title='{$updatedTitle}' items=" . jdump($itemTexts)
+            && ! in_array($TAG . ' Item Two', $itemTexts, true)
+            && $itemOne !== null
+            && $itemOne->instructions === 'Bring a copy and a valid ID'
+            && (int) $itemOne->requires_upload === 1
+            && $itemOne->upload_placeholder === 'Upload signed contract',
+        "http={$upd['status']} db title='{$updatedTitle}' phase={$updatedPhase} scope=" . jdump($updatedScope) . ' items=' . jdump($itemTexts) . ' item1_upload=' . ($itemOne->requires_upload ?? 'n/a') . ' item1_placeholder=' . ($itemOne->upload_placeholder ?? 'n/a')
     );
 
     /* 4. Activate checklist --------------------------------------------------- */
@@ -1640,10 +1720,18 @@ function section_cleanup_test_rows(): void
     }
     $deleted['new_hires'] = DB::table('new_hires')->whereIn('new_hire_id', $hireIds)->delete();
 
+    // Requests first — checklist_requests.template_id FK-links to the template
+    // (RESTRICT), so a leftover request would block the template delete.
     $tplIds = DB::table('onboarding_checklist_templates')->where('title', 'like', 'TEST-%')->pluck('template_id')->toArray();
+    $deleted['checklist_requests'] = DB::table('checklist_requests')
+        ->where(function ($q) use ($tplIds) {
+            $q->where('items_json', 'like', '%TEST-%');
+            if ($tplIds) {
+                $q->orWhereIn('template_id', $tplIds);
+            }
+        })
+        ->delete();
     $deleted['checklist_templates'] = DB::table('onboarding_checklist_templates')->whereIn('template_id', $tplIds)->delete();
-
-    $deleted['checklist_requests'] = DB::table('checklist_requests')->where('items_json', 'like', '%TEST-%')->delete();
     $deleted['announcements'] = DB::table('announcements')->where('title', 'like', 'TEST-%')->delete();
     $deleted['screening_reference_data'] = DB::table('screening_reference_data')->where('canonical_value', 'like', 'TEST-%')->delete();
     $deleted['test_system_users'] = DB::table('system_users')->where('email', 'like', 'test.%@example.com')->delete();
@@ -1689,7 +1777,11 @@ if (in_array($SECTION, ['lists', 'all'], true)) {
 if (in_array($SECTION, ['recruitment', 'all'], true)) {
     section_recruitment();
     if (! empty($CTX['job_post_id'])) {
-        section_recruitment_part2((int) $CTX['job_post_id'], (int) firstId('departments', 'department_id'), (int) firstId('positions', 'position_id'));
+        section_recruitment_part2(
+            (int) $CTX['job_post_id'],
+            (int) ($CTX['rec_dept_id'] ?? firstId('departments', 'department_id')),
+            (int) ($CTX['rec_pos_id'] ?? firstId('positions', 'position_id'))
+        );
     }
 }
 if (in_array($SECTION, ['applicant', 'all'], true)) {

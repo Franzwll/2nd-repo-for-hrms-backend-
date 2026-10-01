@@ -175,21 +175,27 @@ class RecruitmentManagementController extends Controller
     {
         $data = $request->validated();
 
-        // Dismissible duplicate warning: same position already has an active/open post.
-        // Frontend shows "Warning — View existing / Create anyway (force_create=true)".
-        if (! $request->boolean('force_create') && ! empty($data['position_id'])) {
+        // One posting per position + department: a pair that already has a
+        // job post (any status) cannot get another. Reopen or edit the
+        // existing post instead — duplicates are not allowed.
+        if (! empty($data['position_id']) && ! empty($data['department_id'])) {
             $dup = JobPost::where('position_id', $data['position_id'])
-                ->where('active', 1)
-                ->whereIn('status', ['published', 'Open'])
-                ->first(['job_post_id', 'title']);
+                ->where('department_id', $data['department_id'])
+                ->first(['job_post_id', 'title', 'status']);
             if ($dup) {
                 return response()->json([
                     'code' => 'DUPLICATE_JOB_POST',
-                    'message' => "An active job post already exists for this position ({$dup->title}).",
+                    'message' => "A job post already exists for this position and department ({$dup->title}, {$dup->status}). Edit the existing post instead of creating a duplicate.",
                     'existing_job_post_id' => $dup->job_post_id,
                 ], 409);
             }
         }
+
+        // Core HCM integration: default a blank salary range from the
+        // position's assigned grade band. Explicit builder values always
+        // win — this only fills gaps using the existing salary_min/max
+        // columns (no extra column on job_posts).
+        $data = $this->applyPositionSalaryDefaults($data);
 
         // title and slug are derived from the linked position by the JobPost model
         $data['responsibilities_json'] = $data['responsibilities'] ?? [];
@@ -281,6 +287,24 @@ class RecruitmentManagementController extends Controller
     {
         $model = JobPost::findOrFail($job_post);
         $data = $request->validated();
+
+        // Moving a post onto a position + department pair owned by another
+        // post is blocked — same duplicate rule as creation.
+        $targetPositionId = $data['position_id'] ?? $model->position_id;
+        $targetDepartmentId = $data['department_id'] ?? $model->department_id;
+        if ($targetPositionId != $model->position_id || $targetDepartmentId != $model->department_id) {
+            $dup = JobPost::where('position_id', $targetPositionId)
+                ->where('department_id', $targetDepartmentId)
+                ->where('job_post_id', '!=', $model->job_post_id)
+                ->first(['job_post_id', 'title', 'status']);
+            if ($dup) {
+                return response()->json([
+                    'code' => 'DUPLICATE_JOB_POST',
+                    'message' => "A job post already exists for this position and department ({$dup->title}, {$dup->status}). Edit the existing post instead of creating a duplicate.",
+                    'existing_job_post_id' => $dup->job_post_id,
+                ], 409);
+            }
+        }
 
         if (isset($data['responsibilities'])) {
             $data['responsibilities_json'] = $data['responsibilities'];
@@ -563,6 +587,40 @@ class RecruitmentManagementController extends Controller
     /* ------------------------------------------------------------------ */
     /* Private helpers */
     /* ------------------------------------------------------------------ */
+
+    /**
+     * Fill blank salary_min/max from the position's Core HCM grade band.
+     * Explicit builder values always win; blanks inherit the band's min/max
+     * so Job Info salary min/max never starts empty when a position with an
+     * assigned band is picked. Uses only the existing salary_min/max
+     * columns — no extra column on job_posts.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function applyPositionSalaryDefaults(array $data): array
+    {
+        if (empty($data['position_id'])) {
+            return $data;
+        }
+
+        $position = \App\Models\Position::with('salaryGrade')
+            ->find($data['position_id']);
+
+        $grade = $position?->salaryGrade;
+        if (! $grade) {
+            return $data;
+        }
+
+        if (! array_key_exists('salary_min', $data) || $data['salary_min'] === null || $data['salary_min'] === '') {
+            $data['salary_min'] = $grade->min_salary;
+        }
+        if (! array_key_exists('salary_max', $data) || $data['salary_max'] === null || $data['salary_max'] === '') {
+            $data['salary_max'] = $grade->max_salary;
+        }
+
+        return $data;
+    }
 
     private function syncPlatforms(JobPost $jobPost, array $platforms): void
     {

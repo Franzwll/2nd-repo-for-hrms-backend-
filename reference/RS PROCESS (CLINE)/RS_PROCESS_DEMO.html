@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Resume Screening — Step-by-Step Demo (Hybrid)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --background:#faf8f3; --foreground:#3a2a26; --card:#fff;
+  --primary:#7c2128; --primary-fg:#fdf8f0;
+  --muted:#efe9dd; --muted-fg:#7a6f67; --border:#e5dccb;
+  --gold:#c9a227; --success:#1e7a46; --destructive:#b4232a; --caution:#b45a12;
+  --display:"Cormorant Garamond",Georgia,serif; --sans:"Jost",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--background);color:var(--foreground);font-family:var(--sans);font-size:14px}
+.banner{position:sticky;top:0;z-index:60;display:flex;align-items:center;justify-content:center;gap:10px;padding:9px 16px;background:linear-gradient(90deg,#f7ecc8,#f9e9e9,#f7ecc8);border-bottom:1px solid var(--gold);font-size:12.5px;text-align:center}
+.banner b{color:var(--primary)}
+.tag{background:var(--primary);color:#fff;font-size:10px;font-weight:700;letter-spacing:.12em;padding:2px 10px;border-radius:999px}
+.tag.gold{background:var(--gold);color:#3a2a26}
+.wrap{max-width:1500px;margin:0 auto;padding:22px 20px 90px}
+.head{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;justify-content:space-between}
+h1{font-family:var(--display);font-size:33px;line-height:1.05}
+.sub{color:var(--muted-fg);font-size:12.5px;margin-top:5px;max-width:760px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{background:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 11px;font-size:11.5px}
+.chip b{color:var(--primary)}
+.ctrls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;max-width:520px}
+.btn{background:#fff;border:1px solid var(--border);border-radius:9px;padding:8px 14px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--foreground)}
+.btn:hover{border-color:var(--gold)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted-fg);background:#fff;border:1px solid var(--border);border-radius:9px;padding:7px 11px;cursor:pointer}
+.live{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:#fff;border:1px dashed var(--border);border-radius:11px;padding:7px 10px;width:100%}
+.live select,.live input[type=file]{font:inherit;font-size:11.5px;border:1px solid var(--border);border-radius:7px;padding:5px 7px;background:#fff;max-width:220px}
+.dot{width:9px;height:9px;border-radius:50%;background:#b9ad97;flex:none}
+.dot.on{background:var(--success);box-shadow:0 0 0 3px rgb(30 122 70/.18)}
+.dot.off{background:var(--caution);box-shadow:0 0 0 3px rgb(180 90 18/.15)}
+#liveText{font-size:11.5px;color:var(--muted-fg)}
+.steps{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin:16px 0 12px;background:#ece5d5;border:1px solid var(--border);border-radius:12px;padding:6px}
+.phaseLbl{font-size:9.5px;font-weight:700;letter-spacing:.14em;color:var(--muted-fg);text-transform:uppercase;padding:0 6px}
+.steppill{border:1px solid var(--border);background:#fff;border-radius:8px;padding:5px 9px;font-size:11px;font-weight:600;cursor:pointer;color:var(--muted-fg)}
+.steppill.active{background:var(--primary);border-color:var(--primary);color:#fff}
+.board{display:flex;gap:16px;overflow-x:auto;padding:4px 4px 18px;scroll-snap-type:x proximity}
+.phase{flex:none;display:flex;flex-direction:column;gap:8px}
+.phase-h{font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--muted-fg);text-transform:uppercase;padding:2px 4px;display:flex;gap:8px;align-items:center}
+.phase-h i{height:3px;flex:1;background:var(--gold);opacity:.35;border-radius:2px}
+.phase-cols{display:flex;gap:14px;flex:1}
+.col{width:352px;flex:none;background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 1px 2px rgb(0 0 0/.05);display:flex;flex-direction:column;scroll-snap-align:center;overflow:hidden}
+.col.active{outline:3px solid var(--gold);outline-offset:1px;box-shadow:0 10px 28px rgb(124 33 40/.16)}
+.col-h{padding:13px 15px 11px;border-bottom:1px solid var(--border);background:#fbf7ee}
+.col-h .row1{display:flex;align-items:center;gap:8px}
+.num{width:26px;height:26px;border-radius:8px;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700;flex:none}
+.tier{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--primary);background:rgb(124 33 40/.08);border:1px solid rgb(124 33 40/.18);border-radius:999px;padding:2px 8px;margin-left:auto}
+.col-h h3{font-family:var(--display);font-size:19px;margin-top:6px}
+.gate{font-size:11px;color:var(--muted-fg)}
+.block{padding:11px 15px;border-bottom:1px solid var(--border)}
+.block:last-child{border-bottom:0}
+.block h4{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-fg);margin-bottom:6px}
+.block p{font-size:12.5px;line-height:1.5}
+.codefile{font-family:var(--mono);font-size:10.5px;color:var(--primary);background:#faf3f3;border:1px solid #f0dede;border-radius:7px;padding:4px 8px;margin-bottom:6px;word-break:break-all}
+pre.code{font-family:var(--mono);font-size:10.5px;line-height:1.5;background:#2b2222;color:#f3e9dc;border-radius:9px;padding:10px 12px;overflow:auto;max-height:230px;white-space:pre}
+pre.json{font-family:var(--mono);font-size:10.5px;line-height:1.45;background:#f6f2e8;color:#4a3a33;border:1px solid var(--border);border-radius:9px;padding:9px 11px;overflow:auto;max-height:210px;white-space:pre}
+.hidecode .cblk{display:none}
+.hidejson .jblk{display:none}
+.io{font-size:12px;line-height:1.55}
+.io .lbl{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted-fg);display:block;margin:7px 0 3px}
+.io .lbl:first-child{margin-top:0}
+.pills{display:flex;flex-wrap:wrap;gap:5px}
+.pill{border-radius:999px;padding:3px 9px;font-size:11px;border:1px solid var(--border);background:#fff}
+.pill.g{background:rgb(30 122 70/.1);border-color:rgb(30 122 70/.3);color:#155e35}
+.pill.o{background:rgb(180 90 18/.1);border-color:rgb(180 90 18/.35);color:#8f4710}
+.pill.r{background:rgb(180 35 42/.09);border-color:rgb(180 35 42/.3);color:#8f1d22}
+.pill.b{background:rgb(124 33 40/.07);border-color:rgb(124 33 40/.22);color:var(--primary)}
+table.mini{width:100%;border-collapse:collapse;font-size:11px}
+table.mini td{border-bottom:1px solid var(--border);padding:4px 5px;vertical-align:top}
+table.mini tr:last-child td{border-bottom:0}
+table.mini td.k{color:var(--muted-fg)}
+.badge{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:600;line-height:1.4}
+.badge.pass{background:rgb(30 122 70/.1);color:#155e35;border:1px solid rgb(30 122 70/.3)}
+.badge.flag{background:rgb(180 90 18/.1);color:#8f4710;border:1px solid rgb(180 90 18/.35)}
+.badge.fail{background:rgb(180 35 42/.09);color:#8f1d22;border:1px solid rgb(180 35 42/.3)}
+.badge.info{background:rgb(124 33 40/.07);color:var(--primary);border:1px solid rgb(124 33 40/.2)}
+.bar{display:flex;align-items:center;gap:7px;margin:5px 0;font-size:11.5px}
+.bar .name{width:88px;color:var(--muted-fg);flex:none}
+.bar .track{flex:1;height:9px;background:var(--muted);border-radius:99px;overflow:hidden}
+.bar .fill{height:100%;background:linear-gradient(90deg,var(--primary),#a8444b);border-radius:99px}
+.bar .val{width:74px;text-align:right;font-weight:600;flex:none}
+.verdict{margin-top:8px;border:1px solid var(--border);border-radius:14px;background:linear-gradient(180deg,#fff,#fbf5ea);padding:16px 18px;display:flex;flex-wrap:wrap;gap:18px;align-items:center}
+.vscore{font-family:var(--display);font-size:44px;color:var(--primary);line-height:1}
+.vscore small{font-size:16px;color:var(--muted-fg)}
+.vstatus{border-radius:999px;padding:6px 14px;font-weight:700;font-size:13px}
+.vstatus.notfit{background:rgb(180 35 42/.1);color:#8f1d22;border:1px solid rgb(180 35 42/.3)}
+.verdict .reasons{flex:1;min-width:300px;font-size:12.5px;color:var(--foreground);line-height:1.55}
+.verdict .reasons b{color:var(--primary)}
+.footer{margin-top:26px;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;font-size:11px;color:var(--muted-fg)}
+.liveflash{animation:flash 1.4s ease}
+@keyframes flash{0%{background:rgb(201 162 39/.35)}100%{background:transparent}}
+.livenote{margin-top:10px;font-size:12px;border-radius:10px;padding:9px 12px;display:none}
+.livenote.ok{display:block;background:rgb(30 122 70/.09);border:1px solid rgb(30 122 70/.3);color:#155e35}
+.livenote.err{display:block;background:rgb(180 90 18/.1);border:1px solid rgb(180 90 18/.35);color:#8f4710}
+@media (max-width:900px){.wrap{padding:16px 12px 70px}h1{font-size:26px}.col{width:310px}}
+</style>
+</head>
+<body class="hidejson">
+<div class="banner"><span class="tag">DEMO · HYBRID</span><span>Resume Screening — <b>step by step, per column</b>. Offline snapshot produced by YOUR code · optional live re-run against <b>127.0.0.1:8001</b>.</span></div>
+<div class="wrap">
+  <div class="head">
+    <div style="flex:1;min-width:340px">
+      <h1>Resume Screening — Step by Step</h1>
+      <p class="sub">Each column is one step, showing <b>your actual code</b> (file + line) and the <b>real values that code produced</b> — executed end-to-end on <code>reference/RESUME/Julian Rivera — Guest Services Professional.pdf</code> against seeded job post <b>#1 Front Desk Receptionist</b> (+ open jobs #2–#5).</p>
+      <div class="chips" id="caseChips"></div>
+    </div>
+    <div class="ctrls">
+      <button class="btn primary" id="playBtn">▶ Play walkthrough</button>
+      <label class="toggle"><input type="checkbox" id="codeToggle" checked> Code</label>
+      <label class="toggle"><input type="checkbox" id="jsonToggle"> Raw JSON</label>
+      <div class="live">
+        <span class="dot" id="liveDot"></span><span id="liveText">checking NLP service…</span><br>
+        <input type="file" id="liveFile" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.bmp,.gif,.tif,.tiff,.webp">
+        <select id="liveJob"></select>
+        <button class="btn" id="liveRun" disabled>Live re-run</button>
+      </div>
+    </div>
+  </div>
+  <div class="steps" id="stepChips"></div>
+  <div class="board" id="board"></div>
+  <div class="verdict" id="verdict"></div>
+  <div class="livenote" id="liveNote"></div>
+  <div class="footer">
+    <span>RS PROCESS (CLINE)/RS_PROCESS_DEMO.html — HYBRID DEMO · snapshot generated by the nlp-service venv on <b id="genAt"></b></span>
+    <span>Live mode calls your local FastAPI service directly (CORS open) — the Laravel tier stays showcased with its real payloads</span>
+  </div>
+</div>
+<script id="demo-data" type="application/json">{
+ "meta": {
+  "generated_at": "2026-09-29 03:33:34",
+  "resume_file": "Julian Rivera — Guest Services Professional.pdf",
+  "job_post_id": 1,
+  "weights": {
+   "skills": 0.4,
+   "experience": 0.3,
+   "education": 0.2,
+   "certifications": 0.1
+  },
+  "thresholds": {
+   "perfect": 75.0,
+   "alternative": 75.0,
+   "coverage_min": 0.6
+  },
+  "timing_seconds": 9.599
+ },
+ "extraction": {
+  "method": "pdf-ocr (pypdfium2+tesseract)",
+  "pages": 2,
+  "extension": ".pdf",
+  "character_count": 3300,
+  "warnings": [],
+  "text_head": "Julian Rivera\nJ | ° R ° julian.rivera@email.com + +1 (555) 342-8891\nu Id n iverd 1422 Brickell Ave, Miami, FL 33131, United States\nGuest Services Professional\nJ | e R e julian.rivera@email.com + +1 (555) 342-8891\nHigh-achieving Hospitality Management graduate from Florida International University with a specialization in\nluxury operations. Demonstrated expertise in high-volume front office environments through immersive\ninternships at Five-Diamond properties. Proficient in Opera PMS and dedicated to maintaining the rigorous\nservice standards required by the Forbes Travel Guide. Committed to proactive guest engagement,\nsophisticated conflict resolution, and driving incremental revenue through strategic upselling.\nCareer Experience\nFront Office Intern at The Ritz-Carlton, South Beach, Miami May 2025 — August 2025\n« Executed check-in and check-out procedures for an average of 45 VIP arrivals daily while strictly adhering to\nthe Gold Standards of service\n» Generated $5,200 in incremental revenue over a three-month period by successfully promoting room upgrades\nand premium amenities to incoming guests\n* Coordinated with the Housekeeping and Engineering departments to ensure 100% room re"
+ },
+ "cleaning": {
+  "original_length": 3300,
+  "cleaned_length": 3282,
+  "head": "Julian Rivera\nJ | ° R ° julian.rivera@email.com + +1 (555) 342-8891\nu Id n iverd 1422 Brickell Ave, Miami, FL 33131, United States\nGuest Services Professional\nJ | e R e julian.rivera@email.com + +1 (555) 342-8891\nHigh-achieving Hospitality Management graduate from Florida International University with a specialization in\nluxury operations. Demonstrated expertise in high-volume front office environments through immersive\ninternships at Five-Diamond properties. Proficient in Opera PMS and dedicated to maintaining the rigorous\nservice standards required by the Forbes Travel Guide. Committed to proactive guest engagement,\nsophisticated conflict resolution, and driving incremental revenue through strategic upselling.\nCareer Experience\nFront Office Intern at The Ritz-Carlton, South Beach, Miami May 2025 - August 2025\n« Executed check-in and check-out procedures for an average of 45 VIP arrivals daily while strictly adhering to\nthe Gold Standards of service\n» Generated $5,200 in incremental revenue over a three-month period by successfully promoting room upgrades\nand premium amenities to incoming guests\nCoordinated with the Housekeeping and Engineering departments to ensure 100% room read",
+  "line_count": 47
+ },
+ "sections": {
+  "detected": [
+   "additional",
+   "education",
+   "experience",
+   "skills"
+  ],
+  "excerpts": {
+   "experience": "Front Office Intern at The Ritz-Carlton, South Beach, Miami May 2025 - August 2025\n« Executed check-in and check-out procedures for an average of 45 VIP arrivals daily while strictly adhering to\nthe Gold Standards of service\n» Generated $5,200 in incremental revenue over a three-month period by successfully promoting r",
+   "education": "Bachelor of Science in Hospitality Management, August 2022 - May 2026\nFlorida International University, Miami, FL\nGPA: 3.9/4.0 | Dean's List (All Semesters) | Hospitality Student Association Member",
+   "skills": "Hospitality Systems: Opera PMS, Oracle Hosp\n(Advanced Excel)\nCGarvicea Fyrallancea: Enrhec Travel! Ciiide Stand\nHospitality Systems: Opera PMS, Oracle Hospitality, Salesforce CRM, OpenTable, Microsoft Office Suite\nService Excellence: Forbes Travel Guide Standards, VIP Arrival Protocol. Upselling Techniques, Conflict De",
+   "additional": "Core Com petencies\nCGarvira Eyvyrallanra:s Enrhac Traval Ciida Ctand"
+  }
+ },
+ "ner": {
+  "total": 35,
+  "by_label": {
+   "PERSON": 1,
+   "EDUCATION": 1,
+   "JOB_TITLE": 3,
+   "SKILL": 23,
+   "ORGANIZATION": 5,
+   "EMAIL": 1,
+   "PHONE": 1
+  },
+  "entities": [
+   {
+    "label": "PERSON",
+    "value": "Julian Rivera",
+    "source": "rule"
+   },
+   {
+    "label": "EDUCATION",
+    "value": "Bachelor of Science in Hospitality Management",
+    "source": "section_rule"
+   },
+   {
+    "label": "JOB_TITLE",
+    "value": "Front Desk Associate",
+    "source": "section_rule"
+   },
+   {
+    "label": "JOB_TITLE",
+    "value": "Restaurant Cashier",
+    "source": "section_rule"
+   },
+   {
+    "label": "JOB_TITLE",
+    "value": "Concierge",
+    "source": "section_rule"
+   },
+   {
+    "label": "SKILL",
+    "value": "Property Management Systems",
+    "source": "section_rule"
+   },
+   {
+    "label": "SKILL",
+    "value": "Oracle Hosp",
+    "source": "section_rule"
+   },
+   {
+    "label": "SKILL",
+    "value": "Oracle Hospitality",
+    "source": "section_rule"
+   },
+   {
+    "label": "SKILL",
+    "value": "Salesforce CRM",
+    "source": "section_rule"
+   },
+   {
+    "label": "SKILL",
+    "value": "OpenTable",
+    "source": "section_rule"
+   },
+   {
+    "label": "SKILL",
+    "value": "MS Office",
+    "source": "section_rule"
+   },
+   {
+    "label": "SKILL",
+    "value": "Upselling",
+    "source": "section_rule"
+   },
+   {
+    "label": "SKILL",
+    "value": "Conflict Deescalation",
+    "source": "section_rule"
+   },
+   {
+    "label": "SKILL",
+    "value": "Complaint Handling",
+    "source": "section_rule"
+   },
+   {
+    "label": "SKILL",
+    "value": "ServSafe Food Protection",
+    "source": "section_rule"
+   },
+   {
+    "label": "SKILL",
+    "value": "VIP Arrival Protocol",
+    "source": "section_rule"
+   },
+   {
+    "label": "SKILL",
+    "value": "Manager",
+    "source": "section_rule"
+   },
+   {
+    "label": "SKILL",
+    "value": "First Aid",
+    "source": "section_rule"
+   },
+   {
+    "label": "SKILL",
+    "value": "CPR Certified",
+    "source": "section_rule"
+   },
+   {
+    "label": "SKILL",
+    "value": "Customer Service",
+    "source": "reference_scan"
+   },
+   {
+    "label": "SKILL",
+    "value": "Guest Relations",
+    "source": "reference_scan"
+   },
+   {
+    "label": "SKILL",
+    "value": "Front Office Operations",
+    "source": "reference_scan"
+   },
+   {
+    "label": "SKILL",
+    "value": "Check-in / Check-out",
+    "source": "reference_scan"
+   },
+   {
+    "label": "SKILL",
+    "value": "Reservations",
+    "source": "reference_scan"
+   },
+   {
+    "label": "SKILL",
+    "value": "Night Audit Procedures",
+    "source": "reference_scan"
+   },
+   {
+    "label": "SKILL",
+    "value": "Cash Handling",
+    "source": "reference_scan"
+   },
+   {
+    "label": "SKILL",
+    "value": "Housekeeping Operations",
+    "source": "reference_scan"
+   },
+   {
+    "label": "SKILL",
+    "value": "Concierge Services",
+    "source": "reference_scan"
+   },
+   {
+    "label": "ORGANIZATION",
+    "value": "Guest Services Associate",
+    "source": "section_rule"
+   },
+   {
+    "label": "ORGANIZATION",
+    "value": "Ritz-Carlton",
+    "source": "section_rule"
+   },
+   {
+    "label": "ORGANIZATION",
+    "value": "Coordinated",
+    "source": "section_rule"
+   },
+   {
+    "label": "ORGANIZATION",
+    "value": "Utilized Opera",
+    "source": "section_rule"
+   },
+   {
+    "label": "ORGANIZATION",
+    "value": "F&B",
+    "source": "section_rule"
+   },
+   {
+    "label": "EMAIL",
+    "value": "julian.rivera@email.com",
+    "source": "regex"
+   },
+   {
+    "label": "PHONE",
+    "value": "1 (555) 342-8891",
+    "source": "regex"
+   }
+  ],
+  "work_history": [
+   {
+    "job_title": "Front Desk Associate",
+    "company": null,
+    "location": null,
+    "recognized_role": true,
+    "period": "May 2025 - August 2025",
+    "raw_line": "Front Office Intern at The Ritz-Carlton, South Beach, Miami May 2025 - August 2025",
+    "date_range": {
+     "start": "2025-05",
+     "end": "2025-08",
+     "is_current": false,
+     "start_year": 2025,
+     "start_month": 5,
+     "end_year": 2025,
+     "end_month": 8,
+     "explicit_start_month": true,
+     "explicit_end_month": true
+    }
+   },
+   {
+    "job_title": "Restaurant Cashier",
+    "company": "Guest Services Associate",
+    "location": null,
+    "recognized_role": true,
+    "period": "August 2024 - April 2025",
+    "raw_line": "Guest Services Associate at Biltmore Hotel, Coral Gables August 2024 - April 2025",
+    "date_range": {
+     "start": "2024-08",
+     "end": "2025-04",
+     "is_current": false,
+     "start_year": 2024,
+     "start_month": 8,
+     "end_year": 2025,
+     "end_month": 4,
+     "explicit_start_month": true,
+     "explicit_end_month": true
+    }
+   },
+   {
+    "job_title": "feedback rating on post-stay surveys",
+    "company": null,
+    "location": null,
+    "recognized_role": false,
+    "period": null,
+    "raw_line": "feedback rating on post-stay surveys",
+    "date_range": {
+     "start": null,
+     "end": null,
+     "is_current": false,
+     "start_year": null,
+     "start_month": null,
+     "end_year": null,
+     "end_month": null
+    }
+   }
+  ],
+  "estimated_years_experience": 1.08,
+  "estimated_experience_months": 13,
+  "sections_detected": [
+   "additional",
+   "education",
+   "experience",
+   "skills"
+  ],
+  "emails_malformed": []
+ },
+ "canonical": {
+  "skills_recognized": [
+   "Cash Handling",
+   "Check-in / Check-out",
+   "Complaint Handling",
+   "Concierge Services",
+   "Customer Service",
+   "Front Office Operations",
+   "Guest Relations",
+   "Housekeeping Operations",
+   "MS Office",
+   "Night Audit Procedures",
+   "Property Management Systems",
+   "Reservations",
+   "Upselling"
+  ],
+  "skills_unrecognized": [
+   "CPR Certified",
+   "Conflict Deescalation",
+   "First Aid",
+   "Manager",
+   "OpenTable",
+   "Oracle Hosp",
+   "Oracle Hospitality",
+   "Salesforce CRM",
+   "ServSafe Food Protection",
+   "VIP Arrival Protocol"
+  ],
+  "roles_recognized": [
+   "Concierge",
+   "Front Desk Associate",
+   "Restaurant Cashier"
+  ],
+  "roles_unrecognized": [
+   "feedback rating on post-stay surveys"
+  ],
+  "certifications": [],
+  "certifications_unrecognized": [],
+  "samples": [
+   {
+    "raw": "Property Management Systems",
+    "canonical": "Property Management Systems"
+   },
+   {
+    "raw": "Oracle Hosp",
+    "canonical": null
+   },
+   {
+    "raw": "Oracle Hospitality",
+    "canonical": null
+   },
+   {
+    "raw": "Salesforce CRM",
+    "canonical": null
+   },
+   {
+    "raw": "OpenTable",
+    "canonical": null
+   },
+   {
+    "raw": "MS Office",
+    "canonical": "MS Office"
+   },
+   {
+    "raw": "Upselling",
+    "canonical": "Upselling"
+   },
+   {
+    "raw": "Conflict Deescalation",
+    "canonical": null
+   },
+   {
+    "raw": "Complaint Handling",
+    "canonical": "Complaint Handling"
+   },
+   {
+    "raw": "ServSafe Food Protection",
+    "canonical": null
+   },
+   {
+    "raw": "VIP Arrival Protocol",
+    "canonical": null
+   },
+   {
+    "raw": "Manager",
+    "canonical": null
+   },
+   {
+    "raw": "First Aid",
+    "canonical": null
+   },
+   {
+    "raw": "CPR Certified",
+    "canonical": null
+   },
+   {
+    "raw": "Customer Service",
+    "canonical": "Customer Service"
+   },
+   {
+    "raw": "Guest Relations",
+    "canonical": "Guest Relations"
+   },
+   {
+    "raw": "Front Office Operations",
+    "canonical": "Front Office Operations"
+   },
+   {
+    "raw": "Check-in / Check-out",
+    "canonical": "Check-in / Check-out"
+   },
+   {
+    "raw": "Reservations",
+    "canonical": "Reservations"
+   },
+   {
+    "raw": "Night Audit Procedures",
+    "canonical": "Night Audit Procedures"
+   },
+   {
+    "raw": "Cash Handling",
+    "canonical": "Cash Handling"
+   },
+   {
+    "raw": "Housekeeping Operations",
+    "canonical": "Housekeeping Operations"
+   },
+   {
+    "raw": "Concierge Services",
+    "canonical": "Concierge Services"
+   }
+  ]
+ },
+ "validation": {
+  "profile": {
+   "personal_information": {
+    "name": "Julian Rivera",
+    "email": "julian.rivera@email.com",
+    "phone": "1 (555) 342-8891",
+    "address": "u Id n iverd 1422 Brickell Ave, Miami, FL 33131, United States"
+   },
+   "education": [
+    "Bachelor of Science in Hospitality Management"
+   ],
+   "work_experience": [
+    {
+     "job_title": "Front Desk Associate",
+     "company": null,
+     "location": null,
+     "period": "May 2025 - August 2025",
+     "recognized_role": true
+    },
+    {
+     "job_title": "Restaurant Cashier",
+     "company": "Guest Services Associate",
+     "location": null,
+     "period": "August 2024 - April 2025",
+     "recognized_role": true
+    },
+    {
+     "job_title": "feedback rating on post-stay surveys",
+     "company": null,
+     "location": null,
+     "period": null,
+     "recognized_role": false
+    }
+   ],
+   "skills": [
+    "Cash Handling",
+    "Check-in / Check-out",
+    "Complaint Handling",
+    "Concierge Services",
+    "Customer Service",
+    "Front Office Operations",
+    "Guest Relations",
+    "Housekeeping Operations",
+    "MS Office",
+    "Night Audit Procedures",
+    "Property Management Systems",
+    "Reservations",
+    "Upselling"
+   ],
+   "certifications": [],
+   "unrecognized_certifications": [],
+   "estimated_years_experience": 1.08,
+   "estimated_experience_months": 13,
+   "job_roles": {
+    "recognized": [
+     "Concierge",
+     "Front Desk Associate",
+     "Restaurant Cashier"
+    ],
+    "unrecognized": [
+     "feedback rating on post-stay surveys"
+    ]
+   },
+   "unrecognized_skills": [
+    "CPR Certified",
+    "Conflict Deescalation",
+    "First Aid",
+    "Manager",
+    "OpenTable",
+    "Oracle Hosp",
+    "Oracle Hospitality",
+    "Salesforce CRM",
+    "ServSafe Food Protection",
+    "VIP Arrival Protocol"
+   ]
+  },
+  "missing_information": [],
+  "invalid_format": [],
+  "skill_analysis": {
+   "recognized": [
+    "Cash Handling",
+    "Check-in / Check-out",
+    "Complaint Handling",
+    "Concierge Services",
+    "Customer Service",
+    "Front Office Operations",
+    "Guest Relations",
+    "Housekeeping Operations",
+    "MS Office",
+    "Night Audit Procedures",
+    "Property Management Systems",
+    "Reservations",
+    "Upselling"
+   ],
+   "unrecognized": [
+    "CPR Certified",
+    "Conflict Deescalation",
+    "First Aid",
+    "Manager",
+    "OpenTable",
+    "Oracle Hosp",
+    "Oracle Hospitality",
+    "Salesforce CRM",
+    "ServSafe Food Protection",
+    "VIP Arrival Protocol"
+   ]
+  },
+  "job_role_analysis": {
+   "recognized": [
+    "Concierge",
+    "Front Desk Associate",
+    "Restaurant Cashier"
+   ],
+   "unrecognized": [
+    "feedback rating on post-stay surveys"
+   ]
+  },
+  "credential_analysis": [],
+  "credential_issues": [],
+  "review_flags": [
+   {
+    "type": "UNRECOGNIZED_JOB_ROLE",
+    "detail": "feedback rating on post-stay surveys",
+    "note": "Not found in system reference data; flagged for manual review only."
+   }
+  ]
+ },
+ "credentials": {
+  "flags": [],
+  "warning_count": 0,
+  "info_count": 0,
+  "risk_level": "LOW",
+  "score_penalty": 0.0,
+  "escalate_invalid": false,
+  "summary": "All internal credential consistency checks passed. No timeline or credential anomalies detected.",
+  "checks_performed": [
+   "timeline_overlap",
+   "future_dates",
+   "experience_graduation_gap",
+   "seniority_experience_mismatch",
+   "excessive_job_hopping",
+   "education_cert_prerequisites",
+   "chronological_coherence"
+  ]
+ },
+ "scoring": {
+  "requirements_parsed": {
+   "job_post_id": 1,
+   "title": "Front Desk Receptionist",
+   "required_skills": [
+    "Customer Service",
+    "Communication",
+    "Hotel Operations",
+    "Problem Solving",
+    "Time Management"
+   ],
+   "preferred_skills": [],
+   "education_level": "Bachelor's Degree",
+   "experience_level": "1-2 Years",
+   "min_years_experience": 1.0,
+   "required_certifications": [],
+   "required_information": [
+    "name",
+    "email",
+    "phone"
+   ]
+  },
+  "match_score": 77.6,
+  "breakdown": {
+   "skills": {
+    "weight": 0.4,
+    "earned": 17.6,
+    "max": 40.0,
+    "matched_required": [
+     "Customer Service"
+    ],
+    "fuzzy_matched_required": {},
+    "missing_required": [
+     "Communication",
+     "Hotel Operations",
+     "Problem Solving",
+     "Time Management"
+    ],
+    "matched_preferred": [],
+    "missing_preferred": [],
+    "required_coverage": 0.2,
+    "preferred_coverage": 1.0
+   },
+   "experience": {
+    "weight": 0.3,
+    "earned": 30.0,
+    "max": 30.0,
+    "estimated_years": 1.08,
+    "min_years_required": 1.0,
+    "requirement_met": true
+   },
+   "education": {
+    "weight": 0.2,
+    "earned": 20.0,
+    "max": 20.0,
+    "applicant_highest_level": [
+     "Bachelor of Science in Hospitality Management"
+    ],
+    "required_level": "Bachelor's Degree",
+    "requirement_met": true
+   },
+   "certifications": {
+    "weight": 0.1,
+    "earned": 10.0,
+    "max": 10.0,
+    "matched": [],
+    "missing": [],
+    "no_requirements": true
+   }
+  },
+  "mandatory_requirements_met": false,
+  "mandatory_detail": {
+   "education_requirement_met": true,
+   "experience_requirement_met": true,
+   "required_skills_coverage": 0.2,
+   "required_skills_coverage_min": 0.6,
+   "essential_information_complete": true
+  },
+  "missing_requirements": {
+   "skills": [
+    "Communication",
+    "Hotel Operations",
+    "Problem Solving",
+    "Time Management"
+   ],
+   "certifications": [],
+   "information": [],
+   "education_below_requirement": false,
+   "experience_below_minimum": false
+  },
+  "matched_summary": "Matched skills: Customer Service; Education requirement satisfied; Experience requirement satisfied (1.08 yrs vs 1.0 yrs required); No certification requirements defined for this role — meets Front Desk Receptionist requirements."
+ },
+ "classification": {
+  "screening_status": "NOT_FITTED_TO_JOB",
+  "match_score": 77.6,
+  "resume_match_score": 77.6,
+  "reasons": [
+   "Required-skills coverage 20% is below the 60% minimum. Missing: Communication, Hotel Operations, Problem Solving, Time Management.",
+   "Alternative job analysis: highest-scoring open position 'Restaurant Server' reached only 86.0%, below the 75.0% recommendation threshold."
+  ],
+  "matched_summary": "Matched skills: Customer Service; Education requirement satisfied; Experience requirement satisfied (1.08 yrs vs 1.0 yrs required); No certification requirements defined for this role — meets Front Desk Receptionist requirements.",
+  "alternative_job": null,
+  "document_verification": {
+   "status": "NOT_PROVIDED",
+   "weight": 0.15,
+   "documents_total": 0,
+   "decisive_count": 0,
+   "verified_count": 0,
+   "discrepancy_count": 0,
+   "unable_count": 0,
+   "pending_count": 0,
+   "ignored_count": 0,
+   "credit_ratio": null,
+   "documents_score": null,
+   "score_penalty": 0.0,
+   "escalate_invalid": false,
+   "mismatched_fields": [],
+   "flags": [],
+   "per_document": []
+  },
+  "mandatory_requirements_met": false
+ },
+ "alternatives": [
+  {
+   "job_post_id": 4,
+   "title": "Restaurant Server",
+   "match_score": 86.0,
+   "eligible": false,
+   "mandatory_requirements_met": false,
+   "coverage": 0.5,
+   "matched_skills": [
+    "Customer Service",
+    "Upselling"
+   ],
+   "summary": "Matched skills: Customer Service, Upselling; Education requirement satisfied; Experience requirement satisfied (1.08 yrs vs 0.0 yrs required); No certification requirements defined for this role — meets Restaurant Server requirements."
+  },
+  {
+   "job_post_id": 3,
+   "title": "Housekeeping Attendant",
+   "match_score": 72.0,
+   "eligible": false,
+   "mandatory_requirements_met": false,
+   "coverage": 0.0,
+   "matched_skills": [],
+   "summary": "Education requirement satisfied; Experience requirement satisfied (1.08 yrs vs 0.0 yrs required); No certification requirements defined for this role — meets Housekeeping Attendant requirements."
+  },
+  {
+   "job_post_id": 2,
+   "title": "Line Cook",
+   "match_score": 62.0,
+   "eligible": false,
+   "mandatory_requirements_met": false,
+   "coverage": 0.0,
+   "matched_skills": [],
+   "summary": "Education requirement satisfied; Experience requirement satisfied (1.08 yrs vs 1.0 yrs required) — meets Line Cook requirements."
+  },
+  {
+   "job_post_id": 5,
+   "title": "Bartender",
+   "match_score": 56.8,
+   "eligible": false,
+   "mandatory_requirements_met": false,
+   "coverage": 0.5,
+   "matched_skills": [
+    "Cash Handling",
+    "Guest Relations"
+   ],
+   "summary": "Matched skills: Cash Handling, Guest Relations; Education requirement satisfied — meets Bartender requirements."
+  }
+ ],
+ "processing_status": "PARTIALLY_PROCESSED",
+ "job": {
+  "requirements": {
+   "job_post_id": 1,
+   "title": "Front Desk Receptionist",
+   "required_skills": [
+    "Customer Service",
+    "Communication",
+    "Hotel Operations",
+    "Problem Solving",
+    "Time Management"
+   ],
+   "preferred_skills": [],
+   "education_level": "Bachelor's Degree",
+   "experience_level": "1-2 Years",
+   "required_certifications": [],
+   "required_information": [
+    "name",
+    "email",
+    "phone"
+   ]
+  },
+  "open_jobs": [
+   {
+    "job_post_id": 2,
+    "title": "Line Cook",
+    "required_skills": [
+     "Food Safety",
+     "HACCP",
+     "Knife Skills",
+     "Plating",
+     "Teamwork"
+    ],
+    "preferred_skills": [],
+    "education_level": "Vocational / TESDA",
+    "experience_level": "1-2 Years",
+    "required_certifications": [
+     "TESDA NC II in Cookery or equivalent culinary training.",
+     "Valid food handler's certificate."
+    ],
+    "required_information": [
+     "name",
+     "email",
+     "phone"
+    ]
+   },
+   {
+    "job_post_id": 3,
+    "title": "Housekeeping Attendant",
+    "required_skills": [
+     "Attention to Detail",
+     "Time Management",
+     "Room Turnover",
+     "Safety"
+    ],
+    "preferred_skills": [],
+    "education_level": "High School Graduate",
+    "experience_level": "No Experience",
+    "required_certifications": [],
+    "required_information": [
+     "name",
+     "email",
+     "phone"
+    ]
+   },
+   {
+    "job_post_id": 4,
+    "title": "Restaurant Server",
+    "required_skills": [
+     "Guest Service",
+     "Upselling",
+     "POS Systems",
+     "Communication"
+    ],
+    "preferred_skills": [],
+    "education_level": "High School Graduate",
+    "experience_level": "No Experience",
+    "required_certifications": [],
+    "required_information": [
+     "name",
+     "email",
+     "phone"
+    ]
+   },
+   {
+    "job_post_id": 5,
+    "title": "Bartender",
+    "required_skills": [
+     "Mixology",
+     "Inventory Control",
+     "Guest Engagement",
+     "Cash Handling"
+    ],
+    "preferred_skills": [],
+    "education_level": "Vocational / TESDA",
+    "experience_level": "3-5 Years",
+    "required_certifications": [
+     "TESDA Bartending NC II or equivalent."
+    ],
+    "required_information": [
+     "name",
+     "email",
+     "phone"
+    ]
+   }
+  ]
+ }
+}</script>
+<script>
+'use strict';
+const DEMO = JSON.parse(document.getElementById('demo-data').textContent);
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v === null || v === undefined ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const pct = (v) => (v === null || v === undefined) ? '—' : Math.round(v * 100) + '%';
+const chipsHtml = (items, cls='') => (items || []).map((t) => '<span class="pill ' + cls + '">' + esc(t) + '</span>').join('');
+const codeBlock = (file, lines, text) => '<div class="cblk"><div class="codefile">' + esc(file) + ' &middot; lines ' + esc(lines) + '</div><pre class="code">' + esc(text) + '</pre></div>';
+const jsonBlock = (obj, slot) => '<pre class="json jblk"' + (slot ? ' data-slot="' + slot + '"' : '') + '>' + esc(JSON.stringify(obj, null, 1)) + '</pre>';
+const listBlock = (slot) => '<div class="pills" data-slot="' + slot + '"></div>';
+const vSpan = (slot) => '<span class="v" data-slot="' + slot + '"></span>';
+function setSlot(name, value, flash) {
+  document.querySelectorAll('[data-slot="' + name + '"]').forEach((el) => {
+    if (el.tagName === 'PRE') { el.textContent = value; } else { el.textContent = value; }
+    if (flash) { el.classList.remove('liveflash'); void el.offsetWidth; el.classList.add('liveflash'); }
+  });
+}
+function setPills(name, items, cls, flash) {
+  document.querySelectorAll('[data-slot="' + name + '"]').forEach((el) => {
+    el.innerHTML = chipsHtml(items, cls);
+    if (flash) { el.classList.remove('liveflash'); void el.offsetWidth; el.classList.add('liveflash'); }
+  });
+}
+const STEPS = [
+{
+ id:'s1', phase:'SETUP', tier:'Laravel · DB', title:'Job Post & Requirements', gate:'Gate A — runs BEFORE any resume is accepted',
+ what:'Screening is always a resume VS one published job post. HR fills four inputs in the Job Post Builder; Laravel compiles them into the canonical requirements payload Python consumes. No post → no screening.',
+ code:{file:'backend-laravel/Modules/ApplicantManagement/app/Services/ScreeningService.php', lines:'43–55 + 86–88', text:String.raw`
+public function buildRequirements(JobPost $jobPost): array
+{
+    return [
+        'job_post_id' => (int) $jobPost->job_post_id,
+        'title' => $jobPost->title,
+        'required_skills' => $this->normalizeStringList($jobPost->skills_json),
+        'preferred_skills' => [],
+        'education_level' => $jobPost->education_level,
+        'experience_level' => $jobPost->experience_level,
+        'required_certifications' => $this->extractRequiredCertifications($jobPost->qualifications_json),
+        'required_information' => ['name', 'email', 'phone'],
+    ];
+}
+
+// extractRequiredCertifications(): qualifications_json filtered for cert keywords
+foreach ($this->normalizeStringList($qualifications) as $line) {
+    if (preg_match('/(nc\s?(?:i{1,3}|iv|1-4)|certificate|certification|license|licence)/i', $line)) {`},
+ io:`<span class="lbl">Input — job_posts row (seeded #1, status Open · active 1)</span>
+   <div class="pills"><span class="pill b">Front Desk Receptionist</span><span class="pill">skills_json · 5 skills</span><span class="pill">education_level · Bachelor's Degree</span><span class="pill">experience_level · 1-2 Years</span><span class="pill">qualifications_json · no cert keywords → []</span></div>
+   <span class="lbl">Output — requirements payload sent to Python</span>
+   ${jsonBlock(DEMO.job.requirements, 'job.reqJson')}
+   <div style="margin-top:6px;font-size:11.5px;color:var(--muted-fg)">parse_min_years('1-2 Years') → <b data-slot="job.minyears">1.0</b> · open_jobs sent along: <span data-slot="job.open">4 posts</span> (post #6 inactive → excluded)</div>`,
+ valid:{kind:'info', text:'Gate A — post exists · Open + Active · ≥1 criterion; job_post_id validated (exists:job_posts,job_post_id) → HTTP 422 otherwise. Criteria-less posts are dropped from open_jobs defensively.'}
+},
+{
+ id:'s2', phase:'INTAKE', tier:'Laravel', title:'Resume Intake & File Checks', gate:'Gate B — validation before screening',
+ what:'Two entry points — public Careers page or the HR Add Applicant wizard — land in the same ingestion: validate the file, store it, create the applicant, then screen. The wizard previews the score BEFORE the applicant row exists (temp file always deleted in finally).',
+ code:{file:'backend-laravel/Modules/ApplicantManagement/app/Http/Controllers/ApplicantManagementController.php', lines:'381–397', text:String.raw`
+$validated = $request->validate([
+    'resume' => ['required', 'file', 'max:20480'],
+    'job_post_id' => ['required', 'integer', 'exists:job_posts,job_post_id'],
+]);
+
+$storedPath = $request->file('resume')->store('resumes-tmp', 'local');
+try {
+    $result = $this->screening->screenPreviewFile(
+        $storedPath,
+        $request->file('resume')->getClientOriginalName() ?: 'resume',
+        (int) $validated['job_post_id']
+    );
+} finally {
+    if (Storage::disk('local')->exists($storedPath)) {
+        Storage::disk('local')->delete($storedPath);
+    }
+}`},
+ io:`<span class="lbl">Input</span>
+   <div class="pills"><span class="pill b" data-slot="intake.file">Julian Rivera — Guest Services Professional.pdf</span><span class="pill">2 pages · scanned PDF</span><span class="pill">≤ 20 480 KB</span></div>
+   <span class="lbl">Output</span>
+   <div class="pills"><span class="pill g">stored → storage/app/public/resumes/</span><span class="pill g">resume_hash computed</span><span class="pill g">applicants row created</span><span class="pill">wizard reuses preview via screening_payload</span></div>`,
+ valid:{kind:'pass', text:'resume required|file|max:20480 · job_post_id exists-check · duplicate guard (email + job + active stage) → HTTP 409. Screening runs only when a resume is present.'}
+},
+{
+ id:'s3', phase:'INTAKE', tier:'Laravel → FastAPI', title:'Request Assembly & NLP Call', gate:'POST /screening/score · timeout 120 s',
+ what:'Laravel attaches the resume and posts it to the local FastAPI service together with the requirements, every other open job, and (when present) the DB reference aliases, HR scoring settings and verified supporting documents.',
+ code:{file:'backend-laravel/app/Services/NlpService.php', lines:'120–126', text:String.raw`
+$response = Http::timeout($timeoutSeconds)
+    ->attach('file', file_get_contents($filePath), $originalName)
+    ->post("{$this->baseUrl}/screening/score", $payload);
+
+if ($response->successful()) {
+    return ['ok' => true, 'data' => $response->json(), 'error' => null];
+}`},
+ io:`<span class="lbl">Multipart fields</span>
+   <div class="pills"><span class="pill b">file</span><span class="pill">requirements (JSON string)</span><span class="pill">open_jobs (JSON string)</span><span class="pill">reference_data?</span><span class="pill">screening_settings?</span><span class="pill">document_verifications?</span></div>
+   <span class="lbl">Target</span>
+   <div class="pills"><span class="pill">POST http://127.0.0.1:8001/screening/score</span><span class="pill">CORS open · single auth boundary via Sanctum on the Laravel side</span></div>`,
+ valid:{kind:'info', text:'Invalid JSON field → 422 “must be valid JSON strings”; service unreachable → {ok:false,error} + Log::error; extraction failure → 422 structured FAILED payload — never a bare 500.'}
+},
+{
+ id:'s4', phase:'NLP PIPELINE', tier:'Python · Stage 1', title:'Text Extraction (OCR)', gate:'Multi-format dispatch + extraction validation',
+ what:'Digital PDFs are read natively (pypdfium2 + pdfplumber, 2-column aware). Scanned PDFs with no text layer are rasterized at 2.0× and OCR’d with Tesseract. Images get OCR + CLAHE/deskew; DOCX walks paragraphs/tables; TXT has a latin-1 fallback.',
+ code:{file:'nlp-service/app/services/text_extraction.py', lines:'616–634', text:String.raw`
+if not filename:
+    raise ExtractionError("Resume file has no name; unable to determine format.")
+if not path.exists():
+    raise ExtractionError("Stored resume file could not be found on disk.")
+
+try:
+    if ext == ".pdf":
+        result = extract_pdf(path)
+    elif ext == ".docx":
+        result = extract_docx(path)
+    elif ext == ".txt":
+        result = extract_txt(path)
+    elif ext in IMAGE_EXTENSIONS:
+        result = extract_image(path)
+        warnings.append("Text extracted from image using OCR; accuracy may be lower.")
+    else:
+        raise ExtractionError(
+            f"Unsupported resume format '{ext}'. Supported: PDF, DOCX, TXT and common images."
+        )`},
+ io:`<span class="lbl">Input</span>
+   <div class="pills"><span class="pill b" data-slot="ext.file">Julian Rivera — Guest Services Professional.pdf</span><span class="pill">scanned · no text layer</span></div>
+   <span class="lbl">Output — engine verdict</span>
+   <div class="pills"><span class="pill g">method: <b data-slot="ext.method">pdf-ocr (pypdfium2+tesseract)</b></span><span class="pill">pages: <b data-slot="ext.pages">2</b></span><span class="pill">chars: <b data-slot="ext.chars">3300</b></span><span class="pill">warnings: <b data-slot="ext.warn">0</b></span></div>
+   <span class="lbl">Extracted text (raw, first 600 chars — real OCR noise included)</span>
+   <pre class="json" style="max-height:150px" data-slot="ext.text"></pre>`,
+ valid:{kind:'pass', text:'Format allowlist (.pdf .docx .txt + images) · file must exist and yield non-empty text — else 422 “No readable text could be extracted from X” → processing_status FAILED.'}
+},
+{
+ id:'s5', phase:'NLP PIPELINE', tier:'Python · Stage 2', title:'Cleaning & OCR Repair', gate:'Normalization before any intelligence',
+ what:'NFKC normalization, control/zero-width character stripping, ligature + quote/dash unification, mojibake and PH place-name repair, hyphen-line joins, date-range joining across line breaks, bullet removal and OCR header correction — line by line.',
+ code:{file:'nlp-service/app/services/preprocessing.py', lines:'157–161 + 189 + 199–201', text:String.raw`
+text = unicodedata.normalize("NFKC", raw_text)
+text = text.replace("\r\n", "\n").replace("\r", "\n")
+text = _CONTROL_CHARS.sub("", text)
+text = _ZERO_WIDTH.sub("", text)
+text = _CONTACT_ICONS.sub("", text)
+# …ligatures, quotes/dashes, mojibake+place repairs, hyphen/date joins…
+text = _MULTIPLE_SPACES.sub(" ", text)
+
+# Process lines: strip trailing/leading spaces and bullet symbols + OCR header correction
+line_clean = _BULLET_PREFIX.sub("", line_str).strip()
+# OCR header/token correction for blurred scans
+line_clean = _correct_ocr_line(line_clean)`},
+ io:`<span class="lbl">Input → Output</span>
+   <div class="pills"><span class="pill">raw: <b data-slot="clean.in">3300</b> chars</span><span class="pill g">cleaned: <b data-slot="clean.out">3282</b> chars</span><span class="pill">malformed emails → emails_malformed[] <b data-slot="clean.mal">0</b></span></div>
+   <span class="lbl">Cleaned text (first 600 chars)</span>
+   <pre class="json" style="max-height:150px" data-slot="clean.head"></pre>`,
+ valid:{kind:'info', text:'Messy contact data is repaired here, never deleted: leftovers are forwarded as emails_malformed[] which later feeds the INVALID_FORMAT rule (malformed email/phone → INVALID_CREDENTIAL).'}
+},
+{
+ id:'s6', phase:'NLP PIPELINE', tier:'Python · Stage 3', title:'Section Detection', gate:'Fuzzy headers, cutoff ≥ 0.72',
+ what:'Rule-based + fuzzy header matching maps OCR-mangled headings (PROFESIONAL SUMARY, WORK EXPRINCE) onto the canonical sections, returning character-span bodies so NER can trust the context of what it reads.',
+ code:{file:'nlp-service/app/services/section_detection.py', lines:'189–205', text:String.raw`
+if 0 < len(stripped) <= _HEADER_LINE_LENGTH_MAX:
+    clean_head = _STRIP_PREFIX.sub("", stripped)
+    clean_head = _normalize_letter_spacing(clean_head)
+    # Drop trailing colon/dash decorations before matching.
+    clean_head = _HEADER_TRAILING.sub("", clean_head).strip()
+
+    if re.match(r"^education\s*(&(amp;)?|and)\s*(certifications?|trainings?|special\s+trainings?)", clean_head, re.I):
+        matched_targets = ["education", "certifications"]
+    else:
+        for name, pattern in SECTION_PATTERNS.items():
+            if pattern.match(clean_head):
+                if stripped.endswith(".") and len(stripped) > 30:
+                    continue
+                matched_targets = [name]
+                break
+        if not matched_targets:
+            matched_targets = _fuzzy_header_match(clean_head)`},
+ io:`<span class="lbl">Detected sections (real run)</span>
+   ${listBlock('sections.list')}
+   <span class="lbl">Skills section — body excerpt (what the rules bounded)</span>
+   <pre class="json" style="max-height:150px" data-slot="sections.excerpt"></pre>`,
+ valid:{kind:'pass', text:'Sections become bounded spans so a word like “Communication” is only trusted as a skill where a Skills/Competencies region actually exists; fuzzy cutoff tolerates OCR’d headers.'}
+},
+{
+ id:'s7', phase:'NLP PIPELINE', tier:'Python · Stage 4', title:'NER — 4 Layers', gate:'Regex → section rules → spaCy → custom NER',
+ what:'Four extractors cooperate: regex (emails/phones/date intervals), section rules (competencies bounded inside Skills), spaCy en_core_web_sm (sentences, PERSON, ORG) and the hospitality-tuned custom model role_specific_ner. The applicant name is de-duplicated so reference names are not mistaken for job titles.',
+ code:{file:'nlp-service/app/services/entity_extraction.py', lines:'321–341', text:String.raw`
+    def extract(self, text: str, references=None) -> Dict:
+        """Extracts entities from cleaned resume text."""
+        skills_ref, roles_ref, certs_ref = refdata.effective_references(references)
+        sections = detect_sections(text)
+        head_text = "\n".join([ln for ln in text.split("\n")[:35]])
+
+        emails = self._extract_emails(text)
+        malformed = [
+            c for c in EMAIL_LOOSE_RE.findall(text) if not EMAIL_RE.fullmatch(c)
+        ]
+        phones = self._extract_phones(text)
+
+        name = self._extract_name(head_text, text)
+        address = self._extract_address(head_text, text, sections)
+        education = self._extract_education(text, sections)
+        titles, orgs, work_history = self._extract_titles_and_orgs(
+            text, sections, head_text, roles_ref
+        )
+        experience = self._estimate_experience(text, sections)
+        skills = self._extract_skills(text, sections, skills_ref)
+        certifications = self._extract_certifications(text, sections, certs_ref)`},
+ io:`<span class="lbl">Entities extracted — <b data-slot="ner.total">35</b> total</span>
+   ${listBlock('ner.labels')}
+   <span class="lbl">Work history (title / period / recognized role)</span>
+   <div class="pills" data-slot="ner.work"></div>
+   <span class="lbl">Experience estimate</span>
+   <div class="pills"><span class="pill b">~<b data-slot="ner.years">1.08</b> yrs</span><span class="pill"><b data-slot="ner.months">13</b> months</span></div>`,
+ valid:{kind:'info', text:'Name-dedup rule keeps the applicant out of ORG/reference lists; malformed emails surfacing here become INVALID_FORMAT candidates at the next stage.'}
+},
+{
+ id:'s8', phase:'NLP PIPELINE', tier:'Python · Stage 5', title:'Canonicalization (No Silent Dropping)', gate:'Exact → boundary → token-set → fuzzy ≥ 0.82',
+ what:'Every raw variant is mapped to the canonical reference taxonomy through a 4-step cascade. Anything not in the dictionary stays UNRECOGNIZED — visible with an orange badge, flagged for HR, never penalized and never silently dropped.',
+ code:{file:'nlp-service/app/services/reference_data.py', lines:'97–109', text:String.raw`
+# 1. exact alias
+hit = index.exact.get(normalized)
+if hit:
+    return hit
+
+# 2. boundary substring (longest key first)
+padded = f" {normalized} "
+for key in index.keys_by_length:
+    if len(key) >= 4 and f" {key} " in padded:
+        return index.exact[key]
+    # allow punctuation-glued forms ("haccp," / "opera.")
+    if len(key) >= 4 and re.search(rf"(^|\W){re.escape(key)}(\W|$)", normalized):
+        return index.exact[key]`},
+ io:`<span class="lbl">Recognized (counts toward scoring)</span>
+   ${listBlock('can.rec', 'g')}
+   <span class="lbl">Unrecognized (kept visible, flagged only)</span>
+   ${listBlock('can.unrec', 'o')}
+   <span class="lbl">Raw → canonical samples (extraction input vs dictionary output)</span>
+   <table class="mini" data-slot="can.samples"></table>`,
+ valid:{kind:'flag', text:'No Silent Dropping — UNRECOGNIZED is a review flag, not a rejection; HR can Promote to Canonical from the portal (inserted into screening_reference_data with aliases, no deploy).'}
+},
+{
+ id:'s9', phase:'NLP PIPELINE', tier:'Python · Stage 6', title:'Profile + Validation Gate', gate:'MISSING / INVALID_FORMAT / cert analysis',
+ what:'The standardized profile is assembled (personal info, education, work history with recognized_role flags, recognized skills, certifications) and then run through the validation gate: required-information presence, strict email/phone formats, recognized/unrecognized skill + role analysis, and required-certification matching.',
+ code:{file:'nlp-service/app/services/profile_builder.py', lines:'111–128', text:String.raw`
+if "name" in required and not personal.get("name"):
+    missing.append("name")
+if "email" in required:
+    email = personal.get("email")
+    malformed = malformed_emails or []
+    if not email:
+        if malformed:
+            invalid_format.append(f"Malformed email address: {malformed[0]}")
+        else:
+            missing.append("email")
+    elif not EMAIL_STRICT_RE.match(email):
+        invalid_format.append(f"Malformed email address: {email}")
+if "phone" in required:
+    phone = personal.get("phone")
+    if not phone:
+        missing.append("phone")
+    elif not _phone_is_valid(phone):
+        invalid_format.append(f"Incomplete or malformed phone number: {phone}")`},
+ io:`<span class="lbl">Profile (real run)</span>
+   <table class="mini" data-slot="val.profile"></table>
+   <span class="lbl">Validation verdict</span>
+   <div class="pills"><span class="pill g">MISSING: <b data-slot="val.missing">0</b></span><span class="pill g">INVALID_FORMAT: <b data-slot="val.invalid">0</b></span><span class="pill o">review flags: <b data-slot="val.flags">1</b></span></div>
+   <div class="pills" style="margin-top:5px" data-slot="val.flaglist"></div>`,
+ valid:{kind:'pass', text:'MISSING blocks PERFECT_FOR_THE_JOB via mandatory_requirements_met=false; each INVALID_FORMAT is also pushed to credential_issues → forces INVALID_CREDENTIAL. Both are zero here; the single review flag is an unrecognized role (manual review only).'}
+},
+{
+ id:'s10', phase:'NLP PIPELINE', tier:'Python · Stage 7', title:'Credential Verification — 7 Checks', gate:'−5 / warning · cap −15 · ≥3 warns → escalate',
+ what:'An internal-consistency audit of the whole profile + work history: timeline overlaps, future dates, experience-vs-graduation gap, seniority mismatch, job-hopping (INFO only), licensure prerequisites and chronological coherence. Warnings deduct points BEFORE any document blending.',
+ code:{file:'nlp-service/app/services/credential_verification.py', lines:'574–581 + 594–600', text:String.raw`
+all_flags: List[Dict] = []
+all_flags.extend(_check_timeline_overlaps(work_history))
+all_flags.extend(_check_future_dates(work_history, education))
+all_flags.extend(_check_experience_graduation_gap(profile, extraction))
+all_flags.extend(_check_seniority_experience_mismatch(profile, extraction))
+all_flags.extend(_check_excessive_job_hopping(work_history))
+all_flags.extend(_check_education_cert_prerequisites(profile, extraction))
+all_flags.extend(_check_chronological_coherence(work_history, education))
+# …
+# Score penalty: 5 points per warning, capped at 15
+score_penalty = min(warning_count * penalty_per_warn, max_penalty)
+escalate_invalid = warning_count >= escalation_thresh`},
+ io:`<span class="lbl">Verdict</span>
+   <div class="pills"><span class="pill g">risk: <b data-slot="cred.risk">LOW</b></span><span class="pill g">warnings: <b data-slot="cred.warn">0</b></span><span class="pill g">penalty: <b data-slot="cred.penalty">0.0</b> pts</span></div>
+   <span class="lbl">Checks actually performed (real run)</span>
+   ${listBlock('cred.checks')}
+   <span class="lbl">Summary</span>
+   <p style="font-size:12px" data-slot="cred.summary"></p>`,
+ valid:{kind:'pass', text:'Consequences: 1–2 WARNINGs → −5/−10 pts and risk MEDIUM; ≥3 WARNINGs → escalate_invalid → INVALID_CREDENTIAL (HR review). INFO-level flags (job hopping) never penalize.'}
+},
+{
+ id:'s11', phase:'NLP PIPELINE', tier:'Python · Stage 8', title:'Multi-Criteria Scoring', gate:'S40 · E30 · A20 · C10 + mandatory gate',
+ what:'The documented 100-point model computes each criterion, normalizes to its weight, and records a full explanation breakdown. A mandatory gate — education ∧ experience ∧ ≥60% required-skill coverage ∧ no missing info — decides whether the score may pass at all.',
+ code:{file:'nlp-service/app/services/matching.py', lines:'176–181 + 209', text:String.raw`
+required_coverage = (
+    (len(matched_required) + len(fuzzy_required)) / len(required_skills)
+    if required_skills else 1.0
+)
+preferred_coverage = len(matched_preferred) / len(preferred_skills) if preferred_skills else 1.0
+skills_ratio = 0.7 * required_coverage + 0.3 * preferred_coverage
+# …
+"earned": round(weights["skills"] * 100 * skills_ratio, 2),`},
+ io:`<span class="lbl">Score breakdown (real run)</span>
+   <div data-slot="score.bars"></div>
+   <div class="pills" style="margin-top:6px"><span class="pill b">TOTAL: <b data-slot="score.total">77.6</b> / 100</span><span class="pill o">required coverage: <b data-slot="score.coverage">20%</b> (min 60%)</span></div>
+   <span class="lbl">Mandatory gate</span>
+   <div class="pills"><span class="pill g">education ✓</span><span class="pill g">experience ✓ (1.08 ≥ 1.0 yrs)</span><span class="pill r">skills coverage ✗ (20% &lt; 60%)</span><span class="pill g">essential info ✓</span></div>`,
+ valid:{kind:'fail', text:'mandatory_requirements_met = False — the score 77.6 is above the 75 threshold, but the mandatory gate outranks the number: only 1 of 5 required skills matched.'}
+},
+{
+ id:'s12', phase:'NLP PIPELINE', tier:'Python · Stage 9', title:'Classification (+ Alternatives)', gate:'Order: penalty → blend → blockers → PERFECT → alt → NOT_FITTED',
+ what:'Classification runs in a fixed order: credential penalty, document blending (Ranking = Resume×0.85 + Docs×0.15; no documents → no-op), blocker check, PERFECT pass check, then — because the applied job failed — every other open job is scored identically and the best ELIGIBLE alternative is recommended.',
+ code:{file:'nlp-service/app/services/screening.py', lines:'275–284 + 297–298', text:String.raw`
+thresholds = _thresholds(settings)
+applied = classify_applied_job(
+    profile, validation, requirements,
+    weights=(settings or {}).get("weights"),
+    thresholds=thresholds,
+    document_verifications=document_verifications,
+)
+
+if applied["screening_status"] is not None:
+    return applied
+# … else evaluate_alternative_jobs() for every open job …
+best = next((alt for alt in alternatives if alt["eligible"]), None)
+if best and best["match_score"] > applied["match_score"]:`},
+ io:`<span class="lbl">Applied job result</span>
+   <div class="pills"><span class="pill r">status: <b data-slot="cls.status">NOT_FITTED_TO_JOB</b></span><span class="pill">resume score: <b data-slot="cls.resume">77.6</b></span><span class="pill">documents: <b data-slot="cls.docs">NOT_PROVIDED</b> → ranking = resume score</span></div>
+   <span class="lbl">System reasons (verbatim)</span>
+   <table class="mini" data-slot="cls.reasons"></table>
+   <span class="lbl">Alternative-job analysis (all 4 open jobs re-scored)</span>
+   <table class="mini" data-slot="cls.alts"></table>`,
+ valid:{kind:'flag', text:'Observed quirk: the alternative sentence says “reached only X%, below the 75% threshold” even when X>75 — the actual blocker was the 60% coverage gate (Restaurant Server 86% had only 50% coverage). Classification is correct; wording is imprecise.'}
+},
+{
+ id:'s13', phase:'OUTPUT', tier:'Laravel · MySQL', title:'Persistence — Audit Rows', gate:'hotel_hr · never a silent failure',
+ what:'The full result is persisted: one audit row in applicant_screenings (scores, profile, entities, validation, reasons, model info), a refresh of applicant_screening_scores (4 rows) and applicant_screening_entities (one per NER entity), plus the applicant’s ranking fields (fit_score, status, summary, flags_json).',
+ code:{file:'backend-laravel/Modules/ApplicantManagement/app/Services/ScreeningService.php', lines:'391–411', text:String.raw`
+$screening = ApplicantScreening::create([
+    'applicant_id' => $applicant->applicant_id,
+    'job_post_id' => $jobPost->job_post_id,
+    'processing_status' => $result['processing_status'] ?? 'PROCESSED',
+    'screening_result' => $statusValue,
+    'match_score' => $result['match_score'] ?? null,
+    'resume_match_score' => $result['resume_match_score'] ?? null,
+    'score_breakdown_json' => $result['score_breakdown'] ?? null,
+    'profile_json' => $result['profile'] ?? null,
+    'entities_json' => $result['entities'] ?? null,
+    'missing_information_json' => $result['validation']['missing_information'] ?? [],
+    'validation_json' => $result['validation'] ?? null,
+    'alternative_job_json' => $result['alternative_job'] ?? null,
+    'document_verification_json' => $result['document_verification'] ?? null,
+    'reasons_json' => $result['screening_reasons'] ?? [],
+    'model_info_json' => $result['model_info'] ?? null,
+    'error_message' => $error,
+    'processed_at' => now(),
+]);`},
+ io:`<span class="lbl">Rows written for this run (real values)</span>
+   <div class="pills"><span class="pill b">applicant_screenings × 1</span><span class="pill">processing_status: <b data-slot="db.status">PARTIALLY_PROCESSED</b></span><span class="pill">screening_result: <b data-slot="db.result">not-fit</b></span><span class="pill">match_score: <b data-slot="db.score">77.6</b></span></div>
+   <div class="pills" style="margin-top:5px"><span class="pill">applicant_screening_scores × 4 (Skills/Experience/Education/Certifications)</span><span class="pill">applicant_screening_entities × <b data-slot="db.entities">35</b></span><span class="pill">applicants: fit_score 77.6 · status not-fit · summary + flags</span></div>`,
+ valid:{kind:'pass', text:'Failures are persisted too: a FAILED row with the error message (≤1000 chars) is written whenever the NLP call or profile fails — no screening failure is ever silent. Audit log + notification fire from the controller.'}
+},
+{
+ id:'s14', phase:'OUTPUT', tier:'Laravel · UI', title:'Ranking & UI Result', gate:'Official labels used across UI + audit log',
+ what:'The official four-status vocabulary is mapped to DB values and human labels, driving the Candidate Ranking table, the score badge, the radar chart and the audit trail — all reading the same persisted fit_score + status.',
+ code:{file:'backend-laravel/Modules/ApplicantManagement/app/Services/ScreeningService.php', lines:'21–33', text:String.raw`
+public const STATUS_MAP = [
+    'PERFECT_FOR_THE_JOB' => 'fit',
+    'INVALID_CREDENTIAL' => 'credential',
+    'FIT_FOR_OTHER_JOB' => 'other-role',
+    'NOT_FITTED_TO_JOB' => 'not-fit',
+];
+
+public const OFFICIAL_LABELS = [
+    'fit' => 'Perfect for the Job',
+    'credential' => 'Invalid Credential',
+    'other-role' => 'Fit for Other Job',
+    'not-fit' => 'Not Fitted to Job',
+];`},
+ io:`<span class="lbl">Final result shown to HR</span>
+   <div class="pills"><span class="pill r">badge: <b data-slot="ui.badge">Not Fitted to Job</b></span><span class="pill b">ranking: <b data-slot="ui.score">77.6%</b></span><span class="pill">radar: Skills 17.6 · Exp 30 · Edu 20 · Cert 10</span></div>
+   <span class="lbl">Applicant flags (from flags_json)</span>
+   <div class="pills"><span class="pill o">10 unrecognized skills</span><span class="pill o">1 unrecognized role</span><span class="pill g">no missing info</span><span class="pill g">no invalid formats</span></div>
+   <span class="lbl">Timeline flags & audit</span>
+   <div class="pills"><span class="pill">tenant: LOW risk · 0 credential warnings</span><span class="pill">audit: “spaCy screening for Julian Rivera: Not Fitted to Job (77.6%), PARTIALLY_PROCESSED”</span></div>`,
+ valid:{kind:'info', text:'HR sees the ranking + the explanation (reasons, flags, radar) and can act: edit, recompute with documents (/screening/reclassify), or transfer to the recommended alternative when FIT_FOR_OTHER_JOB fires.'}
+}
+];
+
+/* ======================= RENDER ENGINE ======================= */
+const PHASES = [];
+function groupPhases(){ STEPS.forEach((s) => { if (PHASES.indexOf(s.phase) === -1) PHASES.push(s.phase); }); return PHASES; }
+function buildCol(s, idx){
+  const icon = {pass:'✓', flag:'⚠', fail:'✕', info:'ℹ'}[s.valid.kind] || 'ℹ';
+  return '<div class="col" id="col-' + s.id + '">' +
+    '<div class="col-h"><div class="row1"><span class="num">' + (idx+1) + '</span><span class="gate">' + esc(s.phase) + '</span><span class="tier">' + esc(s.tier) + '</span></div>' +
+    '<h3>' + esc(s.title) + '</h3><div class="gate">' + esc(s.gate) + '</div></div>' +
+    '<div class="block"><h4>What happens</h4><p>' + s.what + '</p></div>' +
+    '<div class="block"><h4>Your code</h4>' + codeBlock(s.code.file, s.code.lines, s.code.text) + '</div>' +
+    '<div class="block"><h4>Input → Output</h4><div class="io">' + s.io + '</div></div>' +
+    '<div class="block"><h4>Validation</h4><span class="badge ' + s.valid.kind + '">' + icon + ' ' + s.valid.text + '</span></div>' +
+    '</div>';
+}
+function barsHtml(b){
+  const rows = [['Skills', b.skills], ['Experience', b.experience], ['Education', b.education], ['Certifications', b.certifications]];
+  return rows.map(([n, c]) => '<div class="bar"><span class="name">' + n + '</span><span class="track"><span class="fill" style="width:' + ((c.earned / c.max) * 100).toFixed(1) + '%"></span></span><span class="val">' + c.earned + '/' + c.max + '</span></div>').join('');
+}
+function rowsTable(rows){ return (rows || []).map((r) => '<tr><td>' + esc(r) + '</td></tr>').join(''); }
+function samplesTable(samples){
+  const hit = (samples || []).filter((s) => s.canonical).slice(0, 5);
+  const miss = (samples || []).filter((s) => !s.canonical).length;
+  return hit.map((s) => '<tr><td class="k" style="width:52%">' + esc(s.raw) + '</td><td>→ <b>' + esc(s.canonical) + '</b></td></tr>').join('') +
+    (miss ? '<tr><td class="k">' + miss + ' raw variant(s)</td><td>→ UNRECOGNIZED (kept visible)</td></tr>' : '');
+}
+function profileTable(p){
+  const pi = (p && p.personal_information) || {};
+  const roles = (p && p.job_roles) || {};
+  const rows = [
+    ['Name', pi.name], ['Email', pi.email], ['Phone', pi.phone],
+    ['Education', (p.education || []).join(' · ')],
+    ['Experience', (p.estimated_years_experience || 0) + ' yrs (' + (p.estimated_experience_months || '?') + ' months)'],
+    ['Roles recognized', (roles.recognized || []).join(', ')],
+    ['Skills', (p.skills || []).length + ' recognized · ' + (p.unrecognized_skills || []).length + ' unrecognized'],
+    ['Certifications', (p.certifications || []).length ? p.certifications.join(', ') : '— none extracted']
+  ];
+  return rows.map(([k, v]) => '<tr><td class="k" style="width:38%">' + esc(k) + '</td><td>' + esc(v) + '</td></tr>').join('');
+}
+function altsTable(alts){
+  return (alts || []).map((a) => '<tr><td><b>' + esc(a.title) + '</b></td><td>' + a.match_score + '%</td><td>' +
+    (a.eligible ? '<span class="pill g">ELIGIBLE</span>' : '<span class="pill o">not eligible</span>') +
+    '</td><td class="k">coverage ' + pct(a.coverage) + ' · mandatory ' + (a.mandatory_requirements_met ? '✓' : '✗') + '</td></tr>').join('');
+}
+function verdictHtml(){
+  return '<div class="vscore" data-slot="v.score"></div>' +
+    '<div><div class="vstatus notfit" data-slot="v.status"></div>' +
+    '<div style="font-size:11px;color:var(--muted-fg);margin-top:5px" data-slot="v.sub"></div></div>' +
+    '<div class="reasons"><b>Why:</b> <span data-slot="v.reasons"></span></div>';
+}
+function render(){
+  const w = DEMO.meta.weights, t = DEMO.meta.thresholds;
+  $('caseChips').innerHTML = [
+    '<span class="chip">Case: <b>Julian Rivera × Front Desk Receptionist</b> (job post #1)</span>',
+    '<span class="chip">Resume: <b>' + esc(DEMO.meta.resume_file) + '</b></span>',
+    '<span class="chip">Weights: <b>S' + (w.skills * 100) + ' / E' + (w.experience * 100) + ' / A' + (w.education * 100) + ' / C' + (w.certifications * 100) + '</b></span>',
+    '<span class="chip">Passing: <b>' + t.perfect + '</b> · coverage min <b>' + (t.coverage_min * 100) + '%</b></span>',
+    '<span class="chip">Snapshot: <b>' + esc(DEMO.meta.generated_at) + '</b></span>'
+  ].join('');
+  let chipHtml = '';
+  groupPhases().forEach((ph) => {
+    chipHtml += '<span class="phaseLbl">' + esc(ph) + '</span>';
+    STEPS.forEach((s, i) => { if (s.phase === ph) chipHtml += '<button class="steppill" data-jump="' + i + '">' + (i+1) + '. ' + esc(s.title) + '</button>'; });
+  });
+  $('stepChips').innerHTML = chipHtml;
+  let board = '';
+  groupPhases().forEach((ph) => {
+    board += '<div class="phase"><div class="phase-h">' + esc(ph) + '<i></i></div><div class="phase-cols">';
+    STEPS.forEach((s, i) => { if (s.phase === ph) board += buildCol(s, i); });
+    board += '</div></div>';
+  });
+  $('board').innerHTML = board;
+  $('verdict').innerHTML = verdictHtml();
+  applySnapshot(false);
+}
+function setHtml(name, html, flash){
+  document.querySelectorAll('[data-slot="' + name + '"]').forEach((el) => {
+    el.innerHTML = html;
+    if (flash) { el.classList.remove('liveflash'); void el.offsetWidth; el.classList.add('liveflash'); }
+  });
+}
+function applySnapshot(flash){
+  const D = DEMO;
+  setSlot('job.minyears', D.scoring.requirements_parsed.min_years_experience, flash);
+  setSlot('job.open', D.job.open_jobs.length + ' posts', flash);
+  setSlot('intake.file', D.meta.resume_file, flash);
+  setSlot('ext.file', D.meta.resume_file, flash);
+  setSlot('ext.method', D.extraction.method, flash);
+  setSlot('ext.pages', D.extraction.pages, flash);
+  setSlot('ext.chars', D.extraction.character_count, flash);
+  setSlot('ext.warn', (D.extraction.warnings || []).length, flash);
+  setSlot('ext.text', (D.extraction.text_head || '').slice(0, 600), flash);
+  setSlot('clean.in', D.cleaning.original_length, flash);
+  setSlot('clean.out', D.cleaning.cleaned_length, flash);
+  setSlot('clean.mal', (D.ner.emails_malformed || []).length, flash);
+  setSlot('clean.head', (D.cleaning.head || '').slice(0, 600), flash);
+  setPills('sections.list', D.sections.detected, 'b', flash);
+  setSlot('sections.excerpt', ((D.sections.excerpts || {}).skills || '').slice(0, 240), flash);
+  setSlot('ner.total', D.ner.total, flash);
+  setPills('ner.labels', Object.entries(D.ner.by_label).map(([k, v]) => k + ' × ' + v), 'b', flash);
+  setPills('ner.work', (D.ner.work_history || []).map((h) => (h.job_title || '—') + (h.period ? ' · ' + h.period : '') + (h.recognized_role ? ' ✓ role' : '')), '', flash);
+  setSlot('ner.years', D.ner.estimated_years_experience, flash);
+  setSlot('ner.months', D.ner.estimated_experience_months, flash);
+  setPills('can.rec', D.canonical.skills_recognized, 'g', flash);
+  setPills('can.unrec', D.canonical.skills_unrecognized, 'o', flash);
+  setHtml('can.samples', samplesTable(D.canonical.samples), flash);
+  setHtml('val.profile', profileTable(D.validation.profile), flash);
+  setSlot('val.missing', D.validation.missing_information.length, flash);
+  setSlot('val.invalid', D.validation.invalid_format.length, flash);
+  setSlot('val.flags', D.validation.review_flags.length, flash);
+  setPills('val.flaglist', D.validation.review_flags.map((f) => f.type + ': ' + f.detail), 'o', flash);
+  setSlot('cred.risk', D.credentials.risk_level, flash);
+  setSlot('cred.warn', D.credentials.warning_count, flash);
+  setSlot('cred.penalty', D.credentials.score_penalty, flash);
+  setPills('cred.checks', D.credentials.checks_performed, '', flash);
+  setSlot('cred.summary', D.credentials.summary, flash);
+  setHtml('score.bars', barsHtml(D.scoring.breakdown), flash);
+  setSlot('score.total', D.scoring.match_score, flash);
+  setSlot('score.coverage', pct(D.scoring.breakdown.skills.required_coverage), flash);
+  setSlot('cls.status', D.classification.screening_status, flash);
+  setSlot('cls.resume', D.classification.resume_match_score, flash);
+  setSlot('cls.docs', (D.classification.document_verification || {}).status || 'NOT_PROVIDED', flash);
+  setHtml('cls.reasons', rowsTable(D.classification.reasons), flash);
+  setHtml('cls.alts', altsTable(D.alternatives), flash);
+  setSlot('db.status', D.processing_status, flash);
+  setSlot('db.result', 'not-fit', flash);
+  setSlot('db.score', D.scoring.match_score, flash);
+  setSlot('db.entities', D.ner.total, flash);
+  setSlot('ui.badge', 'Not Fitted to Job', flash);
+  setSlot('ui.score', D.classification.match_score + '%', flash);
+  setSlot('v.score', D.classification.match_score + '%', flash);
+  setSlot('v.status', 'Not Fitted to Job — ' + D.classification.screening_status, flash);
+  setSlot('v.sub', 'mandatory gate FAILED (skills coverage ' + pct(D.scoring.breakdown.skills.required_coverage) + ' < ' + pct(DEMO.meta.thresholds.coverage_min) + ') · processing: ' + D.processing_status + ' · run time ' + D.meta.timing_seconds + ' s (cold model load; warm API run: 0.39 s)', flash);
+  setSlot('v.reasons', D.classification.reasons.join(' '), flash);
+}
+
+/* ======================= PLAY WALKTHROUGH ======================= */
+let playTimer = null, playIdx = 0;
+function setActive(i){
+  document.querySelectorAll('.col').forEach((c) => c.classList.remove('active'));
+  document.querySelectorAll('.steppill').forEach((c) => c.classList.remove('active'));
+  const col = document.getElementById('col-' + STEPS[i].id);
+  if (col) { col.classList.add('active'); col.scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'}); }
+  const pill = document.querySelector('.steppill[data-jump="' + i + '"]');
+  if (pill) pill.classList.add('active');
+  playIdx = i;
+}
+function stopPlay(){ if (playTimer) { clearInterval(playTimer); playTimer = null; } $('playBtn').textContent = '▶ Play walkthrough'; }
+$('playBtn').addEventListener('click', () => {
+  if (playTimer) { stopPlay(); return; }
+  $('playBtn').textContent = '⏸ Pause';
+  setActive(0);
+  playTimer = setInterval(() => {
+    if (playIdx >= STEPS.length - 1) { stopPlay(); return; }
+    setActive(playIdx + 1);
+  }, 3000);
+});
+document.addEventListener('click', (e) => {
+  const jump = e.target.closest('[data-jump]');
+  if (jump) { stopPlay(); setActive(parseInt(jump.dataset.jump, 10)); }
+});
+$('codeToggle').addEventListener('change', (e) => document.body.classList.toggle('hidecode', !e.target.checked));
+$('jsonToggle').addEventListener('change', (e) => document.body.classList.toggle('hidejson', !e.target.checked));
+
+/* ======================= HYBRID LIVE MODE ======================= */
+const NLP = 'http://127.0.0.1:8001';
+const ALL_JOBS = [DEMO.job.requirements].concat(DEMO.job.open_jobs);
+const LABELS = {PERFECT_FOR_THE_JOB:'Perfect for the Job', INVALID_CREDENTIAL:'Invalid Credential', FIT_FOR_OTHER_JOB:'Fit for Other Job', NOT_FITTED_TO_JOB:'Not Fitted to Job'};
+function liveNote(kind, html){ const el = $('liveNote'); el.className = 'livenote ' + kind; el.innerHTML = html; }
+function reqOf(job){
+  return {job_post_id: job.job_post_id, title: job.title, required_skills: job.required_skills || [],
+    preferred_skills: job.preferred_skills || [], education_level: job.education_level,
+    experience_level: job.experience_level, required_certifications: job.required_certifications || [],
+    required_information: ['name','email','phone']};
+}
+function initLive(){
+  $('liveJob').innerHTML = ALL_JOBS.map((j) => '<option value="' + j.job_post_id + '">#' + j.job_post_id + ' ' + esc(j.title) + '</option>').join('');
+  fetch(NLP + '/health', {signal: AbortSignal.timeout(3500)})
+    .then((r) => r.json())
+    .then((h) => {
+      $('liveDot').className = 'dot on';
+      $('liveText').textContent = 'NLP online — ' + h.base_model + (h.custom_ner_loaded ? ' + custom NER' : '') + ' · live re-run enabled';
+      $('liveRun').disabled = false;
+    })
+    .catch(() => {
+      $('liveDot').className = 'dot off';
+      $('liveText').textContent = 'NLP offline — showing validated snapshot (start nlp-service on :8001 for live)';
+    });
+}
+$('liveRun').addEventListener('click', async () => {
+  const file = $('liveFile').files[0];
+  if (!file) { liveNote('err', 'Pick a resume file first (PDF / DOCX / TXT / image).'); return; }
+  const chosen = ALL_JOBS.find((j) => String(j.job_post_id) === $('liveJob').value) || ALL_JOBS[0];
+  const open = ALL_JOBS.filter((j) => j !== chosen).map(reqOf);
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('requirements', JSON.stringify(reqOf(chosen)));
+  fd.append('open_jobs', JSON.stringify(open));
+  $('liveRun').disabled = true; $('liveRun').textContent = 'Running…';
+  liveNote('ok', 'Live run started — OCR + NER + scoring on <b>' + esc(file.name) + '</b> vs <b>' + esc(chosen.title) + '</b>…');
+  try {
+    const res = await fetch(NLP + '/screening/score', {method:'POST', body: fd, signal: AbortSignal.timeout(120000)});
+    const data = await res.json();
+    if (!res.ok || !data.success) { throw new Error(data ? JSON.stringify(data.detail || data.error || ('HTTP ' + res.status)).slice(0, 300) : ('HTTP ' + res.status)); }
+    applyLive(data, file.name, chosen.title);
+    liveNote('ok', 'LIVE RUN — ' + esc(file.name) + ' vs ' + esc(chosen.title) + ' · ' + (LABELS[data.screening_status] || data.screening_status) + ' · ' + data.match_score + '% · ' + (data._timing_seconds || '?') + ' s. Stages the API does not return stay on the validated snapshot.');
+  } catch (err) {
+    liveNote('err', 'Live run failed: ' + esc(err && err.message ? err.message : err) + ' — the validated snapshot is still shown.');
+  } finally {
+    $('liveRun').disabled = false; $('liveRun').textContent = 'Live re-run';
+  }
+});
+function applyLive(resp, fileName, jobTitle){
+  const f = true;
+  setSlot('ext.file', fileName, f);
+  const tx = resp.text_extraction || {};
+  setSlot('ext.method', tx.method || '—', f);
+  setSlot('ext.pages', tx.pages === undefined || tx.pages === null ? '—' : tx.pages, f);
+  setSlot('ext.chars', tx.character_count === undefined ? '—' : tx.character_count, f);
+  setSlot('ext.warn', (tx.warnings || []).length, f);
+  setPills('sections.list', resp.sections_detected || [], 'b', f);
+  const ents = resp.entities || [];
+  const by = {};
+  ents.forEach((e) => { by[e.label] = (by[e.label] || 0) + 1; });
+  setSlot('ner.total', ents.length, f);
+  setPills('ner.labels', Object.entries(by).map(([k, v]) => k + ' × ' + v), 'b', f);
+  setSlot('ner.years', resp.estimated_years_experience === undefined || resp.estimated_years_experience === null ? '—' : resp.estimated_years_experience, f);
+  const prof = resp.profile || {};
+  setPills('can.rec', prof.skills || [], 'g', f);
+  setPills('can.unrec', prof.unrecognized_skills || [], 'o', f);
+  setHtml('val.profile', profileTable(prof), f);
+  const va = resp.validation || {};
+  setSlot('val.missing', (va.missing_information || []).length, f);
+  setSlot('val.invalid', (va.invalid_format || []).length, f);
+  setSlot('val.flags', (va.review_flags || []).length, f);
+  setPills('val.flaglist', (va.review_flags || []).map((x) => (x.type || '') + ': ' + (x.detail || '')), 'o', f);
+  const cv = va.credential_verification || {};
+  setSlot('cred.risk', cv.risk_level || '—', f);
+  setSlot('cred.warn', cv.warning_count === undefined ? '—' : cv.warning_count, f);
+  setSlot('cred.penalty', cv.score_penalty === undefined ? '—' : cv.score_penalty, f);
+  setPills('cred.checks', cv.checks_performed || [], '', f);
+  setSlot('cred.summary', cv.summary || '', f);
+  if (resp.score_breakdown) { setHtml('score.bars', barsHtml(resp.score_breakdown), f); setSlot('score.coverage', pct(resp.score_breakdown.skills.required_coverage), f); }
+  setSlot('score.total', resp.match_score, f);
+  setSlot('cls.status', resp.screening_status || '—', f);
+  setSlot('cls.resume', resp.resume_match_score === undefined || resp.resume_match_score === null ? '—' : resp.resume_match_score, f);
+  setSlot('cls.docs', (resp.document_verification || {}).status || 'NOT_PROVIDED', f);
+  setHtml('cls.reasons', rowsTable(resp.screening_reasons || []), f);
+  setSlot('v.score', (resp.match_score === undefined ? '—' : resp.match_score) + '%', f);
+  setSlot('v.status', (LABELS[resp.screening_status] || resp.screening_status || '—') + ' — ' + (resp.screening_status || ''), f);
+  setSlot('v.sub', 'LIVE run: ' + fileName + ' vs ' + jobTitle + ' · mandatory ' + (resp.mandatory_requirements_met ? 'PASSED' : 'FAILED') + ' · ' + (resp.processing_status || ''), f);
+  setSlot('v.reasons', (resp.screening_reasons || []).join(' '), f);
+}
+
+/* ======================= INIT ======================= */
+render();
+initLive();
+
+</script>
+</body>
+</html>

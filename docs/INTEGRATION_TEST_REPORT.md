@@ -6,6 +6,30 @@
 - Method: real HTTP calls against the running API (Bearer token from the real login + OTP flow) with **direct MySQL assertions before/after every action** — proof that each button persists to the database.
 - Harness: `backend-laravel/scripts/hrms-integration-test.php`
 
+## 2026-10-01 verification re-run (current working tree)
+
+- Environment: identical (Laravel 12 `php artisan serve` @ 127.0.0.1:8000 · MySQL/MariaDB `hotel_hr` @ 127.0.0.1:3306 · spaCy NLP @ 127.0.0.1:8001).
+- `php scripts/hrms-integration-test.php --section=all` → **100 passed / 5 failed / 105 checks** (the 5 failures are the same documented findings below — including the stale backup-registry entries; every write path persisted to `hotel_hr`).
+- `php scripts/hrms-integration-test.php --section=destructive --destructive` → **16 passed / 1 failed / 17 checks**.
+  - Restore: `System restored from BKP-13. Executed 272 statement(s).`
+  - Change default password of all users: `http=200 updated=23 stored="Oxford@2026" sample_hash_verifies=true`.
+- `php scripts/hrms-integration-test.php --section=cleanup` → 0 TEST- leftovers in every swept table (applicants, requisitions, job posts, new hires, checklist requests/templates, announcements, screening reference data, test users).
+
+Harness updates made for the current app behaviour (same script, same sections):
+
+| Update | Why |
+|---|---|
+| `freePositionDepartmentPairs()` + recruitment/applicant setup use unused pairs | The controller now enforces **one job post per position + department (any status)**; the old first-pair choice returned `409 DUPLICATE_JOB_POST` |
+| Copy & Use Template saves on a second free pair | The source pair is already taken by the new post |
+| Reject candidate is created **before** the hire step | Hiring fills the pipeline post's only vacancy and closes it, so the availability guard later rejects a second applicant |
+| Cleanup sweep deletes `checklist_requests` **before** `onboarding_checklist_templates` | `fk_checklist_requests_template_id` is RESTRICT — a leftover request blocked the template delete |
+| Onboarding "Edit configuration → Save Configuration" check now saves and asserts title, phase, position scope and rich item fields | The dialog persists all of these in one `PUT /checklist-templates/{id}` (previously only title + items were exercised) |
+| Backup list check reports the stale registry ids | Names the missing entries (`BKP-1`, `BKP-2`, `BKP-3`) instead of only a count |
+
+Findings observed again (details in §4): verify-candidate-decision is UI-only, delete requested checklist is UI-only, deleting a checklist linked to a request returns HTTP 500, company info saved in Settings is not reflected on the public career page, and the backup registry keeps three entries whose `.sql` files no longer exist.
+
+> Note: after the destructive run every active portal account signs in with the default password **Oxford@2026**. New real dumps **BKP-10 … BKP-13** were left in `storage/app/backups`.
+
 ## Result at a glance
 
 | Suite | Checks | Passed | Failed |

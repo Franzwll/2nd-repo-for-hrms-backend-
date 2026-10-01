@@ -1726,7 +1726,8 @@ function reportAllUnrecognized(
     }),
   );
   toast.success(`${unique.size} unrecognized entr${unique.size === 1 ? "y" : "ies"} reported`, {
-    description: "Process them in Recruitment Management → Screening Setup → Reported Entities.",
+    description:
+      "Process them in Recruitment Management → Screening Setup → Reported Entities.",
   });
 }
 
@@ -3278,8 +3279,8 @@ export function ScreeningReferenceManager() {
                   ) : rows.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                        No reference entries yet — add one above, or bulk-upload a file from the Add
-                        Reference Entry dialog.
+                        No reference entries yet — add one above, or bulk-upload a file from the
+                        Add Reference Entry dialog.
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -9922,8 +9923,30 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               >
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between gap-3">
-                    <p className="eyebrow">Perfect for the Job</p>
-                    <CheckCircle2 className="h-4 w-4 text-success" />
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className="eyebrow">Perfect for the Job</p>
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+                    </div>
+                    <div
+                      className="flex w-fit shrink-0 items-center gap-0.5 rounded-md border border-border bg-muted/50 p-0.5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {(["today", "week", "month"] as const).map((r) => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setPerfectRange(r)}
+                          className={cn(
+                            "cursor-pointer rounded px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide transition-colors",
+                            perfectRange === r
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <p className="mt-2 font-display text-3xl font-semibold text-success">
                     {(() => {
@@ -9940,26 +9963,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       return rows.filter((a) => a.status === "fit" && inRange(a.appliedAt)).length;
                     })()}
                   </p>
-                  <div
-                    className="mt-2 flex w-fit items-center gap-0.5 rounded-md border border-border bg-muted/50 p-0.5"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {(["today", "week", "month"] as const).map((r) => (
-                      <button
-                        key={r}
-                        type="button"
-                        onClick={() => setPerfectRange(r)}
-                        className={cn(
-                          "cursor-pointer rounded px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide transition-colors",
-                          perfectRange === r
-                            ? "bg-primary text-primary-foreground"
-                            : "text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        {r}
-                      </button>
-                    ))}
-                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -9977,21 +9980,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           </div>
 
           <Tabs value={tab} onValueChange={setTab} className="mt-6">
-            <TabsList className="flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm">
+            <TabsList className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
               <TabsTrigger
-                className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
                 value="ranking"
               >
                 <Trophy className="h-3.5 w-3.5" /> Ranking &amp; Applicants
               </TabsTrigger>
               <TabsTrigger
-                className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
                 value="scheduling"
               >
                 <CalendarClock className="h-3.5 w-3.5" /> Interview Pipeline
               </TabsTrigger>
               <TabsTrigger
-                className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
                 value="history"
               >
                 <History className="h-3.5 w-3.5" /> History &amp; Audit
@@ -9999,7 +10002,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             </TabsList>
 
             {/* RANKING + TABLE */}
-            <TabsContent value="ranking" className="mt-4 space-y-6">
+            <TabsContent value="ranking" className=" space-y-6">
               <div className="grid items-stretch gap-6 xl:grid-cols-[2fr_1fr]">
                 <Card className="border-border/70">
                   <CardContent className="flex h-full flex-col p-6">
@@ -10136,11 +10139,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                         <Trophy className="h-5 w-5 text-gold" /> Top 5 Candidates Today
                       </h2>
-                      {topFiveToday.length > TOP_FIVE_VISIBLE_CARDS && (
-                        <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Showing {TOP_FIVE_VISIBLE_CARDS} of {topFiveToday.length} · scroll
-                        </span>
-                      )}
                     </div>
                     <ol
                       ref={setTopFiveList}
@@ -12280,7 +12278,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 {/* Flexible list: fills the stretched card (flex-1) so the card
                               bottom stays aligned with Book an Interview even with few
                               items; caps + scrolls once it exceeds ~5 rows. */}
-                                <div className="mt-3 max-h-72 min-h-[10rem] flex-1 space-y-2 overflow-y-auto pr-1">
+                                <div className="mt-3 flex max-h-72 min-h-[10rem] flex-1 flex-col space-y-2 overflow-y-auto pr-1">
                                   {calViewPreview.mapped.map((i) => (
                                     <button
                                       type="button"
@@ -12303,7 +12301,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                     </button>
                                   ))}
                                   {calViewPreview.mapped.length === 0 && (
-                                    <p className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
+                                    <p className="flex w-full flex-1 items-center justify-center rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
                                       No interviews booked — the whole day is free.
                                     </p>
                                   )}
@@ -12814,7 +12812,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 })}
                               </p>
                             </div>
-                            <div className="mt-3 flex-1 space-y-2">
+                            <div className="mt-3 flex min-h-0 flex-1 flex-col space-y-2">
                               {calViewPreview.mapped.map((i) => (
                                 <button
                                   type="button"
@@ -12837,7 +12835,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 </button>
                               ))}
                               {calViewPreview.mapped.length === 0 && (
-                                <p className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
+                                <p className="flex w-full flex-1 items-center justify-center rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
                                   No interviews booked — the whole day is free.
                                 </p>
                               )}
@@ -14412,7 +14410,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <p className="flex w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
                       <Info className="h-4 w-4 shrink-0" />
                       This applicant is already at the{" "}
-                      <span className="font-semibold text-foreground">{review.stage}</span> stage —
+                      <span className="font-semibold text-foreground">{review.stage}</span> stage
+                      —
                       {review.stage === "Accepted"
                         ? " use Schedule interview to book them in."
                         : " no further accept, reject or referral actions can be taken here."}
@@ -14512,7 +14511,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           </Badge>
                         </span>
                         <span className="block text-xs text-muted-foreground">
-                          {p.department} — {p.headcount - p.filled} seat(s) open — {p.salaryBand}
+                          {p.department} — {p.headcount - p.filled} seat(s) open —{" "}
+                          {p.salaryBand}
                         </span>
                         <span className="mt-1 block text-[0.7rem] text-muted-foreground">
                           {fit.total > 0
@@ -14726,8 +14726,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
                   <p className="mt-1 text-xs text-muted-foreground">
                     {testingTest.name} — {testingTest.position} · {testTitle} · Passing{" "}
-                    {testPassing}% · {answeredCount}/{totalQ} answered — auto-checked when all are
-                    answered.
+                    {testPassing}% · {answeredCount}/{totalQ} answered — auto-checked when all
+                    are answered.
                   </p>
 
                   {/* Question */}
@@ -14819,8 +14819,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   </div>
                   {!allAnswered && (
                     <p className="mt-2 text-right text-xs text-muted-foreground">
-                      {totalQ - answeredCount} question(s) left — the test auto-checks once all are
-                      answered.
+                      {totalQ - answeredCount} question(s) left — the test auto-checks once all
+                      are answered.
                     </p>
                   )}
                 </>
@@ -14998,8 +14998,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <DialogHeader>
                 <DialogTitle className="font-display text-2xl">Final Evaluation</DialogTitle>
                 <DialogDescription>
-                  {finalizing.name} — {finalizing.position}. Preview of every process that occurred
-                  before the final recommendation.
+                  {finalizing.name} — {finalizing.position}. Preview of every process that
+                  occurred before the final recommendation.
                 </DialogDescription>
               </DialogHeader>
 

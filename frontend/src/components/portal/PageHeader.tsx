@@ -8,6 +8,10 @@ export interface PageHeaderProps {
   actions?: ReactNode;
   children?: ReactNode;
   className?: string;
+  /** When false, hides the divider line below the header (keeps the spacing gap). */
+  showRule?: boolean;
+  /** Divider color — gold by default, maroon uses the primary token. */
+  ruleTone?: "gold" | "maroon";
 }
 
 export function PageHeader({
@@ -17,6 +21,8 @@ export function PageHeader({
   actions,
   children,
   className,
+  showRule = true,
+  ruleTone = "gold",
 }: PageHeaderProps) {
   return (
     <div className={cn("mb-6", className)}>
@@ -31,7 +37,11 @@ export function PageHeader({
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
       </div>
-      <div className="gold-rule mt-4" />
+      {showRule ? (
+        <div className={ruleTone === "maroon" ? "maroon-rule mt-4" : "gold-rule mt-4"} />
+      ) : (
+        <div aria-hidden className="mt-4 h-px" />
+      )}
     </div>
   );
 }
