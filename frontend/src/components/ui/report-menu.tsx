@@ -19,13 +19,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { authApi } from "@/lib/api";
-import {
-  exportReport,
-  printReport,
-  type ReportData,
-  type ReportFormat,
-} from "@/lib/report-export";
+import { exportReport, printReport, type ReportData, type ReportFormat } from "@/lib/report-export";
 import { cn } from "@/lib/utils";
 
 /**
@@ -83,8 +79,8 @@ export function usePasswordGate() {
             <Lock className="h-4 w-4 text-primary" /> Confidential report
           </DialogTitle>
           <DialogDescription>
-            This report contains sensitive data. Re-enter your password to
-            export or print it. The attempt is logged.
+            This report contains sensitive data. Re-enter your password to export or print it. The
+            attempt is logged.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-1.5">
@@ -143,9 +139,16 @@ export function ReportMenu({
   size?: "default" | "sm" | "icon";
 }) {
   const { gateSensitive, gateDialog } = usePasswordGate();
+  const [includeChart, setIncludeChart] = useState(true);
 
-  const resolveData = (): ReportData =>
-    typeof report === "function" ? report() : report;
+  const resolveData = (): ReportData => {
+    const data = typeof report === "function" ? report() : report;
+    if (!includeChart && data.chart) {
+      const { chart: _omitted, ...rest } = data;
+      return rest;
+    }
+    return data;
+  };
 
   const execute = (action: { kind: "export"; format: ReportFormat } | { kind: "print" }) => {
     const data = resolveData();
@@ -174,6 +177,17 @@ export function ReportMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <div className="flex items-center gap-2 px-2 py-1.5">
+            <Checkbox
+              id="report-include-chart"
+              checked={includeChart}
+              onCheckedChange={(v) => setIncludeChart(v === true)}
+            />
+            <Label htmlFor="report-include-chart" className="text-xs font-normal">
+              Include chart (when available)
+            </Label>
+          </div>
+          <DropdownMenuSeparator />
           {(["pdf", "docx", "excel", "csv"] as ReportFormat[]).map((format) => (
             <DropdownMenuItem key={format} onClick={() => request({ kind: "export", format })}>
               <FileText className="mr-2 h-4 w-4" /> Export as {format.toUpperCase()}

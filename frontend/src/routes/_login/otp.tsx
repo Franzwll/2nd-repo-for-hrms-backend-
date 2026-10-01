@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 
 import { authApi, mfaApi } from "@/lib/api";
 import { setToken, setUser } from "@/lib/auth";
+import { useLightOnly } from "@/lib/theme";
 import { clearLoginContext, getLoginContext, persistLoginContext } from "./login";
 
 export const Route = createFileRoute("/_login/otp")({
@@ -76,6 +77,7 @@ const montageImages = [
 ];
 
 function OTPPage() {
+  useLightOnly();
   const navigate = useNavigate();
   const loginCtx = getLoginContext();
   const isTotp = loginCtx?.mfa_method === "totp";

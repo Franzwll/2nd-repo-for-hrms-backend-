@@ -131,6 +131,131 @@ const formatMoney = (val: number) =>
     maximumFractionDigits: 0,
   }).format(val);
 
+/** All employment statuses recognised across the HRMS. */
+const APPLICABLE_STATUSES = [
+  { name: "Active", hint: "Currently employed and on duty" },
+  { name: "On Leave", hint: "Currently employed, on approved leave" },
+  { name: "Probationary", hint: "Under probationary employment type" },
+  { name: "Regular", hint: "Regularised employment type" },
+  { name: "Contractual", hint: "Fixed-term employment type" },
+  { name: "Resigned", hint: "Exited via resignation" },
+  { name: "Retired", hint: "Exited via retirement" },
+  { name: "Terminated", hint: "Exited via termination" },
+] as const;
+
+/**
+ * "Status" tab inside the employee profile: current employment status,
+ * available leave balances, recent leave requests and every applicable status.
+ */
+function EmployeeStatusTab({ employeeCode, employeeId }: { employeeCode: string; employeeId: number | null }) {
+  const [detail, setDetail] = useState<ApiEmployee | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!employeeId) return;
+    let cancelled = false;
+    setLoading(true);
+    hcmApi.employees
+      .get(employeeId)
+      .then((res) => {
+        if (!cancelled) setDetail(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) setDetail(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeId, employeeCode]);
+
+  const balances = detail?.leave_balances ?? [];
+  const leaveRequests = detail?.leave_requests ?? [];
+  const totalAvailable = balances.reduce((s, b) => s + (b.available_days ?? 0), 0);
+
+  return (
+    <div className="space-y-1.5 text-sm">
+      <Section title="Current employment status">
+        <Field k="Status" v={detail?.status ?? "—"} />
+        <Field k="Employment type" v={detail?.employment_type ?? "—"} />
+        <Field k="Onboarding" v={detail ? (detail.onboarding_complete ? "Complete" : "Incomplete") : "—"} />
+        <Field
+          k="Exit record"
+          v={
+            detail?.exit_record
+              ? `${detail.exit_record.exit_type} · ${detail.exit_record.exit_date ?? "date TBD"}`
+              : "No exit on file"
+          }
+        />
+      </Section>
+
+      <Section title={`Available leaves${balances.length ? ` · ${totalAvailable} day(s) left` : ""}`}>
+        {loading ? (
+          <p className="text-xs text-muted-foreground">Loading leave balances…</p>
+        ) : balances.length === 0 ? (
+          <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-3">
+            No leave balances on file for this employee for the current period.
+          </p>
+        ) : (
+          balances.map((b) => (
+            <div key={`${b.leave_type}-${b.period_year}`} className="rounded-md border border-border p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[0.8rem] font-medium">{b.leave_type}</p>
+                <Badge variant="outline" className="border-success/30 bg-success/15 text-success">
+                  {b.available_days} left
+                </Badge>
+              </div>
+              <p className="mt-1 text-[0.7rem] text-muted-foreground">
+                {b.used_days}/{b.total_days} used · Period {b.period_year}
+              </p>
+            </div>
+          ))
+        )}
+      </Section>
+
+      <Section title="Recent leave requests">
+        {loading ? (
+          <p className="text-xs text-muted-foreground">Loading leave requests…</p>
+        ) : leaveRequests.length === 0 ? (
+          <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-3">
+            No leave requests filed by this employee.
+          </p>
+        ) : (
+          leaveRequests.map((r) => (
+            <div key={r.request_code} className="rounded-md border border-border p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[0.8rem] font-medium">{r.request_type}</p>
+                <Badge variant="outline">{r.status}</Badge>
+              </div>
+              <p className="mt-1 text-[0.7rem] text-muted-foreground">
+                {[r.date_from, r.date_to].filter(Boolean).join(" → ") || r.filed_at || r.request_code}
+              </p>
+            </div>
+          ))
+        )}
+      </Section>
+
+      <Section title="Applicable statuses">
+        {APPLICABLE_STATUSES.map((s) => (
+          <div key={s.name} className="rounded-md border border-border p-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[0.8rem] font-medium">{s.name}</p>
+              {detail?.status === s.name || detail?.employment_type === s.name ? (
+                <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
+                  Current
+                </Badge>
+              ) : null}
+            </div>
+            <p className="mt-1 text-[0.7rem] text-muted-foreground">{s.hint}</p>
+          </div>
+        ))}
+      </Section>
+    </div>
+  );
+}
+
 /** HRMS system logo (generic system mark, not the hotel brand). */
 function SystemLogo({ size = "sm", showText = false }: { size?: "sm" | "lg"; showText?: boolean }) {
   return (
@@ -1866,49 +1991,65 @@ function EmployeeListManager({
                     </DialogTitle>
                   </DialogHeader>
 
-                  <div className="space-y-1.5 text-sm">
-                    <Section title="Personal details">
-                      <Field k="Full name" v={viewingEmpInfo.name} />
-                      <Field k="Birth date" v={p.birthDate} />
-                      <Field k="Gender" v={p.gender} />
-                      <Field k="Civil status" v={p.civilStatus} />
-                      <Field k="Nationality" v={p.nationality} />
-                    </Section>
-                    <Section title="Contact information">
-                      <Field k="Company email" v={viewingEmpInfo.email} />
-                      <Field k="Personal email" v={p.personalEmail} />
-                      <Field k="Mobile number" v={viewingEmpInfo.phone} />
-                      <Field k="Home address" v={p.address} wide />
-                    </Section>
-                    <Section title="Family information">
-                      <Field k="Family" v={p.family} wide />
-                    </Section>
-                    <Section title="Emergency contact">
-                      <Field k="Name" v={p.emergencyName} />
-                      <Field k="Relationship" v={p.emergencyRelation} />
-                      <Field k="Contact number" v={p.emergencyPhone} />
-                    </Section>
-                    <Section title="Employment information">
-                      <Field k="Employee number" v={viewingEmpInfo.id} />
-                      <Field k="Position" v={viewingEmpInfo.position} />
-                      <Field k="Department" v={viewingEmpInfo.department} />
-                      <Field k="Outlet / Branch" v="Oxford Suites Makati" />
-                      <Field k="Status" v={viewingEmpInfo.status} />
-                      <Field k="Date hired" v={viewingEmpInfo.dateHired} />
-                      <Field k="Immediate supervisor" v={viewingEmpInfo.supervisor} />
-                      <Field k="Shift" v="AM Shift · 07:00 – 16:00" />
-                      <Field
-                        k="Rate"
-                        v={`${viewingEmpInfo.employmentType} · ${p.contract.split(" · ")[0]}`}
+                  <Tabs defaultValue="profile" className="mt-2">
+                    <TabsList className="flex h-auto flex-wrap justify-start">
+                      <TabsTrigger value="profile">Profile</TabsTrigger>
+                      <TabsTrigger value="status">Status</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="profile" className="mt-3">
+                      <div className="space-y-1.5 text-sm">
+                        <Section title="Personal details">
+                          <Field k="Full name" v={viewingEmpInfo.name} />
+                          <Field k="Birth date" v={p.birthDate} />
+                          <Field k="Gender" v={p.gender} />
+                          <Field k="Civil status" v={p.civilStatus} />
+                          <Field k="Nationality" v={p.nationality} />
+                        </Section>
+                        <Section title="Contact information">
+                          <Field k="Company email" v={viewingEmpInfo.email} />
+                          <Field k="Personal email" v={p.personalEmail} />
+                          <Field k="Mobile number" v={viewingEmpInfo.phone} />
+                          <Field k="Home address" v={p.address} wide />
+                        </Section>
+                        <Section title="Family information">
+                          <Field k="Family" v={p.family} wide />
+                        </Section>
+                        <Section title="Emergency contact">
+                          <Field k="Name" v={p.emergencyName} />
+                          <Field k="Relationship" v={p.emergencyRelation} />
+                          <Field k="Contact number" v={p.emergencyPhone} />
+                        </Section>
+                        <Section title="Employment information">
+                          <Field k="Employee number" v={viewingEmpInfo.id} />
+                          <Field k="Position" v={viewingEmpInfo.position} />
+                          <Field k="Department" v={viewingEmpInfo.department} />
+                          <Field k="Outlet / Branch" v="Oxford Suites Makati" />
+                          <Field k="Status" v={viewingEmpInfo.status} />
+                          <Field k="Date hired" v={viewingEmpInfo.dateHired} />
+                          <Field k="Immediate supervisor" v={viewingEmpInfo.supervisor} />
+                          <Field k="Shift" v="AM Shift · 07:00 – 16:00" />
+                          <Field
+                            k="Rate"
+                            v={`${viewingEmpInfo.employmentType} · ${p.contract.split(" · ")[0]}`}
+                          />
+                        </Section>
+                        <Section title="Government IDs">
+                          <Field k="SSS number" v={p.sss} />
+                          <Field k="Pag-IBIG MID" v={p.pagibig} />
+                          <Field k="PhilHealth number" v={p.philhealth} />
+                          <Field k="TIN" v={p.tin} />
+                        </Section>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="status" className="mt-3">
+                      <EmployeeStatusTab
+                        employeeCode={viewingEmpInfo.id}
+                        employeeId={employeeIdByCode.get(viewingEmpInfo.id) ?? null}
                       />
-                    </Section>
-                    <Section title="Government IDs">
-                      <Field k="SSS number" v={p.sss} />
-                      <Field k="Pag-IBIG MID" v={p.pagibig} />
-                      <Field k="PhilHealth number" v={p.philhealth} />
-                      <Field k="TIN" v={p.tin} />
-                    </Section>
-                  </div>
+                    </TabsContent>
+                  </Tabs>
 
                   <DialogFooter>
                     <Button onClick={() => setViewingEmpInfo(null)}>Close</Button>
@@ -3345,11 +3486,13 @@ function LifecycleLogsViewer() {
    ========================================================================= */
 
 export function DeptPosModule({ role = "admin" }: { role?: Role }) {
-  const [activeTab, setActiveTab] = useState<"deptpos" | "salary" | "reqs">(() => {
+  const [activeTab, setActiveTab] = useState<"depts" | "positions" | "salary" | "reqs">(() => {
     const saved =
       typeof window !== "undefined" ? window.sessionStorage.getItem("hcm-deptpos-tab") : null;
-    return (saved === "deptpos" || saved === "salary" || saved === "reqs" ? saved : "deptpos") as
-      "deptpos" | "salary" | "reqs";
+    if (saved === "deptpos") return "depts" as const;
+    return (saved === "depts" || saved === "positions" || saved === "salary" || saved === "reqs"
+      ? saved
+      : "depts") as "depts" | "positions" | "salary" | "reqs";
   });
 
   useEffect(() => {
@@ -3372,10 +3515,16 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
       <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
         <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
           <TabsTrigger
-            value="deptpos"
+            value="depts"
             className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
           >
-            <Building2 className="mr-1.5 h-4 w-4" /> Department and Position
+            <Building2 className="mr-1.5 h-4 w-4" /> Departments
+          </TabsTrigger>
+          <TabsTrigger
+            value="positions"
+            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+          >
+            <Briefcase className="mr-1.5 h-4 w-4" /> Positions
           </TabsTrigger>
           <TabsTrigger
             value="salary"
@@ -3391,8 +3540,12 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="deptpos" className="space-y-6">
-          <DepartmentAndPositionManager role={role} />
+        <TabsContent value="depts" className="space-y-6">
+          <DepartmentAndPositionManager role={role} section="depts" />
+        </TabsContent>
+
+        <TabsContent value="positions" className="space-y-6">
+          <DepartmentAndPositionManager role={role} section="positions" />
         </TabsContent>
 
         <TabsContent value="salary" className="space-y-6">
@@ -3409,7 +3562,15 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
 }
 
 /* --- Department and Position Manager --- */
-function DepartmentAndPositionManager({ role }: { role: Role }) {
+function DepartmentAndPositionManager({
+  role,
+  section = "all",
+}: {
+  role: Role;
+  section?: "all" | "depts" | "positions";
+}) {
+  const showDepts = section === "all" || section === "depts";
+  const showPositions = section === "all" || section === "positions";
   const hcm = useHcmData();
   const hcmLoading = useHcmLoading();
   const reqs = useRequisitions();
@@ -3752,6 +3913,8 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
   return (
     <div className="space-y-8">
       {/* 1. DEPARTMENTS SECTION CARD */}
+      {showDepts && (
+        <>
       {/* Generate Report aligned with the page title via HeaderActions portal */}
       <HeaderActions>
         <ReportMenu
@@ -3911,8 +4074,12 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
           </div>
         </CardContent>
       </Card>
+        </>
+      )}
 
       {/* 2. POSITIONS SECTION CARD */}
+      {showPositions && (
+        <>
       <HeaderActions>
         <ReportMenu
           size="sm"
@@ -4104,8 +4271,11 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
           </div>
         </CardContent>
       </Card>
+        </>
+      )}
 
       {/* EDIT / ADD DEPARTMENT MODAL */}
+      {showDepts && (
       <Dialog
         open={!!editingDept}
         onOpenChange={(open) => {
@@ -4235,8 +4405,10 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* EDIT / ADD POSITION MODAL */}
+      {showPositions && (
       <Dialog
         open={!!editingPos}
         onOpenChange={(open) => {
@@ -4355,6 +4527,7 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* CONFIRMATION ALERT DIALOG (SAVE DEPT / SAVE POS) */}
       <AlertDialog
@@ -4448,6 +4621,7 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
       </AlertDialog>
 
       {/* VACANCY REQUISITION DIALOG (per department) */}
+      {showDepts && (
       <Dialog open={!!reqDialogDept} onOpenChange={(open) => !open && setReqDialogDept(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -4563,6 +4737,7 @@ function DepartmentAndPositionManager({ role }: { role: Role }) {
           </div>
         </DialogContent>
       </Dialog>
+      )}
     </div>
   );
 }

@@ -15,7 +15,11 @@ import { Route as SuperadminRouteImport } from './routes/superadmin'
 import { Route as LandingIndexRouteImport } from './routes/_landing/index'
 import { Route as LandingAboutRouteImport } from './routes/_landing/about'
 import { Route as LandingContactRouteImport } from './routes/_landing/contact'
+import { Route as LandingCookiesRouteImport } from './routes/_landing/cookies'
 import { Route as LandingFaqRouteImport } from './routes/_landing/faq'
+import { Route as LandingPrivacyRouteImport } from './routes/_landing/privacy'
+import { Route as LandingSupportRouteImport } from './routes/_landing/support'
+import { Route as LandingTermsRouteImport } from './routes/_landing/terms'
 import { Route as LoginForgotPasswordRouteImport } from './routes/_login/forgot-password'
 import { Route as LoginForgotPasswordDESKTOPT31RHI0RouteImport } from './routes/_login/forgot-password-DESKTOP-T31RHI0'
 import { Route as LoginLoginRouteImport } from './routes/_login/login'
@@ -88,9 +92,29 @@ const LandingContactRoute = LandingContactRouteImport.update({
   path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LandingCookiesRoute = LandingCookiesRouteImport.update({
+  id: '/_landing/cookies',
+  path: '/cookies',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LandingFaqRoute = LandingFaqRouteImport.update({
   id: '/_landing/faq',
   path: '/faq',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LandingPrivacyRoute = LandingPrivacyRouteImport.update({
+  id: '/_landing/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LandingSupportRoute = LandingSupportRouteImport.update({
+  id: '/_landing/support',
+  path: '/support',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LandingTermsRoute = LandingTermsRouteImport.update({
+  id: '/_landing/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginForgotPasswordRoute = LoginForgotPasswordRouteImport.update({
@@ -327,7 +351,11 @@ export interface FileRoutesByFullPath {
   '/superadmin': typeof SuperadminRouteWithChildren
   '/about': typeof LandingAboutRoute
   '/contact': typeof LandingContactRoute
+  '/cookies': typeof LandingCookiesRoute
   '/faq': typeof LandingFaqRoute
+  '/privacy': typeof LandingPrivacyRoute
+  '/support': typeof LandingSupportRoute
+  '/terms': typeof LandingTermsRoute
   '/forgot-password': typeof LoginForgotPasswordRoute
   '/forgot-password-DESKTOP-T31RHI0': typeof LoginForgotPasswordDESKTOPT31RHI0Route
   '/login': typeof LoginLoginRoute
@@ -374,7 +402,11 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/about': typeof LandingAboutRoute
   '/contact': typeof LandingContactRoute
+  '/cookies': typeof LandingCookiesRoute
   '/faq': typeof LandingFaqRoute
+  '/privacy': typeof LandingPrivacyRoute
+  '/support': typeof LandingSupportRoute
+  '/terms': typeof LandingTermsRoute
   '/forgot-password': typeof LoginForgotPasswordRoute
   '/forgot-password-DESKTOP-T31RHI0': typeof LoginForgotPasswordDESKTOPT31RHI0Route
   '/login': typeof LoginLoginRoute
@@ -425,7 +457,11 @@ export interface FileRoutesById {
   '/superadmin': typeof SuperadminRouteWithChildren
   '/_landing/about': typeof LandingAboutRoute
   '/_landing/contact': typeof LandingContactRoute
+  '/_landing/cookies': typeof LandingCookiesRoute
   '/_landing/faq': typeof LandingFaqRoute
+  '/_landing/privacy': typeof LandingPrivacyRoute
+  '/_landing/support': typeof LandingSupportRoute
+  '/_landing/terms': typeof LandingTermsRoute
   '/_login/forgot-password': typeof LoginForgotPasswordRoute
   '/_login/forgot-password-DESKTOP-T31RHI0': typeof LoginForgotPasswordDESKTOPT31RHI0Route
   '/_login/login': typeof LoginLoginRoute
@@ -477,7 +513,11 @@ export interface FileRouteTypes {
     | '/superadmin'
     | '/about'
     | '/contact'
+    | '/cookies'
     | '/faq'
+    | '/privacy'
+    | '/support'
+    | '/terms'
     | '/forgot-password'
     | '/forgot-password-DESKTOP-T31RHI0'
     | '/login'
@@ -524,7 +564,11 @@ export interface FileRouteTypes {
   to:
     | '/about'
     | '/contact'
+    | '/cookies'
     | '/faq'
+    | '/privacy'
+    | '/support'
+    | '/terms'
     | '/forgot-password'
     | '/forgot-password-DESKTOP-T31RHI0'
     | '/login'
@@ -574,7 +618,11 @@ export interface FileRouteTypes {
     | '/superadmin'
     | '/_landing/about'
     | '/_landing/contact'
+    | '/_landing/cookies'
     | '/_landing/faq'
+    | '/_landing/privacy'
+    | '/_landing/support'
+    | '/_landing/terms'
     | '/_login/forgot-password'
     | '/_login/forgot-password-DESKTOP-T31RHI0'
     | '/_login/login'
@@ -625,7 +673,11 @@ export interface RootRouteChildren {
   SuperadminRoute: typeof SuperadminRouteWithChildren
   LandingAboutRoute: typeof LandingAboutRoute
   LandingContactRoute: typeof LandingContactRoute
+  LandingCookiesRoute: typeof LandingCookiesRoute
   LandingFaqRoute: typeof LandingFaqRoute
+  LandingPrivacyRoute: typeof LandingPrivacyRoute
+  LandingSupportRoute: typeof LandingSupportRoute
+  LandingTermsRoute: typeof LandingTermsRoute
   LoginForgotPasswordRoute: typeof LoginForgotPasswordRoute
   LoginForgotPasswordDESKTOPT31RHI0Route: typeof LoginForgotPasswordDESKTOPT31RHI0Route
   LoginLoginRoute: typeof LoginLoginRoute
@@ -682,11 +734,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LandingContactRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_landing/cookies': {
+      id: '/_landing/cookies'
+      path: '/cookies'
+      fullPath: '/cookies'
+      preLoaderRoute: typeof LandingCookiesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_landing/faq': {
       id: '/_landing/faq'
       path: '/faq'
       fullPath: '/faq'
       preLoaderRoute: typeof LandingFaqRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_landing/privacy': {
+      id: '/_landing/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof LandingPrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_landing/support': {
+      id: '/_landing/support'
+      path: '/support'
+      fullPath: '/support'
+      preLoaderRoute: typeof LandingSupportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_landing/terms': {
+      id: '/_landing/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof LandingTermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_login/forgot-password': {
@@ -1084,7 +1164,11 @@ const rootRouteChildren: RootRouteChildren = {
   SuperadminRoute: SuperadminRouteWithChildren,
   LandingAboutRoute: LandingAboutRoute,
   LandingContactRoute: LandingContactRoute,
+  LandingCookiesRoute: LandingCookiesRoute,
   LandingFaqRoute: LandingFaqRoute,
+  LandingPrivacyRoute: LandingPrivacyRoute,
+  LandingSupportRoute: LandingSupportRoute,
+  LandingTermsRoute: LandingTermsRoute,
   LoginForgotPasswordRoute: LoginForgotPasswordRoute,
   LoginForgotPasswordDESKTOPT31RHI0Route:
     LoginForgotPasswordDESKTOPT31RHI0Route,

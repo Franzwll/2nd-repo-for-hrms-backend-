@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { Toaster } from "../components/ui/sonner";
 import { reportError } from "../lib/error-reporting";
+import { applyInitialTheme } from "../lib/theme";
 
 function NotFoundComponent() {
   return (
@@ -130,6 +131,11 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var p=location.pathname;var portal=p.indexOf("/admin")===0||p.indexOf("/superadmin")===0||p.indexOf("/employee")===0;if(!portal)return;var t=localStorage.getItem("osm-theme")||"System";var d=t==="Dark"||(t==="System"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.toggle("dark",d)}catch(e){}})();`,
+          }}
+        />
       </head>
       <body>
         {children}
@@ -143,6 +149,14 @@ import { Preloader } from "../components/ui/preloader";
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    const p = window.location.pathname;
+    const portal =
+      p.indexOf("/admin") === 0 || p.indexOf("/superadmin") === 0 || p.indexOf("/employee") === 0;
+    if (portal) applyInitialTheme();
+    else document.documentElement.classList.remove("dark");
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

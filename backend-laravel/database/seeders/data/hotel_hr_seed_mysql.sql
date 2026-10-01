@@ -45,7 +45,7 @@ INSERT INTO `salary_grades` (`salary_grade_id`, `code`, `title`, `min_salary`, `
 (6, 'SG-15', 'Department Manager', 45000.00, 60000.00, 'PHP', 'Managerial', 'Front office manager, executive housekeeper'),
 (7, 'SG-18', 'Executive Director', 65000.00, 90000.00, 'PHP', 'Executive', 'F&B Director, HR Manager, GM');
 
--- positions (ids 1-17)
+-- positions (ids 1-26)
 INSERT INTO `positions` (`position_id`, `position_code`, `title`, `department_id`, `salary_grade_id`, `level`, `headcount`, `filled_count`) VALUES
 (1, 'POS-001', 'Front Desk Receptionist', 1, 2, 'Rank & File', 8, 3),
 (2, 'POS-002', 'Guest Relations Officer', 1, 4, 'Supervisory', 3, 2),
@@ -63,9 +63,18 @@ INSERT INTO `positions` (`position_id`, `position_code`, `title`, `department_id
 (14, 'POS-014', 'HR & Administration Manager', 5, 7, 'Managerial', 1, 1),
 (15, 'POS-015', 'Floor Supervisor', 4, 4, 'Supervisory', 2, 1),
 (16, 'POS-016', 'HR Officer', 5, 4, 'Supervisory', 2, 1),
-(17, 'POS-017', 'Accounting Supervisor', 5, 4, 'Supervisory', 1, 1);
+(17, 'POS-017', 'Accounting Supervisor', 5, 4, 'Supervisory', 1, 1),
+(18, 'POS-018', 'Security Officer', 6, 1, 'Rank & File', 6, 4),
+(19, 'POS-019', 'Security Supervisor', 6, 4, 'Supervisory', 1, 1),
+(20, 'POS-020', 'Spa Therapist', 7, 2, 'Rank & File', 4, 2),
+(21, 'POS-021', 'Wellness / Gym Attendant', 7, 1, 'Rank & File', 2, 1),
+(22, 'POS-022', 'Accounting Assistant', 8, 3, 'Rank & File', 2, 1),
+(23, 'POS-023', 'Finance Officer', 8, 5, 'Supervisory', 1, 1),
+(24, 'POS-024', 'Maintenance Technician', 9, 2, 'Rank & File', 5, 3),
+(25, 'POS-025', 'Engineering Supervisor', 9, 4, 'Supervisory', 1, 1),
+(26, 'POS-026', 'Electrician', 9, 2, 'Rank & File', 2, 1);
 
--- employees (ids 1-23; supervisors assigned via UPDATE after insert)
+-- employees (ids 1-37; supervisors assigned via UPDATE after insert)
 INSERT INTO `employees` (
   `employee_id`, `employee_code`, `first_name`, `middle_name`, `last_name`, `email`, `personal_email`,
   `phone`, `address`, `birth_date`, `gender`, `civil_status`, `nationality`,
@@ -94,8 +103,22 @@ INSERT INTO `employees` (
 (19, 'EMP-0019', 'Ernesto',    'V.',  'Villar',       'ernesto.villar@oxfordsuites.com.ph',       NULL, '0921 556 7743', 'Manila',                      '1985-05-30', 'Male',   'Married',   'Filipino', NULL, NULL, NULL, NULL, 7,  4, 'Regular',      '2025-03-19', NULL, 'Active', 1, 1, NULL, 'Step 2'),
 (20, 'EMP-0020', 'Grace',      'P.',  'Panganiban',   'grace.panganiban@oxfordsuites.com.ph',     NULL, '0917 332 8890', 'Makati City',                 '1997-02-14', 'Female', 'Single',    'Filipino', NULL, NULL, NULL, NULL, 2,  1, 'Regular',      '2025-11-10', NULL, 'Active', 0, 4, NULL, 'Step 1'),
 (21, 'EMP-0021', 'Noel',       'F.',  'Fajardo',      'noel.fajardo@oxfordsuites.com.ph',         NULL, '0918 774 3320', 'Valenzuela City',             '1984-10-19', 'Male',   'Married',   'Filipino', NULL, NULL, NULL, NULL, 8,  5, 'Regular',      '2025-01-27', NULL, 'Active', 1, 3, NULL, 'Step 2'),
-(22, 'EMP-0022', 'Miguel',     'T.',  'Torres',       'miguel.torres@oxfordsuites.com.ph',        NULL, '0917 442 1177', 'Makati City',                 '1998-11-25', 'Male',   'Single',    'Filipino', NULL, NULL, NULL, NULL, 1,  1, 'Probationary', '2026-05-04', NULL, 'Active', 0, 2, NULL, 'Step 1'),
-(23, 'EMP-0023', 'Andrea',     'L.',  'Lim',          'andrea.lim@oxfordsuites.com.ph',           NULL, '0917 883 5566', 'Mandaluyong City',            '1999-08-02', 'Female', 'Single',    'Filipino', NULL, NULL, NULL, NULL, 7,  4, 'Probationary', '2026-03-06', NULL, 'Active', 0, 1, NULL, 'Step 1');
+(22, 'EMP-0022', 'Miguel',      'T.',  'Torres',       'miguel.torres@oxfordsuites.com.ph',        NULL, '0917 442 1177', 'Makati City',                 '1998-11-25', 'Male',   'Single',    'Filipino', NULL, NULL, NULL, NULL, 1,  1, 'Probationary', '2026-05-04', NULL, 'Active', 0, 2, NULL, 'Step 1'),
+(23, 'EMP-0023', 'Andrea',     'L.',  'Lim',          'andrea.lim@oxfordsuites.com.ph',           NULL, '0917 883 5566', 'Mandaluyong City',            '1999-08-02', 'Female', 'Single',    'Filipino', NULL, NULL, NULL, NULL, 7,  4, 'Probationary', '2026-03-06', NULL, 'Active', 0, 1, NULL, 'Step 1'),
+(24, 'EMP-0024', 'Ramon',      'D.',  'Aquino',       'ramon.aquino@oxfordsuites.com.ph',         NULL, '0917 555 2401', 'Makati City',                 '1988-04-12', 'Male',   'Married',   'Filipino', NULL, NULL, NULL, NULL, 18, 6, 'Regular',      '2021-08-15', NULL, 'Active', 1, 1, NULL, 'Step 2'),
+(25, 'EMP-0025', 'Jose',       'M.',  'Rizal',        'jose.rizal@oxfordsuites.com.ph',           NULL, '0917 555 2402', 'Pasay City',                  '1992-07-20', 'Male',   'Single',    'Filipino', NULL, NULL, NULL, NULL, 18, 6, 'Regular',      '2023-02-10', NULL, 'Active', 1, 1, NULL, 'Step 1'),
+(26, 'EMP-0026', 'Mario',      'S.',  'Santos',       'mario.santos@oxfordsuites.com.ph',         NULL, '0917 555 2403', 'Taguig City',                 '1995-11-05', 'Male',   'Single',    'Filipino', NULL, NULL, NULL, NULL, 18, 6, 'Probationary', '2025-09-01', NULL, 'Active', 0, 1, NULL, 'Step 1'),
+(27, 'EMP-0027', 'Dante',      'R.',  'Cruz',         'dante.cruz@oxfordsuites.com.ph',           NULL, '0917 555 2404', 'Makati City',                 '1980-01-30', 'Male',   'Married',   'Filipino', NULL, NULL, NULL, NULL, 19, 6, 'Regular',      '2019-05-20', NULL, 'Active', 1, 4, NULL, 'Step 3'),
+(28, 'EMP-0028', 'Lorna',      'V.',  'Dizon',        'lorna.dizon@oxfordsuites.com.ph',          NULL, '0917 555 2405', 'Mandaluyong City',            '1994-03-17', 'Female', 'Single',    'Filipino', NULL, NULL, NULL, NULL, 20, 7, 'Regular',      '2022-06-12', NULL, 'Active', 1, 2, NULL, 'Step 2'),
+(29, 'EMP-0029', 'Jenny',      'P.',  'Lim',          'jenny.lim@oxfordsuites.com.ph',            NULL, '0917 555 2406', 'Makati City',                 '1996-09-25', 'Female', 'Single',    'Filipino', NULL, NULL, NULL, NULL, 20, 7, 'Probationary', '2025-11-01', NULL, 'Active', 0, 2, NULL, 'Step 1'),
+(30, 'EMP-0030', 'Carlos',     'J.',  'Mendoza',      'carlos.mendoza@oxfordsuites.com.ph',       NULL, '0917 555 2407', 'Pasig City',                  '1998-12-08', 'Male',   'Single',    'Filipino', NULL, NULL, NULL, NULL, 21, 7, 'Probationary', '2026-01-15', NULL, 'Active', 0, 1, NULL, 'Step 1'),
+(31, 'EMP-0031', 'Rica',       'A.',  'Villanueva',   'rica.villanueva@oxfordsuites.com.ph',      NULL, '0917 555 2408', 'Makati City',                 '1993-05-11', 'Female', 'Married',   'Filipino', NULL, NULL, NULL, NULL, 22, 8, 'Regular',      '2021-03-08', NULL, 'Active', 1, 3, NULL, 'Step 2'),
+(32, 'EMP-0032', 'Paola',      'G.',  'Reyes',        'paola.reyes@oxfordsuites.com.ph',          NULL, '0917 555 2409', 'Quezon City',                 '1989-08-19', 'Female', 'Married',   'Filipino', NULL, NULL, NULL, NULL, 23, 8, 'Regular',      '2018-10-01', NULL, 'Active', 1, 5, NULL, 'Step 3'),
+(33, 'EMP-0033', 'Enrico',     'B.',  'Santos',       'enrico.santos@oxfordsuites.com.ph',        NULL, '0917 555 2410', 'Caloocan City',               '1987-06-22', 'Male',   'Married',   'Filipino', NULL, NULL, NULL, NULL, 24, 9, 'Regular',      '2020-04-17', NULL, 'Active', 1, 2, NULL, 'Step 2'),
+(34, 'EMP-0034', 'Nardo',      'C.',  'Dela Cruz',    'nardo.delacruz@oxfordsuites.com.ph',       NULL, '0917 555 2411', 'Manila',                      '1991-02-14', 'Male',   'Single',    'Filipino', NULL, NULL, NULL, NULL, 24, 9, 'Regular',      '2022-09-05', NULL, 'Active', 1, 2, NULL, 'Step 1'),
+(35, 'EMP-0035', 'Felipe',     'D.',  'Ramos',        'felipe.ramos@oxfordsuites.com.ph',         NULL, '0917 555 2412', 'Makati City',                 '1999-10-30', 'Male',   'Single',    'Filipino', NULL, NULL, NULL, NULL, 24, 9, 'Probationary', '2026-02-01', NULL, 'Active', 0, 2, NULL, 'Step 1'),
+(36, 'EMP-0036', 'Victor',     'E.',  'Lim',          'victor.lim@oxfordsuites.com.ph',           NULL, '0917 555 2413', 'Pasay City',                  '1984-12-12', 'Male',   'Married',   'Filipino', NULL, NULL, NULL, NULL, 25, 9, 'Regular',      '2017-07-25', NULL, 'Active', 1, 4, NULL, 'Step 3'),
+(37, 'EMP-0037', 'Andres',     'F.',  'Bonifacio',    'andres.bonifacio@oxfordsuites.com.ph',     NULL, '0917 555 2414', 'Marikina City',               '1990-05-05', 'Male',   'Single',    'Filipino', NULL, NULL, NULL, NULL, 26, 9, 'Regular',      '2021-12-10', NULL, 'Active', 1, 2, NULL, 'Step 2');
 
 -- assign department heads (circular FK resolved after employee insert)
 UPDATE `departments` SET `head_employee_id` = 1  WHERE `department_id` = 1; -- Ana Ramos / Front Office
@@ -103,6 +126,10 @@ UPDATE `departments` SET `head_employee_id` = 2  WHERE `department_id` = 2; -- C
 UPDATE `departments` SET `head_employee_id` = 10 WHERE `department_id` = 3; -- Executive Chef Marco / Kitchen
 UPDATE `departments` SET `head_employee_id` = 3  WHERE `department_id` = 4; -- Lourdes Bautista / Housekeeping
 UPDATE `departments` SET `head_employee_id` = 7  WHERE `department_id` = 5; -- Juan Dela Cruz / Admin & HR
+UPDATE `departments` SET `head_employee_id` = 27 WHERE `department_id` = 6; -- Dante Cruz / Security
+UPDATE `departments` SET `head_employee_id` = 28 WHERE `department_id` = 7; -- Lorna Dizon / Wellness
+UPDATE `departments` SET `head_employee_id` = 32 WHERE `department_id` = 8; -- Paola Reyes / Finance
+UPDATE `departments` SET `head_employee_id` = 36 WHERE `department_id` = 9; -- Victor Lim / Engineering
 
 -- assign supervisors
 UPDATE `employees` SET `supervisor_employee_id` = 9  WHERE `employee_id` IN (1, 2, 3, 7);
@@ -112,6 +139,10 @@ UPDATE `employees` SET `supervisor_employee_id` = 3  WHERE `employee_id` IN (8, 
 UPDATE `employees` SET `supervisor_employee_id` = 7  WHERE `employee_id` IN (11, 12, 17, 21);
 UPDATE `employees` SET `supervisor_employee_id` = 1  WHERE `employee_id` IN (4, 13, 15, 20, 22);
 UPDATE `employees` SET `supervisor_employee_id` = 3  WHERE `employee_id` = 23;
+UPDATE `employees` SET `supervisor_employee_id` = 27 WHERE `employee_id` IN (24, 25, 26);
+UPDATE `employees` SET `supervisor_employee_id` = 28 WHERE `employee_id` IN (29, 30);
+UPDATE `employees` SET `supervisor_employee_id` = 32 WHERE `employee_id` IN (31);
+UPDATE `employees` SET `supervisor_employee_id` = 36 WHERE `employee_id` IN (33, 34, 35, 37);
 
 -- employee_emergency_contacts
 INSERT INTO `employee_emergency_contacts` (`employee_id`, `name`, `relationship`, `phone`, `address`, `is_primary`) VALUES
@@ -150,7 +181,21 @@ INSERT INTO `employee_position_history` (`employee_id`, `effective_date`, `chang
 (20, '2025-11-10', 'Employment', NULL, 2,  NULL, 4, 'Initial hiring as Guest Relations Officer'),
 (21, '2025-01-27', 'Employment', NULL, 8,  NULL, 3, 'Initial hiring as HR Assistant'),
 (22, '2026-05-04', 'Employment', NULL, 1,  NULL, 2, 'Initial hiring as Front Desk Receptionist'),
-(23, '2026-03-06', 'Employment', NULL, 7,  NULL, 1, 'Initial hiring as Housekeeping Attendant');
+(23, '2026-03-06', 'Employment', NULL, 7,  NULL, 1, 'Initial hiring as Housekeeping Attendant'),
+(24, '2021-08-15', 'Employment', NULL, 18, NULL, 1, 'Initial hiring as Security Officer'),
+(25, '2023-02-10', 'Employment', NULL, 18, NULL, 1, 'Initial hiring as Security Officer'),
+(26, '2025-09-01', 'Employment', NULL, 18, NULL, 1, 'Initial hiring as Security Officer'),
+(27, '2019-05-20', 'Employment', NULL, 19, NULL, 4, 'Initial hiring as Security Supervisor'),
+(28, '2022-06-12', 'Employment', NULL, 20, NULL, 2, 'Initial hiring as Spa Therapist'),
+(29, '2025-11-01', 'Employment', NULL, 20, NULL, 2, 'Initial hiring as Spa Therapist'),
+(30, '2026-01-15', 'Employment', NULL, 21, NULL, 1, 'Initial hiring as Wellness / Gym Attendant'),
+(31, '2021-03-08', 'Employment', NULL, 22, NULL, 3, 'Initial hiring as Accounting Assistant'),
+(32, '2018-10-01', 'Employment', NULL, 23, NULL, 5, 'Initial hiring as Finance Officer'),
+(33, '2020-04-17', 'Employment', NULL, 24, NULL, 2, 'Initial hiring as Maintenance Technician'),
+(34, '2022-09-05', 'Employment', NULL, 24, NULL, 2, 'Initial hiring as Maintenance Technician'),
+(35, '2026-02-01', 'Employment', NULL, 24, NULL, 2, 'Initial hiring as Maintenance Technician'),
+(36, '2017-07-25', 'Employment', NULL, 25, NULL, 4, 'Initial hiring as Engineering Supervisor'),
+(37, '2021-12-10', 'Employment', NULL, 26, NULL, 2, 'Initial hiring as Electrician');
 
 -- employee_documents
 INSERT INTO `employee_documents` (`employee_id`, `document_code`, `title`, `category`, `file_path`, `mime_type`, `file_size_bytes`, `document_status`, `document_date`, `expiry_date`, `last_updated_at`) VALUES
@@ -170,7 +215,7 @@ INSERT INTO `employee_documents` (`employee_id`, `document_code`, `title`, `cate
 -- Domain 2: Recruitment
 -- ---------------------------------------------------------------------------
 
--- job_posts (ids 1-6). position_id is required and references the Core HR
+-- job_posts (ids 1-10). position_id is required and references the Core HR
 -- position; slug/title mirror positions.title (kept in sync by the app).
 INSERT INTO `job_posts` (
   `job_post_id`, `slug`, `title`, `department_id`, `position_id`, `employment_type`, `schedule`,
@@ -213,7 +258,31 @@ INSERT INTO `job_posts` (
  'The HR Assistant supports end-to-end recruitment coordination, 201-file maintenance, and employee request processing for the property.',
  '["Coordinate interview schedules with department heads.","Maintain complete and accurate 201 files.","Process COE and employment verification requests.","Assist in new-hire onboarding documentation."]',
  '["Bachelor''s degree in Psychology, HR, or related field.","At least 1 year HR experience.","Strong organizational and documentation skills."]',
-  '["Recruitment","Documentation","MS Office","Confidentiality"]');
+  '["Recruitment","Documentation","MS Office","Confidentiality"]'),
+(7, 'security-officer', 'Security Officer', 6, 18, 'Full-time', 'Shifting Schedule', 16000.00, 19000.00, 2, 0, '2026-05-25', 'Open', 1, '1-2 Years', 'High School Graduate',
+ 'Guard guest floors, lobby posts, and CCTV monitoring on rotating shifts.',
+ 'Security Officers keep guests, staff, and property safe through roving patrols, access control, and incident reporting across the hotel premises.',
+ '["Conduct roving patrols of guest floors and back-of-house.","Enforce access control at lobby and service entrances.","Respond to incidents and prepare blotter reports.","Coordinate with Engineering on safety hazards."]',
+ '["High School Graduate; security license (SOSIA) required.","At least 1 year hotel or commercial security experience.","Physically fit and willing to work shifting schedules."]',
+  '["Access Control","Patrol","Incident Reporting","CCTV"]'),
+(8, 'spa-therapist', 'Spa Therapist', 7, 20, 'Full-time', 'Shifting Schedule', 18000.00, 23000.00, 2, 0, '2026-05-26', 'Open', 1, '1-2 Years', 'Vocational / TESDA',
+ 'Deliver signature massages and wellness treatments to hotel and walk-in guests.',
+ 'Spa Therapists perform Filipino hilot, Swedish, and aromatherapy treatments while upselling wellness packages at the Oxford Suites spa.',
+ '["Perform massage and body treatments to standard protocols.","Prepare treatment rooms and sterilize tools.","Recommend wellness packages to guests.","Maintain guest treatment records."]',
+ '["TESDA NC II in Massage Therapy or equivalent.","At least 1 year spa experience; hotel spa an advantage.","Warm guest-handling skills."]',
+  '["Hilot","Swedish Massage","Guest Care","Upselling"]'),
+(9, 'accounting-assistant', 'Accounting Assistant', 8, 22, 'Full-time', 'Day Shift', 19000.00, 24000.00, 1, 0, '2026-05-27', 'Open', 1, '1-2 Years', 'Bachelor''s Degree',
+ 'Handle payables, receivables encoding, and month-end supporting schedules.',
+ 'The Accounting Assistant supports the Finance Officer with AP/AR encoding, receipt audits from Front Office and F&B outlets, and BIR-ready documentation.',
+ '["Encode supplier invoices and outlet remittances.","Reconcile daily revenue reports from Front Office and F&B.","Prepare BIR supporting schedules.","Assist in month-end close."]',
+ '["Bachelor''s degree in Accountancy or related field.","At least 1 year accounting experience.","Proficient in MS Excel."]',
+  '["Bookkeeping","Reconciliation","MS Excel","Attention to Detail"]'),
+(10, 'maintenance-technician', 'Maintenance Technician', 9, 24, 'Full-time', 'Shifting Schedule', 17000.00, 21000.00, 2, 0, '2026-05-28', 'Open', 1, '1-2 Years', 'Vocational / TESDA',
+ 'Perform preventive maintenance on guestrooms, kitchen equipment, and facilities.',
+ 'Maintenance Technicians respond to housekeeping and front-office work orders, repair plumbing, HVAC, and electrical faults across the property.',
+ '["Respond to guestroom and public-area work orders.","Perform preventive maintenance on HVAC and kitchen equipment.","Troubleshoot minor plumbing and electrical faults.","Log completed work in the facilities tracker."]',
+ '["TESDA NC II in Electrical, Refrigeration, or equivalent.","At least 1 year hotel or building maintenance experience.","Willing to be on-call for emergencies."]',
+  '["HVAC","Plumbing","Electrical","Preventive Maintenance"]');
 
 -- job_post_platforms
 INSERT INTO `job_post_platforms` (`job_post_id`, `platform`, `published_at`, `status`) VALUES
@@ -230,7 +299,15 @@ INSERT INTO `job_post_platforms` (`job_post_id`, `platform`, `published_at`, `st
 (5, 'Company Website', '2026-05-15 08:00:00', 'published'),
 (5, 'Instagram',       '2026-05-15 08:45:00', 'published'),
 (6, 'Company Website', '2026-05-08 08:00:00', 'published'),
-(6, 'Indeed',          '2026-05-08 09:15:00', 'published');
+(6, 'Indeed',          '2026-05-08 09:15:00', 'published'),
+(7, 'Company Website', '2026-05-25 08:00:00', 'published'),
+(7, 'Facebook',        '2026-05-25 08:20:00', 'published'),
+(8, 'Company Website', '2026-05-26 08:00:00', 'published'),
+(8, 'Facebook',        '2026-05-26 08:30:00', 'published'),
+(9, 'Company Website', '2026-05-27 08:00:00', 'published'),
+(9, 'Indeed',          '2026-05-27 09:00:00', 'published'),
+(10, 'Company Website', '2026-05-28 08:00:00', 'published'),
+(10, 'Indeed',          '2026-05-28 09:15:00', 'published');
 
 -- applicants (ids 1-10)
 INSERT INTO `applicants` (`applicant_id`, `applicant_code`, `job_post_id`, `name`, `email`, `phone`, `applied_at`, `fit_score`, `status`, `stage`, `source`, `resume_file_path`, `summary`, `flags_json`) VALUES

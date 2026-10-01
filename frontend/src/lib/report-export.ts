@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Multi-format Report Exporter (PDF, DOCX, Excel) for HRMS Modules.
  *
  * Produces formal, corporate-grade documents entirely client-side with zero
@@ -14,6 +14,7 @@
  * so improving this module upgrades all of them at once.
  */
 
+import { jsPDF } from "jspdf";
 import oxfordMarkMaroon from "@/assets/oxford-mark-maroon.png";
 import { getUser } from "@/lib/auth";
 
@@ -25,12 +26,24 @@ export interface ReportColumn {
   width?: string;
 }
 
+export interface ReportChart {
+  type: "bar" | "pie";
+  title?: string;
+  labels: string[];
+  values: number[];
+}
+
 export interface ReportData {
   title: string;
   subtitle?: string;
   columns: ReportColumn[];
   rows: Record<string, any>[];
   summary?: { label: string; value: string | number }[];
+  /**
+   * Optional chart rendered above the table in PDF / DOCX / print,
+   * and as a ChartData worksheet in Excel. Ignored by CSV.
+   */
+  chart?: ReportChart;
   /**
    * Confidential reports (payroll, 201 files, applicant PII…).
    * ReportMenu requires a password confirmation before exporting these.
@@ -101,6 +114,112 @@ function escapeXml(value: any): string {
     .replace(/'/g, "&apos;");
 }
 
+/* ------------------------------------------------------------------ */
+/* Charts — dependency-free canvas renderer → PNG data URI             */
+/* ------------------------------------------------------------------ */
+
+const CHART_COLORS = [
+  "#520c19",
+  "#7a1226",
+  "#d4af37",
+  "#2f6f4f",
+  "#31597f",
+  "#8a5a2b",
+  "#6b7280",
+  "#b45309",
+];
+
+export function renderChartPng(chart: ReportChart, width = 640, height = 300): string | null {
+  try {
+    if (typeof document === "undefined") return null;
+    const labels = chart.labels.slice(0, 8);
+    const values = chart.values.slice(0, 8);
+    if (!labels.length || labels.length !== values.length) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+    const padL = 46,
+      padR = 16,
+      padT = 30,
+      padB = 44;
+    const max = Math.max(...values, 1);
+
+    ctx.fillStyle = "#520c19";
+    ctx.font = "bold 14px Georgia, serif";
+    ctx.textAlign = "center";
+    if (chart.title) ctx.fillText(chart.title.slice(0, 60), width / 2, 18);
+
+    if (chart.type === "pie") {
+      const total = values.reduce((a, b) => a + b, 0) || 1;
+      const cx = width / 2 - 90,
+        cy = height / 2 + 10,
+        r = Math.min(width, height) / 2 - 50;
+      let angle = -Math.PI / 2;
+      values.forEach((v, i) => {
+        const slice = (v / total) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, angle, angle + slice);
+        ctx.closePath();
+        ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length] ?? "#520c19";
+        ctx.fill();
+        angle += slice;
+      });
+      // legend
+      ctx.textAlign = "left";
+      ctx.font = "11px system-ui, sans-serif";
+      labels.forEach((lb, i) => {
+        const y = padT + 12 + i * 20;
+        ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length] ?? "#520c19";
+        ctx.fillRect(cx + r + 24, y - 9, 12, 12);
+        ctx.fillStyle = "#374151";
+        ctx.fillText(`${lb.slice(0, 22)} (${values[i] ?? 0})`, cx + r + 42, y);
+      });
+      return canvas.toDataURL("image/png");
+    }
+
+    // bar
+    const plotW = width - padL - padR,
+      plotH = height - padT - padB;
+    const n = values.length,
+      gap = 14;
+    const barW = Math.max(18, (plotW - gap * (n + 1)) / n);
+    ctx.strokeStyle = "#e5e7eb";
+    ctx.fillStyle = "#6b7280";
+    ctx.font = "10px system-ui, sans-serif";
+    ctx.textAlign = "right";
+    for (let g = 0; g <= 4; g++) {
+      const y = padT + (plotH * g) / 4;
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(width - padR, y);
+      ctx.stroke();
+      ctx.fillText(String(Math.round((max * (4 - g)) / 4)), padL - 6, y + 3);
+    }
+    ctx.textAlign = "center";
+    values.forEach((v, i) => {
+      const h = (v / max) * plotH;
+      const x = padL + gap + i * (barW + gap);
+      const y = padT + plotH - h;
+      ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length] ?? "#520c19";
+      ctx.fillRect(x, y, barW, h);
+      ctx.fillStyle = "#111827";
+      ctx.font = "bold 11px system-ui, sans-serif";
+      ctx.fillText(String(v), x + barW / 2, y - 5);
+      ctx.fillStyle = "#4b5563";
+      ctx.font = "10px system-ui, sans-serif";
+      ctx.fillText((labels[i] ?? "").slice(0, 14), x + barW / 2, padT + plotH + 14);
+    });
+    return canvas.toDataURL("image/png");
+  } catch {
+    return null;
+  }
+}
+
 /** Long-form date, e.g. "31 August 2026" — formal documents avoid numeric dates. */
 function formalDate(d: Date): string {
   return d.toLocaleDateString("en-GB", {
@@ -125,6 +244,7 @@ export function exportReport(report: ReportData, format: ReportFormat): void {
   const preparedByDept =
     (user?.department_name as string | undefined) || "Human Resources Department";
 
+  // EXPORT path — always downloads a file, never opens the print dialog.
   if (format === "excel") {
     exportToExcel(report, generatedAt, refNo, preparedBy);
   } else if (format === "docx") {
@@ -132,7 +252,7 @@ export function exportReport(report: ReportData, format: ReportFormat): void {
   } else if (format === "csv") {
     exportToCsv(report);
   } else if (format === "pdf") {
-    exportToPrintablePdf(report, generatedAt, refNo, preparedBy, preparedByTitle, preparedByDept);
+    exportToPdfDownload(report, generatedAt, refNo, preparedBy, preparedByTitle, preparedByDept);
   }
 }
 
@@ -210,6 +330,29 @@ function letterheadHtml(opts: { inline?: boolean }): string {
 /* ------------------------------------------------------------------ */
 /* EXCEL — native workbook via SpreadsheetML 2003 (.xls)               */
 /* ------------------------------------------------------------------ */
+/** Second worksheet backing the chart — select it in Excel and Insert → Chart. */
+function chartSheetXml(report: ReportData): string {
+  if (!report.chart) return "";
+  const rows = report.chart.labels
+    .map(
+      (lb, i) => `
+     <Row>
+       <Cell ss:StyleID="Cell"><Data ss:Type="String">${escapeXml(lb)}</Data></Cell>
+       <Cell ss:StyleID="Cell"><Data ss:Type="Number">${Number(report.chart?.values[i] ?? 0)}</Data></Cell>
+     </Row>`,
+    )
+    .join("");
+  return `
+  <Worksheet ss:Name="ChartData">
+    <Table>
+     <Row>
+       <Cell ss:StyleID="Head"><Data ss:Type="String">${escapeXml(report.chart.title || "Category")}</Data></Cell>
+       <Cell ss:StyleID="Head"><Data ss:Type="String">Value</Data></Cell>
+     </Row>${rows}
+    </Table>
+  </Worksheet>`;
+}
+
 function exportToExcel(
   report: ReportData,
   generatedAt: string,
@@ -299,22 +442,64 @@ function exportToExcel(
    <Style ss:ID="SumVal"><Font ss:Bold="1" ss:Size="14" ss:Color="${BRAND_COLOR}"/></Style>
    <Style ss:ID="Cell"><Font ss:Size="10"/></Style>
  </Styles>
- <Worksheet ss:Name="Report">
-   <Table>
-    ${metaRows}
-    <Row><Cell><Data ss:Type="String"></Data></Cell></Row>
-    ${summaryRows}
-    <Row><Cell><Data ss:Type="String"></Data></Cell></Row>
-    ${headerRow}
-    ${dataRows}
-   </Table>
- </Worksheet>
+  <Worksheet ss:Name="Report">
+    <Table>
+     ${metaRows}
+     <Row><Cell><Data ss:Type="String"></Data></Cell></Row>
+     ${summaryRows}
+     <Row><Cell><Data ss:Type="String"></Data></Cell></Row>
+     ${headerRow}
+     ${dataRows}
+    </Table>
+  </Worksheet>
+  ${chartSheetXml(report)}
 </Workbook>`;
 
-  const blob = new Blob(["﻿" + xml], {
+  const blob = new Blob(["\uFEFF" + xml], {
     type: "application/vnd.ms-excel;charset=utf-8;",
   });
   triggerDownload(blob, filename);
+}
+
+/* Shared 201-file report builder: one source of truth for 201 export/print. */
+export function build201FileReport(input: {
+  employeeName: string;
+  employeeCode: string;
+  position: string;
+  department: string;
+  status: string;
+  employmentType: string;
+  dateHired: string;
+  email: string;
+  phone: string;
+  supervisor: string;
+  documents: { name: string; status: string; file?: string }[];
+  history: { type: string; date: string; detail: string }[];
+}): ReportData {
+  const rows = [
+    ...input.documents.map((d) => ({
+      section: "Document",
+      detail: d.name,
+      meta: d.file || d.status,
+    })),
+    ...input.history.map((h) => ({ section: h.type, detail: h.detail, meta: h.date })),
+  ];
+  return {
+    title: `201 File - ${input.employeeName}`,
+    subtitle: `${input.employeeCode} · ${input.position} · ${input.department}`,
+    columns: [
+      { header: "Section", key: "section" },
+      { header: "Detail", key: "detail" },
+      { header: "Meta", key: "meta" },
+    ],
+    rows,
+    summary: [
+      { label: "Employment Status", value: input.status },
+      { label: "Employment Type", value: input.employmentType },
+      { label: "Date Hired", value: input.dateHired || "-" },
+    ],
+    sensitive: true,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -331,6 +516,13 @@ function exportToWord(
   const filename = buildFilename(report, "doc");
   const logo = LOGO_DATA_URI
     ? `<img src="${LOGO_DATA_URI}" width="46" alt="Oxford Suites Makati" style="display:block;" />`
+    : "";
+  const chartPng = report.chart ? renderChartPng(report.chart) : null;
+  const chartHtml = chartPng
+    ? `<div style="text-align:center;margin:16px 0 8px 0;">
+         ${report.chart?.title ? `<p style="font-size:12px;font-weight:bold;color:${BRAND_COLOR};margin:0 0 6px 0;font-family:'Times New Roman',serif;">${escapeHtml(report.chart.title)}</p>` : ""}
+         <img src="${chartPng}" width="560" alt="Report chart" />
+       </div>`
     : "";
 
   const metaBlock = `
@@ -434,6 +626,7 @@ function exportToWord(
     </div>
     ${titleBlock}
     ${summaryHtml}
+    ${chartHtml}
     <table class="data">
       <thead><tr>${tableHeaders}</tr></thead>
       <tbody>${tableRows}${emptyRowNote}</tbody>
@@ -446,15 +639,14 @@ function exportToWord(
   </body>
   </html>`;
 
-  const blob = new Blob(["﻿" + html], { type: "application/msword;charset=utf-8" });
+  const blob = new Blob(["\uFEFF" + html], { type: "application/msword;charset=utf-8" });
   triggerDownload(blob, filename);
 }
 
 /* ------------------------------------------------------------------ */
-/* PDF — formal typeset A4 report rendered through an iframe          */
-/*      (avoids popup blockers; "Save as PDF" in the print dialog)     */
+/* PDF — true downloadable PDF via jsPDF (EXPORT path only: no print) */
 /* ------------------------------------------------------------------ */
-function exportToPrintablePdf(
+function exportToPdfDownload(
   report: ReportData,
   generatedAt: string,
   refNo: string,
@@ -462,9 +654,146 @@ function exportToPrintablePdf(
   preparedByTitle: string,
   preparedByDept: string,
 ): void {
-  printHtmlDocument(
-    buildPrintableHtml(report, generatedAt, refNo, preparedBy, preparedByTitle, preparedByDept),
-  );
+  const landscape = report.columns.length > 6;
+  const doc = new jsPDF({
+    unit: "mm",
+    format: "a4",
+    orientation: landscape ? "landscape" : "portrait",
+  });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 14;
+  let y = margin;
+
+  const ensureSpace = (needed: number) => {
+    if (y + needed > pageH - margin) {
+      doc.addPage();
+      y = margin;
+    }
+  };
+
+  // Letterhead
+  doc.setTextColor(82, 12, 25);
+  doc.setFont("times", "bold");
+  doc.setFontSize(15);
+  doc.text(BRAND, margin, y + 5);
+  doc.setFontSize(8);
+  doc.setTextColor(120, 120, 120);
+  doc.setFont("times", "normal");
+  doc.text(BRAND_SUB.toUpperCase(), margin, y + 10);
+  doc.setFontSize(11);
+  doc.setTextColor(82, 12, 25);
+  doc.setFont("times", "bold");
+  doc.text(report.title, pageW - margin, y + 5, { align: "right" });
+  doc.setFontSize(7.5);
+  doc.setTextColor(80, 80, 80);
+  doc.setFont("times", "normal");
+  doc.text(`Control No.: ${refNo}`, pageW - margin, y + 10, { align: "right" });
+  y += 15;
+  doc.setDrawColor(82, 12, 25);
+  doc.setLineWidth(0.6);
+  doc.line(margin, y, pageW - margin, y);
+  y += 5;
+
+  doc.setFontSize(8);
+  doc.setTextColor(60, 60, 60);
+  doc.text(`Date of Issue: ${generatedAt}`, margin, y);
+  doc.text(`Prepared by: ${preparedBy} (${preparedByTitle} - ${preparedByDept})`, margin, y + 4);
+  if (report.subtitle) {
+    doc.setFont("times", "italic");
+    doc.text(report.subtitle, margin, y + 8);
+    y += 12;
+  } else {
+    y += 8;
+  }
+
+  // Summary
+  if (report.summary?.length) {
+    ensureSpace(12);
+    doc.setFont("times", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(82, 12, 25);
+    for (const s of report.summary) {
+      doc.text(`${s.label}: ${s.value}`, margin, y);
+      y += 5;
+    }
+    y += 2;
+  }
+
+  // Chart (PNG rendered from the report.chart definition)
+  if (report.chart) {
+    const png = renderChartPng(report.chart, 640, 300);
+    if (png) {
+      const imgW = pageW - margin * 2;
+      const imgH = (imgW * 300) / 640;
+      ensureSpace(imgH + 6);
+      try {
+        doc.addImage(png, "PNG", margin, y, imgW, imgH);
+        y += imgH + 4;
+      } catch {
+        /* chart is decorative — never block the export */
+      }
+    }
+  }
+
+  // Table
+  const colCount = Math.max(report.columns.length, 1);
+  const usable = pageW - margin * 2;
+  const colW = usable / colCount;
+  const rowH = 7;
+
+  const drawHeader = () => {
+    doc.setFillColor(82, 12, 25);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("times", "bold");
+    doc.setFontSize(8);
+    report.columns.forEach((c, i) => {
+      const x = margin + i * colW;
+      doc.rect(x, y, colW, rowH, "F");
+      doc.text(String(c.header).slice(0, 28), x + 1.5, y + 4.8);
+    });
+    y += rowH;
+    doc.setTextColor(20, 20, 20);
+    doc.setFont("times", "normal");
+  };
+
+  ensureSpace(rowH * 2);
+  drawHeader();
+  doc.setFontSize(7.5);
+  if (report.rows.length === 0) {
+    ensureSpace(rowH);
+    doc.text("No records were available for inclusion in this report.", margin + 2, y + 4.8);
+    y += rowH;
+  } else {
+    report.rows.forEach((row, ri) => {
+      ensureSpace(rowH);
+      if (ri % 2 === 1) {
+        doc.setFillColor(247, 245, 242);
+        doc.rect(margin, y, usable, rowH, "F");
+      }
+      report.columns.forEach((c, i) => {
+        const x = margin + i * colW;
+        doc.rect(x, y, colW, rowH);
+        const val = row[c.key] ?? "-";
+        doc.text(String(val).slice(0, 32), x + 1.5, y + 4.8);
+      });
+      y += rowH;
+    });
+  }
+
+  // Sign-off + footer
+  ensureSpace(30);
+  y += 8;
+  doc.setFontSize(8);
+  doc.text(`Prepared by: ${preparedBy}`, margin, y);
+  doc.text("Noted / Received by: ______________________", pageW - margin - 70, y);
+  y += 4;
+  doc.setFontSize(7);
+  doc.setTextColor(120, 120, 120);
+  doc.text(`${ADDRESS} | ${CONTACT}`, margin, pageH - 10);
+  doc.text("System-generated HRMS record - strictly confidential.", margin, pageH - 6);
+
+  doc.save(buildFilename(report, "pdf"));
 }
 
 function buildPrintableHtml(
@@ -514,6 +843,14 @@ function buildPrintableHtml(
     </div>`
     : "";
 
+  const printChartPng = report.chart ? renderChartPng(report.chart) : null;
+  const printChartHtml = printChartPng
+    ? `<div class="chart-block">
+         ${report.chart?.title ? `<div class="chart-title">${escapeHtml(report.chart.title)}</div>` : ""}
+         <img src="${printChartPng}" alt="Report chart" />
+       </div>`
+    : "";
+
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -539,6 +876,9 @@ function buildPrintableHtml(
     .summary-card { flex: 1; min-width: 132px; background: #faf7f0; border: 1px solid #e0d5bd; border-top: 2px solid ${BRAND_COLOR}; padding: 9px 12px; text-align: center; }
     .summary-label { font-size: 9px; color: #854d0e; text-transform: uppercase; font-weight: 700; letter-spacing: 0.09em; }
     .summary-value { font-size: 17px; font-weight: 700; color: ${BRAND_COLOR}; margin-top: 3px; }
+    .chart-block { text-align: center; margin: 14px 0 8px; }
+    .chart-title { font-size: 12px; font-weight: 700; color: ${BRAND_COLOR}; margin-bottom: 6px; }
+    .chart-block img { max-width: 100%; height: auto; border: 1px solid #e0d5bd; }
     table.doc-table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 10.5px; }
     table.doc-table th { background: ${BRAND_COLOR}; color: #ffffff; text-align: left; padding: 8px 9px; border: 1px solid ${BRAND_COLOR_LIGHT}; font-weight: 700; letter-spacing: 0.02em; }
     table.doc-table td { padding: 7px 9px; border: 1px solid #b8b2a8; }
@@ -574,6 +914,7 @@ function buildPrintableHtml(
     <p class="doc-subtitle">${escapeHtml(report.subtitle || `${BRAND} · ${BRAND_SUB}`)}</p>
   </div>
   ${summaryHtml}
+  ${printChartHtml}
   <table class="doc-table">
     <thead><tr>${tableHeaders}</tr></thead>
     <tbody>${tableRows}${emptyRowNote}</tbody>
@@ -594,18 +935,13 @@ function buildPrintableHtml(
     <span>${escapeHtml(ADDRESS)} &bull; ${escapeHtml(CONTACT)}</span>
     <span class="confidential">A system-generated record of the ${escapeHtml(BRAND)} Human Resources Management System &bull; Strictly confidential</span>
   </div>
-  <script>
-    function __printReport() { window.focus(); window.print(); }
-    if (document.readyState === "complete") { setTimeout(__printReport, 300); }
-    else { window.addEventListener("load", function () { setTimeout(__printReport, 300); }); }
-  </script>
 </body>
 </html>`;
 
   return html;
 }
 
-/** Render a full HTML document in a hidden iframe and raise the print dialog. */
+/** Render a full HTML document in a hidden iframe and raise the print dialog ONCE. */
 function printHtmlDocument(html: string): void {
   const iframe = document.createElement("iframe");
   iframe.setAttribute("aria-hidden", "true");
@@ -617,6 +953,27 @@ function printHtmlDocument(html: string): void {
   iframe.style.border = "0";
   document.body.appendChild(iframe);
 
+  const cleanup = () => {
+    setTimeout(() => {
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    }, 1000);
+  };
+
+  const doPrint = () => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // Print exactly once, after the iframe finishes loading the document.
+  iframe.onload = () => {
+    setTimeout(doPrint, 350);
+  };
+  iframe.contentWindow?.addEventListener?.("afterprint", cleanup);
+
   const doc = iframe.contentWindow?.document;
   if (!doc) {
     const w = window.open("", "_blank");
@@ -624,7 +981,11 @@ function printHtmlDocument(html: string): void {
       w.document.open();
       w.document.write(html);
       w.document.close();
+      // New-window fallback: print once on load, never download.
+      w.addEventListener("load", () => setTimeout(() => w.print(), 350));
+      setTimeout(cleanup, 5000);
     } else {
+      cleanup();
       alert("Unable to open the report. Please allow popups for this site.");
     }
     return;
@@ -633,19 +994,11 @@ function printHtmlDocument(html: string): void {
   doc.open();
   doc.write(html);
   doc.close();
-
-  const remove = () => {
-    setTimeout(() => {
-      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-    }, 800);
-  };
-  iframe.contentWindow?.focus();
-  try {
-    iframe.contentWindow?.print();
-  } catch {
-    /* ignore */
-  }
-  remove();
+  // Safety net: if onload already fired synchronously, still print once.
+  setTimeout(() => {
+    if (document.body.contains(iframe)) doPrint();
+  }, 1200);
+  setTimeout(cleanup, 8000);
 }
 
 function triggerDownload(blob: Blob, filename: string): void {
@@ -653,8 +1006,11 @@ function triggerDownload(blob: Blob, filename: string): void {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.style.display = "none";
   document.body.appendChild(a);
-  a.click();
+  // Dispatch a real mouse click (more reliable than .click() for blobs).
+  a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // Revoke after a delay — revoking synchronously aborts the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
 }

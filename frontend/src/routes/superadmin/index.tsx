@@ -134,7 +134,11 @@ function SuperAdminDashboard() {
       ? Math.round((stats.employees.active / stats.employees.total) * 1000) / 10
       : 0;
 
-  const deptData = stats?.departments ?? [];
+  const deptData = [...(stats?.departments ?? [])]
+    .map((d) => ({ ...d, total: d.staff + d.open }))
+    .sort((a, b) => b.total - a.total || b.staff - a.staff || a.name.localeCompare(b.name));
+  const emptyDepts = deptData.filter((d) => d.total === 0);
+  const chartDepts = deptData.filter((d) => d.total > 0);
   const roleData = Object.entries(stats?.system_users.by_role ?? {})
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value);
@@ -500,17 +504,18 @@ function SuperAdminDashboard() {
               </div>
             ) : (
             <div className="mt-4 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-              <div className="h-60">
+              <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={deptData} layout="vertical" margin={{ left: 40 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                    <XAxis type="number" fontSize={12} stroke="var(--color-muted-foreground)" />
+                  <BarChart data={chartDepts} layout="vertical" margin={{ left: 24, right: 12 }} barCategoryGap="26%">
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
+                    <XAxis type="number" fontSize={12} stroke="var(--color-muted-foreground)" allowDecimals={false} />
                     <YAxis
                       type="category"
                       dataKey="name"
-                      width={130}
+                      width={150}
                       fontSize={11}
                       stroke="var(--color-muted-foreground)"
+                      tickLine={false}
                     />
                     <Tooltip
                       contentStyle={{
@@ -518,6 +523,15 @@ function SuperAdminDashboard() {
                         border: "1px solid var(--color-border)",
                         borderRadius: 8,
                         fontSize: 12,
+                      }}
+                      formatter={(value: any, name: any, props: any) => {
+                        if (name === "Filled staff") return [`${value} filled`, name];
+                        if (name === "Open roles") return [`${value} open`, name];
+                        return [value, name];
+                      }}
+                      labelFormatter={(label) => {
+                        const d = chartDepts.find((x) => x.name === label);
+                        return d ? `${label} · ${d.staff}/${d.total} filled` : label;
                       }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -537,16 +551,15 @@ function SuperAdminDashboard() {
                 </ResponsiveContainer>
               </div>
 
-              <div className="flex flex-col justify-center gap-3">
-                {deptData.map((d) => {
-                  const total = d.staff + d.open;
-                  const pct = total > 0 ? Math.round((d.staff / total) * 100) : 100;
+              <div className="flex max-h-72 flex-col gap-3 overflow-y-auto pr-1">
+                {chartDepts.map((d) => {
+                  const pct = d.total > 0 ? Math.round((d.staff / d.total) * 100) : 0;
                   return (
                     <div key={d.name}>
                       <div className="flex items-center justify-between text-xs">
                         <span className="font-medium">{d.name}</span>
                         <span className="text-muted-foreground">
-                          {d.staff}/{total} · {pct}% filled
+                          {d.staff}/{d.total} · {pct}% filled
                         </span>
                       </div>
                       <div className="mt-1 flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -562,6 +575,12 @@ function SuperAdminDashboard() {
                     </div>
                   );
                 })}
+                {emptyDepts.length > 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {emptyDepts.length} department{emptyDepts.length !== 1 ? "s" : ""} with no
+                    staffing yet: {emptyDepts.map((d) => d.name).join(", ")}.
+                  </p>
+                )}
               </div>
             </div>
             )}

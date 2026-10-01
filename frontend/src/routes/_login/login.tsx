@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 
 import { authApi } from "@/lib/api";
 import { setToken, setUser } from "@/lib/auth";
+import { useLightOnly } from "@/lib/theme";
 
 const LOGIN_CONTEXT_KEY = "oxford_hrms_login";
 
@@ -129,6 +130,7 @@ const montageImages = [
 ];
 
 function LoginPage() {
+  useLightOnly();
   const navigate = useNavigate();
   const [show, setShow] = useState(false);
   const [password, setPassword] = useState("");

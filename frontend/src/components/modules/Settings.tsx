@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { mySettingsApi, settingsApi } from "@/lib/api";
+import { applyTheme, getStoredTheme, type ThemeChoice } from "@/lib/theme";
 import { myProfile } from "@/data/ess";
 import { getUser } from "@/lib/auth";
 import { isValidEmail, isValidPhone, sanitizeName, sanitizePhone } from "@/lib/validation";
@@ -169,8 +170,10 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   const [pwConfirmOpen, setPwConfirmOpen] = useState(false);
 
   // Preferences — edited inline on the card; saved when the user clicks save.
+  // Theme defaults to the locally stored choice so the select shows the
+  // active mode even before the database values arrive.
   const [preferences, setPreferences] = useState({
-    theme: "",
+    theme: getStoredTheme() as string,
     language: "",
     dateFormat: "",
     timeFormat: "",
@@ -230,8 +233,12 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
       setCompanyDraft(map["company"]);
     }
     if (map["preferences"]) {
-      setPreferences(map["preferences"]);
-      setPrefsSavedSnapshot(JSON.stringify(map["preferences"]));
+      setPreferences((prev) => ({ ...prev, ...map["preferences"] }));
+      setPrefsSavedSnapshot(JSON.stringify({ ...preferences, ...map["preferences"] }));
+      const t = (map["preferences"] as { theme?: string }).theme;
+      if (t === "Light" || t === "Dark" || t === "System") {
+        applyTheme(t as ThemeChoice);
+      }
     }
     if (map["security"]) {
       setSecurity(map["security"]);
@@ -272,6 +279,11 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
         }
         if (mine?.preferences && Object.keys(mine.preferences).length > 0) {
           setPreferences((prev) => ({ ...prev, ...mine.preferences }));
+          setPrefsSavedSnapshot(JSON.stringify(mine.preferences));
+          const t = (mine.preferences as { theme?: string }).theme;
+          if (t === "Light" || t === "Dark" || t === "System") {
+            applyTheme(t as ThemeChoice);
+          }
         }
         setOtpEnabled(mine?.otp_enabled ?? true);
       })
@@ -286,6 +298,13 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   /** Persists the inline-edited preferences to the database. */
   const savePreferences = async () => {
     try {
+      if (
+        preferences.theme === "Light" ||
+        preferences.theme === "Dark" ||
+        preferences.theme === "System"
+      ) {
+        applyTheme(preferences.theme as ThemeChoice);
+      }
       await mySettingsApi.save("preferences", currentUser, preferences);
       setPrefsSavedSnapshot(JSON.stringify(preferences));
       toast.success("Preferences saved to database");
@@ -486,7 +505,12 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
               <span className="text-sm text-muted-foreground">Theme</span>
               <Select
                 value={preferences.theme}
-                onValueChange={(v) => setPreferences((p) => ({ ...p, theme: v }))}
+                onValueChange={(v) => {
+                  setPreferences((p) => ({ ...p, theme: v }));
+                  if (v === "Light" || v === "Dark" || v === "System") {
+                    applyTheme(v as ThemeChoice);
+                  }
+                }}
               >
                 <SelectTrigger className="h-8 w-40">
                   <SelectValue placeholder="Select theme" />
@@ -832,53 +856,6 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
           </CardContent>
         </Card>
 
-        {isSuperAdmin && (
-          <Dialog open={resetPwOpen} onOpenChange={setResetPwOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="font-display text-2xl">
-                  Change default password of all users
-                </DialogTitle>
-                <DialogDescription>
-                  Sets the same default password for every active system user account, and saves it
-                  to the database so new user accounts are created with it. Users will need to log
-                  in with the new password.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="reset-pw">New default password</Label>
-                  <Input
-                    id="reset-pw"
-                    type="password"
-                    value={resetPw}
-                    onChange={(e) => setResetPw(e.target.value)}
-                    placeholder="At least 8 characters"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reset-pw-confirm">Confirm new default password</Label>
-                  <Input
-                    id="reset-pw-confirm"
-                    type="password"
-                    value={resetPwConfirm}
-                    onChange={(e) => setResetPwConfirm(e.target.value)}
-                    placeholder="Repeat the new password"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setResetPwOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={resetDefaultPassword}>Update all users</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
-
-        {/* Change default password of ALL active system users (superadmin) —
-            also saved to system_settings.default_password in the database */}
         {isSuperAdmin && (
           <Dialog open={resetPwOpen} onOpenChange={setResetPwOpen}>
             <DialogContent>

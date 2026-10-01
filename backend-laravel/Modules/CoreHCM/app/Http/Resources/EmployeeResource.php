@@ -46,6 +46,25 @@ class EmployeeResource extends JsonResource
             'documents' => DocumentResource::collection($this->whenLoaded('documents')),
             'position_history' => PositionHistoryResource::collection($this->whenLoaded('positionHistory')),
             'exit_record' => $this->whenLoaded('exitRecord', fn () => $this->exitRecord ? new ExitRecordResource($this->exitRecord) : null),
+            'leave_balances' => $this->whenLoaded('leaveBalances', fn () => $this->leaveBalances->map(fn ($b) => [
+                'leave_balance_id' => $b->leave_balance_id,
+                'leave_type' => $b->leave_type,
+                'period_year' => $b->period_year,
+                'total_days' => (float) $b->total_days,
+                'used_days' => (float) $b->used_days,
+                'available_days' => max(0, (float) $b->total_days - (float) $b->used_days),
+            ])->values()),
+            'leave_requests' => $this->whenLoaded('essRequests', fn () => $this->essRequests
+                ->filter(fn ($r) => stripos((string) $r->request_type, 'leave') !== false)
+                ->take(20)
+                ->map(fn ($r) => [
+                    'request_code' => $r->request_code,
+                    'request_type' => $r->request_type,
+                    'status' => $r->status,
+                    'date_from' => $r->date_from?->toDateString(),
+                    'date_to' => $r->date_to?->toDateString(),
+                    'filed_at' => $r->filed_at?->toDateString(),
+                ])->values()),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

@@ -4,6 +4,7 @@ namespace Modules\Settings\Console;
 
 use Carbon\Carbon;
 use Illuminate\Console\Command;
+use App\Services\AuditLogger;
 use Modules\Settings\Models\SystemSetting;
 use Modules\Settings\Services\BackupService;
 
@@ -56,6 +57,17 @@ class RunSettingsAutoBackup extends Command
         }
 
         $this->info("Automatic {$schedule} backup created: {$entry['id']} ({$entry['size']}).");
+
+        AuditLogger::log(
+            "Automatic backup {$entry['id']} created ({$schedule})",
+            'Settings',
+            'Info',
+            'backup',
+            $entry['id'],
+            "Scheduled {$schedule} backup {$entry['id']} ({$entry['size']}) created by the system.",
+            null,
+            null,
+        );
 
         $keep = max(1, (int) env('BACKUP_KEEP_AUTOMATIC', 8));
         $pruned = BackupService::pruneAutomatic($keep);
