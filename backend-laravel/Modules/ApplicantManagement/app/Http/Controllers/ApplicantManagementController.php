@@ -20,6 +20,7 @@ use Modules\ApplicantManagement\Http\Requests\UpdateApplicantRequest;
 use Modules\ApplicantManagement\Http\Resources\ApplicantResource;
 use Modules\ApplicantManagement\Models\Applicant;
 use Modules\ApplicantManagement\Services\ScreeningService;
+use Modules\RecruitmentManagement\Models\JobPost;
 use App\Services\NlpService;
 
 class ApplicantManagementController extends Controller
@@ -111,6 +112,13 @@ class ApplicantManagementController extends Controller
             );
         }
 
+        // Applicants may only be attached to an available job post (Open /
+        // published, active, with remaining slots) — same rule as the public
+        // landing apply. Closed, Draft or fully-filled posts reject new adds.
+        if ($blocked = $this->unavailableJobPostResponse((int) ($data['job_post_id'] ?? 0))) {
+            return $blocked;
+        }
+
         // Handle resume upload
         if ($request->hasFile('resume')) {
             $data['resume_hash'] = DuplicateApplicationService::hashFile($request->file('resume'));
@@ -175,6 +183,36 @@ class ApplicantManagementController extends Controller
             new ApplicantResource($applicant->load(['jobPost.department'])),
             201
         );
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Availability guard shared by store/update                             */
+    /* A job post accepts applicants only while it is Open (or published),   */
+    /* active, and still has unfilled vacancies. Returns a 422 response when */
+    /* the post is unavailable, null when the applicant may proceed.         */
+    /* ------------------------------------------------------------------ */
+
+    private function unavailableJobPostResponse(int $jobPostId): ?JsonResponse
+    {
+        $jobPost = JobPost::find($jobPostId);
+
+        if (! $jobPost) {
+            return response()->json(['message' => 'The selected job post no longer exists.'], 422);
+        }
+
+        if (! $jobPost->active || ! in_array($jobPost->status, ['published', 'Open'], true)) {
+            return response()->json([
+                'message' => "Cannot add applicant: the job post for '{$jobPost->title}' is {$jobPost->status} and is not accepting applications.",
+            ], 422);
+        }
+
+        if ($jobPost->remainingSlots() <= 0) {
+            return response()->json([
+                'message' => "Cannot add applicant: all slots for '{$jobPost->title}' have been filled.",
+            ], 422);
+        }
+
+        return null;
     }
 
     /* ------------------------------------------------------------------ */
@@ -465,6 +503,13 @@ class ApplicantManagementController extends Controller
         $data  = $request->validated();
         $oldStage = $model->stage;
         $oldJobPostId = $model->job_post_id;
+
+        // Transfers (referrals) may only target an available job post.
+        if (isset($data['job_post_id']) && (int) $data['job_post_id'] !== (int) $oldJobPostId) {
+            if ($blocked = $this->unavailableJobPostResponse((int) $data['job_post_id'])) {
+                return $blocked;
+            }
+        }
 
         // Handle resume replacement
         if ($request->hasFile('resume')) {

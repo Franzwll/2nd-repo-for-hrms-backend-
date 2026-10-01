@@ -13,6 +13,8 @@ import {
   ChevronLeft,
   ChevronDown,
   ChevronRight,
+  Circle,
+  ClipboardList,
   Clock,
   GraduationCap,
   HelpCircle,
@@ -24,7 +26,9 @@ import {
   Download,
   Eye,
   ExternalLink,
+  FileCheck2,
   FileText,
+  Flag,
   CalendarPlus,
   History,
   Loader2,
@@ -36,8 +40,10 @@ import {
   Plus,
   Repeat2,
   RefreshCw,
+  Save,
   ScanLine,
   Search,
+  Send,
   Settings2,
   ShieldAlert,
   ShieldCheck,
@@ -87,6 +93,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -137,8 +144,15 @@ import {
   type AuditEntry,
   type Interview,
 } from "@/data/applicants";
-import { departments, positions } from "@/data/hr";
-import { hireStore } from "@/data/hires";
+import { departments, positions, type NewHire } from "@/data/hr";
+import { reportedEntitiesStore, type ReportedEntityType } from "@/data/reported-entities";
+import {
+  DEFAULT_ACCOUNT_PASSWORD,
+  hireStore,
+  useHires,
+  useMasterChecklists,
+  type ChecklistViewTarget,
+} from "@/data/hires";
 import { jobs } from "@/data/jobs";
 import { useNavigate } from "@tanstack/react-router";
 import { cn, downloadTextFile } from "@/lib/utils";
@@ -154,6 +168,7 @@ import {
   facilitiesApi,
   interviewsApi,
   jobPostsApi,
+  onboardingItemsApi,
   practicalTestsApi,
   screeningApi,
   settingsApi,
@@ -171,6 +186,7 @@ import {
   type ApiScreeningPreview,
   type ApiScreeningReference,
   type ApiSystemUser,
+  type ScreeningReferencePayload,
 } from "@/lib/api";
 import {
   isValidEmail,
@@ -847,7 +863,13 @@ function screeningVerdictTone(
 }
 
 /** Green verdict banner beside the donut ("Strong match…", "Perfect for the job!"). */
-export function ScreeningVerdictBanner({ status, score }: { status: ApplicantStatus; score: number }) {
+export function ScreeningVerdictBanner({
+  status,
+  score,
+}: {
+  status: ApplicantStatus;
+  score: number;
+}) {
   const copy = screeningVerdictCopy(status, score);
   const tone = screeningVerdictTone(status, score);
   return (
@@ -1013,9 +1035,7 @@ export function ScreeningStatTiles({
       />
       <ScreeningStatTile
         icon={showIcons ? <CalendarDays className="h-4 w-4 shrink-0" /> : undefined}
-        value={
-          yearsExperience !== null ? formatExperienceYears(yearsExperience) : "—"
-        }
+        value={yearsExperience !== null ? formatExperienceYears(yearsExperience) : "—"}
         label="Experience"
         tone="primary"
       />
@@ -1047,8 +1067,7 @@ export function ScreeningModalSummary({
   yearsExperience: number | null;
   educationLabel: string;
 }) {
-  const years =
-    yearsExperience !== null ? formatExperienceYears(yearsExperience) : "—";
+  const years = yearsExperience !== null ? formatExperienceYears(yearsExperience) : "—";
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex flex-col items-center gap-4 xl:flex-row">
@@ -1603,6 +1622,275 @@ function screeningViewModel(a: Applicant): {
   };
 }
 
+/** Normalizes an entity phrase for comparison (lowercase, punctuation-free). */
+function normalizeMatchText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9+/#.\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Word/token-aware match between a required entity and one candidate entity —
+ *  avoids raw-substring false positives ("IT" inside "Hospitality") and the
+ *  exact-match false negatives ("Customer Service" vs "Customer Service Skills"). */
+function requirementMatches(candidate: string, requirement: string): boolean {
+  const c = normalizeMatchText(candidate);
+  const r = normalizeMatchText(requirement);
+  if (!c || !r) return false;
+  if (c === r) return true;
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (new RegExp(`\\b${esc(r)}\\b`).test(c) || new RegExp(`\\b${esc(c)}\\b`).test(r)) return true;
+  const requiredTokens = r.split(" ").filter((t) => t.length > 2);
+  if (requiredTokens.length === 0) return false;
+  const hits = requiredTokens.filter((t) => c.includes(t)).length;
+  return hits / requiredTokens.length >= 0.6;
+}
+
+/** Fit of a screened applicant against another vacancy's requirement entities.
+ *  Requirements come from the job post's skills first, then the position's
+ *  keyword library, and only then the free-text qualifications (so long HR
+ *  sentences never inflate or deflate the score). The candidate side comes from
+ *  the stored resume screening profile (skills, certifications, job roles,
+ *  education and estimated years of experience). */
+function referralMatch(
+  a: Applicant,
+  post: ApiJobPost | undefined,
+): { score: number; matched: string[]; total: number; notes: string[]; source: string } {
+  const profile = a.screening_detail?.profile;
+  const candidatePool = [
+    ...(profile?.skills ?? []),
+    ...(profile?.certifications ?? []),
+    ...(profile?.unrecognized_certifications ?? []),
+    ...(profile?.job_roles?.recognized ?? []),
+    ...(profile?.job_roles?.unrecognized ?? []),
+    ...(profile?.education ?? []),
+  ].filter(Boolean);
+
+  const postSkills = (post?.skills ?? []).filter(Boolean);
+  const template = keywordLibrary[post?.title ?? a.position] ?? [];
+  const qualifications = (post?.qualifications ?? []).filter(Boolean);
+  const required =
+    postSkills.length > 0 ? postSkills : template.length > 0 ? template : qualifications;
+  const source =
+    postSkills.length > 0
+      ? "job post skills"
+      : template.length > 0
+        ? "position keyword library"
+        : "job post qualifications";
+
+  const matched = required.filter((r) => candidatePool.some((c) => requirementMatches(c, r)));
+  const score = required.length > 0 ? Math.round((matched.length / required.length) * 100) : 0;
+
+  const notes: string[] = [];
+  const years = profile?.estimated_years_experience ?? null;
+  const reqYears = /(\d+)/.exec(String(post?.experience_level ?? ""))?.[1];
+  if (years !== null) {
+    if (reqYears && Number(reqYears) > 0) {
+      notes.push(
+        years >= Number(reqYears)
+          ? `${years} yrs exp — meets ${reqYears}`
+          : `${years} yrs exp — needs ${reqYears}`,
+      );
+    } else {
+      notes.push(`${years} yrs experience`);
+    }
+  }
+
+  return { score, matched, total: required.length, notes, source };
+}
+
+/** Reports every unrecognized entity of a screening result in ONE click —
+ *  de-duplicated, then queued for Recruitment Management → Screening Setup →
+ *  Reported Entities where HR promotes them into the screening vocabulary. */
+function reportAllUnrecognized(
+  entries: { value: string; type: ReportedEntityType }[],
+  applicantName?: string,
+) {
+  const unique = new Map<string, { value: string; type: ReportedEntityType }>();
+  entries.forEach((e) => {
+    const value = e.value.trim();
+    if (value) unique.set(`${e.type}:${value.toLowerCase()}`, { value, type: e.type });
+  });
+  if (unique.size === 0) {
+    toast.info("Nothing unrecognized to report");
+    return;
+  }
+  unique.forEach((e) =>
+    reportedEntitiesStore.report({
+      value: e.value,
+      suggestedType: e.type,
+      source: "Resume Screening Result",
+      ...(applicantName ? { applicant: applicantName } : {}),
+    }),
+  );
+  toast.success(`${unique.size} unrecognized entr${unique.size === 1 ? "y" : "ies"} reported`, {
+    description:
+      "Process them in Recruitment Management → Screening Setup → Reported Entities.",
+  });
+}
+
+/** Every unrecognized entity of a screening result, ready for the report
+ *  checklist (job roles, skills and certifications). */
+function unrecognizedEntriesFrom(
+  vm: ReturnType<typeof screeningViewModel>,
+  detail: Applicant["screening_detail"],
+): { value: string; type: ReportedEntityType }[] {
+  const validation = (detail?.validation ?? {}) as ScreeningValidationExt;
+  return [
+    ...vm.unrecognizedRoles.map((v) => ({ value: v, type: "job_role" as const })),
+    ...vm.unrecognizedCertifications.map((v) => ({ value: v, type: "certification" as const })),
+    ...(validation.skill_analysis?.unrecognized ?? []).map((v) => ({
+      value: v,
+      type: "skill" as const,
+    })),
+    ...(validation.job_role_analysis?.unrecognized ?? []).map((v) => ({
+      value: v,
+      type: "job_role" as const,
+    })),
+  ];
+}
+
+const REPORT_TYPE_LABELS: Record<ReportedEntityType, string> = {
+  education: "Education",
+  certification: "Certificate",
+  skill: "Skill",
+  job_role: "Job Role",
+  experience: "Experience",
+};
+
+/**
+ * "Report unrecognized entities" — opens a checklist of every unrecognized
+ * entity in the screening result with everything pre-checked; HR unchecks what
+ * should not be reported and confirms once.
+ */
+function ReportUnrecognizedDialog({
+  entries,
+  applicantName,
+  className,
+  triggerLabel,
+  variant = "outline",
+}: {
+  entries: { value: string; type: ReportedEntityType }[];
+  applicantName?: string;
+  className?: string;
+  triggerLabel?: string;
+  variant?: "outline" | "default" | "ghost";
+}) {
+  const [open, setOpen] = useState(false);
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+
+  // Every entry is checked by default each time the dialog opens.
+  useEffect(() => {
+    if (open) {
+      setChecked(Object.fromEntries(entries.map((e) => [`${e.type}:${e.value}`, true])));
+    }
+  }, [open, entries]);
+
+  const selected = entries.filter((e) => checked[`${e.type}:${e.value}`] !== false);
+
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant={variant}
+        className={cn("cursor-pointer", className)}
+        disabled={entries.length === 0}
+        title={
+          entries.length === 0 ? "No unrecognized entities in this screening result" : undefined
+        }
+        onClick={() => setOpen(true)}
+      >
+        <Flag className="mr-1.5 h-3.5 w-3.5" />
+        {triggerLabel ?? `Report ${entries.length} unrecognized`}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">
+              Report unrecognized entities
+            </DialogTitle>
+            <DialogDescription>
+              Every entity flagged UNRECOGNIZED in this screening result is pre-checked. Uncheck
+              anything that should not be reported, then confirm once — the selection appears in
+              Recruitment Management → Screening Setup → Reported Entities.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>
+                {entries.length} unrecognized entr{entries.length === 1 ? "y" : "ies"}
+                {applicantName ? ` · ${applicantName}` : ""}
+              </span>
+              <span className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="cursor-pointer font-semibold text-primary hover:underline"
+                  onClick={() =>
+                    setChecked(
+                      Object.fromEntries(entries.map((e) => [`${e.type}:${e.value}`, true])),
+                    )
+                  }
+                >
+                  Check all
+                </button>
+                <button
+                  type="button"
+                  className="cursor-pointer font-semibold text-primary hover:underline"
+                  onClick={() =>
+                    setChecked(
+                      Object.fromEntries(entries.map((e) => [`${e.type}:${e.value}`, false])),
+                    )
+                  }
+                >
+                  Uncheck all
+                </button>
+              </span>
+            </div>
+            <div className="max-h-72 space-y-0.5 overflow-y-auto rounded-md border border-border p-2">
+              {entries.map((e) => {
+                const key = `${e.type}:${e.value}`;
+                return (
+                  <label
+                    key={key}
+                    className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50"
+                  >
+                    <Checkbox
+                      checked={checked[key] !== false}
+                      onCheckedChange={(v) => setChecked((p) => ({ ...p, [key]: v === true }))}
+                      className="mt-0.5"
+                    />
+                    <span className="min-w-0 flex-1 break-words">{e.value}</span>
+                    <Badge variant="secondary" className="shrink-0 text-[0.6rem]">
+                      {REPORT_TYPE_LABELS[e.type]}
+                    </Badge>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="cursor-pointer" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="cursor-pointer"
+              disabled={selected.length === 0}
+              onClick={() => {
+                reportAllUnrecognized(selected, applicantName);
+                setOpen(false);
+              }}
+            >
+              <Flag className="mr-1.5 h-3.5 w-3.5" /> Report {selected.length} selected
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 /** Resume Information / Key Information Extracted panel from the mockups.
  *  `variant="profile"` mirrors Image 1 (plain headers, no job-titles section);
  *  `variant="modal"` mirrors Images 2–3 (counts, job titles, experience, other-info box). */
@@ -1957,9 +2245,20 @@ function ScreeningTechnicalPanels({
             recognition outcome, not a system-validation failure. */}
         {unrecTerms.length > 0 ? (
           <div className="rounded-md border border-destructive/20 bg-destructive/5 p-2">
-            <p className="mb-1 text-[0.65rem] font-bold uppercase tracking-wide text-destructive">
-              Unrecognized Terms ({unrecTerms.length})
-            </p>
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[0.65rem] font-bold uppercase tracking-wide text-destructive">
+                Unrecognized Terms ({unrecTerms.length})
+              </p>
+              <ReportUnrecognizedDialog
+                entries={unrecTerms.map((t) => ({
+                  value: t,
+                  type: unrecRoles.includes(t) ? ("job_role" as const) : ("skill" as const),
+                }))}
+                triggerLabel="Report all"
+                variant="ghost"
+                className="flex h-5 items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0 text-[0.6rem] font-semibold text-warning-foreground transition-colors hover:bg-warning/20"
+              />
+            </div>
             <ul className="columns-2 list-disc gap-4 pl-4 text-[0.65rem] leading-relaxed text-muted-foreground">
               {unrecTerms.slice(0, 10).map((t) => (
                 <li key={t} className="break-inside-avoid">
@@ -1968,8 +2267,8 @@ function ScreeningTechnicalPanels({
               ))}
             </ul>
             <p className="mt-1 text-[0.6rem] text-muted-foreground">
-              Recognized as text, but not yet in the screening vocabulary — add them in
-              Screening Reference Data so future resumes match.
+              Recognized as text, but not yet in the screening vocabulary — add them in Screening
+              Reference Data so future resumes match.
             </p>
           </div>
         ) : (
@@ -2400,12 +2699,7 @@ function ScreeningSupportDocsGrid({
                 <div className="mt-3">
                   <ScreeningDocStatusPill status={d.verification_status} />
                 </div>
-                <div
-                  className={cn(
-                    "mt-3 grid gap-2",
-                    detailed ? "grid-cols-3" : "grid-cols-2",
-                  )}
-                >
+                <div className={cn("mt-3 grid gap-2", detailed ? "grid-cols-3" : "grid-cols-2")}>
                   <Button
                     size="sm"
                     variant="outline"
@@ -2632,16 +2926,36 @@ const SCREENING_TYPE_META: Record<ScreeningRefType, { label: string; className: 
       "border-warning/30 bg-warning/10 text-warning dark:border-warning/40 dark:bg-warning/20",
   },
   certification: {
-    label: "Certification",
+    label: "Certificate",
     className:
       "border-success/30 bg-success/10 text-success dark:border-success/40 dark:bg-success/20",
   },
+  education: {
+    label: "Education",
+    className:
+      "border-caution/30 bg-caution/10 text-caution dark:border-caution/40 dark:bg-caution/20",
+  },
+  experience: {
+    label: "Experience",
+    className: "border-border bg-muted text-foreground",
+  },
 };
 
-const SCREENING_TYPE_OPTIONS = Object.entries(SCREENING_TYPE_META) as [
-  ScreeningRefType,
-  { label: string },
-][];
+/** Section order in Reference Data & Aliases — each entity type gets its own
+ *  block so Education, Certificates, Skills, Job Roles and Experience are
+ *  managed separately. */
+const SCREENING_TYPE_ORDER: ScreeningRefType[] = [
+  "education",
+  "certification",
+  "skill",
+  "job_role",
+  "experience",
+];
+
+const SCREENING_TYPE_OPTIONS = SCREENING_TYPE_ORDER.map(
+  (value) =>
+    [value, SCREENING_TYPE_META[value]] as [ScreeningRefType, { label: string; className: string }],
+);
 
 /**
  * Admin CRUD over the DB-managed spaCy screening reference data
@@ -2653,7 +2967,6 @@ export function ScreeningReferenceManager() {
   const [rows, setRows] = useState<ApiScreeningReference[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [typeFilter, setTypeFilter] = useState<"all" | ScreeningRefType>("all");
   const [search, setSearch] = useState("");
 
   const [editorOpen, setEditorOpen] = useState(false);
@@ -2684,22 +2997,36 @@ export function ScreeningReferenceManager() {
     load();
   }, [load]);
 
-  const filtered = useMemo(() => {
+  /** Entries grouped per entity type — each type renders its own section, so
+   *  education, certificates, skills, job roles and experience stay separate. */
+  const grouped = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return rows
-      .filter((r) => (typeFilter === "all" ? true : r.data_type === typeFilter))
-      .filter((r) =>
-        q
-          ? `${r.canonical_value} ${(r.aliases_json ?? []).join(" ")}`.toLowerCase().includes(q)
-          : true,
-      );
-  }, [rows, typeFilter, search]);
+    const groups: Record<ScreeningRefType, ApiScreeningReference[]> = {
+      education: [],
+      certification: [],
+      skill: [],
+      job_role: [],
+      experience: [],
+    };
+    for (const r of rows) {
+      if (
+        q &&
+        !`${r.canonical_value} ${(r.aliases_json ?? []).join(" ")}`.toLowerCase().includes(q)
+      ) {
+        continue;
+      }
+      groups[r.data_type] = [...(groups[r.data_type] ?? []), r];
+    }
+    return groups;
+  }, [rows, search]);
 
   const counts = useMemo(
     () => ({
       skill: rows.filter((r) => r.data_type === "skill").length,
       job_role: rows.filter((r) => r.data_type === "job_role").length,
       certification: rows.filter((r) => r.data_type === "certification").length,
+      education: rows.filter((r) => r.data_type === "education").length,
+      experience: rows.filter((r) => r.data_type === "experience").length,
       active: rows.filter((r) => r.active).length,
     }),
     [rows],
@@ -2708,6 +3035,13 @@ export function ScreeningReferenceManager() {
   const openCreate = () => {
     setEditing(null);
     setForm({ data_type: "skill", canonical_value: "", aliases: "" });
+    setEditorOpen(true);
+  };
+
+  /** "Add" inside an entity-type section — opens the editor pre-set to it. */
+  const openCreateFor = (type: ScreeningRefType) => {
+    setEditing(null);
+    setForm({ data_type: type, canonical_value: "", aliases: "" });
     setEditorOpen(true);
   };
 
@@ -2787,6 +3121,87 @@ export function ScreeningReferenceManager() {
     }
   };
 
+  const [bulkSaving, setBulkSaving] = useState(false);
+
+  /** Downloads a CSV sample showing the expected bulk-upload format. */
+  const downloadBulkSample = () => {
+    downloadTextFile(
+      "screening-reference-sample.csv",
+      [
+        "# Screening reference bulk upload — one entry per line.",
+        "# Format: data_type,canonical_value,alias1|alias2|alias3",
+        "# data_type is one of: education, certification, skill, job_role, experience",
+        "education,Bachelor of Science in Hospitality Management,BSHM|BS Hospitality Management",
+        "certification,TESDA Housekeeping NC II,Housekeeping NC2|HK NC II",
+        "skill,Guest Relations,Guest Relation|Guest Services",
+        "job_role,Front Desk Receptionist,Front Office Agent|Receptionist",
+        "experience,Front Office,5 years front desk|Hotel front desk experience",
+      ].join("\n"),
+    );
+    toast.success("Sample bulk-upload file downloaded");
+  };
+
+  /** Parses a CSV / TXT bulk file into reference-entry payloads. Lines starting
+   *  with "#" are treated as comments. */
+  const parseBulkFile = (text: string): ScreeningReferencePayload[] => {
+    const payloads: ScreeningReferencePayload[] = [];
+    text.split(/\r?\n/).forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) return;
+      const [rawType, rawValue, rawAliases] = trimmed.split(",");
+      const type = (rawType ?? "").trim().toLowerCase().replace(/\s+/g, "_") as ScreeningRefType;
+      const value = (rawValue ?? "").trim();
+      if (!value || !SCREENING_TYPE_ORDER.includes(type)) return;
+      payloads.push({
+        data_type: type,
+        canonical_value: value,
+        aliases_json: (rawAliases ?? "")
+          .split("|")
+          .map((a) => a.trim())
+          .filter(Boolean),
+      });
+    });
+    return payloads;
+  };
+
+  /** Bulk-uploads every parsed row into the screening vocabulary. */
+  const handleBulkUpload = async (file: File | null | undefined) => {
+    if (!file) return;
+    setBulkSaving(true);
+    try {
+      const payloads = parseBulkFile(await file.text());
+      if (payloads.length === 0) {
+        toast.error("No valid rows found in the file.", {
+          description:
+            "Expected per line: data_type,canonical_value,alias1|alias2 — download the sample for the exact format.",
+        });
+        return;
+      }
+      let created = 0;
+      let skipped = 0;
+      for (const payload of payloads) {
+        try {
+          await screeningApi.referenceData.create(payload);
+          created += 1;
+        } catch {
+          skipped += 1;
+        }
+      }
+      toast.success(
+        `${created} entr${created === 1 ? "y" : "ies"} added to the screening vocabulary`,
+        skipped > 0
+          ? { description: `${skipped} row(s) skipped (duplicate or invalid).` }
+          : undefined,
+      );
+      setEditorOpen(false);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not read the bulk file.");
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
   return (
     <Card className="border-border/70">
       <CardContent className="space-y-4 p-6">
@@ -2797,8 +3212,9 @@ export function ScreeningReferenceManager() {
               Reference Data &amp; Aliases
             </h2>
             <p className="text-xs text-muted-foreground">
-              Database-managed vocabulary used by the NLP service to classify skills, job roles and
-              certifications as RECOGNIZED or UNRECOGNIZED. Changes apply to every new screening.
+              Database-managed vocabulary used by the NLP service to classify education,
+              certificates, skills, job roles and experience as RECOGNIZED or UNRECOGNIZED — each
+              entity type is managed in its own section below. Changes apply to every new screening.
             </p>
           </div>
           <Button size="sm" onClick={openCreate}>
@@ -2807,9 +3223,11 @@ export function ScreeningReferenceManager() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <Badge variant="secondary">Education: {counts.education}</Badge>
+          <Badge variant="secondary">Certificates: {counts.certification}</Badge>
           <Badge variant="secondary">Skills: {counts.skill}</Badge>
           <Badge variant="secondary">Job Roles: {counts.job_role}</Badge>
-          <Badge variant="secondary">Certifications: {counts.certification}</Badge>
+          <Badge variant="secondary">Experience: {counts.experience}</Badge>
           <Badge variant="outline">{counts.active} active</Badge>
         </div>
 
@@ -2822,32 +3240,20 @@ export function ScreeningReferenceManager() {
           </div>
         ) : (
           <>
-            <div className="flex flex-wrap gap-2">
-              <Select
-                value={typeFilter}
-                onValueChange={(v) => setTypeFilter(v as "all" | ScreeningRefType)}
-              >
-                <SelectTrigger className="w-44">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All types</SelectItem>
-                  {SCREENING_TYPE_OPTIONS.map(([value, meta]) => (
-                    <SelectItem key={value} value={value}>
-                      {meta.label}s
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search value or alias…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-56 pl-8"
+                  className="w-64 pl-8"
                 />
               </div>
+              <p className="text-[0.7rem] text-muted-foreground">
+                One section per entity type — education, certificates, skills, job roles and
+                experience.
+              </p>
             </div>
 
             <div className="max-h-[22rem] overflow-y-auto rounded-md border border-border">
@@ -2869,69 +3275,102 @@ export function ScreeningReferenceManager() {
                         data…
                       </TableCell>
                     </TableRow>
-                  ) : filtered.length === 0 ? (
+                  ) : rows.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                        No entries match the current filters.
+                        No reference entries yet — add one above, or bulk-upload a file from the
+                        Add Reference Entry dialog.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filtered.map((row) => (
-                      <TableRow key={row.ref_id}>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={SCREENING_TYPE_META[row.data_type].className}
-                          >
-                            {SCREENING_TYPE_META[row.data_type].label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-medium">{row.canonical_value}</TableCell>
-                        <TableCell>
-                          <div className="flex max-w-md flex-wrap gap-1">
-                            {(row.aliases_json ?? []).length > 0 ? (
-                              (row.aliases_json ?? []).map((alias) => (
-                                <Badge key={alias} variant="secondary" className="text-[0.65rem]">
-                                  {alias}
+                    SCREENING_TYPE_ORDER.flatMap((type) => {
+                      const meta = SCREENING_TYPE_META[type];
+                      const entries = grouped[type] ?? [];
+                      if (entries.length === 0 && search.trim()) return [];
+                      return [
+                        <TableRow key={`section-${type}`} className="bg-muted/50 hover:bg-muted/50">
+                          <TableCell colSpan={5} className="py-1.5">
+                            <span className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="flex items-center gap-2">
+                                <Badge variant="outline" className={meta.className}>
+                                  {meta.label}
                                 </Badge>
-                              ))
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Switch
-                            checked={row.active}
-                            disabled={busyId === row.ref_id}
-                            onCheckedChange={() => toggleActive(row)}
-                            aria-label={`Toggle ${row.canonical_value}`}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={() => openEdit(row)}
-                              aria-label={`Edit ${row.canonical_value}`}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7 text-destructive"
-                              onClick={() => setDeleteTarget(row)}
-                              aria-label={`Delete ${row.canonical_value}`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                                <span className="text-[0.65rem] text-muted-foreground">
+                                  {entries.length} entr{entries.length === 1 ? "y" : "ies"}
+                                </span>
+                              </span>
+                              <button
+                                type="button"
+                                className="cursor-pointer text-[0.65rem] font-semibold text-primary hover:underline"
+                                onClick={() => openCreateFor(type)}
+                              >
+                                + Add {meta.label}
+                              </button>
+                            </span>
+                          </TableCell>
+                        </TableRow>,
+                        ...entries.map((row) => (
+                          <TableRow key={row.ref_id}>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className={SCREENING_TYPE_META[row.data_type].className}
+                              >
+                                {SCREENING_TYPE_META[row.data_type].label}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-medium">{row.canonical_value}</TableCell>
+                            <TableCell>
+                              <div className="flex max-w-md flex-wrap gap-1">
+                                {(row.aliases_json ?? []).length > 0 ? (
+                                  (row.aliases_json ?? []).map((alias) => (
+                                    <Badge
+                                      key={alias}
+                                      variant="secondary"
+                                      className="text-[0.65rem]"
+                                    >
+                                      {alias}
+                                    </Badge>
+                                  ))
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Switch
+                                checked={row.active}
+                                disabled={busyId === row.ref_id}
+                                onCheckedChange={() => toggleActive(row)}
+                                aria-label={`Toggle ${row.canonical_value}`}
+                              />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7"
+                                  onClick={() => openEdit(row)}
+                                  aria-label={`Edit ${row.canonical_value}`}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 text-destructive"
+                                  onClick={() => setDeleteTarget(row)}
+                                  aria-label={`Delete ${row.canonical_value}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )),
+                      ];
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -2942,12 +3381,13 @@ export function ScreeningReferenceManager() {
 
       {/* ADD / EDIT DIALOG */}
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit Reference Entry" : "Add Reference Entry"}</DialogTitle>
             <DialogDescription>
               Canonical values are matched against entities extracted from resumes; aliases let
-              alternate phrasings map to the same entry.
+              alternate phrasings map to the same entry. Add one entry at a time, or bulk-upload a
+              file below.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-1">
@@ -2992,6 +3432,42 @@ export function ScreeningReferenceManager() {
                 onChange={(e) => setForm((f) => ({ ...f, aliases: e.target.value }))}
               />
             </div>
+            {!editing && (
+              <div className="space-y-2 rounded-md border border-dashed border-border bg-muted/30 p-3">
+                <Label className="text-xs">Bulk upload entries</Label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    type="file"
+                    accept=".csv,.txt"
+                    disabled={bulkSaving}
+                    className="h-9 w-full cursor-pointer text-xs sm:w-52"
+                    onChange={(e) => {
+                      void handleBulkUpload(e.target.files?.[0]);
+                      e.target.value = "";
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-9 cursor-pointer"
+                    disabled={bulkSaving}
+                    onClick={downloadBulkSample}
+                  >
+                    <Download className="mr-1.5 h-3.5 w-3.5" /> Download sample
+                  </Button>
+                  {bulkSaving && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                </div>
+                <p className="text-[0.7rem] leading-relaxed text-muted-foreground">
+                  One entry per line:{" "}
+                  <code className="rounded bg-muted px-1">
+                    data_type,canonical_value,alias1|alias2
+                  </code>{" "}
+                  — data_type is education, certification, skill, job_role or experience. Download
+                  the sample file for the exact format.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditorOpen(false)} disabled={saving}>
@@ -3533,9 +4009,7 @@ function DocVerificationCheckRow({
               ? "MISMATCH"
               : "CAN'T COMPARE"}
         </p>
-        {check.note && (
-          <p className="text-[0.65rem] italic text-muted-foreground">{check.note}</p>
-        )}
+        {check.note && <p className="text-[0.65rem] italic text-muted-foreground">{check.note}</p>}
       </div>
     </div>
   );
@@ -3602,31 +4076,125 @@ function namesAgree(resumeName: string | null, docNames: string[]): string | nul
 /** Words that never appear in a real person name — company, venue, role and
  *  document vocabulary. Any value containing one is an extraction error
  *  (hotel name, job title, certificate fragment), not someone's name. */
-const NON_NAME_WORDS = new Set(
-  [
-    "hotel", "hotels", "suite", "suites", "resort", "resorts", "inn", "lodge",
-    "motel", "plaza", "manor", "casino", "convention", "center", "centre",
-    "club", "resto", "restaurant", "restaurants", "cafe", "catering",
-    "banquet", "banquets", "event", "events", "gala", "galas", "travel",
-    "tours", "agency", "company", "corp", "corporation", "incorporated",
-    "inc", "ltd", "limited", "group", "holdings", "enterprise", "enterprises",
-    "services", "service", "management", "operations", "hospitality",
-    "standards", "standard", "rating", "ratings", "development", "authority",
-    "commission", "board", "department", "institute", "academy", "school",
-    "college", "university", "tesda", "training", "adb", "beo", "execution",
-    "timing", "certificate", "certificates", "certification", "completion",
-    "supervisor", "manager", "chef", "cook", "attendant", "agent", "officer",
-    "coordinator", "receptionist", "receptionists", "bartender", "barista",
-    "housekeeper", "housekeeping", "waiter", "waitress", "steward", "cashier",
-    "clerk", "technician", "executive", "director", "assistant", "associate",
-    "leader", "member", "staff", "crew", "team",
-  ],
-);
+const NON_NAME_WORDS = new Set([
+  "hotel",
+  "hotels",
+  "suite",
+  "suites",
+  "resort",
+  "resorts",
+  "inn",
+  "lodge",
+  "motel",
+  "plaza",
+  "manor",
+  "casino",
+  "convention",
+  "center",
+  "centre",
+  "club",
+  "resto",
+  "restaurant",
+  "restaurants",
+  "cafe",
+  "catering",
+  "banquet",
+  "banquets",
+  "event",
+  "events",
+  "gala",
+  "galas",
+  "travel",
+  "tours",
+  "agency",
+  "company",
+  "corp",
+  "corporation",
+  "incorporated",
+  "inc",
+  "ltd",
+  "limited",
+  "group",
+  "holdings",
+  "enterprise",
+  "enterprises",
+  "services",
+  "service",
+  "management",
+  "operations",
+  "hospitality",
+  "standards",
+  "standard",
+  "rating",
+  "ratings",
+  "development",
+  "authority",
+  "commission",
+  "board",
+  "department",
+  "institute",
+  "academy",
+  "school",
+  "college",
+  "university",
+  "tesda",
+  "training",
+  "adb",
+  "beo",
+  "execution",
+  "timing",
+  "certificate",
+  "certificates",
+  "certification",
+  "completion",
+  "supervisor",
+  "manager",
+  "chef",
+  "cook",
+  "attendant",
+  "agent",
+  "officer",
+  "coordinator",
+  "receptionist",
+  "receptionists",
+  "bartender",
+  "barista",
+  "housekeeper",
+  "housekeeping",
+  "waiter",
+  "waitress",
+  "steward",
+  "cashier",
+  "clerk",
+  "technician",
+  "executive",
+  "director",
+  "assistant",
+  "associate",
+  "leader",
+  "member",
+  "staff",
+  "crew",
+  "team",
+]);
 
 /** Name particles that are legitimately part of Filipino / Spanish names. */
-const NAME_PARTICLES = new Set(
-  ["de", "la", "del", "dela", "san", "santa", "sto", "st", "van", "von", "di", "da", "bin", "ibn"],
-);
+const NAME_PARTICLES = new Set([
+  "de",
+  "la",
+  "del",
+  "dela",
+  "san",
+  "santa",
+  "sto",
+  "st",
+  "van",
+  "von",
+  "di",
+  "da",
+  "bin",
+  "ibn",
+]);
 
 /**
  * Rejects strings that cannot be a person name: skill phrases
@@ -3720,8 +4288,7 @@ export function ScreeningResumeDocsMatchDetail({
         {
           label: "Full name",
           resume: resumeName ?? null,
-          papers:
-            docNames.length > 0 ? (nameHit ?? plausibleDocNames[0] ?? docNames[0]!) : null,
+          papers: docNames.length > 0 ? (nameHit ?? plausibleDocNames[0] ?? docNames[0]!) : null,
           status:
             docs.length === 0 || !identityCheckable
               ? "not-checked"
@@ -3782,7 +4349,8 @@ export function ScreeningResumeDocsMatchDetail({
       title: "Work experience",
       hint: "Employer, title and dates",
       papersCount: workDocs,
-      status: workFields.length === 0 ? "not-checked" : worstStatus(workFields.map((f) => f.status)),
+      status:
+        workFields.length === 0 ? "not-checked" : worstStatus(workFields.map((f) => f.status)),
       fields: workFields,
     };
 
@@ -3874,10 +4442,7 @@ export function ScreeningResumeDocsMatchDetail({
               className: "border-primary/25 bg-primary/10 text-primary",
             };
 
-  const sectionMeta: Record<
-    MatchSection["key"],
-    { icon: React.ReactNode; empty: string }
-  > = {
+  const sectionMeta: Record<MatchSection["key"], { icon: React.ReactNode; empty: string }> = {
     identity: {
       icon: <User className="h-3.5 w-3.5 text-primary" />,
       empty: "No name could be read from the papers yet.",
@@ -4008,10 +4573,16 @@ export function ScreeningResumeDocsMatchDetail({
                                 : "Can't confirm"}
                           </span>
                         </div>
-                        <p className="mt-0.5 truncate text-[0.7rem] text-muted-foreground" title={field.resume ?? undefined}>
+                        <p
+                          className="mt-0.5 truncate text-[0.7rem] text-muted-foreground"
+                          title={field.resume ?? undefined}
+                        >
                           Resume: {field.resume ?? "—"}
                         </p>
-                        <p className="truncate text-[0.7rem] text-muted-foreground" title={field.papers ?? undefined}>
+                        <p
+                          className="truncate text-[0.7rem] text-muted-foreground"
+                          title={field.papers ?? undefined}
+                        >
                           Papers: {field.papers ?? "—"}
                         </p>
                       </li>
@@ -4039,7 +4610,17 @@ export function ScreeningResumeDocsMatchDetail({
    and Resume & Documents. Activity history lives in Current Stage.
    ============================================================================ */
 
-type ViewPanel = "current" | "details" | "resume" | "interview" | "test" | "practical" | "final";
+type ViewPanel =
+  | "current"
+  | "details"
+  | "resume"
+  | "interview"
+  | "test"
+  | "practical"
+  | "final"
+  /* Requirements checklist — the New Hire Onboarding right-side card, shown
+     here for applicants with an extended offer or already hired. */
+  | "onboarding";
 
 type ViewScreenDoc = {
   docType: VerificationDocType;
@@ -4088,15 +4669,28 @@ type ApplicantViewScreenProps = {
   finalDecided?: boolean;
   /** Opens the Verify Candidate Decision dialog for the given final record. */
   onVerifyFinal?: (f: FinalEvaluationRow) => void;
+  /** Shown when the profile was opened from the New Hire Onboarding pipeline —
+   *  a second back action returning to that list. */
+  onBackToOnboarding?: (() => void) | undefined;
+  /** True when the profile was opened from the New Hire Onboarding
+   *  "View Checklist" action: the Requirements Checklist section is shown (and
+   *  opened) even if the applicant sits outside the usual Offer / Hired stages. */
+  forceChecklist?: boolean | undefined;
 };
 
 /** Humanized hiring milestones for the stage stepper (maps internal stages). */
 const VIEW_MILESTONES: { key: ViewPanel; label: string }[] = [
-  { key: "current", label: "Screening" },
+  /* Screening — the resume screening result and the supporting verification
+     documents live in the Resume & Documents section, so this node opens it
+     instead of the generic Current Stage overview. */
+  { key: "resume", label: "Screening" },
   { key: "interview", label: "Interview" },
   { key: "test", label: "Assessment Test" },
   { key: "practical", label: "Practical Assessment" },
   { key: "final", label: "Final Evaluation" },
+  /* Onboarding step — the Requirements Checklist card moved here from New Hire
+     Onboarding. Sits after the recruitment pipeline closes (offer / hired). */
+  { key: "onboarding", label: "Requirements Checklist" },
 ];
 
 /** Colour state of one node on the applicant progress bar. */
@@ -4122,6 +4716,457 @@ const departmentOf = (position: string) =>
   positions.find((p) => p.title === position)?.department ??
   jobs.find((j) => j.title === position)?.department ??
   "—";
+
+/** Checklist item text → submission lookup key (mirrors New Hire Onboarding). */
+const checklistKeyOf = (text: string) => text.trim().toLowerCase();
+
+/** Employee submission attached to one requirements checklist item. */
+type ChecklistSubmission = {
+  fileName?: string;
+  fileUrl?: string;
+  notes?: string;
+  submittedAt?: string;
+};
+
+/** One requirements checklist row — same status language as the New Hire
+ *  Onboarding card: Verified (green), Submitted · pending review (red),
+ *  Pending (caution). Uploaded documents stay viewable from here, and the row
+ *  is clickable while the card is in edit mode (tick / untick). */
+function RequirementItemRow({
+  item,
+  done,
+  submission,
+  editing,
+  onToggle,
+}: {
+  item: string;
+  done: boolean;
+  submission?: ChecklistSubmission | undefined;
+  /** True while "Edit Checklist" is active — then the row reacts to clicks. */
+  editing: boolean;
+  onToggle: () => void;
+}) {
+  const submitted = Boolean(
+    submission && (submission.submittedAt || submission.fileName || submission.notes),
+  );
+  return (
+    <li
+      className={cn(
+        "rounded-md border px-3 py-2 text-sm transition-colors",
+        done
+          ? "border-success/30 bg-success/10"
+          : submitted
+            ? "border-destructive/30 bg-destructive/5"
+            : "border-border bg-card",
+        editing && "cursor-pointer hover:border-primary/40",
+      )}
+    >
+      <div className="flex items-center gap-2.5">
+        <button
+          type="button"
+          disabled={!editing}
+          onClick={onToggle}
+          aria-label={item}
+          title={editing ? "Click to tick / untick this requirement" : undefined}
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2.5 bg-transparent text-left",
+            editing ? "cursor-pointer" : "cursor-default",
+          )}
+        >
+          {done ? (
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+          ) : submitted ? (
+            <Hourglass className="h-4 w-4 shrink-0 text-destructive" />
+          ) : (
+            <Circle className="h-4 w-4 shrink-0 text-caution" />
+          )}
+          <span
+            className={cn(
+              "min-w-0 flex-1",
+              !done && submitted ? "text-destructive" : "text-foreground",
+            )}
+          >
+            {item}
+          </span>
+        </button>
+        {done ? (
+          <Badge
+            variant="outline"
+            className="shrink-0 border-success/40 bg-success/10 text-[10px] text-success"
+          >
+            Verified
+          </Badge>
+        ) : submitted ? (
+          <Badge
+            variant="outline"
+            className="shrink-0 border-destructive/40 bg-destructive/10 text-[10px] text-destructive"
+          >
+            Submitted · pending review
+          </Badge>
+        ) : (
+          <Badge
+            variant="outline"
+            className="shrink-0 border-caution/40 bg-caution/10 text-[10px] text-caution"
+          >
+            Pending
+          </Badge>
+        )}
+      </div>
+      {submission?.fileName && (
+        <div
+          className={cn(
+            "mt-2 flex items-center justify-between gap-2 rounded-md border px-2 py-1.5",
+            done ? "border-success/30 bg-success/5" : "border-destructive/30 bg-destructive/5",
+          )}
+        >
+          <span className="flex min-w-0 items-center gap-1.5 text-xs text-foreground">
+            <FileCheck2
+              className={cn("h-3.5 w-3.5 shrink-0", done ? "text-success" : "text-destructive")}
+            />
+            <span className="truncate" title={submission.fileName}>
+              {submission.fileName}
+            </span>
+          </span>
+          {submission.fileUrl && (
+            <a
+              href={submission.fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0"
+            >
+              <Button size="sm" variant="ghost" className="h-6 cursor-pointer px-2 text-[11px]">
+                <ExternalLink className="mr-1 h-3 w-3" /> View
+              </Button>
+            </a>
+          )}
+        </div>
+      )}
+      {submission?.notes && (
+        <p className="mt-1.5 rounded-md bg-card px-2 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
+          <span className="font-semibold text-foreground">Employee note: </span>
+          {submission.notes}
+        </p>
+      )}
+    </li>
+  );
+}
+
+/** Requirements checklist card — the New Hire Onboarding right-side card,
+ *  moved into this View profile for applicants whose offer was extended or
+ *  who are already hired. Progress and submissions sync with onboarding. */
+function RequirementsChecklistCard({
+  linkedHire,
+  items,
+  submissions,
+  done,
+  progress,
+}: {
+  linkedHire: NewHire | null;
+  items: { item: string; done: boolean }[];
+  submissions: Record<string, ChecklistSubmission>;
+  done: number;
+  progress: number;
+}) {
+  /* Editing mirrors the New Hire Onboarding card: ticking is staged behind
+     "Edit Checklist" (rows only react to clicks while editing), "Save" keeps
+     the ticks and "Cancel" reverts them. Every tick persists to
+     employee_onboarding_items through the shared hire store, so the new hire's
+     portal and every admin screen stay in sync. */
+  const [editing, setEditing] = useState(false);
+  const [snapshot, setSnapshot] = useState<NewHire["checklist"] | null>(null);
+  /** Whether an evaluation was pending when editing began — used to restore it
+   *  if the edit is cancelled (the store stops it as soon as a tick is lost). */
+  const [evaluationWasRequested, setEvaluationWasRequested] = useState(false);
+  /** The checklist is editable only once the hire record already exists. */
+  const canEdit = Boolean(linkedHire?.dbId);
+
+  const startEdit = () => {
+    if (!linkedHire) return;
+    setSnapshot(linkedHire.checklist.map((c) => ({ ...c })));
+    setEvaluationWasRequested(Boolean(linkedHire.evaluationRequestedAt));
+    setEditing(true);
+  };
+
+  const saveEdit = () => {
+    setSnapshot(null);
+    setEvaluationWasRequested(false);
+    setEditing(false);
+    toast.success("Checklist saved");
+  };
+
+  const cancelEdit = () => {
+    if (linkedHire && snapshot) {
+      hireStore.setHires((prev) =>
+        prev.map((h) => (h.id === linkedHire.id ? { ...h, checklist: snapshot } : h)),
+      );
+      /* Reverting puts every tick back. If the pending evaluation was stopped
+         because the checklist dipped below 100% while editing, restore it —
+         Cancel must undo the whole edit, evaluation request included. */
+      const phaseItems = snapshot.filter((c) => (c.phase ?? "Probationary") === "Probationary");
+      const pool =
+        linkedHire.stage === "Probationary" && phaseItems.length > 0 ? phaseItems : snapshot;
+      const restoredComplete = pool.length > 0 && pool.every((c) => c.done);
+      if (evaluationWasRequested && !linkedHire.evaluationRequestedAt && restoredComplete) {
+        hireStore.requestEvaluation(linkedHire.id);
+        toast.info(
+          `Evaluation request for ${linkedHire.name} restored — the checklist is complete.`,
+        );
+      }
+    }
+    setSnapshot(null);
+    setEvaluationWasRequested(false);
+    setEditing(false);
+  };
+
+  /** Clicks a requirement while editing — persists the tick immediately. */
+  const toggleItem = (item: string, itemDone: boolean) => {
+    if (!editing || !linkedHire) return;
+    const index = linkedHire.checklist.findIndex((c) => c.item === item);
+    if (index === -1) return;
+    hireStore.toggleItem(linkedHire.id, index, !itemDone);
+  };
+
+  /** True while the hire is handed over to Performance and no result has
+   *  arrived — mirrors the New Hire Onboarding waiting state. */
+  const awaitingEvaluation = Boolean(linkedHire?.evaluationRequestedAt);
+
+  /* --- Hire-stage actions (the same checklist-driven flow as New Hire
+     Onboarding): advancing to Probationary and the evaluation hand-over both
+     unlock only when every requirement is ticked. */
+  const advanceToProbationary = () => {
+    if (!linkedHire?.dbId) return;
+    hireStore.promoteHire(linkedHire.id);
+    toast.success(
+      `${linkedHire.name} moved to Probationary — portal account created & login credentials sent to ${linkedHire.email} (default password: ${DEFAULT_ACCOUNT_PASSWORD})`,
+    );
+  };
+
+  const requestEvaluation = () => {
+    if (!linkedHire) return;
+    hireStore.requestEvaluation(linkedHire.id);
+    toast.success(`Evaluation requested for ${linkedHire.name}`);
+  };
+
+  const cancelEvaluationRequest = () => {
+    if (linkedHire) hireStore.cancelEvaluationRequest(linkedHire.id);
+  };
+
+  const regularizeHire = () => {
+    if (!linkedHire) return;
+    toast.success(`${linkedHire.name} regularized — moved to Employee Records`, {
+      description: "The checklist, portal account and Core HCM hand-over are preserved.",
+    });
+    hireStore.cancelEvaluationRequest(linkedHire.id);
+    hireStore.promoteHire(linkedHire.id);
+  };
+
+  return (
+    <Card className="flex h-full flex-col border-border/70">
+      <CardContent className="flex min-h-0 flex-1 flex-col p-6">
+        <div className="flex min-h-[16rem] flex-1 flex-col">
+          <div className="flex items-center justify-between text-xs">
+            <span className="eyebrow">Requirements checklist</span>
+            <span
+              className={cn(
+                "font-medium",
+                progress === 100 ? "text-success" : "text-muted-foreground",
+              )}
+            >
+              {progress}%
+            </span>
+          </div>
+          <Progress
+            value={progress}
+            className="mt-2 h-2 [&>div]:bg-success [&>div]:transition-all"
+          />
+
+          <div className="mt-3 flex w-full items-center justify-between rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium">
+            <span>Checklist items ({items.length})</span>
+            <span className="text-muted-foreground">
+              {done}/{items.length}
+            </span>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+            {items.length === 0 ? (
+              <p className="mt-3 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
+                <Info className="h-4 w-4 shrink-0" /> No pre-employment checklist is configured for
+                this position yet.
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-1.5">
+                {items.map((item, idx) => (
+                  <RequirementItemRow
+                    key={`${item.item}-${idx}`}
+                    item={item.item}
+                    done={item.done}
+                    submission={submissions[checklistKeyOf(item.item)]}
+                    editing={editing && canEdit}
+                    onToggle={() => toggleItem(item.item, item.done)}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Editing controls — same flow as the New Hire Onboarding card. */}
+          {canEdit && (
+            <div className="mt-3 flex flex-wrap items-stretch gap-2">
+              {editing ? (
+                <>
+                  <Button
+                    variant="outline"
+                    className="h-10 cursor-pointer"
+                    onClick={() => {
+                      if (linkedHire) hireStore.setAllItemsDone(linkedHire.id, true);
+                    }}
+                  >
+                    Mark all done
+                  </Button>
+                  <Button className="h-10 cursor-pointer" onClick={saveEdit}>
+                    <Save className="mr-1.5 h-4 w-4" /> Save
+                  </Button>
+                  <Button variant="outline" className="h-10 cursor-pointer" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" className="h-10 cursor-pointer" onClick={startEdit}>
+                  <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit Checklist
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Hire-stage actions — the checklist unlocks them: advancing to
+              Probationary and the evaluation hand-over both need 100%. */}
+          {linkedHire && (
+            <div className="mt-4 space-y-2 border-t border-border/60 pt-4">
+              <p className="eyebrow">
+                {linkedHire.stage === "Pre-onboarding"
+                  ? "Pre-onboarding actions"
+                  : linkedHire.stage === "Probationary"
+                    ? "Probationary actions"
+                    : "Onboarding record"}
+              </p>
+
+              {linkedHire.stage === "Pre-onboarding" && (
+                <>
+                  <Button
+                    className="h-10 w-full cursor-pointer"
+                    disabled={progress !== 100}
+                    title={
+                      progress === 100
+                        ? "Move this hire to Probationary — portal account created and credentials sent"
+                        : "Complete every checklist item to unlock advancing to Probationary"
+                    }
+                    onClick={advanceToProbationary}
+                  >
+                    Advance to Probationary
+                  </Button>
+                  {progress !== 100 && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Complete every checklist item to unlock advancing to Probationary.
+                    </p>
+                  )}
+                </>
+              )}
+
+              {linkedHire.stage === "Probationary" && !awaitingEvaluation && (
+                <>
+                  <Button
+                    className="h-10 w-full cursor-pointer bg-gold text-gold-foreground hover:bg-gold/90"
+                    disabled={progress !== 100}
+                    title={
+                      progress === 100
+                        ? "Hand this hire over to Performance for the probationary evaluation"
+                        : "Complete every probationary checklist item to unlock the evaluation request"
+                    }
+                    onClick={requestEvaluation}
+                  >
+                    <Send className="mr-1.5 h-4 w-4" /> Request for evaluation
+                  </Button>
+                  {progress !== 100 && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Complete every probationary checklist item to unlock the evaluation request.
+                    </p>
+                  )}
+                </>
+              )}
+
+              {linkedHire.stage === "Probationary" && awaitingEvaluation && (
+                <>
+                  {/* Evaluation hand-over status — animated loader, review badge
+                      and a pulsing indeterminate bar while Performance works. */}
+                  <div className="animate-in overflow-hidden rounded-xl border border-gold/40 bg-gold/5 fade-in duration-500">
+                    <div className="flex items-center gap-3 border-b border-gold/30 bg-gold/10 px-4 py-3">
+                      <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
+                        <span className="absolute inline-flex h-9 w-9 animate-ping rounded-full bg-gold/20" />
+                        <Loader2 className="relative h-5 w-5 animate-spin text-gold-foreground" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-display text-sm font-semibold leading-tight text-gold-foreground">
+                          Waiting for evaluation
+                        </p>
+                        <p className="text-[0.7rem] text-muted-foreground">
+                          Sent to Performance
+                          {linkedHire.evaluationRequestedAt
+                            ? ` on ${new Date(linkedHire.evaluationRequestedAt).toLocaleDateString(
+                                "en-US",
+                                { month: "short", day: "numeric", year: "numeric" },
+                              )}`
+                            : ""}{" "}
+                          — no result yet.
+                        </p>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 border-gold/40 bg-gold/10 text-[0.65rem] text-gold-foreground"
+                      >
+                        In review
+                      </Badge>
+                    </div>
+                    <div className="h-1 w-full overflow-hidden bg-gold/10">
+                      <div className="h-full w-1/2 animate-pulse rounded-r-full bg-gold/70" />
+                    </div>
+                  </div>
+
+                  {/* Both actions span the checklist card width. */}
+                  <div className="space-y-2">
+                    <Button
+                      variant="outline"
+                      className="h-10 w-full cursor-pointer"
+                      onClick={cancelEvaluationRequest}
+                    >
+                      <X className="mr-1.5 h-4 w-4" /> Cancel request
+                    </Button>
+                    <Button
+                      className="h-10 w-full cursor-pointer bg-gold text-gold-foreground hover:bg-gold/90"
+                      onClick={regularizeHire}
+                    >
+                      <CheckCircle2 className="mr-1.5 h-4 w-4" /> Regular the employee
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {(editing || !linkedHire) && (
+            <p className="mt-3 flex items-start gap-2 rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                {editing
+                  ? "Edit mode is on — click a requirement to tick or untick it. Save keeps the changes; Cancel reverts them."
+                  : "The pre-employment requirements for this position. The checklist is auto-filed in New Hire Onboarding once the hire record is created — then it becomes editable here."}
+              </span>
+            </p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function ApplicantViewScreen({
   a,
@@ -4154,8 +5199,17 @@ function ApplicantViewScreen({
   verifiedFinal,
   finalDecided,
   onVerifyFinal,
+  onBackToOnboarding,
+  forceChecklist,
 }: ApplicantViewScreenProps) {
-  const [panel, setPanel] = useState<ViewPanel>("current");
+  const [panel, setPanel] = useState<ViewPanel>(() =>
+    /* Arriving from New Hire Onboarding's "View Checklist" — or an Offer / Hired
+       applicant opening the profile — lands straight on the Requirements
+       Checklist card moved here from New Hire Onboarding. */
+    forceChecklist === true || a.stage === "Offer" || a.stage === "Hired"
+      ? "onboarding"
+      : "current",
+  );
   /* Position rule from the API (job-post flag / designated positions) with the
      static list as fallback — must match the practical API gate. */
   const requiresPrac = requiresPractical(a.position, a.requiresPractical);
@@ -4180,6 +5234,29 @@ function ApplicantViewScreen({
     docs.map((d) => ({ docType: d.docType, originalCopy: d.originalCopy })),
   );
   const passedScreening = a.score >= passing;
+
+  /** Offer extended or hired — the stages whose applicants show the
+   *  requirements checklist (the New Hire Onboarding card moved into this
+   *  View profile). Declared early because the auto-open effect below reads it.
+   *  The "View Checklist" arrival from the onboarding pipeline forces it on so
+   *  the clicked-through checklist is always the section that opens. */
+  const showRequirementsChecklist =
+    forceChecklist === true || a.stage === "Offer" || a.stage === "Hired";
+
+  /** Ordered sections for the wizard footer — the right-arrow progression:
+   *  Current Stage → Screening (Resume & Documents) → Interview → Assessment
+   *  Test → Practical Assessment → Final Evaluation → Requirements Checklist. */
+  const flowSections: { key: ViewPanel; label: string }[] = [
+    { key: "current", label: "Current Stage" },
+    { key: "resume", label: "Screening" },
+    { key: "interview", label: "Interview" },
+    { key: "test", label: "Assessment Test" },
+    ...(requiresPrac ? [{ key: "practical" as ViewPanel, label: "Practical Assessment" }] : []),
+    { key: "final", label: "Final Evaluation" },
+    ...(showRequirementsChecklist
+      ? [{ key: "onboarding" as ViewPanel, label: "Requirements Checklist" }]
+      : []),
+  ];
 
   /**
    * Per-stage progress behind the stepper, derived from the recorded results
@@ -4233,11 +5310,19 @@ function ApplicantViewScreen({
   useEffect(() => {
     if (lastFlowKey.current === flowKey) return;
     lastFlowKey.current = flowKey;
-    // Leave the user alone when they are reading reference material.
-    if (panel === "details" || panel === "resume") return;
+    // Leave the user alone when they are reading reference material — or the
+    // requirements checklist card they arrived on.
+    if (panel === "details" || panel === "resume" || panel === "onboarding") return;
     // Open the stage being worked on now (the first stage that is not finished).
     const nextIdx = stepStates.findIndex((s) => s === "current");
-    const target = nextIdx === -1 ? "final" : VIEW_MILESTONES[nextIdx]!.key;
+    // A closed pipeline (offer extended / hired) opens the requirements
+    // checklist — the card moved here from New Hire Onboarding.
+    const target =
+      nextIdx === -1
+        ? showRequirementsChecklist
+          ? "onboarding"
+          : "final"
+        : VIEW_MILESTONES[nextIdx]!.key;
     setPanel(target === "practical" && !requiresPrac ? "final" : target);
     // `stepStates` is rebuilt from the same inputs as `flowKey`, so the flow key
     // is enough to know when the progress changed.
@@ -4315,6 +5400,120 @@ function ApplicantViewScreen({
     }
   };
 
+  /* ------------------------------------------------------------------ */
+  /* Requirements checklist — the New Hire Onboarding right-side card    */
+  /* moved into this View profile. Offer / Hired applicants only.        */
+  /* ------------------------------------------------------------------ */
+
+  /** Live new-hire records — the checklist source, linked by applicant id. */
+  const hires = useHires();
+  const masterChecklists = useMasterChecklists();
+
+  /** The onboarding record created for this applicant (falls back to name +
+   *  position for rows saved before the applicant link was stored). */
+  const linkedHire = useMemo(() => {
+    if (!showRequirementsChecklist) return null;
+    const byApplicant =
+      a.dbId != null
+        ? hires.find((h) => h.applicantId != null && h.applicantId === a.dbId)
+        : undefined;
+    if (byApplicant) return byApplicant;
+    return hires.find((h) => h.name === a.name && h.position === a.position) ?? null;
+  }, [hires, a.dbId, a.name, a.position, showRequirementsChecklist]);
+
+  /** Pre-employment requirements: the hire's own checklist when the onboarding
+   *  record exists, otherwise the Pre-onboarding template items that apply to
+   *  the position (the same rule the backend uses when the hire is filed). */
+  const requirementItems = useMemo(() => {
+    if (!showRequirementsChecklist) return [] as { item: string; done: boolean }[];
+    if (linkedHire) {
+      const phaseItems = linkedHire.checklist.filter(
+        (c) => (c.phase ?? "Probationary") === "Pre-onboarding",
+      );
+      const pool = phaseItems.length > 0 ? phaseItems : linkedHire.checklist;
+      return pool.map((c) => ({ item: c.item, done: c.done }));
+    }
+    return masterChecklists
+      .filter((c) => (c.phase ?? "Probationary") === "Pre-onboarding")
+      .filter((c) => (c.status ?? "Active") === "Active")
+      .filter(
+        (c) =>
+          c.positions === "all" || !c.positions || (c.positions as string[]).includes(a.position),
+      )
+      .flatMap((c) => c.items)
+      .map((item) => ({ item, done: false }));
+  }, [showRequirementsChecklist, linkedHire, masterChecklists, a.position]);
+
+  /** Employee submissions (uploads / notes) per checklist item, straight from
+   *  employee_onboarding_items — submitted documents stay visible here. */
+  const [hireSubmissions, setHireSubmissions] = useState<
+    Record<string, { fileName?: string; fileUrl?: string; notes?: string; submittedAt?: string }>
+  >({});
+  useEffect(() => {
+    const dbId = linkedHire?.dbId;
+    if (!dbId) {
+      setHireSubmissions({});
+      return;
+    }
+    let cancelled = false;
+    onboardingItemsApi
+      .listForNewHire(dbId)
+      .then((items) => {
+        if (cancelled) return;
+        const map: Record<
+          string,
+          { fileName?: string; fileUrl?: string; notes?: string; submittedAt?: string }
+        > = {};
+        (items ?? []).forEach((i) => {
+          const fileUrl =
+            i.employee_onboarding_item_id != null
+              ? onboardingItemsApi.documentUrl(i.employee_onboarding_item_id)
+              : i.file_url;
+          map[checklistKeyOf(String(i.item_text ?? ""))] = {
+            ...(i.file_name ? { fileName: i.file_name } : {}),
+            ...(fileUrl ? { fileUrl } : {}),
+            ...(i.notes ? { notes: i.notes } : {}),
+            ...(i.submitted_at ? { submittedAt: i.submitted_at } : {}),
+          };
+        });
+        setHireSubmissions(map);
+      })
+      .catch((err) => console.warn("Could not load the onboarding submissions:", err));
+    return () => {
+      cancelled = true;
+    };
+    // Only the linked database id matters — the store replaces the array on
+    // every 15s sync, which would otherwise refetch the same submissions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedHire?.dbId]);
+
+  const checklistDone = requirementItems.filter((i) => i.done).length;
+  const checklistProgress =
+    requirementItems.length > 0 ? Math.round((checklistDone / requirementItems.length) * 100) : 0;
+
+  /* --- Stepper states including the onboarding step ------------------------
+     The requirements checklist is the 6th milestone, right after the final
+     evaluation: red while requirements are still open, green once every item is
+     ticked, gray until the applicant reaches the offer / hired stage. */
+  const checklistMilestoneState: StageProgressState = showRequirementsChecklist
+    ? requirementItems.length > 0 && checklistDone === requirementItems.length
+      ? "done"
+      : "current"
+    : "pending";
+  const milestoneStates: StageProgressState[] = [...stepStates, checklistMilestoneState];
+
+  /** Stepper click — jumps straight to the clicked milestone's section. */
+  const openMilestone = (key: ViewPanel) => {
+    if (key === "onboarding" && !showRequirementsChecklist) return;
+    setPanel(key === "practical" && !requiresPrac ? "final" : key);
+  };
+
+  /** Leaves the checklist section automatically when the applicant's stage is
+   *  no longer Offer / Hired (e.g. the live record moved on). */
+  useEffect(() => {
+    if (panel === "onboarding" && !showRequirementsChecklist) setPanel("current");
+  }, [panel, showRequirementsChecklist]);
+
   /** One entry of the section nav. `done` turns the badge into a green check so
    *  a finished process is visible at a glance (and, for positions that skip it,
    *  the practical reads completed as soon as the applicant reaches the final
@@ -4341,9 +5540,7 @@ function ApplicantViewScreen({
         <span
           className={cn(
             "ml-auto inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[0.6rem] font-bold",
-            panel === id
-              ? "bg-success/25 text-success-foreground"
-              : "bg-success/15 text-success",
+            panel === id ? "bg-success/25 text-success-foreground" : "bg-success/15 text-success",
           )}
           title="Completed"
         >
@@ -4370,9 +5567,16 @@ function ApplicantViewScreen({
     <div className="mt-6 space-y-5">
       {/* Top bar — Review lives in Resume & Documents, scheduling stays here */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button variant="outline" size="sm" onClick={onBack}>
-          <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Applicants
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onBack}>
+            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Applicants
+          </Button>
+          {onBackToOnboarding && (
+            <Button variant="outline" size="sm" onClick={onBackToOnboarding}>
+              <ClipboardList className="mr-1.5 h-3.5 w-3.5" /> Back to New Hire Onboarding
+            </Button>
+          )}
+        </div>
         <Button size="sm" onClick={onSchedule}>
           <CalendarClock className="mr-1.5 h-3.5 w-3.5" /> Book Interview
         </Button>
@@ -4402,6 +5606,14 @@ function ApplicantViewScreen({
                   {statusMeta[a.status].label}
                 </Badge>
               </p>
+              {/* Onboarding hand-over — the employee's first day of work. */}
+              {linkedHire?.startDate && (
+                <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <CalendarClock className="h-3.5 w-3.5 text-gold-foreground" />
+                  Start Date as Employee:{" "}
+                  <span className="font-medium text-foreground">{linkedHire.startDate}</span>
+                </p>
+              )}
             </div>
             {a.resumeUrl ? (
               <div className="ml-auto flex shrink-0 items-center gap-2.5 rounded-lg border border-border/70 px-3 py-2">
@@ -4451,18 +5663,22 @@ function ApplicantViewScreen({
         </CardContent>
       </Card>
 
-      {/* Stage stepper — timeline: Screening → Interview → Assessment Test → Practical Assessment → Final Evaluation */}
+      {/* Stage stepper — timeline: Screening → Interview → Assessment Test →
+          Practical Assessment → Final Evaluation → Requirements Checklist.
+          Every node is clickable and opens its section; the checklist node
+          opens the onboarding step. */}
       <Card className="border-border/70">
         <CardContent className="overflow-x-auto px-6 py-5">
           <div className="flex min-w-[640px] items-start">
             {VIEW_MILESTONES.map((m, i) => {
               /* Colour comes from the recorded progress, not the stage label:
                  completed → green, the stage being worked on → red, the rest → gray. */
-              const state: StageProgressState = stepStates[i] ?? "pending";
+              const state: StageProgressState = milestoneStates[i] ?? "pending";
               const done = state === "done";
               const current = state === "current";
               const isPrac = m.label === "Practical Assessment";
               const skipped = isPrac && !requiresPrac;
+              const isChecklistStep = m.key === "onboarding";
               /** Verdict already recorded for this stage, when there is one. */
               const verdict =
                 i === 1
@@ -4472,22 +5688,28 @@ function ApplicantViewScreen({
                     : i === 3
                       ? (practical?.result ?? null)
                       : null;
-              const statusText = skipped
+              const statusText = isChecklistStep
                 ? done
-                  ? "Not required — Completed"
-                  : "Not required"
-                : done
-                  ? verdict
-                    ? `Completed · ${verdict}`
-                    : "Completed"
+                  ? "Completed"
                   : current
-                    ? "In Progress"
-                    : "Pending";
+                    ? `In Progress · ${checklistDone}/${requirementItems.length}`
+                    : "Pending"
+                : skipped
+                  ? done
+                    ? "Not required — Completed"
+                    : "Not required"
+                  : done
+                    ? verdict
+                      ? `Completed · ${verdict}`
+                      : "Completed"
+                    : current
+                      ? "In Progress"
+                      : "Pending";
               const isLast = i === VIEW_MILESTONES.length - 1;
 
               // Connector to the next node: green behind a completed stage, a
               // green→red ramp into the stage in progress, gray while pending.
-              const nextState = stepStates[i + 1] ?? "pending";
+              const nextState = milestoneStates[i + 1] ?? "pending";
               const lineClass =
                 nextState === "done"
                   ? "bg-success"
@@ -4511,9 +5733,19 @@ function ApplicantViewScreen({
                       )}
                     />
                   )}
-                  <span
+                  <button
+                    type="button"
+                    onClick={() => openMilestone(m.key)}
+                    disabled={isChecklistStep && !showRequirementsChecklist}
+                    aria-label={`Open ${m.label}`}
+                    title={
+                      isChecklistStep && !showRequirementsChecklist
+                        ? "The requirements checklist opens once the offer is extended or the hire record is filed"
+                        : `Open ${m.label}`
+                    }
                     className={cn(
-                      "relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold",
+                      "relative z-10 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-bold transition-all",
+                      "hover:ring-4 hover:ring-primary/25 disabled:cursor-not-allowed disabled:hover:ring-0",
                       done
                         ? "bg-success text-success-foreground"
                         : current
@@ -4522,7 +5754,7 @@ function ApplicantViewScreen({
                     )}
                   >
                     {done ? <Check className="h-4 w-4" strokeWidth={3} /> : i + 1}
-                  </span>
+                  </button>
                   <span
                     className={cn(
                       "mt-2 px-1 text-xs font-semibold leading-tight",
@@ -4554,56 +5786,75 @@ function ApplicantViewScreen({
         </CardContent>
       </Card>
 
-      {/* Body grid: section nav + panels */}
-      <div className="grid items-start gap-4 lg:grid-cols-[240px_1fr] lg:items-stretch">
-        <Card className="border-border/70 h-full self-stretch">
-          <CardContent className="h-full p-3">
-            <div className="lg:sticky lg:top-4">
-              <p className="eyebrow mb-2">Applicant sections</p>
-              <div className="space-y-1">
-                {sectionBtn("current", "Current Stage", <Info className="h-4 w-4" />)}
-                {sectionBtn("details", "Application Details", <FileText className="h-4 w-4" />)}
-                {sectionBtn(
-                  "resume",
-                  "Resume & Documents",
-                  <Upload className="h-4 w-4" />,
-                  docCount,
-                  passedScreening,
-                )}
-                {sectionBtn(
-                  "interview",
-                  "Interview",
-                  <ClipboardCheck className="h-4 w-4" />,
-                  assessments.length,
-                  !!assessment,
-                )}
-                {sectionBtn(
-                  "test",
-                  "Assessment Test",
-                  <BookMarked className="h-4 w-4" />,
-                  assessmentTests.length,
-                  !!test,
-                )}
-                {sectionBtn(
-                  "practical",
-                  "Practical Assessment",
-                  <Wrench className="h-4 w-4" />,
-                  requiresPrac ? practicalTests.length : undefined,
-                  /* Not required for this position: done as soon as the
+      {/* Body grid: section nav + panels. The Requirements Checklist is its own
+          focused step — the applicant section nav is hidden there, so only the
+          checklist occupies the view. */}
+      <div
+        className={cn(
+          "grid items-start gap-4",
+          panel === "onboarding" ? "grid-cols-1" : "lg:grid-cols-[240px_1fr] lg:items-stretch",
+        )}
+      >
+        {panel !== "onboarding" && (
+          <Card className="border-border/70 h-full self-stretch">
+            <CardContent className="h-full p-3">
+              <div className="lg:sticky lg:top-4">
+                <p className="eyebrow mb-2">Applicant sections</p>
+                <div className="space-y-1">
+                  {sectionBtn("current", "Current Stage", <Info className="h-4 w-4" />)}
+                  {sectionBtn("details", "Application Details", <FileText className="h-4 w-4" />)}
+                  {sectionBtn(
+                    "resume",
+                    "Resume & Documents",
+                    <Upload className="h-4 w-4" />,
+                    docCount,
+                    passedScreening,
+                  )}
+                  {sectionBtn(
+                    "interview",
+                    "Interview",
+                    <ClipboardCheck className="h-4 w-4" />,
+                    assessments.length,
+                    !!assessment,
+                  )}
+                  {sectionBtn(
+                    "test",
+                    "Assessment Test",
+                    <BookMarked className="h-4 w-4" />,
+                    assessmentTests.length,
+                    !!test,
+                  )}
+                  {sectionBtn(
+                    "practical",
+                    "Practical Assessment",
+                    <Wrench className="h-4 w-4" />,
+                    requiresPrac ? practicalTests.length : undefined,
+                    /* Not required for this position: done as soon as the
                      applicant has advanced past the stage (progress bar rule). */
-                  requiresPrac ? !!practical : stepStates[3] === "done",
-                )}
-                {sectionBtn(
-                  "final",
-                  "Final Evaluation",
-                  <CheckCircle2 className="h-4 w-4" />,
-                  finalEvaluations.length,
-                  stepStates[4] === "done",
-                )}
+                    requiresPrac ? !!practical : stepStates[3] === "done",
+                  )}
+                  {sectionBtn(
+                    "final",
+                    "Final Evaluation",
+                    <CheckCircle2 className="h-4 w-4" />,
+                    finalEvaluations.length,
+                    stepStates[4] === "done",
+                  )}
+                  {/* Requirements checklist — the New Hire Onboarding card moved
+                    into this View profile; offered / hired applicants only. */}
+                  {showRequirementsChecklist &&
+                    sectionBtn(
+                      "onboarding",
+                      "Requirements Checklist",
+                      <ClipboardList className="h-4 w-4" />,
+                      requirementItems.length,
+                      requirementItems.length > 0 && checklistDone === requirementItems.length,
+                    )}
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="min-w-0 h-full space-y-4 [&>*]:h-full">
           {(() => {
@@ -5033,6 +6284,25 @@ function ApplicantViewScreen({
                           </div>
                         );
                       })()}
+
+                      {/* Report unrecognized entities — full width at the bottom
+                          of the Resume Screening Result in Resume & Documents. */}
+                      {(() => {
+                        const vm = screeningViewModel(a);
+                        const entries = unrecognizedEntriesFrom(vm, a.screening_detail);
+                        return (
+                          <ReportUnrecognizedDialog
+                            entries={entries}
+                            applicantName={a.name}
+                            className="mt-4 w-full justify-center"
+                            triggerLabel={
+                              entries.length > 0
+                                ? `Report unrecognized entities (${entries.length})`
+                                : "Report unrecognized entities"
+                            }
+                          />
+                        );
+                      })()}
                     </CardContent>
                   </Card>
                 );
@@ -5412,12 +6682,62 @@ function ApplicantViewScreen({
                     </CardContent>
                   </Card>
                 );
+              /* Requirements checklist — the New Hire Onboarding right-side
+                 card, moved into this View profile. Shown only for applicants
+                 whose offer was extended or who are already hired. */
+              case "onboarding":
+                return !showRequirementsChecklist ? null : (
+                  <RequirementsChecklistCard
+                    linkedHire={linkedHire}
+                    items={requirementItems}
+                    submissions={hireSubmissions}
+                    done={checklistDone}
+                    progress={checklistProgress}
+                  />
+                );
               default:
                 return null;
             }
           })()}
         </div>
       </div>
+
+      {/* Section progression — the right arrow moves to the next section.
+          The Requirements Checklist is the final, focused step: it hides this
+          bar entirely so only the checklist is shown. */}
+      {(() => {
+        if (panel === "onboarding") return null;
+        const flowIndex = flowSections.findIndex((s) => s.key === panel);
+        if (flowIndex === -1) return null;
+        const prev = flowIndex > 0 ? flowSections[flowIndex - 1] : undefined;
+        const next = flowIndex < flowSections.length - 1 ? flowSections[flowIndex + 1] : undefined;
+        return (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 bg-card px-4 py-3">
+            {prev ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="cursor-pointer"
+                onClick={() => setPanel(prev.key)}
+              >
+                <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Previous: {prev.label}
+              </Button>
+            ) : (
+              <span className="text-[11px] text-muted-foreground">First step of the process</span>
+            )}
+            {next && (
+              <Button
+                size="sm"
+                className="cursor-pointer"
+                title={`Open the next section — ${next.label}`}
+                onClick={() => setPanel(next.key)}
+              >
+                Next: {next.label} <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -5445,15 +6765,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     // rejected applicants stay in the list, only labelled as "Rejected".
     const excludeStages = "Hired";
     try {
-      const [appRes, intRes, asmRes, testRes, practRes, finalRes] =
-        await Promise.allSettled([
-          applicantsApi.list({ per_page: 100, exclude_stages: excludeStages }),
-          interviewsApi.list({ per_page: 100 }),
-          assessmentsApi.list({ per_page: 100 }),
-          assessmentTestsApi.list({ per_page: 100 }),
-          practicalTestsApi.list({ per_page: 100 }),
-          finalEvaluationsApi.list({ per_page: 100 }),
-        ]);
+      const [appRes, intRes, asmRes, testRes, practRes, finalRes] = await Promise.allSettled([
+        applicantsApi.list({ per_page: 100, exclude_stages: excludeStages }),
+        interviewsApi.list({ per_page: 100 }),
+        assessmentsApi.list({ per_page: 100 }),
+        assessmentTestsApi.list({ per_page: 100 }),
+        practicalTestsApi.list({ per_page: 100 }),
+        finalEvaluationsApi.list({ per_page: 100 }),
+      ]);
       if (appRes.status === "fulfilled") {
         setRows((appRes.value?.data ?? []).map(transformApiApplicant));
       }
@@ -5567,6 +6886,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [stageFilter, setStageFilter] = useState<string>("all");
   const [rankingFilter, setRankingFilter] = useState<"all" | "passed" | "ready">("all");
   const applicantListRef = useRef<HTMLDivElement>(null);
+  /** Pipeline Overview card — the metric cards scroll it into view after
+   *  applying their quick filter. */
+  const pipelineListRef = useRef<HTMLDivElement>(null);
+  /** Room Availability & Daily Schedule card — "View in calendar" scrolls here. */
+  const roomAvailabilityRef = useRef<HTMLDivElement>(null);
 
   /* --- Top 5 Candidates Today list viewport -------------------------------- */
   /* The visible list area is locked to exactly TOP_FIVE_VISIBLE_CARDS cards so
@@ -5708,6 +7032,82 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   /** Applicant open in the redesign View screen — home of the moved stage sections
    *  (Interview, Assessment Test, Practical Assessment, Final Evaluation). */
   const [viewingApplicant, setViewingApplicant] = useState<Applicant | null>(null);
+  /** True while the View screen was opened from the New Hire Onboarding
+   *  "View Checklist" action — adds a "Back to New Hire Onboarding" button. */
+  const [viewedFromOnboarding, setViewedFromOnboarding] = useState(false);
+  /** Queued "View Checklist" target handed over from New Hire Onboarding. */
+  const [checklistViewTarget, setChecklistViewTarget] = useState<ChecklistViewTarget | null>(null);
+
+  /* Consume the queued hand-off once. The target is carried in state, so a
+     double-invoked effect run (React dev) can never drain the store twice and
+     drop the request. */
+  useEffect(() => {
+    const target = hireStore.consumePendingChecklistView();
+    if (target) setChecklistViewTarget(target);
+  }, []);
+
+  /**
+   * Opens the handed-over applicant in the View profile right away — the
+   * Requirements Checklist is forced as the landing section.
+   */
+  useEffect(() => {
+    if (!checklistViewTarget) return;
+    const { applicantId, applicantName } = checklistViewTarget;
+
+    /* Direct route — the hire knows its applicant id. Fetched directly so
+       Hired records (excluded from the active pipeline list) still open. */
+    if (applicantId != null) {
+      setChecklistViewTarget(null);
+      applicantsApi
+        .get(applicantId)
+        .then((res) => {
+          setViewedFromOnboarding(true);
+          setViewingApplicant(transformApiApplicant(res));
+        })
+        .catch((e) => {
+          console.warn("Could not open the applicant View profile:", e);
+          toast.error("Could not open the applicant's view profile.");
+        });
+      return;
+    }
+
+    /* Legacy records without applicant_id: wait for the pipeline list, then
+       resolve the applicant by exact name — falling back to the full applicants
+       list, which still includes Hired records. */
+    if (rows.length === 0) return;
+    setChecklistViewTarget(null);
+    const wanted = applicantName.trim().toLowerCase();
+    const local = rows.find((r) => r.name.trim().toLowerCase() === wanted);
+    if (local) {
+      setViewedFromOnboarding(true);
+      setViewingApplicant(local);
+      return;
+    }
+    applicantsApi
+      .list({ per_page: 100 })
+      .then((res) => {
+        const match = (res?.data ?? [])
+          .map(transformApiApplicant)
+          .find((r) => r.name.trim().toLowerCase() === wanted);
+        if (!match) {
+          toast.error(
+            `No applicant profile matches "${applicantName}" — this hire was filed without an applicant.`,
+          );
+          return;
+        }
+        setViewedFromOnboarding(true);
+        setViewingApplicant(match);
+      })
+      .catch((e) => {
+        console.warn("Could not resolve the applicant for this hire:", e);
+        toast.error("Could not open the applicant's view profile.");
+      });
+  }, [checklistViewTarget, rows]);
+
+  /** Closing the View screen clears the onboarding-origin flag. */
+  useEffect(() => {
+    if (!viewingApplicant) setViewedFromOnboarding(false);
+  }, [viewingApplicant]);
   /** Test & answers being reviewed from the result dialog. */
   const [viewingTestAnswers, setViewingTestAnswers] = useState<AssessmentTestRow | null>(null);
   const [viewMonth, setViewMonth] = useState<Date>(() => {
@@ -5721,6 +7121,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [pipelinePosition, setPipelinePosition] = useState<string>("all");
   const [pipelineStage, setPipelineStage] = useState<string>("all");
   const [pipelineResult, setPipelineResult] = useState<string>("all");
+  /** Time window for the "Perfect for the Job" metric card (Today / Week / Month). */
+  const [perfectRange, setPerfectRange] = useState<"today" | "week" | "month">("today");
+  /** Pipeline Overview filter: only applicants with a live interview booked on
+   *  this ISO date. Set by the Today Scheduled Interview metric and the Daily
+   *  Schedule Preview "View list in Pipeline" action. */
+  const [pipelineScheduledDate, setPipelineScheduledDate] = useState<string | null>(null);
   const [calSearch, setCalSearch] = useState("");
   const [calStatusFilter, setCalStatusFilter] = useState<string>("all");
   const [slotSettings, setSlotSettings] = useState(DEFAULT_SLOT_SETTINGS);
@@ -6330,9 +7736,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       const cardHeight = topFiveCard.getBoundingClientRect().height;
       if (cardHeight <= 0) return;
       setTopFiveViewport(
-        Math.round(
-          cardHeight * TOP_FIVE_VISIBLE_CARDS + rowGap * (TOP_FIVE_VISIBLE_CARDS - 1),
-        ),
+        Math.round(cardHeight * TOP_FIVE_VISIBLE_CARDS + rowGap * (TOP_FIVE_VISIBLE_CARDS - 1)),
       );
     };
     measure();
@@ -6379,20 +7783,124 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }, 60);
   };
 
-  /** Opens the Interview Scheduling section, focused on today's date. */
+  /** Candidate Ranking donut/legend → filters the Applicant List by that
+   *  screening status (Perfect for the Job, Fit for other Job, Invalid
+   *  credential, Not fitted to Job) and scrolls it into view. */
+  const goToStatus = (status: ApplicantStatus) => {
+    setTab("ranking");
+    setRankingFilter("all");
+    setStatusFilter(status);
+    setStageFilter("all");
+    setPositionFilter("all");
+    setSearch("");
+    window.setTimeout(() => {
+      applicantListRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 60);
+  };
+
+  /** Opens the Interview Pipeline section, focused on today's date — both the
+   *  booking calendar AND the Room Availability & Daily Schedule calendar jump
+   *  to today, and the Pipeline Overview lists every applicant scheduled for
+   *  today. */
   const goToTodayInterviews = () => {
     setTab("scheduling");
     setSchedule((s) => ({ ...s, date: TODAY_ISO }));
     const d = new Date(`${TODAY_ISO}T00:00:00`);
     setViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    setCalViewDate(TODAY_ISO);
+    setCalViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    // Pipeline Overview → only the candidates booked for today.
+    setPipelineScheduledDate(TODAY_ISO);
+    setPipelineStage("all");
+    setPipelinePosition("all");
+    setPipelineResult("all");
+    setPipelineSearch("");
+    window.setTimeout(() => {
+      roomAvailabilityRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
   };
 
-  /** Opens the applicant list filtered to candidates ready for the next stage —
-   *  with the Interview tab now living inside each applicant's View screen, this
-   *  lands on the list so HR can open the candidate's View. */
-  const goToReadyToAssess = () => {
-    setTab("ranking");
-    setRankingFilter("ready");
+  /** Metric → "New Applicant": opens the Pipeline Overview filtered to fresh
+   *  Screened applicants (screening done, no hiring decision yet). */
+  const goToNewApplicants = () => {
+    setTab("scheduling");
+    setPipelineStage("Screened");
+    setPipelineResult("all");
+    setPipelinePosition("all");
+    setPipelineSearch("");
+    setPipelineScheduledDate(null);
+    window.setTimeout(() => {
+      pipelineListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+  };
+
+  /** Metric → "Perfect for the Job": opens the Pipeline Overview filtered to
+   *  candidates the screener marked perfect for the job (status = fit). */
+  const goToPerfectForJob = () => {
+    setTab("scheduling");
+    setPipelineStage("all");
+    setPipelinePosition("all");
+    setPipelineSearch("");
+    setPipelineResult("perfect");
+    setPipelineScheduledDate(null);
+    window.setTimeout(() => {
+      pipelineListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+  };
+
+  /** Daily Schedule Preview row → select the applicant in the Pipeline
+   *  Overview (searches their name there) and scrolls the card into view. */
+  const selectInPipeline = (applicantName: string) => {
+    setTab("scheduling");
+    setPipelineStage("all");
+    setPipelinePosition("all");
+    setPipelineResult("all");
+    setPipelineSearch(applicantName);
+    window.setTimeout(() => {
+      pipelineListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+  };
+
+  /** Daily Schedule Preview → "View list in Pipeline": shows every applicant
+   *  whose live interview is booked on the previewed day in the Pipeline
+   *  Overview (today's preview therefore lists today's candidates). */
+  const showScheduledInPipeline = (date: string) => {
+    setTab("scheduling");
+    setPipelineScheduledDate(date);
+    setPipelineStage("all");
+    setPipelinePosition("all");
+    setPipelineResult("all");
+    setPipelineSearch("");
+    window.setTimeout(() => {
+      pipelineListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+  };
+
+  /** "View scheduled in the calendar" — jumps to the Interview Pipeline and
+   *  points the Room Availability & Daily Schedule calendar at the booked
+   *  interview's date (and reserved room, when one exists). */
+  const viewScheduledInCalendar = (a: Applicant) => {
+    const booked =
+      interviews.find((i) => i.applicant === a.name && i.status !== "Cancelled") ??
+      interviews.find((i) => i.applicant === a.name);
+    const date = booked?.date ?? TODAY_ISO;
+    const d = new Date(`${date}T00:00:00`);
+    setTab("scheduling");
+    setCalViewDate(date);
+    setSchedule((s) => ({ ...s, date }));
+    if (!Number.isNaN(d.getTime())) {
+      setCalViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    }
+    const room = booked?.facilityName
+      ? facilities.find((f) => f.name === booked.facilityName)
+      : undefined;
+    if (room) setCalViewFacilityId(room.id);
+    window.setTimeout(() => {
+      roomAvailabilityRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
   };
 
   const applicantSort = useSort(filtered, {
@@ -6647,8 +8155,19 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const assessorIdForInterviewer = (interviewerName?: string | null): string => {
     const norm = (v: string) => v.trim().toLowerCase().replace(/\s+/g, " ");
     const titles = new Set([
-      "chef", "mr", "mrs", "ms", "miss", "dr", "engr", "atty", "sir",
-      "maam", "madam", "capt", "prof",
+      "chef",
+      "mr",
+      "mrs",
+      "ms",
+      "miss",
+      "dr",
+      "engr",
+      "atty",
+      "sir",
+      "maam",
+      "madam",
+      "capt",
+      "prof",
     ]);
     const coreWords = (v: string) => {
       const words = norm(v).split(" ").filter(Boolean);
@@ -6681,9 +8200,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setEvalComments({});
     setEvalResult(null);
     setEvalRemarks("");
-    const iv = interviews.find(
-      (x) => x.applicant === a.name && x.status !== "Cancelled",
-    ) ?? interviews.find((x) => x.applicant === a.name);
+    const iv =
+      interviews.find((x) => x.applicant === a.name && x.status !== "Cancelled") ??
+      interviews.find((x) => x.applicant === a.name);
     setEvalAssessor(assessorIdForInterviewer(iv?.interviewer));
     setEvalDateTime(isoOf(new Date()));
   };
@@ -6796,6 +8315,15 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       toast.error(
         `That slot is full — ${capacityPerSlot} applicants already booked for ${schedule.time}.`,
       );
+      return;
+    }
+    // The requested room / meeting space can only host one interview per slot.
+    if (facilityBookedInSlot(schedule.facilityId, schedule.date, schedule.time)) {
+      toast.error("That facility is already booked for this slot.", {
+        description: `${
+          facilities.find((f) => f.id === schedule.facilityId)?.name ?? "The room"
+        } has another interview at ${schedule.time} on ${schedule.date} — pick a different slot or request another facility.`,
+      });
       return;
     }
 
@@ -7230,6 +8758,25 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const openRefer = (a: Applicant) => {
     if (isActionLocked(a)) return;
     setReferring(a);
+    // Prefill with the strongest resume-screening match against each open job
+    // post's requirement entities; fall back to the NLP "Stronger match" flag.
+    const openPositions = positions.filter(
+      (p) =>
+        normalizeMatchText(p.title) !== normalizeMatchText(a.position) && p.filled < p.headcount,
+    );
+    const best = [...openPositions]
+      .map((p) => ({
+        title: p.title,
+        fit: referralMatch(
+          a,
+          dbJobPosts.find((j) => j.title === p.title),
+        ),
+      }))
+      .sort((x, y) => y.fit.score - x.fit.score)[0];
+    if (best && best.fit.total > 0 && best.fit.score > 0) {
+      setReferTarget(best.title);
+      return;
+    }
     const suggested = a.flags.find((f) => f.startsWith("Stronger match:"));
     setReferTarget(suggested ? suggested.replace("Stronger match:", "").split("(")[0]!.trim() : "");
   };
@@ -7936,6 +9483,23 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const bookedInSlot = (date: string, time: string) =>
     interviews.filter((i) => i.date === date && i.time === time).length;
 
+  /** True when the requested facility (room / meeting space) already holds a
+   *  live interview in the same date + time slot. The interview currently being
+   *  rescheduled is ignored so keeping its own slot is not a conflict. */
+  const facilityBookedInSlot = (facilityId: string, date: string, time: string) => {
+    if (!facilityId || facilityId === "none") return false;
+    const facility = facilities.find((f) => f.id === facilityId);
+    if (!facility) return false;
+    return interviews.some(
+      (i) =>
+        i.date === date &&
+        i.time === time &&
+        i.status !== "Cancelled" &&
+        i.id !== rescheduling?.id &&
+        i.facilityName === facility.name,
+    );
+  };
+
   const readyToAssess = rows.filter(
     (a) =>
       a.stage === "Interview Scheduled" &&
@@ -8088,7 +9652,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           readyForFinal,
         };
       })
-      .filter(({ a, assessment, test, practical, final }) => {
+      .filter(({ a, interview, liveInterview, assessment, test, practical, final }) => {
         if (pipelinePosition !== "all" && a.position !== pipelinePosition) return false;
         if (pipelineStage !== "all" && a.stage !== pipelineStage) return false;
         if (
@@ -8096,6 +9660,15 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           !`${a.name} ${a.id} ${a.position}`.toLowerCase().includes(pipelineSearch.toLowerCase())
         )
           return false;
+        if (pipelineScheduledDate) {
+          // Quick filter — applicants whose live interview is booked on the
+          // selected day (Today Scheduled Interview metric / Daily Schedule
+          // Preview). Cancelled bookings never match.
+          const booked = liveInterview ?? interview;
+          if (!booked || booked.status === "Cancelled" || booked.date !== pipelineScheduledDate) {
+            return false;
+          }
+        }
         if (pipelineResult === "passed") {
           const ok =
             assessment?.result === "Passed" ||
@@ -8115,6 +9688,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         if (pipelineResult === "pending") {
           if (test || practical || final) return false;
         }
+        if (pipelineResult === "perfect") {
+          // Metric-card quick filter — candidates the screener marked perfect
+          // for the job (status = fit).
+          if (a.status !== "fit") return false;
+        }
         return true;
       });
   }, [
@@ -8128,6 +9706,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     pipelineStage,
     pipelineSearch,
     pipelineResult,
+    pipelineScheduledDate,
   ]);
 
   const pipelineSort = useSort(pipelineRows, {
@@ -8209,10 +9788,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         role: u.department_name ?? "System user",
         department: u.department_name ?? "",
       }))
-      .filter(
-        (u) =>
-          !!u.name && !taken.has(u.name.toLowerCase()) && inDept(u.department),
-      );
+      .filter((u) => !!u.name && !taken.has(u.name.toLowerCase()) && inDept(u.department));
     return [...seeded, ...users];
   }, [assessors, scheduleDept]);
 
@@ -8228,9 +9804,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   return (
     <div>
       <PageHeader
-        eyebrow={role === "superadmin" ? "Super Admin — Recruitment" : "Admin — Recruitment"}
         title="Applicant Management"
-        description="spaCy NER resume screening, candidate ranking, interview scheduling and evaluation."
         actions={
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" onClick={() => setReportsOpen(true)}>
@@ -8259,6 +9833,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           )}
           passing={passing}
           onBack={() => setViewingApplicant(null)}
+          onBackToOnboarding={
+            viewedFromOnboarding ? () => navigate({ to: `/${role}/onboarding` }) : undefined
+          }
+          forceChecklist={viewedFromOnboarding}
           onReview={() => openReview(viewedApplicant)}
           onRecomputeRanking={() => recomputeRanking(viewedApplicant)}
           recomputingRanking={recomputingRanking}
@@ -8268,8 +9846,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           }}
           onStartInterview={() => startInterviewFor(viewedApplicant)}
           onAcceptAndSchedule={() => {
-            acceptAndSchedule(viewedApplicant);
+            // Show the resume screening result first — the review dialog's
+            // Accept & schedule continues into the booking form.
             setViewingApplicant(null);
+            openReview(viewedApplicant);
           }}
           onRescheduleInterview={(i) => {
             rescheduleInterview(i);
@@ -8322,7 +9902,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <StatCard
                 label="Total Applicants"
                 value={rows.length}
-                hint="Tap to view all"
                 icon={Users}
                 tone="primary"
                 onClick={() => goToApplicants("all")}
@@ -8330,51 +9909,94 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             </div>
             <div className="h-full [&>*]:h-full">
               <StatCard
-                label="Passed Screening"
-                value={rows.filter((a) => a.score >= passing).length}
-                hint={`Passing score ${passing}%`}
-                icon={CheckCircle2}
-                tone="success"
-                onClick={() => goToApplicants("passed")}
+                label="New Applicant"
+                value={rows.filter((a) => a.stage === "Screened").length}
+                icon={UserPlus}
+                tone="primary"
+                onClick={goToNewApplicants}
               />
             </div>
             <div className="h-full [&>*]:h-full">
+              {/* Perfect for the Job — same card shape as StatCard, plus a
+                  Today / Week / Month quick range switch for the count. */}
+              <Card
+                className="group h-full cursor-pointer transition-colors hover:border-primary/40"
+                onClick={goToPerfectForJob}
+              >
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className="eyebrow">Perfect for the Job</p>
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+                    </div>
+                    <div
+                      className="flex w-fit shrink-0 items-center gap-0.5 rounded-md border border-border bg-muted/50 p-0.5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {(["today", "week", "month"] as const).map((r) => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setPerfectRange(r)}
+                          className={cn(
+                            "cursor-pointer rounded px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide transition-colors",
+                            perfectRange === r
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="mt-2 font-display text-3xl font-semibold text-success">
+                    {(() => {
+                      const inRange = (appliedAt: string) => {
+                        const d = new Date(appliedAt.replace(" ", "T"));
+                        if (Number.isNaN(d.getTime())) return false;
+                        if (perfectRange === "today") return isoOf(d) === TODAY_ISO;
+                        const days = perfectRange === "week" ? 7 : 30;
+                        const cutoff = new Date();
+                        cutoff.setHours(0, 0, 0, 0);
+                        cutoff.setDate(cutoff.getDate() - (days - 1));
+                        return d.getTime() >= cutoff.getTime();
+                      };
+                      return rows.filter((a) => a.status === "fit" && inRange(a.appliedAt)).length;
+                    })()}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+            <div className="h-full [&>*]:h-full">
               <StatCard
-                label="Today Scheduled Interviews"
-                value={interviews.filter((i) => i.date === TODAY_ISO).length}
-                hint="Tap to open today's schedule"
+                label="Today Scheduled Interview"
+                value={
+                  interviews.filter((i) => i.date === TODAY_ISO && i.status !== "Cancelled").length
+                }
                 icon={CalendarDays}
                 tone="gold"
                 onClick={goToTodayInterviews}
               />
             </div>
-            <div className="h-full [&>*]:h-full">
-              <StatCard
-                label="Ready for Interview"
-                value={readyToAssess.length}
-                hint="Awaiting interview"
-                icon={ClipboardCheck}
-                onClick={goToReadyToAssess}
-              />
-            </div>
           </div>
 
           <Tabs value={tab} onValueChange={setTab} className="mt-6">
-            <TabsList className="flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm">
+            <TabsList className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
               <TabsTrigger
-                className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
                 value="ranking"
               >
                 <Trophy className="h-3.5 w-3.5" /> Ranking &amp; Applicants
               </TabsTrigger>
               <TabsTrigger
-                className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
                 value="scheduling"
               >
                 <CalendarClock className="h-3.5 w-3.5" /> Interview Pipeline
               </TabsTrigger>
               <TabsTrigger
-                className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
                 value="history"
               >
                 <History className="h-3.5 w-3.5" /> History &amp; Audit
@@ -8382,7 +10004,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             </TabsList>
 
             {/* RANKING + TABLE */}
-            <TabsContent value="ranking" className="mt-4 space-y-6">
+            <TabsContent value="ranking" className=" space-y-6">
               <div className="grid items-stretch gap-6 xl:grid-cols-[2fr_1fr]">
                 <Card className="border-border/70">
                   <CardContent className="flex h-full flex-col p-6">
@@ -8392,17 +10014,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           <Trophy className="h-5 w-5 text-primary" />
                           Candidate Ranking
                         </h2>
-                        <p className="text-xs text-muted-foreground">
-                          Resume screening results — {screenedTotal} resume
-                          {screenedTotal === 1 ? "" : "s"} processed
-                          {positionFilter !== "all"
-                            ? ` for ${positionFilter}`
-                            : " across all positions"}
-                          .
-                          {documentVerifiedTotal > 0
-                            ? ` Ranking includes supporting-document verification for ${documentVerifiedTotal} of them.`
-                            : " Upload supporting documents (COE, Certificate, Credential) to include their verification in the ranking."}
-                        </p>
                       </div>
                       <Select value={positionFilter} onValueChange={setPositionFilter}>
                         <SelectTrigger className="w-48">
@@ -8469,7 +10080,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             }}
                           >
                             {distribution.map((d) => (
-                              <Cell key={d.key} fill={statusChartColor[d.key]} />
+                              <Cell
+                                key={d.key}
+                                fill={statusChartColor[d.key]}
+                                className="cursor-pointer"
+                                onClick={() => goToStatus(d.key)}
+                              />
                             ))}
                           </Pie>
                           <RTooltip
@@ -8494,9 +10110,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
                       <div className="grid w-full min-w-[16rem] max-w-[24rem] flex-1 grid-cols-1 gap-2">
                         {distribution.map((d) => (
-                          <div
+                          <button
+                            type="button"
                             key={d.key}
-                            className="flex items-center justify-between rounded-md border border-border px-4 py-3"
+                            title={`Show the ${d.name} applicants in the Applicant List`}
+                            onClick={() => goToStatus(d.key)}
+                            className="flex cursor-pointer items-center justify-between rounded-md border border-border px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/40"
                           >
                             <span className="flex items-center gap-2 text-sm">
                               <span
@@ -8506,7 +10125,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               {d.name}
                             </span>
                             <span className="font-display text-lg font-semibold">{d.value}</span>
-                          </div>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -8522,20 +10141,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                         <Trophy className="h-5 w-5 text-gold" /> Top 5 Candidates Today
                       </h2>
-                      {topFiveToday.length > TOP_FIVE_VISIBLE_CARDS && (
-                        <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Showing {TOP_FIVE_VISIBLE_CARDS} of {topFiveToday.length} · scroll
-                        </span>
-                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Highest ranked resumes from today&apos;s screening batch.
-                    </p>
                     <ol
                       ref={setTopFiveList}
-                      style={
-                        topFiveViewport ? { maxHeight: `${topFiveViewport}px` } : undefined
-                      }
+                      style={topFiveViewport ? { maxHeight: `${topFiveViewport}px` } : undefined}
                       className="mt-4 flex max-h-[33rem] min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1"
                     >
                       {topFiveToday.map((a, i) => (
@@ -8583,20 +10192,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 );
                               })()}
                             </div>
-                          </div>
-
-                          {/* Row 2: Badge (styled like the photo) + Score */}
-                          <div className="flex items-center justify-between">
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                statusMeta[a.status].className,
-                                "rounded-full border-green-200 bg-green-100 px-3 py-1 text-xs font-semibold text-green-700 dark:border-green-800 dark:bg-green-900/40 dark:text-green-300",
-                              )}
-                            >
-                              {statusMeta[a.status].label}
-                            </Badge>
-                            <span className="font-display text-2xl font-bold text-primary">
+                            {/* Score shares the name/badge row — the separate
+                                score row that left a white gap before Review is
+                                gone, and the percent lines up with the badge. */}
+                            <span className="ml-auto shrink-0 self-center font-display text-2xl font-bold text-primary">
                               {a.score}%
                             </span>
                           </div>
@@ -8625,10 +10224,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         <Users className="h-5 w-5 text-primary" />
                         Applicant List
                       </h2>
-                      <p className="text-xs text-muted-foreground">
-                        Based on the applied job position
-                        {positionFilter !== "all" ? ` — ${positionFilter}` : " — all positions"}.
-                      </p>
                       {rankingFilter !== "all" && (
                         <Badge
                           variant="outline"
@@ -8859,6 +10454,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       to={applicantPage.to}
                       total={applicantPage.total}
                       label="applicants"
+                      showRangeLabel={false}
                       onPageChange={applicantPage.setPage}
                     />
                   </div>
@@ -9036,7 +10632,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               "relative min-h-[2.9rem] cursor-pointer border-b border-r border-border/70 text-sm transition-colors hover:z-10 last:border-r-0",
                               free &&
                                 !selected &&
-                                "bg-success/25 font-semibold text-success hover:bg-success/35 hover:shadow-sm",
+                                "bg-card font-normal text-foreground hover:bg-muted/50 hover:shadow-sm",
                               full &&
                                 !selected &&
                                 "bg-destructive/25 font-semibold text-destructive hover:bg-destructive/35 hover:shadow-sm",
@@ -9052,8 +10648,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               count > 0 &&
                                 !selected &&
                                 !full &&
-                                "bg-primary/5 font-semibold text-primary hover:bg-primary/10 hover:shadow-sm",
-                              selected && free && "bg-green-700 font-semibold text-white",
+                                "bg-[oklch(0.427_0.166_22.5)]/[0.08] font-semibold text-[oklch(0.427_0.166_22.5)] hover:bg-[oklch(0.427_0.166_22.5)]/[0.15] hover:shadow-sm",
+                              selected &&
+                                free &&
+                                "bg-card font-semibold text-foreground ring-2 ring-inset ring-primary",
                               selected && full && "bg-red-700 font-semibold text-white",
                               selected &&
                                 !free &&
@@ -9069,8 +10667,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                   selected && full
                                     ? "bg-red-900"
                                     : selected && free
-                                      ? "bg-green-800"
-                                      : "bg-primary",
+                                      ? "bg-foreground"
+                                      : "bg-[oklch(0.427_0.166_22.5)]",
                                 )}
                               >
                                 {count}
@@ -9083,14 +10681,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
                     <div className="mt-3 flex flex-wrap justify-between gap-x-3 gap-y-2 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full bg-success" /> Free day (schedulable)
+                        <span className="h-2 w-2 rounded-full border border-border bg-card" /> Free
+                        day (schedulable)
                       </span>
                       <span className="flex items-center gap-1.5">
                         <span className="h-2 w-2 rounded-full bg-destructive" /> Full (all slots
                         booked)
                       </span>
                       <span className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full bg-primary" /> Booked
+                        <span className="h-2 w-2 rounded-full bg-[oklch(0.427_0.166_22.5)]" />{" "}
+                        Booked
                       </span>
                       <span className="flex items-center gap-1.5">
                         <span className="h-2 w-2 rounded-full bg-gold" /> Today
@@ -9700,10 +11300,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               <DialogTitle className="flex items-center gap-2 font-display text-2xl">
                                 <CalendarDays className="h-5 w-5 text-primary" /> Interview Calendar
                               </DialogTitle>
-                              <DialogDescription>
-                                Full month view — select a date to see reserved rooms and that day's
-                                schedule.
-                              </DialogDescription>
                             </DialogHeader>
 
                             {calViewPanel === "calendar" ? (
@@ -9847,7 +11443,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                           "relative min-h-[3.5rem] cursor-pointer border-b border-r border-border/70 text-sm transition-colors hover:z-10 last:border-r-0",
                                           free &&
                                             !selected &&
-                                            "bg-success/25 font-semibold text-success hover:bg-success/35 hover:shadow-sm",
+                                            "bg-card font-normal text-foreground hover:bg-muted/50 hover:shadow-sm",
                                           full &&
                                             !selected &&
                                             "bg-destructive/25 font-semibold text-destructive hover:bg-destructive/35 hover:shadow-sm",
@@ -9866,10 +11462,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                           count > 0 &&
                                             !selected &&
                                             !full &&
-                                            "bg-primary/5 font-semibold text-primary hover:bg-primary/10 hover:shadow-sm",
+                                            "bg-[oklch(0.427_0.166_22.5)]/[0.08] font-semibold text-[oklch(0.427_0.166_22.5)] hover:bg-[oklch(0.427_0.166_22.5)]/[0.15] hover:shadow-sm",
                                           selected &&
                                             free &&
-                                            "bg-green-700 font-semibold text-white",
+                                            "bg-card font-semibold text-foreground ring-2 ring-inset ring-primary",
                                           selected && full && "bg-red-700 font-semibold text-white",
                                           selected &&
                                             !free &&
@@ -9885,8 +11481,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                               selected && full
                                                 ? "bg-red-900"
                                                 : selected && free
-                                                  ? "bg-green-800"
-                                                  : "bg-primary",
+                                                  ? "bg-foreground"
+                                                  : "bg-[oklch(0.427_0.166_22.5)]",
                                             )}
                                           >
                                             {count}
@@ -10082,10 +11678,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                         </div>
                                         <div className="mt-3 flex-1 space-y-2">
                                           {calViewPreview.mapped.map((i) => (
-                                            <div
+                                            <button
+                                              type="button"
                                               key={i.id}
-                                              title={`${i.applicant} · ${i.position} · ${i.interviewer} · ${i.status}`}
-                                              className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5"
+                                              title={`${i.applicant} · ${i.position} · ${i.interviewer} · ${i.status} — click to find them in the Pipeline Overview`}
+                                              onClick={() => selectInPipeline(i.applicant)}
+                                              className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/5"
                                             >
                                               <span className="shrink-0 text-xs font-medium">
                                                 {calViewPreview.rangeLabel(i.time)}
@@ -10098,7 +11696,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                                   </span>
                                                 )}
                                               </span>
-                                            </div>
+                                            </button>
                                           ))}
                                           {calViewPreview.mapped.length === 0 && (
                                             <p className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
@@ -10270,11 +11868,22 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 const used = bookedInSlot(schedule.date, t);
                                 const remaining = capacityPerSlot - used;
                                 const full = remaining <= 0;
+                                // Same room/meeting cannot take two interviews in
+                                // one slot, even when the slot has capacity.
+                                const roomBusy = facilityBookedInSlot(
+                                  schedule.facilityId,
+                                  schedule.date,
+                                  t,
+                                );
                                 return (
-                                  <SelectItem key={t} value={t} disabled={full}>
+                                  <SelectItem key={t} value={t} disabled={full || roomBusy}>
                                     {t}
                                     <span className="ml-1.5 text-xs text-muted-foreground">
-                                      {full ? "(full)" : `(${remaining} left)`}
+                                      {roomBusy
+                                        ? "(facility already booked)"
+                                        : full
+                                          ? "(full)"
+                                          : `(${remaining} left)`}
                                     </span>
                                   </SelectItem>
                                 );
@@ -10376,7 +11985,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               Left: calendar on top with PLACES stretched horizontally below.
               Right: DAILY SCHEDULE PREVIEW. The day detail shows immediately
               for the selected date — no click needed. */}
-              <Card className="border-border/70">
+              <Card ref={roomAvailabilityRef} className="scroll-mt-4 border-border/70">
                 <CardContent className="p-5 sm:p-6">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -10384,10 +11993,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         <CalendarDays className="h-5 w-5 text-primary" />
                         Room Availability & Daily Schedule
                       </h2>
-                      <p className="text-xs text-muted-foreground">
-                        Full month view — select a date to see reserved rooms and that day&apos;s
-                        schedule. Rooms are below the calendar, schedule on the right.
-                      </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       {bookingFocus ? (
@@ -10569,7 +12174,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                       "relative min-h-[4.5rem] cursor-pointer border-b border-r border-border/70 text-sm transition-colors hover:z-10 last:border-r-0",
                                       free &&
                                         !selected &&
-                                        "bg-success/25 font-semibold text-success hover:bg-success/35 hover:shadow-sm",
+                                        "bg-card font-normal text-foreground hover:bg-muted/50 hover:shadow-sm",
                                       full &&
                                         !selected &&
                                         "bg-destructive/25 font-semibold text-destructive hover:bg-destructive/35 hover:shadow-sm",
@@ -10588,8 +12193,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                       count > 0 &&
                                         !selected &&
                                         !full &&
-                                        "bg-primary/5 font-semibold text-primary hover:bg-primary/10 hover:shadow-sm",
-                                      selected && free && "bg-green-700 font-semibold text-white",
+                                        "bg-[oklch(0.427_0.166_22.5)]/[0.08] font-semibold text-[oklch(0.427_0.166_22.5)] hover:bg-[oklch(0.427_0.166_22.5)]/[0.15] hover:shadow-sm",
+                                      selected &&
+                                        free &&
+                                        "bg-card font-semibold text-foreground ring-2 ring-inset ring-primary",
                                       selected && full && "bg-red-700 font-semibold text-white",
                                       selected &&
                                         !free &&
@@ -10605,8 +12212,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                           selected && full
                                             ? "bg-red-900"
                                             : selected && free
-                                              ? "bg-green-800"
-                                              : "bg-primary",
+                                              ? "bg-foreground"
+                                              : "bg-[oklch(0.427_0.166_22.5)]",
                                         )}
                                       >
                                         {count}
@@ -10629,9 +12236,20 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                   <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground">
                                     <CalendarDays className="h-3.5 w-3.5" /> DAILY SCHEDULE PREVIEW
                                   </p>
-                                  <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-[0.65rem] font-semibold text-destructive">
-                                    {calViewPreview.slotsAvailable} slots available
-                                  </span>
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-[0.65rem] font-semibold text-destructive">
+                                      {calViewPreview.slotsAvailable} slots available
+                                    </span>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-6 cursor-pointer gap-1 px-2 text-[0.65rem]"
+                                      title={`Show every applicant scheduled on ${calViewDate} in the Pipeline Overview`}
+                                      onClick={() => showScheduledInPipeline(calViewDate)}
+                                    >
+                                      <Eye className="h-3 w-3" /> View list in Pipeline
+                                    </Button>
+                                  </div>
                                 </div>
                                 <div className="mt-3">
                                   <Select
@@ -10662,12 +12280,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 {/* Flexible list: fills the stretched card (flex-1) so the card
                               bottom stays aligned with Book an Interview even with few
                               items; caps + scrolls once it exceeds ~5 rows. */}
-                                <div className="mt-3 max-h-72 min-h-[10rem] flex-1 space-y-2 overflow-y-auto pr-1">
+                                <div className="mt-3 flex max-h-72 min-h-[10rem] flex-1 flex-col space-y-2 overflow-y-auto pr-1">
                                   {calViewPreview.mapped.map((i) => (
-                                    <div
+                                    <button
+                                      type="button"
                                       key={i.id}
-                                      title={`${i.applicant} · ${i.position} · ${i.interviewer} · ${i.status}`}
-                                      className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5"
+                                      title={`${i.applicant} · ${i.position} · ${i.interviewer} · ${i.status} — click to find them in the Pipeline Overview`}
+                                      onClick={() => selectInPipeline(i.applicant)}
+                                      className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/5"
                                     >
                                       <span className="shrink-0 text-xs font-medium">
                                         {calViewPreview.rangeLabel(i.time)}
@@ -10680,10 +12300,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                           </span>
                                         )}
                                       </span>
-                                    </div>
+                                    </button>
                                   ))}
                                   {calViewPreview.mapped.length === 0 && (
-                                    <p className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
+                                    <p className="flex w-full flex-1 items-center justify-center rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
                                       No interviews booked — the whole day is free.
                                     </p>
                                   )}
@@ -11016,11 +12636,26 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                           const used = bookedInSlot(schedule.date, t);
                                           const remaining = capacityPerSlot - used;
                                           const full = remaining <= 0;
+                                          // Same room/meeting cannot take two interviews
+                                          // in one slot, even when the slot has capacity.
+                                          const roomBusy = facilityBookedInSlot(
+                                            schedule.facilityId,
+                                            schedule.date,
+                                            t,
+                                          );
                                           return (
-                                            <SelectItem key={t} value={t} disabled={full}>
+                                            <SelectItem
+                                              key={t}
+                                              value={t}
+                                              disabled={full || roomBusy}
+                                            >
                                               {t}
                                               <span className="ml-1.5 text-xs text-muted-foreground">
-                                                {full ? "(full)" : `(${remaining} left)`}
+                                                {roomBusy
+                                                  ? "(facility already booked)"
+                                                  : full
+                                                    ? "(full)"
+                                                    : `(${remaining} left)`}
                                               </span>
                                             </SelectItem>
                                           );
@@ -11138,9 +12773,20 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted-foreground">
                                 <CalendarDays className="h-3.5 w-3.5" /> DAILY SCHEDULE PREVIEW
                               </p>
-                              <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-[0.65rem] font-semibold text-destructive">
-                                {calViewPreview.slotsAvailable} slots available
-                              </span>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-[0.65rem] font-semibold text-destructive">
+                                  {calViewPreview.slotsAvailable} slots available
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-6 cursor-pointer gap-1 px-2 text-[0.65rem]"
+                                  title={`Show every applicant scheduled on ${calViewDate} in the Pipeline Overview`}
+                                  onClick={() => showScheduledInPipeline(calViewDate)}
+                                >
+                                  <Eye className="h-3 w-3" /> View list in Pipeline
+                                </Button>
+                              </div>
                             </div>
                             <div className="mt-3">
                               <Select
@@ -11168,12 +12814,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 })}
                               </p>
                             </div>
-                            <div className="mt-3 flex-1 space-y-2">
+                            <div className="mt-3 flex min-h-0 flex-1 flex-col space-y-2">
                               {calViewPreview.mapped.map((i) => (
-                                <div
+                                <button
+                                  type="button"
                                   key={i.id}
-                                  title={`${i.applicant} · ${i.position} · ${i.interviewer} · ${i.status}`}
-                                  className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5"
+                                  title={`${i.applicant} · ${i.position} · ${i.interviewer} · ${i.status} — click to find them in the Pipeline Overview`}
+                                  onClick={() => selectInPipeline(i.applicant)}
+                                  className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/5"
                                 >
                                   <span className="shrink-0 text-xs font-medium">
                                     {calViewPreview.rangeLabel(i.time)}
@@ -11186,10 +12834,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                       </span>
                                     )}
                                   </span>
-                                </div>
+                                </button>
                               ))}
                               {calViewPreview.mapped.length === 0 && (
-                                <p className="rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
+                                <p className="flex w-full flex-1 items-center justify-center rounded-lg border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
                                   No interviews booked — the whole day is free.
                                 </p>
                               )}
@@ -11209,7 +12857,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               </Card>
 
               {/* Pipeline Overview list — schedule + pipeline actions live here */}
-              <Card className="border-border/70">
+              <Card ref={pipelineListRef} className="scroll-mt-4 border-border/70">
                 <CardContent className="p-6">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -11274,12 +12922,30 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           <SelectItem value="passed">Passed</SelectItem>
                           <SelectItem value="failed">Failed</SelectItem>
                           <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="perfect">Perfect for the Job</SelectItem>
                         </SelectContent>
                       </Select>
+                      {pipelineScheduledDate && (
+                        <Badge
+                          variant="outline"
+                          className="h-9 gap-1 rounded-md border-primary/30 bg-primary/10 px-2.5 text-xs text-primary"
+                        >
+                          Scheduled {pipelineScheduledDate}
+                          <button
+                            type="button"
+                            className="ml-1 cursor-pointer hover:opacity-70"
+                            onClick={() => setPipelineScheduledDate(null)}
+                            aria-label="Clear the scheduled-day filter"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      )}
                       {(pipelineSearch ||
                         pipelinePosition !== "all" ||
                         pipelineStage !== "all" ||
-                        pipelineResult !== "all") && (
+                        pipelineResult !== "all" ||
+                        pipelineScheduledDate) && (
                         <Button
                           size="sm"
                           variant="ghost"
@@ -11289,6 +12955,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             setPipelinePosition("all");
                             setPipelineStage("all");
                             setPipelineResult("all");
+                            setPipelineScheduledDate(null);
                           }}
                         >
                           <X className="mr-1 h-3.5 w-3.5" /> Clear
@@ -11296,7 +12963,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       )}
                     </div>
                   </div>
-                  <div className="mt-4">
+                  <div className="mt-4 [&_table]:table-auto [&_td]:max-w-none [&_td]:align-top [&_td_.truncate]:overflow-visible [&_td_.truncate]:whitespace-normal [&_td_.truncate]:break-words">
                     <ListBody>
                       <Table className="table-fixed text-xs">
                         <TableHeader>
@@ -11572,6 +13239,18 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                         {a.docCount} supporting doc{a.docCount === 1 ? "" : "s"}
                                       </p>
                                     ) : null}
+                                    {/* Screening verdict — below the supporting
+                                        documents, or right below Passed / Below
+                                        passing when no documents were uploaded. */}
+                                    <p
+                                      className={cn(
+                                        "mt-1 inline-flex rounded-full border px-2 py-0.5 text-[0.65rem] font-semibold",
+                                        statusMeta[a.status].className,
+                                      )}
+                                      title={statusMeta[a.status].label}
+                                    >
+                                      {statusMeta[a.status].label}
+                                    </p>
                                   </TableCell>
                                   <TableCell className="max-w-0">
                                     {needsSchedule &&
@@ -11833,12 +13512,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end" className="w-52">
                                           {showAccept ? (
-                                            <DropdownMenuItem onClick={() => acceptAndSchedule(a)}>
+                                            <DropdownMenuItem onClick={() => openReview(a)}>
                                               Accept &amp; schedule
                                             </DropdownMenuItem>
                                           ) : null}
                                           {showSchedule ? (
-                                            <DropdownMenuItem onClick={() => acceptAndSchedule(a)}>
+                                            <DropdownMenuItem onClick={() => openReview(a)}>
                                               Schedule interview
                                             </DropdownMenuItem>
                                           ) : null}
@@ -11970,6 +13649,15 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                               Verified — pending
                                             </DropdownMenuItem>
                                           ) : null}
+                                          {/* Last item of the View section. */}
+                                          {interview ? (
+                                            <DropdownMenuItem
+                                              onClick={() => viewScheduledInCalendar(a)}
+                                            >
+                                              <CalendarDays className="mr-2 h-3.5 w-3.5" /> View
+                                              scheduled in calendar
+                                            </DropdownMenuItem>
+                                          ) : null}
                                         </DropdownMenuContent>
                                       </DropdownMenu>
                                       <Button
@@ -12010,6 +13698,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       to={pipelinePage.to}
                       total={pipelinePage.total}
                       label="applicants"
+                      showRangeLabel={false}
                       onPageChange={pipelinePage.setPage}
                     />
                   </div>
@@ -12700,11 +14389,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <DialogFooter className="flex-wrap gap-2">
                 {reviewReadOnly ? (
                   <>
-                    <p className="flex w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
-                      <Info className="h-4 w-4 shrink-0" />
-                      Viewing from Pipeline Overview — use the row&apos;s Actions menu to Accept
-                      &amp; schedule, Reschedule, or Re-book.
-                    </p>
+                    <ReportUnrecognizedDialog
+                      entries={unrecognizedEntriesFrom(
+                        screeningViewModel(review),
+                        review.screening_detail,
+                      )}
+                      applicantName={review.name}
+                      triggerLabel="Report unrecognized entries"
+                    />
                     <Button variant="outline" onClick={closeReview}>
                       Close
                     </Button>
@@ -12723,7 +14415,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <p className="flex w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
                       <Info className="h-4 w-4 shrink-0" />
                       This applicant is already at the{" "}
-                      <span className="font-semibold text-foreground">{review.stage}</span> stage —
+                      <span className="font-semibold text-foreground">{review.stage}</span> stage
+                      —
                       {review.stage === "Accepted"
                         ? " use Schedule interview to book them in."
                         : " no further accept, reject or referral actions can be taken here."}
@@ -12731,6 +14424,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   </>
                 ) : (
                   <>
+                    <ReportUnrecognizedDialog
+                      entries={unrecognizedEntriesFrom(
+                        screeningViewModel(review),
+                        review.screening_detail,
+                      )}
+                      applicantName={review.name}
+                      triggerLabel="Report unrecognized entries"
+                    />
                     <Button variant="outline" onClick={() => openRefer(review)}>
                       <Repeat2 className="mr-2 h-4 w-4" /> Refer to other position
                     </Button>
@@ -12762,40 +14463,72 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <DialogHeader>
                 <DialogTitle className="font-display text-2xl">Refer to Other Position</DialogTitle>
                 <DialogDescription>
-                  Choose a better-matching vacancy for {referring.name} ({referring.position}).
+                  Ranked by how well {referring.name}&apos;s resume screening entities (skills,
+                  certificates, roles, education, experience) match each vacancy&apos;s job post
+                  requirements — strongest match first.
                 </DialogDescription>
               </DialogHeader>
 
               <RadioGroup value={referTarget} onValueChange={setReferTarget} className="space-y-2">
                 {positions
-                  .filter((p) => p.title !== referring.position && p.filled < p.headcount)
-                  .map((p) => {
-                    const suggested = referring.flags.some((f) => f.includes(p.title));
-                    return (
-                      <label
-                        key={p.id}
-                        className={cn(
-                          "flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors",
-                          referTarget === p.title
-                            ? "border-primary bg-primary/5"
-                            : "border-border hover:border-primary/40",
-                        )}
-                      >
-                        <RadioGroupItem value={p.title} className="mt-1" />
-                        <span className="flex-1">
-                          <span className="flex items-center gap-2 text-sm font-medium">
-                            {p.title}
-                            {suggested && (
-                              <Badge className="bg-gold text-gold-foreground">Best match</Badge>
+                  .filter(
+                    (p) =>
+                      normalizeMatchText(p.title) !== normalizeMatchText(referring.position) &&
+                      p.filled < p.headcount,
+                  )
+                  .map((p) => ({
+                    p,
+                    fit: referralMatch(
+                      referring,
+                      dbJobPosts.find((j) => j.title === p.title),
+                    ),
+                  }))
+                  .sort((x, y) => y.fit.score - x.fit.score)
+                  .map(({ p, fit }, idx) => (
+                    <label
+                      key={p.id}
+                      className={cn(
+                        "flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors",
+                        referTarget === p.title
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/40",
+                      )}
+                    >
+                      <RadioGroupItem value={p.title} className="mt-1" />
+                      <span className="flex-1">
+                        <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                          {p.title}
+                          {idx === 0 && fit.total > 0 && (
+                            <Badge className="bg-gold text-gold-foreground">Best match</Badge>
+                          )}
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[0.65rem]",
+                              fit.score >= 60
+                                ? "border-success/40 bg-success/10 text-success"
+                                : fit.score >= 30
+                                  ? "border-warning/40 bg-warning/10 text-warning-foreground"
+                                  : "border-border bg-muted text-muted-foreground",
                             )}
-                          </span>
-                          <span className="block text-xs text-muted-foreground">
-                            {p.department} — {p.headcount - p.filled} seat(s) open — {p.salaryBand}
-                          </span>
+                          >
+                            {fit.score}% resume match
+                          </Badge>
                         </span>
-                      </label>
-                    );
-                  })}
+                        <span className="block text-xs text-muted-foreground">
+                          {p.department} — {p.headcount - p.filled} seat(s) open —{" "}
+                          {p.salaryBand}
+                        </span>
+                        <span className="mt-1 block text-[0.7rem] text-muted-foreground">
+                          {fit.total > 0
+                            ? `${fit.matched.length}/${fit.total} requirements matched (${fit.source})${
+                                fit.notes.length > 0 ? ` · ${fit.notes.join(" · ")}` : ""
+                              }`
+                            : "No requirement entities configured for this job post yet."}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
               </RadioGroup>
 
               <DialogFooter>
@@ -12998,8 +14731,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
                   <p className="mt-1 text-xs text-muted-foreground">
                     {testingTest.name} — {testingTest.position} · {testTitle} · Passing{" "}
-                    {testPassing}% · {answeredCount}/{totalQ} answered — auto-checked when all are
-                    answered.
+                    {testPassing}% · {answeredCount}/{totalQ} answered — auto-checked when all
+                    are answered.
                   </p>
 
                   {/* Question */}
@@ -13091,8 +14824,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   </div>
                   {!allAnswered && (
                     <p className="mt-2 text-right text-xs text-muted-foreground">
-                      {totalQ - answeredCount} question(s) left — the test auto-checks once all are
-                      answered.
+                      {totalQ - answeredCount} question(s) left — the test auto-checks once all
+                      are answered.
                     </p>
                   )}
                 </>
@@ -13271,8 +15004,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <DialogHeader>
                 <DialogTitle className="font-display text-2xl">Final Evaluation</DialogTitle>
                 <DialogDescription>
-                  {finalizing.name} — {finalizing.position}. Preview of every process that occurred
-                  before the final recommendation.
+                  {finalizing.name} — {finalizing.position}. Preview of every process that
+                  occurred before the final recommendation.
                 </DialogDescription>
               </DialogHeader>
 

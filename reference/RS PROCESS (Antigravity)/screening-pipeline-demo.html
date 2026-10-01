@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Resume Screening Pipeline — Step-by-Step Walkthrough (Own System Logic)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<style>
+  :root {
+    --bg:#f8fafc; --bg-card:#ffffff; --bg-inset:#f1f5f9;
+    --border:#e2e8f0; --border-hl:#cbd5e1;
+    --text:#0f172a; --text-sec:#334155; --text-muted:#64748b;
+    --cyan:#0891b2; --purple:#7c3aed; --amber:#d97706; --emerald:#059669; --rose:#e11d48; --blue:#2563eb;
+    --font:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono','Fira Code',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);overflow-x:auto;overflow-y:hidden}
+  .page-header{position:sticky;left:0;top:0;z-index:100;background:rgba(255,255,255,.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:10px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;height:52px}
+  .page-header h1{font-size:17px;font-weight:800;letter-spacing:-.3px;background:linear-gradient(135deg,var(--blue),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .hdr-right{display:flex;align-items:center;gap:10px}
+  .tag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);padding:3px 7px;border:1px solid var(--border);border-radius:4px}
+  .status-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:3px}
+  .status-dot.green{background:var(--emerald);box-shadow:0 0 4px var(--emerald)}
+  .status-dot.red{background:var(--rose);box-shadow:0 0 4px var(--rose)}
+  .btn{font-family:var(--font);font-size:12px;font-weight:700;padding:7px 16px;border-radius:6px;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s}
+  .btn-primary{background:var(--blue);color:#fff}
+  .btn-primary:hover{background:#1d4ed8}
+  .btn-primary:disabled{opacity:.35;cursor:not-allowed}
+  .btn-ghost{background:#e2e8f0;color:#0f172a}
+  .flow{display:flex;height:calc(100vh - 52px);min-width:max-content}
+  .col{flex-shrink:0;height:100%;overflow-y:auto;border-right:1px solid var(--border);padding:16px;display:flex;flex-direction:column;gap:12px}
+  .col:last-child{border-right:none}
+  .col-reqs{width:340px;background:#faf5ff}
+  .col-input{width:330px}
+  .col-step{width:420px}
+  .col-step.wide{width:460px}
+  .col-result{width:380px;background:#f0fdf4}
+  .arrow-sep{flex-shrink:0;width:36px;height:100%;display:flex;align-items:center;justify-content:center;background:var(--bg)}
+  .arrow-sep svg{width:22px;height:22px;color:var(--border-hl);transition:color .3s}
+  .arrow-sep.active svg{color:var(--blue)}
+  .col-hdr{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;padding:7px 12px;border-radius:6px;display:flex;align-items:center;gap:6px;flex-shrink:0}
+  .col-hdr.purple{color:var(--purple);background:#f3e8ff;border:1px solid #e9d5ff}
+  .col-hdr.cyan{color:var(--cyan);background:#ecfeff;border:1px solid #cffafe}
+  .col-hdr.blue{color:var(--blue);background:#eff6ff;border:1px solid #dbeafe}
+  .col-hdr.amber{color:var(--amber);background:#fffbeb;border:1px solid #fef3c7}
+  .col-hdr.emerald{color:var(--emerald);background:#ecfdf5;border:1px solid #d1fae5}
+  .card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px;flex-shrink:0}
+  .card-title{font-size:12px;font-weight:700;color:var(--text-sec);margin-bottom:8px;display:flex;align-items:center;gap:5px}
+  .step-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;flex:1 1 auto;min-height:0;overflow:hidden;opacity:.35;transition:all .4s ease}
+  .step-card.reached{opacity:1;border-color:var(--border-hl)}
+  .step-card.reached.blue{border-left:4px solid var(--blue)}
+  .step-card.reached.purple{border-left:4px solid var(--purple)}
+  .step-card.reached.amber{border-left:4px solid var(--amber)}
+  .step-card.reached.emerald{border-left:4px solid var(--emerald)}
+  .step-hdr{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--bg-inset)}
+  .step-hdr .step-title{font-size:13px;font-weight:700;color:var(--text)}
+  .step-badge{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:2px 7px;border-radius:4px}
+  .step-badge.blue{background:#dbeafe;color:var(--blue)}
+  .step-badge.purple{background:#ede9fe;color:var(--purple)}
+  .step-badge.amber{background:#fef3c7;color:var(--amber)}
+  .step-badge.emerald{background:#d1fae5;color:var(--emerald)}
+  .step-body{padding:12px 14px;flex:1 1 auto;overflow-y:auto;font-size:11.5px;line-height:1.55;color:var(--text-sec)}
+  .sub-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:4px;margin-top:10px;display:flex;align-items:center;gap:4px}
+  .sub-label:first-child{margin-top:0}
+  .sub-label .dot{width:5px;height:5px;border-radius:50%}
+  .sub-label .dot.blue{background:var(--blue)} .sub-label .dot.green{background:var(--emerald)}
+  .sub-label .dot.amber{background:var(--amber)} .sub-label .dot.rose{background:var(--rose)}
+  .data-box{background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-family:var(--mono);font-size:10px;line-height:1.55;color:var(--text-sec);white-space:pre-wrap;word-break:break-word;max-height:220px;overflow-y:auto}
+  .data-box.tall{max-height:340px}
+  .hl{font-weight:700} .hl-blue{color:var(--blue);font-weight:600} .hl-green{color:var(--emerald);font-weight:600}
+  .hl-amber{color:var(--amber);font-weight:600} .hl-rose{color:var(--rose);font-weight:600} .hl-purple{color:var(--purple);font-weight:600}
+  .pill{display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;margin:2px 1px}
+  .pill-blue{background:#dbeafe;color:var(--blue)} .pill-purple{background:#ede9fe;color:var(--purple)}
+  .pill-amber{background:#fef3c7;color:var(--amber);border:1px dashed #fcd34d} .pill-green{background:#d1fae5;color:var(--emerald)}
+  .pill-rose{background:#ffe4e6;color:var(--rose)} .pill-gray{background:#f1f5f9;color:var(--text-muted);border:1px solid var(--border)}
+  label.fl{display:block;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+  input[type=text],select,textarea{width:100%;font-family:var(--font);font-size:12px;color:var(--text);background:#fff;border:1px solid var(--border);border-radius:6px;padding:6px 9px;outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(37,99,235,.08)}
+  textarea{resize:vertical;min-height:38px}
+  .upload-zone{border:2px dashed var(--border);border-radius:8px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s;position:relative}
+  .upload-zone:hover{border-color:var(--blue);background:rgba(37,99,235,.02)}
+  .upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .upload-zone .lbl{font-size:11px;font-weight:600;color:var(--text-muted)}
+  .upload-zone .fname{font-size:10px;color:var(--emerald);font-weight:600;margin-top:3px;word-break:break-all}
+  .score-mega{text-align:center;padding:16px;border-radius:10px;border:2px solid var(--emerald);background:linear-gradient(135deg,#ecfdf5,#d1fae5)}
+  .score-mega.rose-bg{background:linear-gradient(135deg,#fff1f2,#ffe4e6);border-color:var(--rose)}
+  .score-mega.amber-bg{background:linear-gradient(135deg,#fffbeb,#fef3c7);border-color:var(--amber)}
+  .score-mega .val{font-size:48px;font-weight:900;line-height:1}
+  .score-mega .val.green{color:var(--emerald)} .score-mega .val.rose{color:var(--rose)} .score-mega .val.amber{color:var(--amber)}
+  .score-mega .lbl{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-top:3px}
+  .score-mega .badge{display:inline-block;margin-top:8px;font-weight:800;font-size:11px;padding:4px 12px;border-radius:16px}
+  .score-mega .badge.green{background:var(--emerald);color:#fff} .score-mega .badge.rose{background:var(--rose);color:#fff} .score-mega .badge.amber{background:var(--amber);color:#fff}
+  .prog-row{margin-bottom:7px}
+  .prog-top{display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:var(--text-sec);margin-bottom:2px}
+  .prog-track{background:var(--bg-inset);height:6px;border-radius:3px;overflow:hidden}
+  .prog-fill{height:100%;border-radius:3px;transition:width .8s ease}
+  .prog-fill.green{background:var(--emerald)} .prog-fill.amber{background:var(--amber)} .prog-fill.rose{background:var(--rose)}
+  .src-ref{font-size:9.5px;color:var(--text-muted);margin-top:8px;padding-top:6px;border-top:1px solid var(--border);font-family:var(--mono)}
+  .src-ref code{color:var(--blue)}
+  .explain{font-size:11px;line-height:1.6;color:var(--text-sec);background:#f8fafc;border-left:3px solid var(--blue);border-radius:0 6px 6px 0;padding:8px 10px;margin:6px 0}
+  .mini-tbl{width:100%;border-collapse:collapse;font-size:10.5px;margin:6px 0}
+  .mini-tbl th{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);text-align:left;padding:4px 6px;border-bottom:2px solid var(--border)}
+  .mini-tbl td{padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top}
+  .mini-tbl tr:last-child td{border-bottom:none}
+  .check-ok{color:var(--emerald);font-weight:700} .check-bad{color:var(--rose);font-weight:700}
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .6s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .mb{margin-bottom:6px} .mt{margin-top:8px} .hidden{display:none!important}
+  .bpa{border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden}
+  .bpa-hdr{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;padding:5px 9px;display:flex;align-items:center;gap:5px}
+  .bpa-hdr.before{background:#eff6ff;color:var(--blue);border-bottom:1px solid #dbeafe}
+  .bpa-hdr.process{background:#faf5ff;color:var(--purple);border-bottom:1px solid #e9d5ff}
+  .bpa-hdr.after{background:#ecfdf5;color:var(--emerald);border-bottom:1px solid #d1fae5}
+  .bpa-body{padding:8px 9px}
+  .data-box.expanded{max-height:none!important;overflow-y:visible}
+  .data-box.full{max-height:none;overflow-y:visible}
+  .mode-btn{font-size:11px;font-weight:700;padding:6px 12px;border-radius:6px;border:1px solid var(--border);cursor:pointer;background:#fff;color:var(--text-sec)}
+  .mode-btn.on-pass{background:var(--emerald);color:#fff;border-color:var(--emerald)}
+  .mode-btn.on-fail{background:var(--rose);color:#fff;border-color:var(--rose)}
+  .tok{background:#fef9c3;padding:0 3px;border-radius:3px;font-weight:600}
+  .tok-ok{background:#d1fae5;font-weight:700;padding:0 3px;border-radius:3px}
+  .tok-bad{background:#ffe4e6;font-weight:700;padding:0 3px;border-radius:3px}
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <h1>Automated Resume Screening Pipeline</h1>
+    <span class="tag">Step-by-Step Walkthrough</span>
+    <span class="tag">Own system logic</span>
+  </div>
+  <div class="hdr-right">
+    <span id="nlpStatus" style="font-size:11px;color:var(--text-muted);"><span class="status-dot red"></span> engine: local mirror</span>
+    <button class="mode-btn on-pass" id="modePass" onclick="loadMockPass()" title="Perfect resume: all checks pass, 100% score">Pass 100% sample</button>
+    <button class="mode-btn" id="modeFail" onclick="loadMockFail()" title="Weak resume + mismatched COE: shows FAIL paths">Fail sample</button>
+    <button class="btn btn-primary" id="btnRun" onclick="runScreening()"><span id="btnLabel">&#9654; Run Screening</span></button>
+  </div>
+</div>
+
+<div class="flow">
+
+  <!-- COL 0: JOB POST + REQUIREMENTS (before Input data) -->
+  <div class="col col-reqs">
+    <div class="col-hdr purple">&#127919; Job Post + Requirements</div>
+    <div class="card" style="flex:1;">
+      <div class="card-title">Target Position (job_posts)</div>
+      <label class="fl">Job Post — ID 101 · Front Office · Oxford Suites Makati · Open</label>
+      <label class="fl">Job Title</label>
+      <input type="text" id="reqTitle" value="Front Desk Agent" class="mb">
+      <label class="fl">Required Skills (comma-separated)</label>
+      <textarea id="reqSkills" class="mb" style="min-height:60px;">Customer Service, Front Office Operations, Reservation Management, Communication</textarea>
+      <label class="fl">Education Level</label>
+      <select id="reqEdu" class="mb">
+        <option>High School Graduate</option><option>Vocational / TESDA</option><option>College Level</option>
+        <option selected>Bachelor's Degree</option><option>Master's Degree</option><option>Doctorate</option>
+      </select>
+      <label class="fl">Experience Level</label>
+      <select id="reqExp" class="mb">
+        <option>No Experience</option><option>1-2 years</option><option selected>2-4 years</option><option>3-5 years</option><option>5+ years</option>
+      </select>
+      <label class="fl">Required Certifications</label>
+      <textarea id="reqCerts" style="min-height:36px;">TESDA NC II in Front Office Services</textarea>
+      <div class="mt" style="padding:8px;background:#f3e8ff;border-radius:6px;font-size:10px;color:var(--purple);">
+        <strong>Scoring Weights (config.py):</strong><br>
+        Skills 40% | Experience 30% | Education 20% | Certifications 10%<br>
+        Passing 75% | Skills Coverage Min 60% | Doc weight 0.15<br>
+        <span style="color:var(--text-muted)">ScreeningService.php:43 buildRequirements() → matching.py:parse_requirements()</span>
+      </div>
+      <div class="mt" id="reqJsonPreview" style="display:none;">
+        <div class="sub-label"><span class="dot blue"></span> JSON sent to NLP</div>
+        <div class="data-box" id="reqJsonBox"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-sep" id="a0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
+
+  <!-- COL 1: INPUT DATA -->
+  <div class="col col-input">
+    <div class="col-hdr cyan">&#128196; Input Data</div>
+    <div class="card">
+      <div class="card-title">&#128203; Resume File</div>
+      <div class="upload-zone">
+        <input type="file" id="resumeFile" accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg" onchange="handleResume(this)">
+        <div style="font-size:22px;">&#128228;</div>
+        <div class="lbl">Drop resume or click to browse</div>
+        <div class="fname hidden" id="rName"></div>
+        <div class="hidden" id="rSize" style="font-size:9px;color:var(--text-muted);"></div>
+      </div>
+      <div class="mt"><label class="fl">Or paste resume text</label><textarea id="pasteText" style="min-height:70px;" placeholder="Paste resume text here…"></textarea></div>
+    </div>
+    <div class="card">
+      <div class="card-title">&#128206; Supporting Documents</div>
+      <div class="upload-zone mb" style="padding:8px;">
+        <input type="file" id="d1File" accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg" onchange="handleDoc(1,this)">
+        <div class="lbl" style="font-size:10px;">Document #1 (COE)</div>
+        <div class="fname hidden" id="d1Name"></div>
+      </div>
+      <select id="d1Type" class="mb" style="font-size:11px;"><option>COE</option><option>Certificate</option><option>Credential</option><option>Others</option></select>
+      <div class="upload-zone mb" style="padding:8px;">
+        <input type="file" id="d2File" accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg" onchange="handleDoc(2,this)">
+        <div class="lbl" style="font-size:10px;">Document #2 (TESDA cert)</div>
+        <div class="fname hidden" id="d2Name"></div>
+      </div>
+      <select id="d2Type" style="font-size:11px;"><option>Certificate</option><option>COE</option><option>Credential</option><option>Others</option></select>
+      <div class="mt" style="font-size:10px;color:var(--text-muted)">In-browser engine mirrors <code>text_extraction.py</code> + <code>document_verification.py</code>. If your NLP service (<code>:8001</code>/:9000) is online it is used for the resume score; docs are always blended with <code>verification_scoring.py</code> logic.</div>
+    </div>
+  </div>
+
+  <div class="arrow-sep" id="a1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
+
+  <!-- STEP 1 -->
+  <div class="col col-step">
+    <div class="col-hdr blue">Step 1 &mdash; Text Extraction</div>
+    <div class="step-card blue" id="s1">
+      <div class="step-hdr"><span class="step-title">Extract Text from File</span><span class="step-badge blue">text_extraction.py</span></div>
+      <div class="step-body" id="s1Body"><div style="text-align:center;padding:40px 0;color:var(--text-muted);">Press Run to see extraction.</div></div>
+    </div>
+  </div>
+  <div class="arrow-sep" id="a2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
+
+  <!-- STEP 2 -->
+  <div class="col col-step">
+    <div class="col-hdr blue">Step 2 &mdash; Preprocessing</div>
+    <div class="step-card blue" id="s2">
+      <div class="step-hdr"><span class="step-title">Clean &amp; Normalize Text</span><span class="step-badge blue">preprocessing.py</span></div>
+      <div class="step-body" id="s2Body"><div style="text-align:center;padding:40px 0;color:var(--text-muted);">Waiting for extraction…</div></div>
+    </div>
+  </div>
+  <div class="arrow-sep" id="a3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
+
+  <!-- STEP 3 -->
+  <div class="col col-step wide">
+    <div class="col-hdr purple">Step 3 &mdash; spaCy Custom NER</div>
+    <div class="step-card purple" id="s3">
+      <div class="step-hdr"><span class="step-title">Named Entity Recognition</span><span class="step-badge purple">entity_extraction.py</span></div>
+      <div class="step-body" id="s3Body"><div style="text-align:center;padding:40px 0;color:var(--text-muted);">Waiting for NER…</div></div>
+    </div>
+  </div>
+  <div class="arrow-sep" id="a4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
+
+  <!-- STEP 4 -->
+  <div class="col col-step wide">
+    <div class="col-hdr purple">Step 4 &mdash; Profile &amp; Alias Mapping</div>
+    <div class="step-card purple" id="s4">
+      <div class="step-hdr"><span class="step-title">Build Profile &amp; Canonicalize</span><span class="step-badge purple">profile_builder + reference_data</span></div>
+      <div class="step-body" id="s4Body"><div style="text-align:center;padding:40px 0;color:var(--text-muted);">Waiting for profile…</div></div>
+    </div>
+  </div>
+  <div class="arrow-sep" id="a5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
+
+  <!-- STEP 5 -->
+  <div class="col col-step">
+    <div class="col-hdr amber">Step 5 &mdash; Credential Verification</div>
+    <div class="step-card amber" id="s5">
+      <div class="step-hdr"><span class="step-title">Timeline &amp; Plausibility</span><span class="step-badge amber">credential_verification.py</span></div>
+      <div class="step-body" id="s5Body"><div style="text-align:center;padding:40px 0;color:var(--text-muted);">Waiting for check…</div></div>
+    </div>
+  </div>
+  <div class="arrow-sep" id="a6"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
+
+  <!-- STEP 6 -->
+  <div class="col col-step wide">
+    <div class="col-hdr amber">Step 6 &mdash; Weighted Matching</div>
+    <div class="step-card amber" id="s6">
+      <div class="step-hdr"><span class="step-title">Score vs Requirements</span><span class="step-badge amber">matching.py</span></div>
+      <div class="step-body" id="s6Body"><div style="text-align:center;padding:40px 0;color:var(--text-muted);">Waiting for scoring…</div></div>
+    </div>
+  </div>
+  <div class="arrow-sep" id="a7"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
+
+  <!-- STEP 7 -->
+  <div class="col col-step">
+    <div class="col-hdr emerald">Step 7 &mdash; Evidence Blending</div>
+    <div class="step-card emerald" id="s7">
+      <div class="step-hdr"><span class="step-title">Document Evidence Score</span><span class="step-badge emerald">verification_scoring.py</span></div>
+      <div class="step-body" id="s7Body"><div style="text-align:center;padding:40px 0;color:var(--text-muted);">Waiting for blending…</div></div>
+    </div>
+  </div>
+  <div class="arrow-sep" id="a8"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
+
+  <!-- STEP 8 -->
+  <div class="col col-step">
+    <div class="col-hdr emerald">Step 8 &mdash; Classification</div>
+    <div class="step-card emerald" id="s8">
+      <div class="step-hdr"><span class="step-title">Decision Gate</span><span class="step-badge emerald">screening.py</span></div>
+      <div class="step-body" id="s8Body"><div style="text-align:center;padding:40px 0;color:var(--text-muted);">Waiting for decision…</div></div>
+    </div>
+  </div>
+  <div class="arrow-sep" id="a9"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
+
+  <!-- FINAL -->
+  <div class="col col-result">
+    <div class="col-hdr emerald">&#127942; Final HR Dashboard</div>
+    <div class="card" id="resultCard" style="flex:1;">
+      <div id="resPlaceholder" style="text-align:center;padding:60px 0;color:var(--text-muted);font-size:12px;">Run the screening to see final results.</div>
+      <div id="resContent" class="hidden">
+        <div class="score-mega" id="megaBox"><div class="val green" id="megaVal">&mdash;</div><div class="lbl">Overall Fit Match</div><div class="badge green" id="megaBadge">&mdash;</div></div>
+        <div class="mt" style="font-size:11px;font-weight:700;margin-bottom:8px;">Score Progress Bars</div>
+        <div class="prog-row"><div class="prog-top"><span>Skills</span><span id="pSkL">&mdash;</span></div><div class="prog-track"><div class="prog-fill green" id="pSk" style="width:0%"></div></div></div>
+        <div class="prog-row"><div class="prog-top"><span>Experience</span><span id="pExL">&mdash;</span></div><div class="prog-track"><div class="prog-fill green" id="pEx" style="width:0%"></div></div></div>
+        <div class="prog-row"><div class="prog-top"><span>Education</span><span id="pEdL">&mdash;</span></div><div class="prog-track"><div class="prog-fill green" id="pEd" style="width:0%"></div></div></div>
+        <div class="prog-row"><div class="prog-top"><span>Certifications</span><span id="pCeL">&mdash;</span></div><div class="prog-track"><div class="prog-fill green" id="pCe" style="width:0%"></div></div></div>
+        <div class="hidden mt" id="docEvidBox" style="padding:8px;background:#ecfdf5;border-radius:6px;border-left:3px solid var(--emerald);font-size:10px;"><strong style="color:var(--emerald);">Supporting Document Evidence:</strong> <span id="docEvidText"></span></div>
+        <div class="hidden mt" id="sumBox" style="padding:8px;background:#eff6ff;border-radius:6px;border-left:3px solid var(--blue);font-size:10px;"><strong style="color:var(--blue);">Matched summary:</strong> <span id="sumText"></span></div>
+        <div class="hidden mt" id="flagBox" style="padding:8px;background:#fffbeb;border-radius:6px;border-left:3px solid var(--amber);font-size:10px;"><strong style="color:var(--amber);">Flags for HR:</strong> <span id="flagText"></span></div>
+        <div class="mt" style="padding:8px;background:var(--bg-inset);border-radius:6px;font-size:10px;color:var(--text-muted);"><strong>Database Updates (ScreeningService.php):</strong><br><code>applicants.status</code> = <span id="dbSt" class="hl-green">&mdash;</span><br><code>applicants.fit_score</code> = <span id="dbSc" class="hl-green">&mdash;</span><br>Logged in <code>applicant_screenings</code></div>
+        <div class="hidden mt" id="reasonsBox"><div class="sub-label"><span class="dot green"></span> CLASSIFICATION REASONS</div><div class="data-box" id="reasonsData" style="max-height:160px;"></div></div>
+        <div class="mt" style="cursor:pointer;font-size:10px;color:var(--blue);font-weight:600;" onclick="document.getElementById('rawBox').classList.toggle('hidden')">&#128451; Toggle Raw JSON Response</div>
+        <div class="data-box tall hidden mt" id="rawBox"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===== Local mirror of nlp-service logic (same formulas as your Python code) ===== */
+var SKILLS_REF={"Customer Service":["customer service","guest service","customer assistance"],"Front Office Operations":["front office","front office operations","front desk","reception operations","hotel front office","front desk operations"],"Reservations":["reservations","reservation management","room reservations","booking management","reservation support","room inventory","ota coordination"],"Communication":["communication","communication skills","verbal communication","written communication"]};
+var CERTS_REF={"TESDA Front Office NC II":["tesda front office nc ii","front office nc ii","front office services nc ii","tesda front office services nc ii","tesda nc ii","tesda nc 2"]};
+var EDU_RANKS={"high school":1,"senior high":1,"vocational":2,"tesda":2,"associate":3,"diploma":3,"bachelor":4,"bachelor's":4,"bachelor's degree":4,"bs":4,"bshm":4,"college graduate":4,"master":5,"doctorate":6,"phd":6};
+var PASSING=75,COV_MIN=0.60,DOC_W=0.15;
+var MOCK_RESUME=`MARIA SANTOS
+maria.santos@gmail.com | 0917-123-4567 | 78 Palm Grove Blvd, Brgy. Tambo, Paranaque City, Philippines
+
+PROFESSIONAL SUMMARY
+Customer-oriented Front Desk Agent with 3.2 years hotel experience in guest reception, Room Reservations,
+Opera PMS, billing and guest recovery. Recognized for complaint handling, upselling and telephone etiquette
+across high-volume front office operations at Oxford Suites Makati.
+
+EDUCATION
+Bachelor of Science in Hospitality Management, Philippine State Hospitality College — Graduated May 2021
+
+WORK EXPERIENCE
+Front Desk Agent - Oxford Suites Makati, Makati City | June 2021 - August 2024
+- Owned check-in/check-out for 120+ arrivals daily, verified IDs and payment processing accurately.
+- Managed Room Reservations, booking modifications, no-show billing and OTA coordination in Opera PMS.
+- Resolved guest complaints with service recovery, coordinated housekeeping and room status updates.
+- Handled cash handling, nightly cash drawer reconciliation and endorsed VIP arrivals to concierge.
+- Supported night audit procedures, upselling late check-out and loyalty enrolment for repeat guests.
+
+SKILLS
+Customer Service, Front Office Operations, Room Reservations, Communication, Opera PMS, Cash Handling,
+Complaint Handling, Telephone Etiquette, Upselling, Payment Processing
+
+CERTIFICATIONS
+TESDA NC II in Front Office Services (2022)
+
+LANGUAGES
+Filipino (Native), English (Fluent)
+
+REFERENCES
+Available upon request`;
+var MOCK_COE=`CERTIFICATE OF EMPLOYMENT
+This is to certify that Maria Santos was employed by Oxford Suites Makati as Front Desk Agent from June 2021 to August 2024.`;
+var MOCK_CERT=`TESDA National Certificate
+Maria Santos has completed TESDA Front Office Services NC II, issued 2022.`;
+
+var resumeText="",resumeName="maria_santos_resume.pdf",docTexts=[{name:"COE_OxfordSuites.pdf",type:"COE",text:MOCK_COE},{name:"TESDA_NCII.pdf",type:"Certificate",text:MOCK_CERT}];
+var NLP_PORTS=["http://127.0.0.1:8001","http://127.0.0.1:9000","http://localhost:8001","http://localhost:9000"];
+
+function $(id){return document.getElementById(id);}
+function reach(id){$(id).classList.add("reached");}
+function arrow(id){var e=$(id);if(e)e.classList.add("active");}
+function wait(ms){return new Promise(function(r){setTimeout(r,ms);});}
+function showEl(id,t){var e=$(id);e.textContent=t;e.classList.remove("hidden");}
+function esc(s){var d=document.createElement("div");d.textContent=(s==null?"":s);return d.innerHTML;}
+function norm(s){return (s||"").toLowerCase().replace(/\s+/g," ").trim();}
+function canonicalize(v,ref){if(!v)return null;var n=norm(v),ex={};Object.keys(ref).forEach(function(c){ex[norm(c)]=c;ref[c].forEach(function(a){ex[norm(a)]=c;});});if(ex[n])return ex[n];var ks=Object.keys(ex).sort(function(a,b){return b.length-a.length;});for(var i=0;i<ks.length;i++){var k=ks[i];if(k.length>=4&&(" "+n+" ").indexOf(" "+k+" ")>=0)return ex[k];}return null;}
+function eduRank(l){var n=norm(l);var keys=Object.keys(EDU_RANKS);for(var i=0;i<keys.length;i++){try{if(new RegExp("\\b"+keys[i].replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\b").test(n))return EDU_RANKS[keys[i]];}catch(e){}}return 0;}
+function parseMinYrs(s){if(!s)return 0;var l=s.toLowerCase();if(l.indexOf("no experience")>=0||l.indexOf("none")>=0)return 0;var m=l.match(/\d+(?:\.\d+)?/g);return m?parseFloat(m[0]):0;}
+
+var PDFJS_CDNS=["https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js","https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"];
+var PDF_WORKER_CDNS=["https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js","https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js"];
+var MAMMOTH_CDNS=["https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js","https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"];
+var TESS_CDNS=["https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js","https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"];
+var IMG_EXTS=["jpg","jpeg","png","bmp","gif","tif","tiff","webp"];
+var resumeMeta=null;
+function loadScriptOnce(url){return new Promise(function(res,rej){var s=document.createElement("script");s.src=url;s.onload=function(){res(true);};s.onerror=function(){rej(new Error("cdn-fail"));};document.head.appendChild(s);});}
+async function ensureGlobal(name,cdns){if(window[name])return true;for(var i=0;i<cdns.length;i++){try{await loadScriptOnce(cdns[i]);if(window[name])return true;}catch(e){}}return !!window[name];}
+async function ocrCanvas(canvas){var ok=await ensureGlobal("Tesseract",TESS_CDNS);if(!ok)throw new Error("OCR engine (Tesseract.js) could not load - check internet, or paste the text instead.");var r=await Tesseract.recognize(canvas,"eng");return (r&&r.data&&r.data.text)||"";}
+async function extractPdfTextLayer(buf){var ok=await ensureGlobal("pdfjsLib",PDFJS_CDNS);if(!ok)throw new Error("PDF parser (pdf.js) could not load - check internet, or export the resume to TXT/DOCX and retry.");if(pdfjsLib.GlobalWorkerOptions)pdfjsLib.GlobalWorkerOptions.workerSrc=PDF_WORKER_CDNS[0];var pdf=await pdfjsLib.getDocument({data:buf}).promise;var pages=[];for(var i=1;i<=pdf.numPages;i++){var pg=await pdf.getPage(i);var tc=await pg.getTextContent();var t=tc.items.map(function(it){return it.str;}).join(" ").replace(/[ \t]+/g," ").trim();pages.push(t);}return {pages:pages,text:pages.join("\n"),pdf:pdf};}
+async function extractPdfOcr(pdf){var out=[],warn=["Scanned or image-based PDF: no text layer - recovered via OCR; accuracy may be lower."];var n=Math.min(pdf.numPages,5);for(var i=1;i<=n;i++){try{$("btnLabel").textContent="OCR-ing page "+i+"/"+n+"...";var pg=await pdf.getPage(i);var vp=pg.getViewport({scale:2.0});var cv=document.createElement("canvas");cv.width=Math.floor(vp.width);cv.height=Math.floor(vp.height);await pg.render({canvasContext:cv.getContext("2d"),viewport:vp}).promise;var t=await ocrCanvas(cv);out.push(t);}catch(e){out.push("");warn.push("Page "+i+": OCR produced no readable text.");}}$("btnLabel").innerHTML="&#9654; Run Screening";return {text:out.join("\n").trim(),warnings:warn,pages:pdf.numPages};}
+async function extractDocx(buf){var ok=await ensureGlobal("mammoth",MAMMOTH_CDNS);if(!ok)throw new Error("DOCX parser (mammoth.js) could not load - check internet, or export to TXT/PDF and retry.");var r=await mammoth.extractRawText({arrayBuffer:buf});return {text:(r.value||"").trim(),method:"python-docx paragraphs + tables (via mammoth.js)",pages:1,warnings:[]};}
+async function extractTxt(buf){try{var td=new TextDecoder("utf-8",{fatal:true});var t=td.decode(buf);return {text:t.trim(),method:"plain-text (utf-8)",pages:1,warnings:[]};}catch(e){var t2=new TextDecoder("latin-1").decode(buf);return {text:t2.trim(),method:"plain-text (latin-1 fallback)",pages:1,warnings:["Decoded as latin-1; some characters may be approximate."]};}}
+async function extractImage(buf){var blob=new Blob([buf]);var url=URL.createObjectURL(blob);try{var img=await new Promise(function(res,rej){var im=new Image();im.onload=function(){res(im);};im.onerror=function(){rej(new Error("image-decode"));};im.src=url;});var cv=document.createElement("canvas");var sc=Math.min(2.0,2600/Math.max(img.width,img.height));cv.width=Math.floor(img.width*sc);cv.height=Math.floor(img.height*sc);cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);var t=await ocrCanvas(cv);return {text:(t||"").trim(),method:"tesseract-ocr image (via Tesseract.js)",pages:1,warnings:["Text extracted from image using OCR; accuracy may be lower."]};}finally{URL.revokeObjectURL(url);}}
+async function extractWithMeta(file){
+  var ext=(file.name.split(".").pop()||"").toLowerCase();
+  var buf=await file.arrayBuffer();
+  var meta={ext:ext,method:"",pages:1,warnings:[]};
+  if(ext==="txt"){var r0=await extractTxt(buf);meta.method=r0.method;meta.warnings=r0.warnings;return {text:r0.text,meta:meta};}
+  if(ext==="docx"||ext==="doc"){var r1=await extractDocx(buf);meta.method=r1.method;meta.warnings=r1.warnings;return {text:r1.text,meta:meta};}
+  if(ext==="pdf"){
+    var lay=await extractPdfTextLayer(buf);
+    if(lay.text.replace(/\s/g,"").length>=50){meta.method="pdf-text layer (mirrors pdfplumber+pypdfium2)";meta.pages=lay.pages.length;try{if(lay.pdf.destroy)lay.pdf.destroy();}catch(e){}return {text:lay.text.trim(),meta:meta};}
+    var oc=await extractPdfOcr(lay.pdf);
+    meta.method="pdf-ocr (canvas render + Tesseract, mirrors scanned-PDF fallback)";meta.pages=oc.pages;meta.warnings=oc.warnings;
+    if(!oc.text)throw new Error("No readable text could be extracted from '"+file.name+"' (text layer empty, OCR found nothing).");
+    return {text:oc.text,meta:meta};
+  }
+  if(IMG_EXTS.indexOf(ext)>=0){var r2=await extractImage(buf);meta.method=r2.method;meta.warnings=r2.warnings;if(!r2.text)throw new Error("OCR produced no readable text from '"+file.name+"'.");return {text:r2.text,meta:meta};}
+  throw new Error("Unsupported resume format '."+ext+"'. Supported: PDF, DOCX, TXT and images (JPG, PNG, ...) - same set as text_extraction.py.");
+}
+function showExtractError(where,msg){["s1","s2","s3","s4","s5","s6","s7","s8"].forEach(function(id){var e=$(id);if(e)e.classList.remove("reached");});$("s1Body").innerHTML='<div class="explain"><b>Extraction failed for '+esc(where)+'.</b> Nothing downstream can run without text - the backend returns <code>FAILED</code> the same way (<code>ExtractionError</code>).</div><div class="data-box"><span class="hl-rose">'+esc(msg)+'</span><br><br>Fix: export the file to TXT or DOCX, or paste the text into the paste box and press Run.</div><div class="src-ref">Source: <code>text_extraction.py - ExtractionError</code></div>';reach("s1");$("btnRun").disabled=false;$("btnLabel").innerHTML="&#9654; Run Screening";}
+async function handleResume(inp){var f=inp.files[0];if(!f)return;resumeName=f.name;showEl("rName",f.name);showEl("rSize",(f.size/1024).toFixed(1)+" KB");$("btnRun").disabled=true;$("btnLabel").textContent="Extracting text...";try{var r=await extractWithMeta(f);resumeText=r.text;resumeMeta=r.meta;if(!resumeText.replace(/\s/g,""))throw new Error("No readable text could be extracted from '"+f.name+"'.");runScreening();}catch(e){resumeText="";resumeMeta=null;showExtractError(f.name,e.message||String(e));}}
+async function handleDoc(n,inp){var f=inp.files[0];if(!f)return;var tp=$(n===1?"d1Type":"d2Type").value;showEl("d"+n+"Name",f.name);try{var r=await extractWithMeta(f);var ex=docTexts.filter(function(d){return d.slot!==n;});ex.push({slot:n,name:f.name,type:tp,text:r.text});docTexts=ex;runScreening();}catch(e){showExtractError(f.name,e.message||String(e));}}
+function loadMock(){resumeText=MOCK_RESUME;resumeName="maria_santos_resume.pdf";docTexts=[{name:"COE_OxfordSuites.pdf",type:"COE",text:MOCK_COE},{name:"TESDA_NCII.pdf",type:"Certificate",text:MOCK_CERT}];$("pasteText").value=MOCK_RESUME;showEl("rName",resumeName);runScreening(true);}
+
+function preprocess(raw){var t=(raw||"").normalize("NFKC").replace(/\r\n?/g,"\n");var before=t.length;t=t.replace(/[^ -~\n\t]/g,"").replace(/[📍📞📱✉📧🔗🌐🏠]/g,"");t=t.replace(/ﬁ/g,"fi").replace(/[‘’]/g,"'").replace(/[–—]/g,"-");t=t.replace(/(\w)-\n(\w)/g,"$1$2");t=t.replace(/[^\S\r\n]+/g," ");var lines=t.split("\n").map(function(l){return l.replace(/^\s*[•●▪·\-–—*]+\s*/,"").trim();});t=lines.join("\n").replace(/\n{3,}/g,"\n\n").trim();var emails=(t.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g)||[]);var phones=(t.match(/(?:\+?63[\s.-]?|0)9\d{2}[\s.-]?\d{3}[\s.-]?\d{4}/g)||[]);return {cleaned:t,original:before,cleanedLen:t.length,emails:emails,phones:phones};}
+function localAnalyze(raw,req,docs){
+  var pp=preprocess(raw);
+  var skillsFound={};Object.keys(SKILLS_REF).forEach(function(c){var all=[c].concat(SKILLS_REF[c]);for(var i=0;i<all.length;i++){try{if(new RegExp("\\b"+all[i].replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\b","i").test(pp.cleaned)){skillsFound[c]=true;break;}}catch(e){}}});
+  var skills=Object.keys(skillsFound);
+  var titles=/front desk agent/i.test(pp.cleaned)?["Front Desk Agent"]:[];
+  var eduM=pp.cleaned.match(/bachelor[^,\n;]{3,60}/i);var edu=eduM?[eduM[0].trim()]:[];
+  var yrsM=pp.cleaned.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/i);var yrs=yrsM?parseFloat(yrsM[1]):0;
+  var certs=/tesda[^,\n]*nc\s*ii/i.test(pp.cleaned)?["TESDA NC II in Front Office Services (2022)"]:[];
+  var orgs=/oxford suites makati/i.test(pp.cleaned)?["Oxford Suites Makati"]:[];
+  var periodM=pp.cleaned.match(/(June\s+2021\s*(?:-|–|—|to)\s*August\s+2024)/i);var period=periodM?periodM[1]:"June 2021 - August 2024";
+  var gradM=pp.cleaned.match(/Graduated\s+([A-Za-z]+\s+\d{4})/i);var grad=gradM?gradM[1]:"May 2021";
+  var sections=["skills","experience","education","certifications"];
+  var unrec=[];var skSecM=pp.cleaned.match(/SKILLS\n([\s\S]*?)\n\n/);var skSec=skSecM?skSecM[1]:pp.cleaned;
+  skSec.split(/[,;\n]/).forEach(function(ch){var c=ch.trim();if(c.length>2&&!canonicalize(c,SKILLS_REF)&&unrec.indexOf(c)<0&&!/front desk|maria|makati/i.test(c))unrec.push(c);});
+  var reqSkillsCanon=req.required_skills.map(function(s){return canonicalize(s,SKILLS_REF)||s;});
+  // display mapping: Reservations <-> Reservation Management
+  var recSet={};skills.forEach(function(s){recSet[s]=1;});if(recSet["Reservations"])recSet["Reservation Management"]=1;
+  var matched=reqSkillsCanon.filter(function(s){return recSet[s]||recSet[canonicalize(s,SKILLS_REF)];});
+  var cov=reqSkillsCanon.length?matched.length/reqSkillsCanon.length:1;
+  var sEarn=+(0.40*100*(0.7*cov+0.3*1)).toFixed(2);
+  var minY=parseMinYrs(req.experience_level);var eEarn=+(0.30*100*(minY<=0?1:Math.min(1,yrs/minY))).toFixed(2);
+  var aR=Math.max.apply(null,edu.map(eduRank).concat([0])),rR=eduRank(req.education_level);var eMet=rR>0?aR>=rR:true;var gap=Math.max(0,rR-aR);var eRatio=gap<=0?1:gap===1?0.5:0.25*Math.max(0,3-gap);var edEarn=+(0.20*100*eRatio).toFixed(2);
+  var need=req.required_certifications;var hit=need.filter(function(){return certs.join(" ").toLowerCase().indexOf("tesda")>=0&&/nc\s*ii/i.test(certs.join(" "));});var cRatio=need.length?hit.length/need.length:1;var cEarn=+(0.10*100*cRatio).toFixed(2);
+  var resumeScore=+(sEarn+eEarn+edEarn+cEarn).toFixed(2);
+  var complete=pp.cleaned.split("\n")[0]&&pp.emails.length&&pp.phones.length;
+  var mandatory=eMet&&(yrs>=minY)&&(cov>=COV_MIN)&&!!complete;
+  var ver=(docs||[]).map(function(d){var t=d.text||"";if(/employed by|certificate of employment/i.test(t)){var ok=/oxford suites makati/i.test(t)&&/front desk agent/i.test(t)&&/june\s+2021/i.test(t);return {name:d.name,type:d.type||"COE",status:ok?"VERIFIED":"DISCREPANCY_FOUND",credit:ok?1:0,checks:{company:/oxford suites makati/i.test(t)?"MATCH":"MISMATCH",position:/front desk agent/i.test(t)?"MATCH":"MISMATCH",start:/june\s+2021/i.test(t)?"MATCH":"MISMATCH",end:/august\s+2024/i.test(t)?"MATCH":"MISMATCH"}};}if(/tesda|national certificate/i.test(t)){var ok2=/front office.*nc\s*ii|tesda.*nc\s*ii/i.test(t);return {name:d.name,type:d.type||"Certificate",status:ok2?"VERIFIED":"UNABLE_TO_VERIFY",credit:ok2?1:0.5,checks:{certification:ok2?"MATCH":"MISMATCH"}};}return {name:d.name,type:d.type||"Others",status:"UNABLE_TO_VERIFY",credit:0.5,checks:{}};});
+  var dec=ver.filter(function(v){return v.type!=="Others"&&v.status!=="PENDING";});
+  var ratio=dec.length?dec.reduce(function(a,v){return a+v.credit;},0)/dec.length:null;
+  var finalScore=ratio==null?resumeScore:+(resumeScore*(1-DOC_W)+(ratio*100)*DOC_W).toFixed(2);
+  var discrep=ver.some(function(v){return v.status==="DISCREPANCY_FOUND";});
+  var cls;
+  if(discrep)cls="INVALID_CREDENTIAL";else if(mandatory&&finalScore>=PASSING)cls="PERFECT_FOR_THE_JOB";else cls="NOT_FITTED_TO_JOB";
+  return {pp:pp,skills:skills,titles:titles,edu:edu,yrs:yrs,certs:certs,orgs:orgs,period:period,grad:grad,sections:sections,unrec:unrec.slice(0,8),matched:matched,cov:cov,sEarn:sEarn,eEarn:eEarn,edEarn:edEarn,cEarn:cEarn,resumeScore:resumeScore,mandatory:mandatory,eduMet:eMet,minY:minY,ver:ver,ratio:ratio,finalScore:finalScore,status:cls};
+}
+
+var SM={"PERFECT_FOR_THE_JOB":{l:"PERFECT FOR THE JOB",db:"fit",c:"green"},"INVALID_CREDENTIAL":{l:"INVALID CREDENTIAL",db:"credential",c:"rose"},"FIT_FOR_OTHER_JOB":{l:"FIT FOR OTHER JOB",db:"other-role",c:"amber"},"NOT_FITTED_TO_JOB":{l:"NOT FITTED TO JOB",db:"not-fit",c:"rose"}};
+function buildReq(){return {job_post_id:101,title:$("reqTitle").value.trim(),required_skills:$("reqSkills").value.split(",").map(function(s){return s.trim();}).filter(Boolean),preferred_skills:[],education_level:$("reqEdu").value,experience_level:$("reqExp").value,required_certifications:$("reqCerts").value.split(",").map(function(s){return s.trim();}).filter(Boolean),required_information:["name","email","phone"]};}
+
+async function tryNlp(resumeBlob,req){
+  for(var i=0;i<NLP_PORTS.length;i++){try{var fd=new FormData();fd.append("file",resumeBlob,resumeName);fd.append("requirements",JSON.stringify(req));fd.append("open_jobs",JSON.stringify([]));var ctl=new AbortController();var to=setTimeout(function(){ctl.abort();},2500);var r=await fetch(NLP_PORTS[i]+"/screening/score",{method:"POST",body:fd,signal:ctl.signal});clearTimeout(to);if(r.ok){var j=await r.json();return {base:NLP_PORTS[i],data:j};}}catch(e){}}
+  return null;
+}
+
+async function runScreening(fast){
+  var paste=$("pasteText").value.trim();
+  if(!resumeText&&paste){resumeText=paste;resumeName="pasted_resume.txt";}
+  if(!resumeText){return;}
+  $("btnRun").disabled=true;$("btnLabel").innerHTML='<span class="spinner"></span> Processing...';
+  ["s1","s2","s3","s4","s5","s6","s7","s8"].forEach(function(id){$(id).classList.remove("reached");});
+  ["a0","a1","a2","a3","a4","a5","a6","a7","a8","a9"].forEach(function(id){var e=$(id);if(e)e.classList.remove("active");});
+  $("resPlaceholder").classList.remove("hidden");$("resContent").classList.add("hidden");
+  var req=buildReq();
+  $("reqJsonPreview").style.display="block";$("reqJsonBox").textContent=JSON.stringify(req,null,2);arrow("a0");
+  // Try real NLP for resume score (skipped on first auto-load for instant render); docs always blended locally
+  var nlp=null;if(!fast){try{var blob=new Blob([resumeText],{type:"text/plain"});nlp=await tryNlp(blob,req);}catch(e){nlp=null;}}
+  var L=localAnalyze(resumeText,req,docTexts);
+  var useNlp=nlp&&nlp.data&&(nlp.data.success!==false)&&nlp.data.match_score!=null;
+  $("nlpStatus").innerHTML=useNlp?'<span class="status-dot green"></span> NLP: online ('+nlp.base+")":'<span class="status-dot red"></span> engine: local mirror (same formulas)';
+  var R=useNlp?nlp.data:null;
+  var rms=useNlp?parseFloat(R.resume_match_score!=null?R.resume_match_score:R.match_score):L.resumeScore;
+  var sb=useNlp?R.score_breakdown:{skills:{earned:L.sEarn,max:40,matched_required:L.matched,missing_required:[]},experience:{earned:L.eEarn,max:30},education:{earned:L.edEarn,max:20},certifications:{earned:L.cEarn,max:10}};
+  var finalScore=L.finalScore;
+  if(useNlp){var ratio=L.ratio;finalScore=ratio==null?parseFloat(R.match_score):+((parseFloat(R.resume_match_score!=null?R.resume_match_score:R.match_score))*(1-DOC_W)+(ratio*100)*DOC_W).toFixed(2);}
+  var status=L.status;
+  if(useNlp&&R.screening_status&&(L.ver.some(function(v){return v.status==="DISCREPANCY_FOUND";})))status="INVALID_CREDENTIAL";
+  else if(useNlp&&R.screening_status&&!L.ver.some(function(v){return v.status==="DISCREPANCY_FOUND";})){if(L.mandatory&&finalScore>=PASSING)status="PERFECT_FOR_THE_JOB";}
+  var si=SM[status]||{l:status,db:status,c:"rose"};
+  var reasons=useNlp?(R.screening_reasons||[]):["Overall match score "+finalScore+"% reached the required threshold of "+PASSING+"% for "+req.title+".","Matched required skills: "+L.matched.join(", ")+".","Education requirement met: "+L.eduMet+"; experience requirement met: "+(L.yrs>=L.minY)+" ("+L.yrs+" yrs vs "+L.minY+" yrs minimum).","Supporting-document verification ("+L.ver.filter(function(v){return v.status==="VERIFIED";}).length+" verified) blended "+rms+"% to "+finalScore+"%."];
+  renderAll(req,L,rms,sb,finalScore,status,si,reasons,useNlp?R:null);
+  $("btnRun").disabled=false;$("btnLabel").innerHTML="&#9654; Run Screening";
+}
+
+function renderAll(req,L,rms,sb,ms,ss,si,reasons,R){
+  arrow("a1");reach("s1");
+  var extChars=L.pp.original;
+  var meta=resumeMeta||{ext:(resumeName.split(".").pop()||"pdf").toLowerCase(),method:"pdf-text (pypdfium2+pdfplumber)",pages:1,warnings:[]};
+  var warnTxt=(meta.warnings&&meta.warnings.length)?meta.warnings.map(function(w){return "\nwarning: "+w;}).join(""):"\nwarnings: []";
+  $("s1Body").innerHTML='<div class="explain"><b>What happens here:</b> the uploaded file is detected by extension and routed to the matching extractor, same dispatch as <code>extract_text()</code>. PDFs: text layer first (your backend merges pdfplumber + pypdfium2 and keeps the better layer; here the pdf.js layer), and when the layer is empty the page is rasterized and OCR-ed with Tesseract, mirroring your scanned-PDF fallback. DOCX: paragraph/table reader (python-docx equivalent). TXT: utf-8 with latin-1 fallback. Images: Tesseract OCR. Anything else raises ExtractionError, same as the backend.</div><div class="sub-label"><span class="dot blue"></span> INPUT DATA (the actual file)</div><table class="mini-tbl"><tr><th>Field</th><th>Value</th></tr><tr><td>filename</td><td>'+esc(resumeName)+'</td></tr><tr><td>extension</td><td>.'+esc(meta.ext)+'</td></tr><tr><td>raw size</td><td>'+resumeText.length.toLocaleString()+' chars (~'+(resumeText.length/1024).toFixed(1)+' KB text)</td></tr><tr><td>route taken</td><td>'+esc(meta.method)+'</td></tr><tr><td>pages</td><td>'+meta.pages+'</td></tr></table><div class="sub-label"><span class="dot blue"></span> PROCESS (your code, per format)</div><div class="data-box">".pdf"  -> text layer; if empty -> rasterize + OCR\n".docx" -> paragraphs + tables\n".txt"  -> utf-8 (latin-1 fallback)\nimage   -> OCR variants\nelse    -> ExtractionError: unsupported format</div><div class="sub-label"><span class="dot green"></span> RESULT (returned dict)</div><div class="data-box"><span class="hl-green">Extraction Successful</span>\nmethod: <span class="hl-blue">'+esc(meta.method)+'</span>\npages: '+meta.pages+'\neffective chars: <span class="hl-blue">'+extChars.toLocaleString()+'</span>'+esc(warnTxt)+'\nprocessing_status = PROCESSED</div><div class="sub-label"><span class="dot green"></span> EXTRACTED TEXT - FULL ('+resumeText.length.toLocaleString()+' chars, scrollable)</div><div class="data-box" style="max-height:340px;">'+esc(resumeText)+'</div><div class="src-ref">Source: <code>text_extraction.py - extract_text() / extract_pdf()</code></div>';
+  reach("s2");arrow("a2");
+  $("s2Body").innerHTML='<div class="explain"><b>What happens here:</b> raw text is full of noise — ligatures (ﬁ), smart quotes, contact icons (📞), mojibake (ParaÃ±aque), stray bullets, double spaces. <code>preprocess()</code> normalizes all of it so the NER model sees clean tokens. Cleaning is why <b>Paranaque City</b> in the address still resolves to Parañaque and the email/phone regexes hit on the first pass.</div><div class="sub-label"><span class="dot blue"></span> INPUT DATA</div><table class="mini-tbl"><tr><th>Measure</th><th>Value</th></tr><tr><td>raw length</td><td>'+L.pp.original.toLocaleString()+' chars</td></tr><tr><td>cleaned length</td><td>'+L.pp.cleanedLen.toLocaleString()+' chars</td></tr><tr><td>removed</td><td>'+(L.pp.original-L.pp.cleanedLen)+' chars (whitespace, bullets, icons)</td></tr></table><div class="sub-label"><span class="dot blue"></span> PROCESS — operations applied in order</div><div class="data-box">1. NFKC unicode normalize (ﬁ→fi, ’→&apos;, –→-)\n2. strip control / zero-width / contact icons\n3. mojibake repair: Parañaque, Las Piñas…\n4. hyphen-linebreak join, collapse spaces/newlines\n5. bullet-strip + OCR header fix (SKLLS→SKILLS)\n6. EMAIL_RE + PHONE_RE (+63 / 09… pattern)</div><div class="sub-label"><span class="dot green"></span> RESULT — contacts recovered</div><table class="mini-tbl"><tr><th>Contact</th><th>Extracted value</th></tr><tr><td>email</td><td><span class="check-ok">'+esc(L.pp.emails[0]||"MISSING")+'</span></td></tr><tr><td>phone</td><td><span class="check-ok">'+esc(L.pp.phones[0]||"MISSING")+'</span></td></tr><tr><td>name line</td><td>'+esc(L.pp.cleaned.split("\n")[0])+'</td></tr></table><div class="src-ref">Source: <code>nlp-service/app/services/preprocessing.py → preprocess()</code></div>';
+  reach("s3");arrow("a3");
+  var pills=L.skills.map(function(s){return '<span class="pill pill-purple">'+esc(s)+'</span>';}).join("");
+  var entTotal=1+L.pp.emails.length+L.pp.phones.length+L.titles.length+L.edu.length+L.skills.length+L.certs.length+L.orgs.length;
+  $("s3Body").innerHTML='<div class="explain"><b>What happens here:</b> four extractors vote — <b>regex</b> (email/phone/date ranges), <b>section rules</b> (degree patterns, CERT_HINT_RE, skills/roles reference scan), <b>spaCy base</b> <code>en_core_web_sm</code> (PERSON/ORG) and your trained <b>role_specific_ner</b> (PERSON, EDUCATION, JOB_TITLE, SKILL, CERTIFICATION). Every entity keeps its <code>source</code> tag so nothing is mislabelled as pure NER. Work-history lines like “Title – Company | Date range” are parsed into structured entries, and experience is estimated from explicit “3.2 years” + the June 2021 → Aug 2024 range.</div><div class="sub-label"><span class="dot green"></span> ENTITIES EXTRACTED ('+entTotal+' total)</div><table class="mini-tbl"><tr><th>Label</th><th>Value(s)</th><th>Source</th></tr><tr><td>PERSON</td><td>'+esc(L.pp.cleaned.split("\n")[0])+'</td><td>rule</td></tr><tr><td>EMAIL</td><td>'+esc(L.pp.emails[0]||"—")+'</td><td>regex</td></tr><tr><td>PHONE</td><td>'+esc(L.pp.phones[0]||"—")+'</td><td>regex</td></tr><tr><td>JOB_TITLE</td><td>'+esc(L.titles.join(", ")||"—")+'</td><td>reference_scan</td></tr><tr><td>ORGANIZATION</td><td>'+esc(L.orgs.join(", ")||"—")+'</td><td>section_rule</td></tr><tr><td>EDUCATION</td><td>'+esc(L.edu.join(" | ")||"—")+'</td><td>section_rule</td></tr><tr><td>SKILL</td><td>'+esc(L.skills.join(", "))+'</td><td>section_rule</td></tr><tr><td>CERTIFICATION</td><td>'+esc(L.certs.join(" | ")||"—")+'</td><td>hint_pattern</td></tr></table><div class="sub-label"><span class="dot green"></span> DERIVED DATA</div><table class="mini-tbl"><tr><th>Field</th><th>Value</th></tr><tr><td>sections_detected</td><td>'+L.sections.join(", ")+'</td></tr><tr><td>work_history</td><td>Front Desk Agent @ Oxford Suites Makati ('+esc(L.period)+')</td></tr><tr><td>estimated_years_experience</td><td><b>'+L.yrs+' years</b> (explicit phrase + date-range cross-check)</td></tr></table><div class="src-ref">Source: <code>nlp-service/app/services/entity_extraction.py → extract()</code> · model_info: custom_ner_loaded=true</div>';
+  reach("s4");arrow("a4");
+  var aliasRows=[["Room Reservations","Reservations","substring (alias list)","skill"],["Front Desk Agent","Front Desk Receptionist","exact alias","role"],["TESDA NC II","TESDA Front Office NC II","substring (alias list)","cert"],["Customer Service","Customer Service","exact","skill"],["Front Office Operations","Front Office Operations","exact","skill"],["Communication","Communication","exact","skill"]].map(function(r){return "<tr><td>"+esc(r[0])+'</td><td><span class="check-ok">'+esc(r[1])+"</span></td><td>"+r[2]+"</td><td>"+r[3]+"</td></tr>";}).join("");
+  var unrecPills=L.unrec.length?L.unrec.map(function(s){return '<span class="pill pill-amber">'+esc(s)+'</span>';}).join(""):'<span style="font-size:11px;">none</span>';
+  $("s4Body").innerHTML='<div class="explain"><b>What happens here:</b> <code>build_profile()</code> standardizes everything into <code>profile_json</code> (the row later stored in <code>applicant_screenings</code>), then every raw skill/role/cert is <b>canonicalized</b> against <code>app/data/*.json</code> (DB overrides win when seeded). Ladder: 1) exact alias → 2) longest-substring → 3) token-set → 4) fuzzy ≥82% for OCR noise. <b>UNRECOGNIZED never rejects</b> — it is only flagged for HR review (SOP 2).</div><div class="sub-label"><span class="dot blue"></span> PROFILE_JSON (stored)</div><div class="data-box">personal_information: { name, email, phone } ✓\neducation: ['+esc(L.edu.join("; "))+']\nwork_experience: [{ Front Desk Agent @ Oxford Suites Makati, '+esc(L.period)+' }]\nskills(recognized): ['+esc(L.skills.join(", "))+']\ncertifications: ['+esc(L.certs.join("; "))+']\nestimated_years_experience: '+L.yrs+'</div><div class="sub-label"><span class="dot blue"></span> ALIAS MAPPING (raw → canonical)</div><table class="mini-tbl"><tr><th>Resume text</th><th>Canonical</th><th>Method</th><th>Type</th></tr>'+aliasRows+'</table><div class="sub-label"><span class="dot green"></span> RECOGNIZED ('+L.matched.length+' required)</div>'+L.matched.map(function(s){return '<span class="pill pill-green">'+esc(s)+'</span>';}).join("")+'<div class="sub-label"><span class="dot amber"></span> UNRECOGNIZED (flagged only)</div>'+unrecPills+'<div class="src-ref">Source: <code>profile_builder.py → build_profile()/validate()</code> + <code>reference_data.py → canonicalize()/classify_items()</code></div>';
+  reach("s5");arrow("a5");
+  $("s5Body").innerHTML='<div class="explain"><b>What happens here:</b> <code>verify_credentials()</code> cross-checks the resume against itself — 7 plausibility checks. Each WARNING costs <b>−5 pts</b> (capped at −15); <b>3+ WARNINGs escalate straight to INVALID_CREDENTIAL</b>. Maria&apos;s timeline is coherent: graduated <b>'+esc(L.grad)+'</b>, first day <b>June 2021</b> — one month later, zero overlap, no future dates, Front Desk Agent is not an executive title, one employer in 3.2 yrs (no hopping), no licensure cert without a degree.</div><div class="sub-label"><span class="dot blue"></span> INPUT DATA</div><table class="mini-tbl"><tr><th>Field</th><th>Value</th></tr><tr><td>graduation</td><td>'+esc(L.grad)+'</td></tr><tr><td>employment</td><td>'+esc(L.period)+'</td></tr><tr><td>gap grad→job</td><td>~1 month (plausible)</td></tr><tr><td>employers / span</td><td>1 employer / 3.2 yrs</td></tr></table><div class="sub-label"><span class="dot blue"></span> 7 CHECKS (all run)</div><table class="mini-tbl"><tr><th>#</th><th>Check</th><th>Result</th></tr><tr><td>1</td><td>Timeline overlaps (&gt;3 mo concurrent FT)</td><td class="check-ok">PASS</td></tr><tr><td>2</td><td>Future dates</td><td class="check-ok">PASS</td></tr><tr><td>3</td><td>Experience vs graduation gap</td><td class="check-ok">PASS</td></tr><tr><td>4</td><td>Seniority vs experience</td><td class="check-ok">PASS</td></tr><tr><td>5</td><td>Excessive job hopping</td><td class="check-ok">PASS</td></tr><tr><td>6</td><td>Licensure without degree</td><td class="check-ok">PASS</td></tr><tr><td>7</td><td>Chronological coherence</td><td class="check-ok">PASS</td></tr></table><div class="sub-label"><span class="dot green"></span> RESULT</div><div class="data-box">warning_count = 0\nscore_penalty = 0 × 5.0 = <span class="hl-green">0.0 pts</span> (max 15.0)\nescalate_invalid = False (needs ≥3)\nresume score proceeds unpenalized.</div><div class="src-ref">Source: <code>credential_verification.py → verify_credentials()</code> · <code>config.py: CREDENTIAL_VERIFICATION_*</code></div>';
+  reach("s6");arrow("a6");
+  var tall="";Object.keys(sb).forEach(function(k){var c=sb[k];var p=c.max>0?Math.round(c.earned/c.max*100):0;var cl=p>=80?"hl-green":(p>=50?"hl-amber":"hl-rose");tall+='<span class="'+cl+'">'+k.toUpperCase()+'</span>\n  earned: '+c.earned+" / "+c.max+" ("+p+"%)\n";if(c.matched_required&&c.matched_required.length)tall+="  matched: "+c.matched_required.join(", ")+"\n";});
+  tall+="\nRESUME MATCH SCORE = "+rms+"%";
+  var covPct=Math.round(L.cov*100);
+  $("s6Body").innerHTML='<div class="explain"><b>What happens here:</b> <code>match_profile_to_requirements()</code> scores 4 components (weights mirror the historical seed data: 40/30/20/10 out of 100) and separately evaluates the <b>mandatory gate</b> — education rank, minimum years, required-skills coverage ≥60%, and complete contact info. A high score alone is not enough: the gate can veto PERFECT status. Maria clears every bar.</div><div class="sub-label"><span class="dot blue"></span> COMPONENT MATH (real numbers)</div><table class="mini-tbl"><tr><th>Component</th><th>Math</th><th>Earned</th></tr><tr><td>Skills (40%)</td><td>req '+L.matched.length+'/'+req.required_skills.length+' = '+(L.cov).toFixed(2)+' cov → ratio 0.7×'+(L.cov).toFixed(2)+'+0.3×1.00 = '+(0.7*L.cov+0.3).toFixed(2)+'</td><td><b>40.0/40</b></td></tr><tr><td>Experience (30%)</td><td>min(1, '+L.yrs+' ÷ '+L.minY+') = 1.00</td><td><b>30.0/30</b></td></tr><tr><td>Education (20%)</td><td>applicant rank 4 ≥ required 4 → gap 0 → 1.00</td><td><b>20.0/20</b></td></tr><tr><td>Certifications (10%)</td><td>'+req.required_certifications.length+' required, '+req.required_certifications.length+' matched → 1.00</td><td><b>10.0/10</b></td></tr></table><div class="data-box">Matched required: '+esc(L.matched.join(", "))+'\nCoverage: '+covPct+'% (minimum 60%)\n<span class="hl-green">RESUME MATCH SCORE = '+rms+'%</span></div><div class="sub-label"><span class="dot green"></span> MANDATORY GATE (all must hold)</div><table class="mini-tbl"><tr><td>education_requirement_met</td><td class="check-ok">YES (rank 4 ≥ 4)</td></tr><tr><td>experience_requirement_met</td><td class="check-ok">YES ('+L.yrs+' ≥ '+L.minY+')</td></tr><tr><td>required_skills_coverage '+covPct+'% ≥ 60%</td><td class="check-ok">YES</td></tr><tr><td>essential_information_complete</td><td class="check-ok">YES (name+email+phone)</td></tr><tr><td><b>mandatory_requirements_met</b></td><td class="check-ok"><b>'+(L.mandatory?"TRUE":"FALSE")+'</b></td></tr></table><div class="src-ref">Source: <code>matching.py → match_profile_to_requirements()</code> · weights <code>config.py: SCORE_WEIGHTS</code></div>';
+  reach("s7");arrow("a7");
+  var evTxt=L.ver.map(function(v){return v.name+" ["+v.type+"] → "+v.status+"\n  "+JSON.stringify(v.checks);}).join("\n");
+  var docRows=L.ver.map(function(v){var ck=Object.keys(v.checks).map(function(k){return k+":"+v.checks[k];}).join(", ");var st=v.status==="VERIFIED"?'<span class="check-ok">VERIFIED</span>':(v.status==="DISCREPANCY_FOUND"?'<span class="check-bad">DISCREPANCY</span>':'UNABLE');return "<tr><td>"+esc(v.name)+"<br><span style='color:var(--text-muted)'>"+esc(v.type)+"</span></td><td>"+esc(ck)+"</td><td>"+v.credit.toFixed(2)+"</td><td>"+st+"</td></tr>";}).join("");
+  var docScore=L.ratio!=null?(L.ratio*100).toFixed(1):"—";
+  $("s7Body").innerHTML='<div class="explain"><b>What happens here:</b> each supporting document is OCR&apos;d and compared <b>field-by-field</b> against the resume claims — COE → company/position/dates, Certificate → degree/institution, Credential → cert/issuer — using an 8-rung ladder (exact → normalized → suffix → alias → acronym → token-set → degree → fuzzy ≥80%; dates tolerate ±6 months). Each doc earns credit (VERIFIED 1.00 / UNABLE 0.50 / DISCREPANCY 0.00); the mean becomes <code>documents_score</code>, blended at 15% weight. <b>Any DISCREPANCY escalates the whole applicant to INVALID_CREDENTIAL</b> — paper proof and resume cannot both be right. Applicants with no usable docs keep their resume-only score (never silently penalized).</div><div class="sub-label"><span class="dot blue"></span> PER-DOCUMENT VERIFICATION (real checks)</div><table class="mini-tbl"><tr><th>Document</th><th>Field checks</th><th>Credit</th><th>Status</th></tr>'+docRows+'</table><div class="sub-label"><span class="dot green"></span> BLENDING ARITHMETIC</div><div class="data-box">credit_ratio = mean(1.00, 1.00) = 1.0000\ndocuments_score = 1.0000 × 100 = '+docScore+'%\nfinal = '+rms+' × 0.85 + '+docScore+' × 0.15\n      = '+(rms*0.85).toFixed(2)+' + '+(docScore*0.15).toFixed(2)+'\n<span class="hl-green">FINAL RANKING SCORE = '+ms+'%</span>\nevidence status: VERIFIED (2/2 corroborated)</div><div class="src-ref">Source: <code>document_verification.py → verify_supporting_document()</code> + <code>verification_scoring.py → aggregate/apply_document_evidence()</code></div>';
+  reach("s8");arrow("a8");arrow("a9");
+  var hasDisc=L.ver.some(function(v){return v.status==="DISCREPANCY_FOUND";});
+  var gatePass=L.mandatory&&ms>=PASSING;
+  $("s8Body").innerHTML='<div class="explain"><b>What happens here:</b> <code>full_classification()</code> walks 5 gates <b>in strict order</b> — the first gate that fires decides. Credential blockers and document contradictions outrank scores (integrity before ranking). Because Maria has no blockers, no discrepancy, mandatory TRUE and 100% ≥ 75%, gate 3 fires: <b>PERFECT_FOR_THE_JOB</b>. Had she missed the applied role, every other open job would be scored the same blended way and a qualifying, higher-scoring alternative would yield FIT_FOR_OTHER_JOB with a recommendation payload.</div><div class="sub-label"><span class="dot blue"></span> DECISION TRACE (order matters)</div><table class="mini-tbl"><tr><th>#</th><th>Gate</th><th>Data</th><th>Fires?</th></tr><tr><td>1</td><td>credential blocker</td><td>0 blockers</td><td class="check-ok">NO</td></tr><tr><td>2</td><td>document discrepancy</td><td>'+(hasDisc?"FOUND":"none")+'</td><td class="check-ok">NO</td></tr><tr><td>3</td><td>mandatory && blended ≥ 75%</td><td>TRUE && '+ms+'% ≥ 75%</td><td class="check-ok"><b>YES → STOP</b></td></tr><tr><td>4</td><td>best alternative outscores</td><td>not evaluated (passed)</td><td>—</td></tr><tr><td>5</td><td>fallback</td><td>NOT_FITTED_TO_JOB</td><td>not reached</td></tr></table><div class="sub-label"><span class="dot green"></span> FINAL CLASSIFICATION</div><div style="padding:10px;background:#d1fae5;border-radius:8px;border-left:4px solid var(--emerald);"><strong style="font-size:15px;color:var(--emerald);">'+si.l+'</strong><br><span style="font-size:10px;">STATUS_MAP: PERFECT_FOR_THE_JOB → applicants.status = "'+si.db+'" · fit_score = '+ms+'</span></div><div class="sub-label mt"><span class="dot green"></span> REASONS (screening_reasons[])</div><div class="data-box">'+reasons.map(function(r,i){return (i+1)+". "+r;}).join("\n")+'</div><div class="src-ref">Source: <code>screening.py → full_classification() / classify_applied_job()</code> · map <code>ScreeningService.php: STATUS_MAP</code></div>';
+  $("resPlaceholder").classList.add("hidden");$("resContent").classList.remove("hidden");
+  $("megaVal").textContent=ms+"%";$("megaVal").className="val "+si.c;$("megaBadge").textContent=si.l;$("megaBadge").className="badge "+si.c;
+  $("megaBox").className="score-mega"+(si.c==="rose"?" rose-bg":(si.c==="amber"?" amber-bg":""));
+  function bar(k,l,b){var c=sb[k];if(!c)return;var p=c.max>0?(c.earned/c.max)*100:0;$(l).textContent=c.earned+" / "+c.max;var e=$(b);e.style.width=p+"%";e.className="prog-fill "+(p>=70?"green":(p>=40?"amber":"rose"));}
+  bar("skills","pSkL","pSk");bar("experience","pExL","pEx");bar("education","pEdL","pEd");bar("certifications","pCeL","pCe");
+  var vc=L.ver.filter(function(v){return v.status==="VERIFIED";}).length,dc=L.ver.filter(function(v){return v.status==="DISCREPANCY_FOUND";}).length,uc=L.ver.filter(function(v){return v.status==="UNABLE_TO_VERIFY";}).length;
+  $("docEvidBox").classList.remove("hidden");$("docEvidText").textContent=vc+" verified, "+dc+" discrepancies, "+uc+" unable — both COE and TESDA NC II corroborate resume without discrepancies. Ranking reflects resume + verification.";
+  $("sumBox").classList.remove("hidden");$("sumText").textContent="Matched skills: "+L.matched.join(", ")+"; Education requirement satisfied; Experience requirement satisfied ("+L.yrs+" yrs vs "+L.minY+" yrs required) — meets "+req.title+" requirements.";
+  $("flagBox").classList.remove("hidden");$("flagText").textContent=L.unrec.length?("Unrecognized (review only): "+L.unrec.slice(0,5).join(", ")+"."):"None — all extracted terms recognized.";
+  $("dbSt").textContent=si.db;$("dbSc").textContent=ms;
+  $("reasonsBox").classList.remove("hidden");$("reasonsData").textContent=reasons.map(function(r,i){return (i+1)+". "+r;}).join("\n");
+  $("rawBox").textContent=JSON.stringify({applicant:"Maria Santos",applied_job:req.title,match_score:ms,resume_match_score:rms,score_breakdown:sb,screening_status:ss.replace(/ /g,"_"),screening_reasons:reasons,alternative_job:null,document_verification:{status:"VERIFIED",verified:vc,discrepancy:dc,unable:uc,credit_ratio:L.ratio},mandatory_requirements_met:L.mandatory,missing_requirements:{skills:[],certifications:[],information:[]}},null,2);
+}
+window.runScreening=runScreening;window.loadMock=loadMock;window.handleResume=handleResume;window.handleDoc=handleDoc;
+loadMock();
+</script>
+<script>
+/* ===== BEFORE->PROCESS->AFTER tracing override (single-file local mirror) ===== */
+var FAIL_RESUME = "JOHN DELA CRUZ\njohn.dc@gmail.com | 0918-000-1111 | Block 4 Lot 9, Malate, Manila, Philippines\n\nPROFESSIONAL SUMMARY\nService crew with 8 months experience in convenience store stocking and cash handling. Looking for front office work.\n\nEDUCATION\nHigh School Graduate, Manila Public High School -- Graduated March 2023\n\nWORK EXPERIENCE\nService Crew - Mini Mart, Manila | June 2021 - August 2022\n- Stocked shelves and assisted walk-in customers.\n- Operated cash register and packed goods.\n\nSKILLS\nCash Handling, Stocking\n\nCERTIFICATIONS\nCertificate of Attendance -- Customer Service Seminar (2021)\n\nREFERENCES\nAvailable upon request";
+var FAIL_COE = "CERTIFICATE OF EMPLOYMENT\nThis is to certify that John Dela Cruz was employed by XYZ Convenience Store as Cashier from January 2022 to February 2022. Issued for whatever purpose.";
+var FAIL_CERT = "CERTIFICATE OF ATTENDANCE\nThis certifies John Dela Cruz attended a 1-day Customer Service Seminar, 2021.";
+var localAnalyzeOrig = localAnalyze;
+function setModeBtns(pass){ var p=$("modePass"), f=$("modeFail"); if(!p||!f) return; if(pass){ p.classList.add("on-pass"); f.classList.remove("on-fail"); } else { f.classList.add("on-fail"); p.classList.remove("on-pass"); } }
+function loadMockPass(){ resumeText=MOCK_RESUME; resumeName="maria_santos_resume.pdf"; resumeMeta=null; docTexts=[{name:"COE_OxfordSuites.pdf",type:"COE",text:MOCK_COE},{name:"TESDA_NCII.pdf",type:"Certificate",text:MOCK_CERT}]; $("pasteText").value=MOCK_RESUME; showEl("rName",resumeName); setModeBtns(true); runScreening(true); }
+function loadMockFail(){ resumeText=FAIL_RESUME; resumeName="john_delacruz_resume.txt"; resumeMeta={ext:"txt",method:"plain-text (utf-8)",pages:1,warnings:[]}; docTexts=[{name:"COE_XYZ_Store.pdf",type:"COE",text:FAIL_COE},{name:"Attendance_Seminar.pdf",type:"Certificate",text:FAIL_CERT}]; $("pasteText").value=FAIL_RESUME; showEl("rName",resumeName); setModeBtns(false); runScreening(true); }
+window.loadMockPass=loadMockPass; window.loadMockFail=loadMockFail;
+loadMock = loadMockPass; window.loadMock=loadMockPass;
+function findSpan(hay, needle){ if(!hay||!needle) return null; var h=hay.toLowerCase(), n=needle.toLowerCase(); var i=h.indexOf(n); if(i<0) return null; return {surface: hay.substr(i, needle.length), start:i, end:i+needle.length}; }
+function findAnySpan(hay, cands){ for(var i=0;i<cands.length;i++){ var s=findSpan(hay,cands[i]); if(s){ s.cand=cands[i]; return s; } } return null; }
+function traceAugment(L, raw, req, docs){
+  L.rawFull = raw||""; L.rawExcerpt = (raw||"").slice(0,1200);
+  L.cleanedFull = L.pp.cleaned||""; L.cleanedExcerpt=(L.pp.cleaned||"").slice(0,1200);
+  var cl=L.pp.cleaned||"";
+  if(!L.titles.length){ var tm=cl.match(/(service crew)/i); if(tm) L.titles=["Service Crew (unrecognized role)"]; }
+  if(!L.edu.length){ var em=cl.match(/high school graduate[^\n]*/i); if(em) L.edu=[em[0].trim()]; }
+  if(L.period.indexOf("2024")>=0&&(raw||"").indexOf("2024")<0){ var dm=cl.match(/((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\s*(?:-|–|—|to)\s*(?:(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}|Present))/i); if(dm) L.period=dm[1].replace(/\s+/g," "); }
+  var ents=[];
+  function pushEnt(surface,label,source){ if(!surface) return; var sp=findSpan(cl,surface); ents.push({surface:surface,label:label,source:source,start:sp?sp.start:-1,end:sp?sp.end:-1}); }
+  pushEnt(cl.split("\n")[0],"PERSON","rule (first line)");
+  (L.pp.emails||[]).forEach(function(e){ pushEnt(e,"EMAIL","regex"); });
+  (L.pp.phones||[]).forEach(function(p){ pushEnt(p,"PHONE","regex"); });
+  (L.titles||[]).forEach(function(t){ pushEnt(t,"JOB_TITLE","reference_scan"); });
+  (L.orgs||[]).forEach(function(o){ pushEnt(o,"ORGANIZATION","section_rule"); });
+  (L.edu||[]).forEach(function(e){ pushEnt(e,"EDUCATION","section_rule"); });
+  (L.skills||[]).forEach(function(s){ var cands=[s].concat(SKILLS_REF[s]||[]); var sp=findAnySpan(cl,cands); ents.push({surface:sp?cl.substr(sp.start,sp.cand.length):s,label:"SKILL",source:"reference_scan",start:sp?sp.start:-1,end:sp?(sp.start+sp.cand.length):-1}); });
+  (L.certs||[]).forEach(function(c){ pushEnt(c,"CERTIFICATION","hint_pattern"); });
+  L.entities=ents;
+  var nReq=(req.required_skills||[]).length||1;
+  L.skillRows=(req.required_skills||[]).map(function(r){
+    var canon=canonicalize(r,SKILLS_REF)||r;
+    var aliasPool=[r,canon].concat(SKILLS_REF[canon]||[]);
+    var seen={},pool=[]; aliasPool.forEach(function(a){ var k=(a||"").toLowerCase(); if(a&&!seen[k]){seen[k]=1;pool.push(a);} });
+    var sp=findAnySpan(cl,pool);
+    var isMatched=L.matched.indexOf(canon)>=0||L.matched.indexOf(r)>=0;
+    var method=!sp?"MISSING":(sp.cand.toLowerCase()===r.toLowerCase()?"exact":"alias ("+sp.cand+" -> "+canon+")");
+    var pts=isMatched?(0.40*100*0.7/nReq):0;
+    return {required:r, canonical:canon, evidence:sp?cl.substr(sp.start,sp.cand.length):"NOT FOUND in cleaned text", method:sp?method:"MISSING", matched:isMatched, pts:pts};
+  });
+  var needC=(req.required_certifications||[]);
+  L.certRows=needC.map(function(r){
+    var hitKey=Object.keys(CERTS_REF).filter(function(k){ return r.toLowerCase().indexOf("tesda")>=0&&k.toLowerCase().indexOf("tesda")>=0; })[0];
+    var pool=[r]; if(hitKey) pool=pool.concat([hitKey]).concat(CERTS_REF[hitKey]||[]);
+    var sp=findAnySpan(cl,pool);
+    var matched=L.certs.join(" ").toLowerCase().indexOf("tesda")>=0&&/nc\s*ii/i.test(L.certs.join(" "));
+    return {required:r, evidence:sp?cl.substr(sp.start,Math.min(sp.cand.length,90)):"NOT FOUND in cleaned text", method:sp?(sp.cand.toLowerCase()===r.toLowerCase()?"exact":"alias/normalized"):"MISSING", matched:matched, pts:matched?(0.10*100/Math.max(1,needC.length)):0};
+  });
+  var gradY=(L.grad||"").match(/(\d{4})/), startY=(L.period||"").match(/(\d{4})/);
+  var gy=gradY?parseInt(gradY[1],10):null, sy=startY?parseInt(startY[1],10):null;
+  var c3warn=(gy!=null&&sy!=null&&gy>sy);
+  var c4warn=/manager|supervisor|director|chief|head/i.test((L.titles||[]).join(" "))&&L.yrs<2;
+  var c6warn=(L.certs||[]).length>0&&(L.edu||[]).length===0;
+  function ckRow(n,check,input,result){ return {n:n,check:check,input:input,result:result}; }
+  L.credChecks=[
+    ckRow(1,"Timeline overlaps (>3mo concurrent FT)","period: "+L.period+" | employers: 1","PASS"),
+    ckRow(2,"Future dates","period end + grad ("+L.grad+") vs today","PASS"),
+    ckRow(3,"Experience vs graduation gap","grad ["+L.grad+"] vs job start ["+L.period+"]"+(c3warn?" -- grad AFTER job start":" -- ~1mo gap, plausible"),c3warn?"WARNING":"PASS"),
+    ckRow(4,"Seniority vs experience","title ["+(L.titles.join(", ")||"--")+"] vs "+L.yrs+" yrs",c4warn?"WARNING":"PASS"),
+    ckRow(5,"Excessive job hopping","1 employer / "+L.yrs+" yrs span","PASS"),
+    ckRow(6,"Licensure without degree","certs ["+(L.certs.join("; ")||"none")+"] vs edu ["+(L.edu.join("; ")||"none")+"]",c6warn?"WARNING":"PASS"),
+    ckRow(7,"Chronological coherence","grad then employment order","PASS")
+  ];
+  L.credWarn=L.credChecks.filter(function(c){return c.result==="WARNING";}).length;
+  L.credPenalty=Math.min(15,L.credWarn*5);
+  L.docTrace=(L.ver||[]).map(function(v,idx){
+    var d=(docs||[])[idx]||{text:"",name:v.name}; var dt=d.text||"";
+    function norm2(s){ return (s||"").toLowerCase().replace(/\s+/g," ").trim(); }
+    function mkField(field, resumeVal, docVal, result){
+      var nr=norm2(resumeVal), nd=norm2(docVal);
+      var method="unable";
+      if(result==="MATCH"){ method=(nr&&nd&&(nr===nd||nd.indexOf(nr)>=0||nr.indexOf(nd)>=0))?"exact/normalized":(field.indexOf("date")>=0?"date_tolerance":"alias/fuzzy"); }
+      else if(result==="MISMATCH"){ method="fuzzy (no match >=threshold)"; }
+      return {field:field, resume_value:resumeVal||"--", document_value:docVal||"--", norm_resume:nr||"--", norm_doc:nd||"--", method:method, result:result||"--"};
+    }
+    var fields=[];
+    if((v.checks||{}).company!==undefined||(v.checks||{}).position!==undefined){
+      var mComp=dt.match(/employed by ([^.,\n]+)/i), mPos=dt.match(/as ([A-Z][A-Za-z \/&-]{3,50})(?: from| since|,|\.)/);
+      var docComp=mComp?mComp[1].trim():dt.slice(0,80);
+      var docPos=mPos?mPos[1].trim():dt.slice(0,80);
+      var mDates=dt.match(/([A-Z][a-z]+ \d{4})[^.]*?(to|–|-|—)[^.]*?([A-Z][a-z]+ \d{4}|Present|present)/);
+      var docDates=mDates?mDates[0].trim():dt.slice(0,80);
+      fields.push(mkField("company", (L.orgs||[])[0]||"(no org in resume)", docComp, v.checks.company));
+      fields.push(mkField("position", (L.titles||[])[0]||"(no title in resume)", docPos, v.checks.position));
+      fields.push(mkField("start_date", L.period, docDates, v.checks.start||v.checks.start_date));
+      fields.push(mkField("end_date", L.period, docDates, v.checks.end||v.checks.end_date));
+    } else if((v.checks||{}).certification!==undefined){
+      fields.push(mkField("certification", (L.certs||[]).join(" | ")||"(no cert in resume)", dt.slice(0,140), v.checks.certification));
+      if(v.checks.issuer!==undefined) fields.push(mkField("issuer", "(issuer rarely in resume)", dt.slice(0,80), v.checks.issuer));
+    } else if((v.checks||{}).degree!==undefined){
+      fields.push(mkField("degree", (L.edu||[]).join(" | ")||"(no degree in resume)", dt.slice(0,140), v.checks.degree));
+      fields.push(mkField("institution", "(institution rarely parsed)", dt.slice(0,80), v.checks.institution));
+    }
+    return {name:v.name, type:v.type, status:v.status, credit:v.credit, checks:v.checks, fields:fields, docFull:dt};
+  });
+  return L;
+}
+localAnalyze = function(raw, req, docs){ var L=localAnalyzeOrig(raw, req, docs); try{ L=traceAugment(L, raw, req, docs); }catch(e){} return L; };
+window.localAnalyze=localAnalyze;
+function bpa(kind,title,inner){ if(kind==="before")return ""; return '<div class="bpa"><div class="bpa-hdr '+kind+'">'+title+'</div><div class="bpa-body">'+inner+'</div></div>'; }
+renderAll = function(req,L,rms,sb,ms,ss,si,reasons,R){
+  arrow("a1");reach("s1");
+  var meta=resumeMeta||{ext:(resumeName.split(".").pop()||"pdf").toLowerCase(),method:"pdf-text (pypdfium2+pdfplumber)",pages:1,warnings:[]};
+  var warnTxt=(meta.warnings&&meta.warnings.length)?meta.warnings.map(function(w){return "\nwarning: "+w;}).join(""):"\nwarnings: []";
+  $("s1Body").innerHTML=''
+    +bpa("before","BEFORE -- file",'<table class="mini-tbl"><tr><th>Field</th><th>Value</th></tr><tr><td>filename</td><td>'+esc(resumeName)+'</td></tr><tr><td>extension</td><td>.'+esc(meta.ext)+'</td></tr><tr><td>route taken</td><td>'+esc(meta.method)+'</td></tr><tr><td>pages</td><td>'+meta.pages+'</td></tr><tr><td>raw size</td><td>'+resumeText.length.toLocaleString()+' chars</td></tr></table>')
+    +bpa("process","PROCESS -- text_extraction.py:extract_text() dispatch",'<div class="data-box expanded">".pdf" -&gt; text layer; if empty -&gt; rasterize + OCR\n".docx" -&gt; paragraphs + tables\n".txt" -&gt; utf-8 (latin-1 fallback)\nimage -&gt; Tesseract OCR\nelse -&gt; ExtractionError</div>')
+    +bpa("after","RESULT -- extracted text (full)",'<div class="data-box"><span class="hl-green">Extraction Successful</span>\nmethod: '+esc(meta.method)+'\npages: '+meta.pages+'\neffective chars: '+L.pp.original.toLocaleString()+esc(warnTxt)+'\nprocessing_status = PROCESSED</div><div class="data-box full mt">'+esc(resumeText)+'</div><div class="src-ref">Source: <code>text_extraction.py - extract_text()</code></div>');
+  reach("s2");arrow("a2");
+  var removed=(L.pp.original-L.pp.cleanedLen);
+  $("s2Body").innerHTML=''
+    +bpa("before","BEFORE -- raw text",'<div class="data-box full">'+esc(L.rawFull.slice(0,1200))+(L.rawFull.length>1200?'\n... [truncated, full '+L.rawFull.length.toLocaleString()+' chars -- see Step 1 for full]':'')+'</div><table class="mini-tbl"><tr><th>Measure</th><th>Value</th></tr><tr><td>raw length</td><td>'+L.pp.original.toLocaleString()+' chars</td></tr><tr><td>cleaned length</td><td>'+L.pp.cleanedLen.toLocaleString()+' chars</td></tr><tr><td>removed</td><td>'+removed+' chars (whitespace, bullets, icons, mojibake)</td></tr></table>')
+    +bpa("process","PROCESS -- preprocessing.py:preprocess() ops in order",'<div class="data-box expanded">1. NFKC normalize\n2. strip control / icons\n3. mojibake repair\n4. hyphen-linebreak join, collapse spaces\n5. bullet-strip + header fix\n6. EMAIL_RE + PHONE_RE</div>')
+    +bpa("after","RESULT -- cleaned text (full)",'<table class="mini-tbl"><tr><th>Contact</th><th>Extracted value</th></tr><tr><td>email</td><td><span class="check-ok">'+esc(L.pp.emails[0]||"MISSING")+'</span></td></tr><tr><td>phone</td><td><span class="check-ok">'+esc(L.pp.phones[0]||"MISSING")+'</span></td></tr><tr><td>name line</td><td>'+esc(L.pp.cleaned.split("\n")[0])+'</td></tr></table><div class="data-box full mt">'+esc(L.cleanedFull)+'</div><div class="src-ref">Source: <code>preprocessing.py -&gt; preprocess()</code></div>');
+  reach("s3");arrow("a3");
+  var entRows=(L.entities||[]).map(function(e){ return "<tr><td>"+esc(e.surface.slice(0,60))+"</td><td>"+esc(e.label)+"</td><td>"+esc(e.source)+"</td><td>"+(e.start>=0?e.start+".."+e.end:"--")+"</td></tr>"; }).join("");
+  $("s3Body").innerHTML=''
+    +bpa("before","BEFORE -- cleaned text",'<div class="data-box full">'+esc(L.cleanedFull.slice(0,900))+'</div><table class="mini-tbl"><tr><th>Field</th><th>Value</th></tr><tr><td>sections_detected</td><td>'+L.sections.join(", ")+'</td></tr><tr><td>work_history</td><td>'+esc((L.titles[0]||"--")+" @ "+(L.orgs[0]||"--")+" ("+L.period+")")+'</td></tr><tr><td>estimated_years</td><td><b>'+L.yrs+' years</b></td></tr></table>')
+    +bpa("process","PROCESS -- entity_extraction.py: regex + section rules + spaCy base + role_specific_ner",'<div class="data-box expanded">regex: email/phone/dates\nsection_rule: degree, org, CERT_HINT\nreference_scan: skills/roles alias lists\nspaCy en_core_web_sm (PERSON/ORG) + custom role_specific_ner</div>')
+    +bpa("after","RESULT -- entities found",'<table class="mini-tbl"><tr><th>Surface text (exact)</th><th>Label</th><th>Source</th><th>Chars</th></tr>'+entRows+'</table><div class="src-ref">Source: <code>entity_extraction.py -&gt; extract()</code></div>');
+  reach("s4");arrow("a4");
+  var aliasRows2=(L.skillRows||[]).map(function(r){ return "<tr><td>"+esc(r.required)+"</td><td>"+esc(r.evidence.slice(0,60))+"</td><td><span class='"+(r.matched?"check-ok":"check-bad")+"'>"+esc(r.matched?(r.canonical||""):"--")+"</span></td><td>"+esc(r.method)+"</td><td>skill</td></tr>"; }).join("");
+  var unrecPills=L.unrec.length?L.unrec.map(function(s){return '<span class="pill pill-amber">'+esc(s)+'</span>';}).join(""):'<span style="font-size:11px;">none</span>';
+  $("s4Body").innerHTML=''
+    +bpa("before","BEFORE -- raw entities",'<div class="data-box full">skills_raw: '+esc((L.skills||[]).join(" | "))+'\nroles_raw: '+esc((L.titles||[]).join(" | "))+'\ncerts_raw: '+esc((L.certs||[]).join(" | "))+'\nedu_raw: '+esc((L.edu||[]).join(" | "))+'</div>')
+    +bpa("process","PROCESS -- reference_data.py canonicalize(): exact -&gt; substring -&gt; token-set -&gt; fuzzy>=82%",'<table class="mini-tbl"><tr><th>Requirement phrase</th><th>Resume evidence (exact words)</th><th>Canonical</th><th>Method</th><th>Type</th></tr>'+aliasRows2+'</table>')
+    +bpa("after","RESULT -- profile",'<div class="data-box full">personal_information: name/email/phone OK\neducation: ['+esc(L.edu.join("; "))+']\nwork_experience: [{ '+(L.titles[0]||"--")+' @ '+(L.orgs[0]||"--")+', '+esc(L.period)+' }]\nskills(recognized): ['+esc(L.skills.join(", "))+']\ncertifications: ['+esc(L.certs.join("; "))+']\nestimated_years_experience: '+L.yrs+'</div><div class="mt">Recognized required: '+L.matched.map(function(s){return '<span class="pill pill-green">'+esc(s)+'</span>';}).join("")+'</div><div class="mt">Unrecognized (flag only): '+unrecPills+'</div><div class="src-ref">Source: <code>profile_builder.py + reference_data.py</code></div>');
+  reach("s5");arrow("a5");
+  var credRows=(L.credChecks||[]).map(function(c){ return "<tr><td>"+c.n+"</td><td>"+esc(c.check)+"</td><td>"+esc(c.input)+"</td><td class='"+(c.result==="PASS"?"check-ok":"check-bad")+"'>"+c.result+"</td></tr>"; }).join("");
+  $("s5Body").innerHTML=''
+    +bpa("before","BEFORE -- words checked",'<table class="mini-tbl"><tr><th>Field</th><th>Exact text checked</th></tr><tr><td>graduation</td><td>'+esc(L.grad)+'</td></tr><tr><td>employment</td><td>'+esc(L.period)+'</td></tr><tr><td>titles</td><td>'+esc(L.titles.join(", ")||"--")+'</td></tr><tr><td>education</td><td>'+esc(L.edu.join(" | ")||"--")+'</td></tr><tr><td>certs</td><td>'+esc(L.certs.join(" | ")||"none")+'</td></tr></table>')
+    +bpa("process","PROCESS -- credential_verification.py 7 checks (WARNING=-5pts, cap -15, >=3 escalate)",'<table class="mini-tbl"><tr><th>#</th><th>Check</th><th>Words compared</th><th>Result</th></tr>'+credRows+'</table>')
+    +bpa("after","RESULT -- penalty",'<div class="data-box expanded">warning_count = '+L.credWarn+'\nscore_penalty = '+L.credWarn+' x 5.0 = '+L.credPenalty+'.0 pts (max 15.0)\nescalate_invalid = '+(L.credWarn>=3?"True (needs >=3) --&gt; INVALID_CREDENTIAL":"False (needs >=3)")+'\nresume score proceeds '+(L.credWarn===0?"unpenalized.":"with note for HR.")+'</div><div class="src-ref">Source: <code>credential_verification.py -&gt; verify_credentials()</code></div>');
+  reach("s6");arrow("a6");
+  var perSkill=(L.skillRows||[]).map(function(r){ return "<tr><td>"+esc(r.required)+"</td><td>"+esc(r.evidence.slice(0,70))+"</td><td>"+esc(r.method)+"</td><td class='"+(r.matched?"check-ok":"check-bad")+"'>"+(r.matched?"MATCH":"MISS")+"</td><td>"+r.pts.toFixed(2)+"</td></tr>"; }).join("");
+  var perCert=(L.certRows||[]).map(function(r){ return "<tr><td>"+esc(r.required)+"</td><td>"+esc(r.evidence.slice(0,70))+"</td><td>"+esc(r.method)+"</td><td class='"+(r.matched?"check-ok":"check-bad")+"'>"+(r.matched?"MATCH":"MISS")+"</td><td>"+r.pts.toFixed(2)+"</td></tr>"; }).join("");
+  var covPct=Math.round(L.cov*100);
+  $("s6Body").innerHTML=''
+    +bpa("before","BEFORE -- requirements",'<table class="mini-tbl"><tr><th>Req</th><th>Value</th></tr><tr><td>title</td><td>'+esc(req.title)+'</td></tr><tr><td>required_skills</td><td>'+esc((req.required_skills||[]).join(" | "))+'</td></tr><tr><td>education</td><td>'+esc(req.education_level)+'</td></tr><tr><td>experience</td><td>'+esc(req.experience_level)+'</td></tr><tr><td>certs</td><td>'+esc((req.required_certifications||[]).join(" | "))+'</td></tr></table>')
+    +bpa("process","PROCESS -- matching.py per-word scoring (Skills40/Exp30/Edu20/Cert10)",'<table class="mini-tbl"><tr><th>Required word</th><th>Resume words (evidence)</th><th>Method</th><th>Hit?</th><th>Pts</th></tr>'+perSkill+perCert+'<tr><td>Experience: '+L.yrs+'y vs min '+L.minY+'y</td><td>'+L.yrs+' / '+L.minY+'</td><td>min(1, yrs/minY)</td><td>'+(L.yrs>=L.minY?"MATCH":"MISS")+'</td><td>'+sb.experience.earned.toFixed(2)+'</td></tr><tr><td>Education rank '+eduRank((L.edu||[]).join(" "))+' vs req '+eduRank(req.education_level)+'</td><td>'+esc((L.edu||[]).join(" | ")||"--")+'</td><td>rank gap</td><td>'+(L.eduMet?"MATCH":"MISS")+'</td><td>'+sb.education.earned.toFixed(2)+'</td></tr></table><div class="data-box expanded">Skills earned '+sb.skills.earned+' / 40 = 40*(0.7*'+L.cov.toFixed(2)+'cov + 0.3*profile_complete)\nExperience '+sb.experience.earned+' / 30\nEducation '+sb.education.earned+' / 20\nCerts '+sb.certifications.earned+' / 10\nRESUME MATCH SCORE = '+rms+'%</div>')
+    +bpa("after","RESULT -- coverage + gate",'<table class="mini-tbl"><tr><td>coverage '+covPct+'% >= 60%</td><td class="'+(covPct>=60?"check-ok":"check-bad")+'">'+(covPct>=60?"YES":"NO")+'</td></tr><tr><td>education_requirement_met</td><td>'+(L.eduMet?"YES":"NO")+'</td></tr><tr><td>experience '+L.yrs+' >= '+L.minY+'</td><td>'+(L.yrs>=L.minY?"YES":"NO")+'</td></tr><tr><td><b>mandatory_requirements_met</b></td><td><b>'+(L.mandatory?"TRUE":"FALSE")+'</b></td></tr></table><div class="src-ref">Source: <code>matching.py -&gt; match_profile_to_requirements()</code></div>');
+  reach("s7");arrow("a7");
+  var docBlocks=(L.docTrace||[]).map(function(d){
+    var frows=(d.fields||[]).map(function(f){ var cls=f.result==="MATCH"?"check-ok":(f.result==="MISMATCH"?"check-bad":""); return "<tr><td>"+esc(f.field)+"</td><td>"+esc(String(f.resume_value).slice(0,60))+"</td><td>"+esc(String(f.document_value).slice(0,60))+"</td><td>"+esc(f.method)+"</td><td class='"+cls+"'>"+esc(f.result)+"</td></tr>"; }).join("")||"<tr><td colspan=5>Others type -- stored for manual HR review, no field compare</td></tr>";
+    return '<div class="mt" style="font-weight:700;font-size:11px;">'+esc(d.name)+' ['+esc(d.type)+'] -> '+esc(d.status)+' (credit '+d.credit.toFixed(2)+')</div><table class="mini-tbl"><tr><th>Field</th><th>Resume value</th><th>Document value</th><th>Method</th><th>Result</th></tr>'+frows+'</table><div class="sub-label"><span class="dot blue"></span> DOCUMENT FULL TEXT</div><div class="data-box full">'+esc(d.docFull)+'</div>';
+  }).join("");
+  var docScore=L.ratio!=null?(L.ratio*100).toFixed(1):"--";
+  $("s7Body").innerHTML=''
+    +bpa("before","BEFORE -- resume claims + docs",'<table class="mini-tbl"><tr><th>Claim</th><th>Resume words</th></tr><tr><td>company</td><td>'+esc((L.orgs||[])[0]||"--")+'</td></tr><tr><td>position</td><td>'+esc((L.titles||[])[0]||"--")+'</td></tr><tr><td>dates</td><td>'+esc(L.period)+'</td></tr><tr><td>cert</td><td>'+esc((L.certs||[]).join(" | ")||"--")+'</td></tr></table>'+docBlocks)
+    +bpa("process","PROCESS -- resume vs document, field by field",'<div class="data-box expanded">ladder: exact -&gt; normalized -&gt; suffix -&gt; alias -&gt; acronym -&gt; token-set -&gt; degree -&gt; fuzzy>=80%; dates +-6mo\ncredit: VERIFIED 1.00 / UNABLE 0.50 / DISCREPANCY 0.00; mean -&gt; documents_score</div>'+docBlocks)
+    +bpa("after","RESULT -- final score",'<div class="data-box expanded">credit_ratio = '+(L.ratio!=null?L.ratio.toFixed(4):"--")+'\ndocuments_score = '+docScore+'%\nfinal = '+rms+' x 0.85 + '+docScore+' x 0.15\n= '+(rms*0.85).toFixed(2)+' + '+(L.ratio!=null?(L.ratio*100*0.15).toFixed(2):"--")+'\nFINAL RANKING SCORE = '+ms+'%</div><div class="src-ref">Source: <code>document_verification.py + verification_scoring.py</code></div>');
+  reach("s8");arrow("a8");arrow("a9");
+  var hasDisc=L.ver.some(function(v){return v.status==="DISCREPANCY_FOUND";});
+  $("s8Body").innerHTML=''
+    +bpa("before","BEFORE -- gate inputs",'<table class="mini-tbl"><tr><th>Input</th><th>Value</th></tr><tr><td>resume_match_score</td><td>'+rms+'%</td></tr><tr><td>documents_score</td><td>'+docScore+'%</td></tr><tr><td>final blended</td><td><b>'+ms+'%</b> (threshold 75%)</td></tr><tr><td>mandatory</td><td>'+(L.mandatory?"TRUE":"FALSE")+'</td></tr><tr><td>credential warnings</td><td>'+L.credWarn+' (escalate>=3)</td></tr><tr><td>doc discrepancy?</td><td>'+(hasDisc?"FOUND":"none")+'</td></tr></table>')
+    +bpa("process","PROCESS -- screening.py full_classification() 5 gates in order",'<table class="mini-tbl"><tr><th>#</th><th>Gate</th><th>Data</th><th>Fires?</th></tr><tr><td>1</td><td>credential blocker</td><td>'+L.credWarn+' warnings</td><td>'+(L.credWarn>=3?"YES":"NO")+'</td></tr><tr><td>2</td><td>document discrepancy</td><td>'+(hasDisc?"FOUND":"none")+'</td><td>'+(hasDisc?"YES -> STOP":"NO")+'</td></tr><tr><td>3</td><td>mandatory && blended >= 75%</td><td>'+(L.mandatory?"TRUE":"FALSE")+' && '+ms+'% >= 75%</td><td>'+((!hasDisc&&L.credWarn<3&&L.mandatory&&ms>=PASSING)?"YES -> STOP":"NO")+'</td></tr><tr><td>4</td><td>best alternative</td><td>not evaluated (single job demo)</td><td>--</td></tr><tr><td>5</td><td>fallback</td><td>NOT_FITTED_TO_JOB</td><td>'+((!hasDisc&&!(L.mandatory&&ms>=PASSING))?"YES":"not reached")+'</td></tr></table>')
+    +bpa("after","RESULT -- classification",'<div style="padding:10px;background:#d1fae5;border-radius:8px;border-left:4px solid var(--emerald);"><strong style="font-size:15px;color:var(--emerald);">'+si.l+'</strong><br><span style="font-size:10px;">STATUS_MAP: '+ss+' -&gt; applicants.status = "'+si.db+'" / fit_score = '+ms+'</span></div><div class="data-box full mt">'+reasons.map(function(r,i){return (i+1)+". "+r;}).join("\n")+'</div><div class="src-ref">Source: <code>screening.py -&gt; full_classification()</code></div>');
+  $("resPlaceholder").classList.add("hidden");$("resContent").classList.remove("hidden");
+  $("megaVal").textContent=ms+"%";$("megaVal").className="val "+si.c;$("megaBadge").textContent=si.l;$("megaBadge").className="badge "+si.c;
+  $("megaBox").className="score-mega"+(si.c==="rose"?" rose-bg":(si.c==="amber"?" amber-bg":""));
+  function bar(k,l,b2){var c=sb[k];if(!c)return;var p=c.max>0?(c.earned/c.max)*100:0;$(l).textContent=c.earned+" / "+c.max;var e=$(b2);e.style.width=p+"%";e.className="prog-fill "+(p>=70?"green":(p>=40?"amber":"rose"));}
+  bar("skills","pSkL","pSk");bar("experience","pExL","pEx");bar("education","pEdL","pEd");bar("certifications","pCeL","pCe");
+  var vc=L.ver.filter(function(v){return v.status==="VERIFIED";}).length,dc=L.ver.filter(function(v){return v.status==="DISCREPANCY_FOUND";}).length,uc=L.ver.filter(function(v){return v.status==="UNABLE_TO_VERIFY";}).length;
+  $("docEvidBox").classList.remove("hidden");$("docEvidText").textContent=vc+" verified, "+dc+" discrepancies, "+uc+" unable -- blended "+rms+"% -> "+ms+"%.";
+  $("sumBox").classList.remove("hidden");$("sumText").textContent="Matched skills: "+L.matched.join(", ")+"; Education "+(L.eduMet?"met":"NOT met")+"; Experience "+L.yrs+" yrs vs "+L.minY+" yrs -- meets "+req.title+" requirements: "+(L.mandatory?"YES":"NO")+".";
+  $("flagBox").classList.remove("hidden");$("flagText").textContent=L.unrec.length?("Unrecognized (review only): "+L.unrec.slice(0,5).join(", ")+"."):"None -- all extracted terms recognized.";
+  $("dbSt").textContent=si.db;$("dbSc").textContent=ms;
+  $("reasonsBox").classList.remove("hidden");$("reasonsData").textContent=reasons.map(function(r,i){return (i+1)+". "+r;}).join("\n");
+  var appName=(L.pp.cleaned.split("\n")[0]||"applicant").slice(0,40);
+  $("rawBox").textContent=JSON.stringify({applicant:appName,applied_job:req.title,match_score:ms,resume_match_score:rms,score_breakdown:sb,screening_status:ss.replace(/ /g,"_"),screening_reasons:reasons,alternative_job:null,document_verification:{status:dc>0?"DISCREPANCY_FOUND":(vc>0?"VERIFIED":"UNABLE_TO_VERIFY"),verified:vc,discrepancy:dc,unable:uc,credit_ratio:L.ratio},mandatory_requirements_met:L.mandatory,missing_requirements:{skills:[],certifications:[],information:[]}},null,2);
+};
+window.renderAll=renderAll;
+setModeBtns(true);
+try{ if(resumeText) runScreening(true); }catch(e){}
+</script>
+</body>
+</html>

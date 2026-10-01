@@ -285,6 +285,10 @@ Where:
 
 > **HR Configurable**: Through the **Screening Setup Dialog** in the Admin portal, HR managers can adjust these component weights (e.g., increasing Experience to 50% for senior roles) and alter the passing score threshold.
 
+> **Requirement Templates**: the same dialog hosts **Requirement Templates** — per-position lists of the requirement entities a resume must satisfy (skill, job role, certification, education, experience; stored in `screening_requirement_templates` / `screening_requirement_template_items`). Applying a template to a job post (Job Post Builder picker or *Use in job post*) seeds the post's **Required Skills** block (skills), its **Qualifications** block (certifications verbatim, job roles as “Experience as …”) and the structured **education / experience levels** the $A$ / $E$ components above read. Education / experience values that are not one of the four standard levels are appended as qualification lines instead of being discarded.
+>
+> API: `GET|POST /api/v1/screening/requirement-templates`, `PUT|DELETE /api/v1/screening/requirement-templates/{id}`, `PATCH /api/v1/screening/requirement-templates/{id}/toggle`.
+
 ---
 
 ### 4.8. Decision Classification Engine (`screening.py`)

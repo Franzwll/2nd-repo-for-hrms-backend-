@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "session_id": "1790423666815_pdrbj",
+  "source": "vscode",
+  "pid": 11384,
+  "started_at": "2026-09-26T11:54:27.224Z",
+  "exit_code": null,
+  "status": "idle",
+  "interactive": true,
+  "provider": "cline",
+  "model": "cline-free/deepseek-v4.1-flash",
+  "cwd": "c:\\Users\\PC\\Downloads\\Ferdi\\4TH_YR\\DEV\\v11.1\\2nd-repo-for-hrms-backend-",
+  "workspace_root": "c:\\Users\\PC\\Downloads\\Ferdi\\4TH_YR\\DEV\\v11.1\\2nd-repo-for-hrms-backend-",
+  "enable_tools": true,
+  "enable_spawn": false,
+  "enable_teams": false,
+  "prompt": "In new hire onboarding I want to move the right side card wherein the checklist are seen into applicant management view",
+  "metadata": {
+    "sessionHistoryOrigin": {
+      "mode": "user",
+      "version": "4.1.21"
+    },
+    "git": {
+      "url": "https://github.com/Franzwll/2nd-repo-for-hrms-backend-.git",
+      "branch": "ferdy"
+    },
+    "checkpoint": {
+      "latest": {
+        "ref": "25a473d04d5fa0263b0ddced943c628c2bcf91ef",
+        "createdAt": 1790425547584,
+        "runCount": 3,
+        "kind": "stash"
+      },
+      "history": [
+        {
+          "ref": "cab164b96be3f5c5207604600250064d13460e41",
+          "createdAt": 1790423668831,
+          "runCount": 1,
+          "kind": "stash"
+        },
+        {
+          "ref": "1380747f773ead63ffa29bc4f40cf135dd5ecad3",
+          "createdAt": 1790424852463,
+          "runCount": 2,
+          "kind": "stash"
+        },
+        {
+          "ref": "25a473d04d5fa0263b0ddced943c628c2bcf91ef",
+          "createdAt": 1790425547584,
+          "runCount": 3,
+          "kind": "stash"
+        }
+      ]
+    },
+    "title": "In new hire onboarding I want to move the right side card wherein the checklist are seen into applicant management view",
+    "isFavorited": false,
+    "size": 802865,
+    "totalCost": 0,
+    "tokensIn": 4405,
+    "tokensOut": 4341,
+    "cacheWrites": 0,
+    "cacheReads": 904064,
+    "modelId": "cline-free/deepseek-v4.1-flash",
+    "legacyTask": false,
+    "aggregatedAgentsCost": 0,
+    "usage": {
+      "inputTokens": 18208595,
+      "outputTokens": 98020,
+      "cacheReadTokens": 18038272,
+      "cacheWriteTokens": 0,
+      "totalCost": 0
+    },
+    "aggregateUsage": {
+      "inputTokens": 18208595,
+      "outputTokens": 98020,
+      "cacheReadTokens": 18038272,
+      "cacheWriteTokens": 0,
+      "totalCost": 0
+    }
+  },
+  "messages_path": "C:\\Users\\PC\\.cline\\data\\sessions\\1790423666815_pdrbj\\1790423666815_pdrbj.messages.json"
+}

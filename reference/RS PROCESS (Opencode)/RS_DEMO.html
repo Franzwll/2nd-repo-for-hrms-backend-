@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RS Demo — Vincent Paul Soriano vs Front Desk Receptionist | Step-by-Step per Column</title>
+<style>
+  :root{--bg:#0f172a;--card:#1e293b;--card2:#0b1220;--line:#334155;--txt:#e2e8f0;--mut:#94a3b8;--acc:#38bdf8;--grn:#22c55e;--amb:#f59e0b;--red:#ef4444;--pur:#a78bfa}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font-family:Segoe UI,Arial,sans-serif}
+  header{position:sticky;top:0;z-index:10;background:#0b1220ee;border-bottom:1px solid var(--line);padding:14px 20px;backdrop-filter:blur(6px)}
+  header h1{margin:0;font-size:18px}header p{margin:4px 0 0;color:var(--mut);font-size:13px}
+  .badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .badge{padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700}
+  .b-fit{background:#14532d;color:#bbf7d0}.b-cred{background:#7f1d1d;color:#fecaca}.b-score{background:#0c4a6e;color:#bae6fd}.b-warn{background:#78350f;color:#fde68a}
+  nav{display:flex;gap:6px;align-items:center;padding:10px 20px;flex-wrap:wrap}
+  nav button{background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+  nav button.on{background:var(--acc);color:#06202e;border-color:var(--acc);font-weight:700}
+  .wrap{display:flex;gap:16px;overflow-x:auto;padding:16px 20px 40px;scroll-snap-type:x mandatory}
+  .col{flex:0 0 360px;scroll-snap-align:start;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px;min-height:560px}
+  .col h2{margin:0;font-size:15px;color:var(--acc)}.col h2 span{color:var(--mut);font-weight:400}
+  .code{font-family:Consolas,monospace;font-size:11.5px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px;white-space:pre-wrap;color:#c4b5fd}
+  .io{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12.5px}
+  .io b{color:#7dd3fc}.k{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .chip{display:inline-block;background:#0c4a6e;border:1px solid #155e75;border-radius:14px;padding:2px 8px;margin:2px;font-size:11.5px}
+  .chip.g{background:#14532d;border-color:#166534}.chip.a{background:#78350f;border-color:#92400e}.chip.r{background:#7f1d1d;border-color:#991b1b}
+  .bar{height:10px;background:#0b1220;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+  .bar i{display:block;height:100%}
+  table{width:100%;border-collapse:collapse;font-size:12px}td,th{border:1px solid var(--line);padding:5px 6px;text-align:left}th{background:#0b1220;color:var(--mut)}
+  .logic{font-size:12.5px;color:#cbd5e1;line-height:1.5}
+  .foot{color:var(--mut);font-size:11px}
+  .hl{color:#fde68a}
+  @media print{.wrap{overflow:visible;flex-wrap:wrap}nav{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Resume Screening — Live Step-by-Step Demo (per column)</h1>
+  <p>Candidate <b>Vincent Paul Soriano</b> &nbsp;vs&nbsp; Job Post <b>#16 Front Desk Receptionist</b> &nbsp;•&nbsp; Real run via <code>nlp-service/app/services/pipeline.py:analyze_resume_file()</code> on <code>Vincent_Paul_Soriano_Resume.docx</code> (same text as requested PDF; PDF is SCANNED/IMAGE-ONLY so docx used for deterministic demo) &nbsp;•&nbsp; 0.87s &nbsp;•&nbsp; Companion mock: <code>MOCK_JOB_POST_FrontDeskReceptionist.json</code></p>
+  <div class="badges">
+    <span class="badge b-score">Ranking 74.44% (resume-only 74.44%)</span>
+    <span class="badge b-cred">INVALID_CREDENTIAL → applicants.status = credential</span>
+    <span class="badge b-warn">PARTIALLY_PROCESSED</span>
+    <span class="badge b-score">Threshold 75% • Coverage 44.44% / min 60%</span>
+  </div>
+  <nav id="stepNav"></nav>
+</header>
+
+<div class="wrap" id="cols">
+
+<!-- COL 0 -->
+<section class="col" id="c0">
+  <h2><span>COL 0 — Pre-condition</span><br>Job Post &amp; Requirements</h2>
+  <div class="k">Your code</div>
+  <div class="code">ScreeningService.php
+ buildRequirements()  lines 43-55
+ buildOpenJobs()      lines 61-75
+ screeningSettings()  lines 165-206
+ referenceData()      lines 132-145
+matching.py parse_requirements()
+config.py SCORE_WEIGHTS / thresholds</div>
+  <div class="logic">Screening is <b>resume VS job</b>. No Job Post = no score (<code>screenAndPersist()</code> returns null). HR must publish the post <b>before</b> any upload.</div>
+  <div class="io"><b>Mock Job #16 (from hotel_hr.sql + MOCK JSON):</b><br>
+  Title: Front Desk Receptionist • Open/active=1<br>
+  exp: 1-2 Years → min_years=1.0 • edu: Bachelor's Degree<br>
+  required_skills(9): Check-in/Check-out, Front Office Operations, Guest Relations, Customer Service, Communication, Problem Solving, Property Management Systems, Upselling, Cash Handling<br>
+  qualifications → cert filter <code>/nc|certificate|license/i</code> keeps only:<br>
+  → <span class="chip">TESDA Front Office NC II</span><br>
+  weights 40/30/20/10 • passing 75 • coverage_min 0.60</div>
+  <div class="foot">Source: job_posts row id 16 + MOCK_JOB_POST_FrontDeskReceptionist.json</div>
+</section>
+
+<!-- COL 1 -->
+<section class="col" id="c1">
+  <h2><span>COL 1 — Ingest</span><br>Upload → Laravel → Python</h2>
+  <div class="k">Your code</div>
+  <div class="code">frontend jobs.$jobId.tsx (candidate)
+ApplicantManagement.tsx:AddApplicantModal (HR)
+ApplicantManagementController.php:store()
+ScreeningService.php:screenAndPersist()
+NlpService.php:screenResumeStructured()
+POST 127.0.0.1:8001/screening/score</div>
+  <div class="logic">File validated, stored in <code>storage/app/public/resumes/</code>, applicant row created. Laravel bundles <code>file + requirements + open_jobs + reference_data + screening_settings + document_verifications</code> and POSTs multipart to FastAPI. Frontend never calls Python directly.</div>
+  <div class="io"><b>This demo:</b><br>
+  file = <code>Vincent_Paul_Soriano_Resume.docx</code> (3,201 chars)<br>
+  job_post_id = 16 • open_jobs = [] (demo isolates applied job)<br>
+  reference_data = DB taxonomy (fallback seed) • settings = defaults<br>
+  documents = [] at screen time (verified later, COL 10)</div>
+</section>
+
+<!-- COL 2 -->
+<section class="col" id="c2">
+  <h2><span>COL 2 — Stage 1</span><br>Text Extraction</h2>
+  <div class="k">Your code</div>
+  <div class="code">text_extraction.py:extract_text()
+main.py:screening_score() → tmp file
+pipeline.py:analyze_resume_file()</div>
+  <div class="logic">Digital DOCX parsed with <code>python-docx</code> (paragraph/table walker). Your requested PDF is the same text but SCANNED/IMAGE-ONLY → would take the <code>pypdfium2 → rasterize 2.0x → Tesseract OCR</code> branch with CLAHE/deskew.</div>
+  <div class="io"><b>Real output:</b><br>
+  method = <span class="chip g">python-docx</span> • pages = 1 • ext = .docx<br>
+  characters = <b>3,201</b> • warnings = [] • time 0.87s<br>
+  model: en_core_web_sm + custom <code>role_specific_ner</code> loaded = true</div>
+  <div class="foot">Had we used the scanned PDF/PNG: method=tesseract, same downstream flow.</div>
+</section>
+
+<!-- COL 3 -->
+<section class="col" id="c3">
+  <h2><span>COL 3 — Stage 2</span><br>Cleaning &amp; OCR Repair</h2>
+  <div class="k">Your code</div>
+  <div class="code">preprocessing.py:preprocess()
+ (at)→@, gmai1→gmail, split-join,
+ PH phone regex, mixed-line split</div>
+  <div class="logic">Repairs OCR + normalizes contacts before NER. Vincent's docx is clean so no repairs fired — proving the gate is a no-op on good input, active on scans.</div>
+  <div class="io"><b>Real result on Vincent:</b><br>
+  email kept: <code>6504vincent.soriano.nightaudit@outlook.ph</code> (leading index digits from sidebar layout — layout artifact, still valid shape)<br>
+  phone kept: <code>+63 917 229 6504</code> ✓ valid PH mobile<br>
+  address: 77 Padre Faura St, Ermita, Manila ✓<br>
+  Rules that <i>would</i> fire on his blurred JPG/PNG: <code>gmai1→gmail</code>, <code>dan\niel→daniel</code>, deskew+CLAHE upstream.</div>
+</section>
+
+<!-- COL 4 -->
+<section class="col" id="c4">
+  <h2><span>COL 4 — Stage 3</span><br>Section Detection</h2>
+  <div class="k">Your code</div>
+  <div class="code">section_detection.py
+ detect_sections()  fuzzy ≥0.72
+ tolerates PROFESIONAL SUMARY</div>
+  <div class="logic">Splits flat text into spans so NER uses section context (skills inside Skills section weigh more than stray words).</div>
+  <div class="io"><b>Real sections_detected (5):</b><br>
+  <span class="chip">summary</span><span class="chip">skills</span><span class="chip">experience</span><span class="chip">education</span><span class="chip">certifications</span><br>
+  Missing: contact (sidebar parsed as body — still extracted via regex, hence PARTIALLY_PROCESSED not FAILED).</div>
+</section>
+
+<!-- COL 5 -->
+<section class="col" id="c5">
+  <h2><span>COL 5 — Stage 4</span><br>NER Extraction</h2>
+  <div class="k">Your code</div>
+  <div class="code">entity_extraction.py:extract()
+ regex + section rules
+ + en_core_web_sm + role_specific_ner
+ labels: PERSON EDUCATION
+  JOB_TITLE SKILL CERTIFICATION</div>
+  <div class="logic">Four layers vote; custom hospitality model catches Opera PMS / Night Auditor that generic spaCy misses.</div>
+  <div class="io"><b>Real entities (sample):</b><br>
+  <span class="chip g">PERSON: VINCENT PAUL SORIANO</span>
+  <span class="chip g">EDUCATION: BS Accountancy (Hospitality Financial Auditing)</span><br>
+  <span class="chip">JOB_TITLE: Hotel Night Auditor</span>
+  <span class="chip">JOB_TITLE: General Manager</span>
+  <span class="chip">JOB_TITLE: Restaurant Cashier</span>
+  <span class="chip">JOB_TITLE: Front Desk Associate</span><br>
+  <span class="chip">SKILL: Front Office Operations</span>
+  <span class="chip">SKILL: Check-in / Check-out</span>
+  <span class="chip">SKILL: Property Management Systems</span>
+  <span class="chip">SKILL: Night Audit Procedures</span> …<br>
+  est. experience: <b>9.33 yrs (112 mo)</b> from date ranges Jul 2021–Present, Nov 2018–Jun 2021, Jun 2017–Oct 2018</div>
+</section>
+
+<!-- COL 6 -->
+<section class="col" id="c6">
+  <h2><span>COL 6 — Stage 5</span><br>Canonicalization</h2>
+  <div class="k">Your code</div>
+  <div class="code">reference_data.py
+ canonicalize() exact→substr→token→fuzzy≥0.82
+ classify_items() RECOGNIZED/UNRECOGNIZED
+ SOP: UNRECOGNIZED never penalized</div>
+  <div class="logic">Maps variants to DB taxonomy. Unknown stays visible (orange) for HR <i>Promote to Canonical</i> — never auto-rejected.</div>
+  <div class="io"><b>Real classification:</b><br>
+  <span class="k">Skills RECOGNIZED (6)</span><br>
+  <span class="chip g">Cash Handling</span><span class="chip g">Check-in / Check-out</span><span class="chip g">Front Office Operations</span><span class="chip g">Housekeeping Operations</span><span class="chip g">Night Audit Procedures</span><span class="chip g">Property Management Systems</span><br>
+  <span class="k">Skills UNRECOGNIZED (5) — flagged only</span><br>
+  <span class="chip a">Credit Card Gateway Settlements</span><span class="chip a">House Use</span><span class="chip a">Overnight Keycard Access Security</span><span class="chip a">PCI-DSS Security Compliance</span><span class="chip a">Room Rate Variance Auditing</span><br>
+  <span class="k">Roles RECOGNIZED (4) / UNRECOGNIZED (0)</span><br>
+  <span class="chip g">Front Desk Associate</span><span class="chip g">Hotel Night Auditor</span><span class="chip g">Restaurant Cashier</span><span class="chip g">General Manager</span></div>
+</section>
+
+<!-- COL 7 -->
+<section class="col" id="c7">
+  <h2><span>COL 7 — Stage 6</span><br>Profile + Format Validation</h2>
+  <div class="k">Your code</div>
+  <div class="code">profile_builder.py
+ build_profile() → standardized dict
+ validate(): MISSING / INVALID_FORMAT
+ analyze_with_certifications():
+  RECOGNIZED/MISSING/UNVERIFIABLE</div>
+  <div class="logic">First validation gate. <span class="hl">This is where Vincent fails</span> — not on contact format, but on required-cert logic.</div>
+  <div class="io"><b>Real validation:</b><br>
+  missing_information: <span class="chip g">[] (none — name/email/phone present)</span><br>
+  invalid_format: <span class="chip g">[] (email regex + PH phone pass)</span><br>
+  credential_analysis:<br>
+  • required <b>TESDA Front Office NC II → UNVERIFIABLE</b> (job needs it; resume lists CHAE + Fraud/PCI which are UNRECOGNIZED vs cert taxonomy)<br>
+  • extracted CHAE → UNRECOGNIZED • Fraud/PCI → UNRECOGNIZED<br>
+  credential_issues[1]:<br>
+  <span class="chip r">UNVERIFIABLE_REQUIRED_CREDENTIAL: requires TESDA … listed certs not recognized</span></div>
+</section>
+
+<!-- COL 8 -->
+<section class="col" id="c8">
+  <h2><span>COL 8 — Stage 7</span><br>7-Point Verification</h2>
+  <div class="k">Your code</div>
+  <div class="code">credential_verification.py
+ verify_credentials(): 7 checks
+ −5/warning cap −15; ≥3 → escalate
+timeline / future / grad-gap /
+ seniority / hopping / prereq / coherence</div>
+  <div class="logic">Resume-vs-itself consistency audit. Vincent is clean here — penalty 0, proving INVALID came from COL 7 cert rule, not timeline fraud.</div>
+  <div class="io"><b>Real result:</b> risk <span class="chip g">LOW</span> • warnings 0 • info 0 • penalty 0.0 • escalate false<br>
+  <table><tr><th>#</th><th>Check</th><th>Vincent</th></tr>
+  <tr><td>1</td><td>Timeline overlap ≥3mo</td><td>PASS</td></tr>
+  <tr><td>2</td><td>Future dates</td><td>PASS</td></tr>
+  <tr><td>3</td><td>Exp vs grad (2017→9.33y)</td><td>PASS</td></tr>
+  <tr><td>4</td><td>Seniority (GM title, 9.33y)</td><td>PASS</td></tr>
+  <tr><td>5</td><td>Job hopping ≥5/24mo</td><td>PASS</td></tr>
+  <tr><td>6</td><td>PRC/CPA w/o degree</td><td>PASS (has Bachelor's)</td></tr>
+  <tr><td>7</td><td>Inverted dates</td><td>PASS</td></tr></table>
+  Summary: <i>All internal consistency checks passed.</i></div>
+</section>
+
+<!-- COL 9 -->
+<section class="col" id="c9">
+  <h2><span>COL 9 — Stage 8</span><br>Scoring 40/30/20/10</h2>
+  <div class="k">Your code</div>
+  <div class="code">matching.py
+ match_profile_to_requirements()
+ S=100×(0.7×reqCov+0.3×prefCov)
+ E=100×min(1,yrs/min)  A=ladder gap
+ C=100×matched/total
+ mandatory = edu ∧ exp ∧ cov≥.60 ∧ complete</div>
+  <div class="logic">Explainable weighted sum. Vincent aces Experience + Education, splits Skills, zeroes Certs — and coverage gate fails.</div>
+  <div class="io"><b>Real breakdown → 74.44:</b><br>
+  S: 24.44/40 <div class="bar"><i style="width:61%;background:var(--amb)"></i></div>
+  matched(4): Cash Handling, Check-in/out, Front Office Ops, PMS<br>
+  missing(5): <span class="hl">Communication, Customer Service, Guest Relations, Problem Solving, Upselling</span> → coverage <b>44.44% &lt; 60% ✗</b><br>
+  E: 30/30 <div class="bar"><i style="width:100%;background:var(--grn)"></i></div> 9.33 vs 1.0 ✓<br>
+  A: 20/20 <div class="bar"><i style="width:100%;background:var(--grn)"></i></div> BS Accountancy ≥ Bachelor's ✓<br>
+  C: 0/10 <div class="bar"><i style="width:0%;background:var(--red)"></i></div> 0/1 TESDA ✗<br>
+  mandatory_met = <b>false</b> (coverage + completeness via UNVERIFIABLE)</div>
+</section>
+
+<!-- COL 10 -->
+<section class="col" id="c10">
+  <h2><span>COL 10 — Stage 9</span><br>Classification</h2>
+  <div class="k">Your code</div>
+  <div class="code">screening.py full_classification()
+ classify_applied_job() → alt jobs
+ thresholds: perfect 75
+ blockers: INVALID_FORMAT /
+  UNVERIFIABLE / CONCERN</div>
+  <div class="logic">Order: blockers → pass (mandatory ∧ ≥75) → alternative → not-fit. Vincent hits blocker #1 <b>before</b> score is even considered — and at 74.44 he'd miss 75 anyway (double reason).</div>
+  <div class="io"><b>Real decision:</b> <span class="badge b-cred">INVALID_CREDENTIAL</span><br>
+  resume_match = 74.44 • match = 74.44 (no docs yet, no penalty)<br>
+  reasons:<br>1. <i>UNVERIFIABLE_REQUIRED_CREDENTIAL: job requires TESDA … listed certs not recognized…</i><br>2. <i>Classification INVALID_CREDENTIAL means 'invalid or requires verification…' — not fraud.</i><br>
+  alternative_job: null (open_jobs=[] in demo)<br>
+  mandatory_detail: edu ✓ exp ✓ coverage 0.4444/min 0.6 ✗ complete ✓(format) but cert-blocked</div>
+</section>
+
+<!-- COL 11 -->
+<section class="col" id="c11">
+  <h2><span>COL 11 — Stage 9b</span><br>Document Verification</h2>
+  <div class="k">Your code</div>
+  <div class="code">document_verification.py
+ verify_supporting_document()
+verification_scoring.py
+ Ranking=Resume×.85+Docs×.15
+ VERIFIED=1.0 UNABLE=.5 DISCREP=0
+ DISCREP → escalate INVALID</div>
+  <div class="logic">Resume-vs-paper-proof (ground truth from <code>Actual Info…txt</code> Part 4). Any DISCREPANCY forces INVALID even if resume scored 100. Recompute via <code>POST /screening/reclassify</code> without re-OCR.</div>
+  <div class="io"><b>Vincent's 6 docs (expected):</b><br>
+  <table><tr><th>Doc</th><th>Expect</th></tr>
+  <tr><td>COE Current (Peninsula, Jul21–Present)</td><td><span class="chip g">VERIFIED 1.0</span></td></tr>
+  <tr><td>COE Previous (Nov18 vs Feb19 start)</td><td><span class="chip r">DISCREPANCY 0.0</span></td></tr>
+  <tr><td>Diploma PLM 2017</td><td><span class="chip g">VERIFIED 1.0</span></td></tr>
+  <tr><td>CHAE/HFTP Oct20</td><td><span class="chip g">VERIFIED 1.0</span></td></tr>
+  <tr><td>Service cert (Fraud vs Ledger)</td><td><span class="chip r">DISCREPANCY 0.0</span></td></tr>
+  <tr><td>Incomplete (name torn)</td><td><span class="chip a">UNABLE 0.5</span></td></tr></table>
+  e.g. decisive 5 docs mean credit (1+0+1+1+0+0.5)/6≈0.583 → docs 58.3 → ranking 74.44×.85+58.3×.15 ≈ <b>72.0 + stays INVALID</b> (discrepancy escalates). No docs = keep 74.44, no silent penalty.</div>
+</section>
+
+<!-- COL 12 -->
+<section class="col" id="c12">
+  <h2><span>COL 12 — Persist</span><br>DB + HR UI</h2>
+  <div class="k">Your code</div>
+  <div class="code">ScreeningService.php:persistResult()
+ → applicant_screenings (full JSON)
+ → applicant_screening_scores ×4
+ → applicant_screening_entities ×N
+ → applicants.fit_score/status/summary
+UI: ApplicantDetailModal + ranking</div>
+  <div class="logic">Single source of truth: ranking %, badge, radar, reasons, Top-5 all read <code>fit_score + status</code>. Doc upload auto-triggers <code>recomputeWithDocuments()</code>.</div>
+  <div class="io"><b>What would be saved for Vincent:</b><br>
+  applicant_screenings: status PARTIALLY_PROCESSED, result <code>credential</code>, match 74.44, resume 74.44, profile/validation/reasons JSON<br>
+  scores: Skills 24.44, Experience 30, Education 20, Certifications 0<br>
+  entities: PERSON/EDUCATION/JOB_TITLE×4/SKILL×N rows<br>
+  applicants: fit_score 74.44, status <code>credential</code>, flags [UNVERIFIABLE… + unrecognized skills], summary = blocker sentence<br>
+  HR sees: red <i>Invalid Credential</i> badge → verify TESDA vs CHAE manually → promote/transfer or request docs.</div>
+  <div class="foot">Fix path for demo Q&amp;A: add TESDA Front Office NC II to reference_data (Promote to Canonical) → re-screen → coverage/cert fixed → ~84+ → PERFECT.</div>
+</section>
+
+</div>
+<script>
+const nav=document.getElementById('stepNav');
+const cols=[...document.querySelectorAll('.col')];
+const names=['0 Job','1 Ingest','2 Extract','3 Clean','4 Sections','5 NER','6 Canon','7 Validate','8 Verify7','9 Score','10 Decide','11 Docs','12 Save'];
+cols.forEach((c,i)=>{
+  const b=document.createElement('button');b.textContent=names[i];
+  b.onclick=()=>{c.scrollIntoView({behavior:'smooth',inline:'start',block:'nearest'});[...nav.children].forEach(x=>x.classList.remove('on'));b.classList.add('on')};
+  if(i===0)b.classList.add('on');nav.appendChild(b);
+});
+const prev=document.createElement('button');prev.textContent='◀ Prev';
+const next=document.createElement('button');next.textContent='Next ▶';
+let idx=0;const go=d=>{idx=Math.max(0,Math.min(cols.length-1,idx+d));cols[idx].scrollIntoView({behavior:'smooth',inline:'start'})};
+prev.onclick=()=>go(-1);next.onclick=()=>go(1);nav.prepend(prev);nav.append(next);
+</script>
+</body>
+</html>
