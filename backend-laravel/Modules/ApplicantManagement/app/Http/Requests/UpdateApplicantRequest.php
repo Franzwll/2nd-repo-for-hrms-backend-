@@ -37,7 +37,13 @@ class UpdateApplicantRequest extends FormRequest
             'fit_score'    => ['nullable', 'numeric', 'min:0', 'max:100'],
             'flags_json'   => ['nullable', 'array'],
             'status'       => ['sometimes', 'string', 'in:fit,other-role,credential,not-fit'],
-            'stage'        => ['sometimes', 'string', 'in:Screened,Interview Scheduled,Assessed,Offer,Hired,Rejected,Accepted'],
+            // Pipeline stages must match the chk_applicants_stage database
+            // constraint (extended by 2026_09_05_000008 with the evaluation
+            // pipeline stages). Omitting any of them makes the generic stage
+            // update fail with "The selected stage is invalid." even though the
+            // stage record itself (assessment test / practical / final
+            // evaluation) was already persisted by its own controller.
+            'stage'        => ['sometimes', 'string', 'in:Screened,Interview Scheduled,Assessed,Assessment Test,Practical Test,Final Evaluation,Offer,Hired,Rejected,Accepted'],
             // Same extension-based rule as StoreApplicantRequest — see the note
             // there on why `mimes` was replaced by `extensions`.
             'resume'       => ['nullable', 'file', 'extensions:pdf,doc,docx,jpg,jpeg,png,webp,heic,heif,bmp,gif,tiff,tif,avif,svg', 'max:20480'],

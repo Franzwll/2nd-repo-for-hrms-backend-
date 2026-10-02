@@ -767,6 +767,7 @@ export type AuditActionType =
   | "Assessment Accepted"
   | "Assessment Rejected"
   | "Assessment Test Recorded"
+  | "Assessment Test Link Generated"
   | "Practical Assessment Recorded"
   | "Final Evaluation Completed"
   | "Verification Document Uploaded"

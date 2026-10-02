@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\ApplicantManagement\Http\Controllers\ApplicantManagementController;
 use Modules\ApplicantManagement\Http\Controllers\ApplicantAssessmentController;
 use Modules\ApplicantManagement\Http\Controllers\AssessmentTestController;
+use Modules\ApplicantManagement\Http\Controllers\AssessmentInviteController;
 use Modules\ApplicantManagement\Http\Controllers\ApplicantDocumentController;
 use Modules\ApplicantManagement\Http\Controllers\FinalEvaluationController;
 use Modules\ApplicantManagement\Http\Controllers\FacilityController;
@@ -32,6 +33,16 @@ Route::prefix('v1')->middleware('api')->group(function () {
      // as the resume preview above: <iframe>/<a> requests carry ?token=).
      Route::get('applicant-documents/{applicantDocument}/file', [ApplicantDocumentController::class, 'file'])
           ->name('applicants.documents.file');
+
+     // Applicant-facing assessment test (PUBLIC — no login). The staff member
+     // generates a single-use link; the applicant opens it on their own device
+     // to answer. The answer key never leaves the server and scoring happens on
+     // submit, so these two routes intentionally sit outside auth:sanctum.
+     Route::get('assessment-invites/{token}', [AssessmentInviteController::class, 'show'])
+          ->name('assessment-invites.show');
+
+     Route::post('assessment-invites/{token}/submit', [AssessmentInviteController::class, 'submit'])
+          ->name('assessment-invites.submit');
 });
 
 Route::prefix('v1')
@@ -161,6 +172,15 @@ Route::prefix('v1')
 
           Route::put('assessment-tests/{assessmentTest}', [AssessmentTestController::class, 'update'])
                ->name('assessment-tests.update');
+
+          /* ------------------------------------------------------------------ */
+          /* Assessment test LINKS (applicant answers on their own device)        */
+          /* ------------------------------------------------------------------ */
+          Route::get('assessment-invites', [AssessmentInviteController::class, 'index'])
+               ->name('assessment-invites.index');
+
+          Route::post('applicants/{applicant}/assessment-invites', [AssessmentInviteController::class, 'store'])
+               ->name('applicants.assessment-invites.store');
 
           /* ------------------------------------------------------------------ */
           /* Practical assessments (designated positions only)                    */

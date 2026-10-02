@@ -117,7 +117,17 @@ export interface ApiApplicant {
   applied_at: string | null;
   fit_score: number | null;
   status: "fit" | "other-role" | "credential" | "not-fit";
-  stage: "Screened" | "Interview Scheduled" | "Assessed" | "Offer" | "Hired" | "Rejected" | "Accepted";
+  stage:
+    | "Screened"
+    | "Interview Scheduled"
+    | "Assessed"
+    | "Assessment Test"
+    | "Practical Test"
+    | "Final Evaluation"
+    | "Offer"
+    | "Hired"
+    | "Rejected"
+    | "Accepted";
   source: string | null;
   summary: string | null;
   flags_json: string[];
@@ -760,6 +770,40 @@ export const assessmentTestsApi = {
   update: (id: number | string, data: Record<string, any>) =>
     request<ApiAssessmentTest>(`/assessment-tests/${id}`, {
       method: "PUT",
+      body: JSON.stringify(data),
+    }),
+};
+
+/**
+ * Assessment test LINKS — the applicant answers the test on their own device.
+ * The staff member generates a single-use link (create); the applicant opens
+ * the public page (show/submit are fetched with a plain, unauthenticated fetch
+ * in the public runner so no staff session is required).
+ */
+export interface ApiAssessmentInvite {
+  assessment_invite_id: number;
+  token: string;
+  applicant_id: number;
+  applicant_name: string | null;
+  position: string | null;
+  test_title: string;
+  passing_score: number;
+  total_score: number | null;
+  result: "Passed" | "Failed" | null;
+  status: "Pending" | "Completed" | "Expired";
+  expires_at: string | null;
+  submitted_at: string | null;
+  created_at: string | null;
+}
+
+export const assessmentInvitesApi = {
+  list: (params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiAssessmentInvite[] }>(`/assessment-invites${qs ? `?${qs}` : ""}`);
+  },
+  create: (applicantId: number | string, data: Record<string, any>) =>
+    request<ApiAssessmentInvite>(`/applicants/${applicantId}/assessment-invites`, {
+      method: "POST",
       body: JSON.stringify(data),
     }),
 };

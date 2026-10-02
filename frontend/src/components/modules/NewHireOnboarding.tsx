@@ -12,6 +12,7 @@ import {
   Hourglass,
   Info,
   Loader2,
+  Lock,
   Pencil,
   Plus,
   RefreshCw,
@@ -96,7 +97,13 @@ import {
   type ApiChecklistRequest,
   type ApiNewHire,
 } from "@/lib/api";
-import { exportReport, type ReportFormat } from "@/lib/report-export";
+import {
+  describeExport,
+  exportReport,
+  type ReportData,
+  type ReportFormat,
+} from "@/lib/report-export";
+import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
 import { getUser } from "@/lib/auth";
 import {
   isValidEmail,
@@ -722,8 +729,41 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     setConfirmDelete(null);
   };
 
-  const handleExportOnboardingReport = (format: ReportFormat) => {
-    const rowsData = hires.map((h) => ({
+  /** Predefined onboarding reports — the only reports this module exports. */
+  const onboardingReportOptions = [
+    {
+      id: "summary" as const,
+      title: "Onboarding Summary",
+      description: "Every active hire with stage, days of work and overall progress.",
+    },
+    {
+      id: "progress" as const,
+      title: "Checklist Progress",
+      description: "Verified vs. pending requirements per hire.",
+    },
+    {
+      id: "overdue" as const,
+      title: "Overdue & At-Risk",
+      description:
+        "Incomplete hires past the expected timeline (pre-onboarding > 7 days, probationary > 30 days).",
+    },
+  ];
+  type OnboardingReportId = (typeof onboardingReportOptions)[number]["id"];
+
+  /** Password-protected export flow — predefined report + format awaiting a file password. */
+  const [reportsOpen, setReportsOpen] = useState(false);
+  const [csvOpen, setCsvOpen] = useState(false);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvPending, setCsvPending] = useState<{
+    id: OnboardingReportId;
+    format: ReportFormat;
+  } | null>(null);
+
+  const pendingCountOf = (h: NewHire) => h.checklist.filter((c) => !c.done).length;
+
+  const buildSummaryReport = (): ReportData => {
+    const pool = hires.filter((h) => h.stage !== "Regular");
+    const rowsData = pool.map((h) => ({
       name: h.name,
       position: h.position,
       department: h.department,
@@ -732,35 +772,168 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       progress: `${progress(h)}%`,
       startDate: h.startDate,
     }));
-    exportReport(
-      {
-        title: "New Hire Onboarding Report",
-        subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })}`,
-        columns: [
-          { header: "New Hire", key: "name", width: "17%" },
-          { header: "Position", key: "position", width: "17%" },
-          { header: "Department", key: "department", width: "15%" },
-          { header: "Stage", key: "stage", width: "13%" },
-          { header: "Days of Work", key: "daysOfWork", width: "11%" },
-          { header: "Progress", key: "progress", width: "11%" },
-          { header: "Start Date", key: "startDate", width: "16%" },
-        ],
-        rows: rowsData,
-        summary: [
-          { label: "Total Hires", value: hires.length },
-          {
-            label: "Pre-onboarding",
-            value: hires.filter((h) => h.stage === "Pre-onboarding").length,
-          },
-          {
-            label: "Probationary",
-            value: hires.filter((h) => h.stage === "Probationary").length,
-          },
-        ],
-      },
-      format,
-    );
-    toast.success(`Onboarding report exported as ${format.toUpperCase()}`);
+    return {
+      title: "New Hire Onboarding Report",
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · Predefined report: Onboarding Summary`,
+      columns: [
+        { header: "New Hire", key: "name", width: "17%" },
+        { header: "Position", key: "position", width: "17%" },
+        { header: "Department", key: "department", width: "15%" },
+        { header: "Stage", key: "stage", width: "13%" },
+        { header: "Days of Work", key: "daysOfWork", width: "11%" },
+        { header: "Progress", key: "progress", width: "11%" },
+        { header: "Start Date", key: "startDate", width: "16%" },
+      ],
+      rows: rowsData,
+      summary: [
+        { label: "Total Hires", value: pool.length },
+        {
+          label: "Pre-onboarding",
+          value: pool.filter((h) => h.stage === "Pre-onboarding").length,
+        },
+        {
+          label: "Probationary",
+          value: pool.filter((h) => h.stage === "Probationary").length,
+        },
+      ],
+    };
+  };
+
+  const buildProgressReport = (): ReportData => {
+    const pool = hires.filter((h) => h.stage !== "Regular");
+    const rowsData = pool.map((h) => ({
+      name: h.name,
+      position: h.position,
+      department: h.department,
+      stage: h.stage,
+      total: h.checklist.length,
+      verified: h.checklist.filter((c) => c.done).length,
+      pending: pendingCountOf(h),
+      progress: `${progress(h)}%`,
+    }));
+    return {
+      title: "Onboarding Checklist Progress Report",
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · Predefined report: Checklist Progress`,
+      columns: [
+        { header: "New Hire", key: "name", width: "18%" },
+        { header: "Position", key: "position", width: "18%" },
+        { header: "Department", key: "department", width: "16%" },
+        { header: "Stage", key: "stage", width: "14%" },
+        { header: "Total Items", key: "total", width: "9%" },
+        { header: "Verified", key: "verified", width: "9%" },
+        { header: "Pending", key: "pending", width: "9%" },
+        { header: "Progress", key: "progress", width: "9%" },
+      ],
+      rows: rowsData,
+      summary: [
+        { label: "Total Hires", value: pool.length },
+        {
+          label: "Fully Verified",
+          value: pool.filter((h) => progress(h) === 100).length,
+        },
+        {
+          label: "In Progress",
+          value: pool.filter((h) => progress(h) < 100).length,
+        },
+      ],
+    };
+  };
+
+  const buildOverdueReport = (): ReportData => {
+    const pool = hires.filter((h) => h.stage !== "Regular");
+    const flagged = pool
+      .map((h) => {
+        const dw = daysOfWork(h.startDate);
+        const pct = progress(h);
+        const overdue =
+          pct < 100 &&
+          ((h.stage === "Pre-onboarding" && dw > 7) || (h.stage === "Probationary" && dw > 30));
+        const flag =
+          pct === 100
+            ? "Complete"
+            : !overdue
+              ? "On track"
+              : h.stage === "Pre-onboarding"
+                ? "Overdue pre-onboarding"
+                : "At-risk probationary";
+        return {
+          name: h.name,
+          position: h.position,
+          department: h.department,
+          stage: h.stage,
+          startDate: h.startDate,
+          daysOfWork: dw,
+          progress: `${pct}%`,
+          pending: pendingCountOf(h),
+          flag,
+          overdue,
+        };
+      })
+      .filter((r) => r.overdue);
+    return {
+      title: "Onboarding Overdue & At-Risk Report",
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · Predefined report: Overdue & At-Risk`,
+      columns: [
+        { header: "New Hire", key: "name", width: "16%" },
+        { header: "Position", key: "position", width: "16%" },
+        { header: "Department", key: "department", width: "14%" },
+        { header: "Stage", key: "stage", width: "12%" },
+        { header: "Start Date", key: "startDate", width: "11%" },
+        { header: "Days of Work", key: "daysOfWork", width: "9%" },
+        { header: "Progress", key: "progress", width: "8%" },
+        { header: "Pending", key: "pending", width: "8%" },
+        { header: "Flag", key: "flag", width: "16%" },
+      ],
+      rows: flagged.map(({ overdue: _o, ...rest }) => rest),
+      summary: [
+        { label: "Active Hires", value: pool.length },
+        { label: "Overdue / At-Risk", value: flagged.length },
+        {
+          label: "Overdue Pre-onboarding",
+          value: flagged.filter((r) => r.stage === "Pre-onboarding").length,
+        },
+        {
+          label: "At-Risk Probationary",
+          value: flagged.filter((r) => r.stage === "Probationary").length,
+        },
+      ],
+    };
+  };
+
+  const buildOnboardingReport = (id: OnboardingReportId): ReportData => {
+    if (id === "progress") return buildProgressReport();
+    if (id === "overdue") return buildOverdueReport();
+    return buildSummaryReport();
+  };
+
+  /** Every format is password-protected: picking one opens the password gate. */
+  const handleExportOnboardingReportById = (id: OnboardingReportId, format: ReportFormat) => {
+    if (buildOnboardingReport(id).rows.length === 0) {
+      toast.error("No onboarding records to export.");
+      return;
+    }
+    setCsvPending({ id, format });
+    setCsvOpen(true);
+  };
+
+  const confirmOnboardingCsv = async (password: string) => {
+    if (!csvPending) return;
+    setCsvBusy(true);
+    try {
+      const data = buildOnboardingReport(csvPending.id);
+      await exportReport(data, csvPending.format, { password });
+      const { zipName } = describeExport(data, csvPending.format);
+      toast.success(
+        `${data.title} exported as password-protected ${csvPending.format.toUpperCase()} (${zipName}).`,
+      );
+      setCsvOpen(false);
+      setCsvPending(null);
+    } catch (e) {
+      console.error("Protected export failed:", e);
+      toast.error(e instanceof Error ? e.message : "Protected export failed.");
+    } finally {
+      setCsvBusy(false);
+    }
   };
 
   /**
@@ -968,29 +1141,107 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   return (
     <div>
       <PageHeader
-        eyebrow={role === "superadmin" ? "Super Admin · Recruitment" : "Admin · Recruitment"}
         title="New Hire Onboarding"
-        description="Track hires from pre-onboarding through probation to regularization."
         actions={
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <Download className="h-4 w-4" /> Generate Report
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onClick={() => handleExportOnboardingReport("pdf")}>
-                <FileText className="mr-2 h-4 w-4" /> Export as PDF
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportOnboardingReport("docx")}>
-                <FileText className="mr-2 h-4 w-4" /> Export as DOCX
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportOnboardingReport("excel")}>
-                <Download className="mr-2 h-4 w-4" /> Export as Excel
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button variant="outline" className="gap-2" onClick={() => setReportsOpen(true)}>
+            <Download className="h-4 w-4" /> Generate Report
+          </Button>
         }
+      />
+
+      {/* PREDEFINED REPORTS DIALOG */}
+      <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">Generate Report</DialogTitle>
+            <DialogDescription>
+              Predefined reports — every format is password-protected (sealed in an AES-256 ZIP; you
+              will be asked for a file password on every export).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {onboardingReportOptions.map((r) => (
+              <div
+                key={r.id}
+                className="flex items-center justify-between gap-3 rounded-md border border-border p-3"
+              >
+                <div>
+                  <p className="text-sm font-medium">{r.title}</p>
+                  <p className="text-xs text-muted-foreground">{r.description}</p>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="outline">
+                      <Download className="mr-2 h-4 w-4" /> Generate
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-60">
+                    <DropdownMenuItem onClick={() => handleExportOnboardingReportById(r.id, "pdf")}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleExportOnboardingReportById(r.id, "docx")}
+                    >
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleExportOnboardingReportById(r.id, "excel")}
+                    >
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExportOnboardingReportById(r.id, "csv")}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
+                    </DropdownMenuItem>
+                    <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+                      Password-protected ZIP — password asked on every export.
+                    </p>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <SecureExportDialog
+        open={csvOpen}
+        onOpenChange={(o) => {
+          if (!csvBusy) {
+            setCsvOpen(o);
+            if (!o) setCsvPending(null);
+          }
+        }}
+        reportTitle={
+          csvPending
+            ? (onboardingReportOptions.find((o) => o.id === csvPending.id)?.title ??
+              "Onboarding report")
+            : "Onboarding report"
+        }
+        formatLabel={
+          !csvPending
+            ? ""
+            : csvPending.format === "pdf"
+              ? "PDF"
+              : csvPending.format === "docx"
+                ? "DOCX"
+                : csvPending.format === "excel"
+                  ? "Excel"
+                  : "CSV"
+        }
+        busy={csvBusy}
+        onConfirm={confirmOnboardingCsv}
       />
 
       <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -1030,11 +1281,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
-        <TabsList className="flex h-auto flex-wrap justify-start">
-          <TabsTrigger className="flex items-center gap-1.5" value="pipeline">
+        <TabsList className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
+          <TabsTrigger className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="pipeline">
             <ClipboardList className="h-3.5 w-3.5" /> Onboarding Pipeline
           </TabsTrigger>
-          <TabsTrigger className="flex items-center gap-1.5" value="checklists">
+          <TabsTrigger className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="checklists">
             <Send className="h-3.5 w-3.5" /> Requested Checklists
           </TabsTrigger>
         </TabsList>
@@ -1046,10 +1297,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                 <ClipboardList className="h-5 w-5 text-primary" /> Onboarding Status Tracker
               </h2>
-              <p className="text-xs text-muted-foreground">
-                Applicant and candidate stages are handled in Applicant Management — onboarding
-                starts once a candidate is hired.
-              </p>
 
               <div className="relative mt-8 px-2">
                 {/* Decorative rails — not interactive */}
@@ -1097,9 +1344,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                         <span className="mt-1 max-w-[220px] text-[0.7rem] text-muted-foreground">
                           {stageBlurb[s]}
                         </span>
-                        <Badge variant="secondary" className="mt-2">
-                          {onboardingHires.filter((h) => h.stage === s).length} hires
-                        </Badge>
                       </div>
                     );
                   })}
@@ -1122,10 +1366,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             ? "All Hired Applicants"
                             : `${stage} List`}
                       </h2>
-                      <p className="text-xs text-muted-foreground">
-                        Checklist ticks, edits and stage actions now live in Applicant Management →
-                        View profile (Offer / Hired applicants) — open them with View Checklist.
-                      </p>
                     </div>
                   </div>
 
@@ -1370,6 +1610,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                     to={hirePage.to}
                     total={hirePage.total}
                     label="hires"
+                    showRangeLabel={false}
                     onPageChange={hirePage.setPage}
                   />
                 </div>
@@ -1388,15 +1629,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                     <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                       <ClipboardCheck className="h-5 w-5 text-primary" /> Checklist Builder
                     </h2>
-                    <p className="text-xs text-muted-foreground">
-                      Create the checklists shown in Pre-onboarding or Probationary. Active
-                      Probationary checklists become the starting requirements of every new
-                      probationary hire.
-                    </p>
                   </div>
-                  <Badge variant="secondary">
-                    {hireStore.combinedProbationaryItems().length} combined items
-                  </Badge>
                 </div>
 
                 <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4">
@@ -1634,9 +1867,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <p className="font-medium">{c.title}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {c.items.length} item{c.items.length === 1 ? "" : "s"}
-                                </p>
                                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                                   <Badge variant="outline" className="text-[0.65rem]">
                                     {c.phase ?? "Probationary"}
@@ -1908,6 +2138,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                     to={checklistPage.to}
                     total={checklistPage.total}
                     label="checklists"
+                    showRangeLabel={false}
                     onPageChange={checklistPage.setPage}
                   />
                 </div>
@@ -1922,12 +2153,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                     <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                       <Send className="h-5 w-5 text-primary" /> Requested Checklists
                     </h2>
-                    <p className="text-xs text-muted-foreground">
-                      Items requested by Performance. Use them as reference when building checklists
-                      in the Checklist Builder — they are not attached to any single employee.
-                    </p>
                   </div>
-                  <Badge variant="secondary">{requestedItems.length} requested</Badge>
                 </div>
 
                 <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_13rem_auto]">
@@ -2099,6 +2325,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                     to={reqPage.to}
                     total={reqPage.total}
                     label="requests"
+                    showRangeLabel={false}
                     onPageChange={reqPage.setPage}
                   />
                 </div>
@@ -2796,35 +3023,68 @@ export function EmployeeOnboarding() {
     };
   }, [syncListHeight, filteredItems, viewingItem]);
 
+  /** Every format is password-protected: picking one opens the password gate. */
   const handleExportEmployeeReport = (format: ReportFormat) => {
+    const data = buildEmployeeReportData();
+    if (!data) return;
+    if (data.rows.length === 0) {
+      toast.error("No checklist items to export.");
+      return;
+    }
+    setEmpCsvPending(format);
+    setEmpCsvOpen(true);
+  };
+
+  const buildEmployeeReportData = (): ReportData | null => {
     if (!newHire) {
       toast.error("Your onboarding record is still loading.");
-      return;
+      return null;
     }
     const rowsData = items.map((i) => ({
       requirement: i.title,
       status: i.done ? "Verified" : i.submittedAt ? "Submitted · pending review" : "Pending",
       notes: i.notes ?? "—",
     }));
-    exportReport(
-      {
-        title: "My Onboarding Checklist",
-        subtitle: `Oxford Suites Makati HRMS · ${newHire.name} · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })}`,
-        columns: [
-          { header: "Requirement", key: "requirement", width: "46%" },
-          { header: "Status", key: "status", width: "30%" },
-          { header: "Notes", key: "notes", width: "24%" },
-        ],
-        rows: rowsData,
-        summary: [
-          { label: "Verified Progress", value: `${pct}%` },
-          { label: "Items Verified", value: items.filter((i) => i.done).length },
-          { label: "Awaiting HR", value: items.filter((i) => !i.done).length },
-        ],
-      },
-      format,
-    );
-    toast.success(`Onboarding checklist exported as ${format.toUpperCase()}`);
+    return {
+      title: "My Onboarding Checklist",
+      subtitle: `Oxford Suites Makati HRMS · ${newHire.name} · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · Predefined report: My Checklist`,
+      columns: [
+        { header: "Requirement", key: "requirement", width: "46%" },
+        { header: "Status", key: "status", width: "30%" },
+        { header: "Notes", key: "notes", width: "24%" },
+      ],
+      rows: rowsData,
+      summary: [
+        { label: "Verified Progress", value: `${pct}%` },
+        { label: "Items Verified", value: items.filter((i) => i.done).length },
+        { label: "Awaiting HR", value: items.filter((i) => !i.done).length },
+      ],
+    };
+  };
+
+  const [empCsvOpen, setEmpCsvOpen] = useState(false);
+  const [empCsvBusy, setEmpCsvBusy] = useState(false);
+  const [empCsvPending, setEmpCsvPending] = useState<ReportFormat | null>(null);
+
+  const confirmEmployeeCsv = async (password: string) => {
+    if (!empCsvPending) return;
+    const format = empCsvPending;
+    const data = buildEmployeeReportData();
+    if (!data) return;
+    setEmpCsvBusy(true);
+    try {
+      await exportReport(data, format, { password });
+      const { zipName } = describeExport(data, format);
+      toast.success(
+        `Onboarding checklist exported as password-protected ${format.toUpperCase()} (${zipName}).`,
+      );
+      setEmpCsvOpen(false);
+      setEmpCsvPending(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Protected export failed.");
+    } finally {
+      setEmpCsvBusy(false);
+    }
   };
 
   return (
@@ -2844,18 +3104,60 @@ export function EmployeeOnboarding() {
                   <Download className="h-4 w-4" /> Generate Report
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuContent align="end" className="w-64">
                 <DropdownMenuItem onClick={() => handleExportEmployeeReport("pdf")}>
-                  <FileText className="mr-2 h-4 w-4" /> Export as PDF
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleExportEmployeeReport("docx")}>
-                  <FileText className="mr-2 h-4 w-4" /> Export as DOCX
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleExportEmployeeReport("excel")}>
-                  <Download className="mr-2 h-4 w-4" /> Export as Excel
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportEmployeeReport("csv")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                </DropdownMenuItem>
+                <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+                  Every file is sealed in a password-protected ZIP (AES-256). You will be asked for
+                  a file password.
+                </p>
               </DropdownMenuContent>
             </DropdownMenu>
+            <SecureExportDialog
+              open={empCsvOpen}
+              onOpenChange={(o) => {
+                if (!empCsvBusy) {
+                  setEmpCsvOpen(o);
+                  if (!o) setEmpCsvPending(null);
+                }
+              }}
+              reportTitle="My Onboarding Checklist"
+              formatLabel={
+                !empCsvPending
+                  ? ""
+                  : empCsvPending === "pdf"
+                    ? "PDF"
+                    : empCsvPending === "docx"
+                      ? "DOCX"
+                      : empCsvPending === "excel"
+                        ? "Excel"
+                        : "CSV"
+              }
+              busy={empCsvBusy}
+              onConfirm={confirmEmployeeCsv}
+            />
           </div>
         }
       />
