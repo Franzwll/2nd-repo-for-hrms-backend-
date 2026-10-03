@@ -4047,7 +4047,6 @@ export function EmployeeOnboarding() {
       <PageHeader
         eyebrow="Employee Portal"
         title="New Hire Onboarding"
-        description="Complete these probationary requirements to finish your onboarding. This menu disappears once HR marks onboarding as complete."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" className="gap-2" onClick={loadOnboarding} disabled={loading}>
@@ -4116,15 +4115,6 @@ export function EmployeeOnboarding() {
           </div>
         }
       />
-
-      {/* Yellow HR Notice Alert */}
-      <div className="flex items-start gap-3 rounded-lg border border-caution/30 bg-caution/10 p-4 text-caution">
-        <Info className="h-5 w-5 shrink-0 mt-0.5 text-caution" />
-        <p className="text-sm">
-          Employee regularization and full activation is performed by HR Admin after all
-          probationary requirements below have been verified.
-        </p>
-      </div>
 
       {/* PROBATIONARY JOURNEY & MILESTONE TIMELINE */}
       <Card className="border-border/70 shadow-xs overflow-hidden">
