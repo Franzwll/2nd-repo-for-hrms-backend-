@@ -9,9 +9,6 @@ import {
   HelpCircle,
   Building2,
   CheckCircle2,
-  Wallet,
-  TrendingUp,
-  Receipt,
   FileSpreadsheet,
   ShieldCheck,
   HeartHandshake,
@@ -19,9 +16,12 @@ import {
   Stethoscope,
   Landmark,
   MessageSquareText,
+  Calendar,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -85,7 +85,31 @@ export function EssPayrollTab() {
   const currentGross = payrollData?.gross ?? 32500;
   const currentDeductions = payrollData?.deductions?.total ?? 4420;
   const nextPayout = payrollData?.nextPayout ?? "August 31, 2026";
-  const payslipsList = payrollData?.payslips?.length ? payrollData.payslips : [];
+  const [payrollSubTab, setPayrollSubTab] = useState<string>("payslips");
+
+  const payslipsList = useMemo(() => {
+    return payrollData?.payslips?.length ? payrollData.payslips : myPayroll.payslips;
+  }, [payrollData]);
+
+  const payslipPage = usePagination(payslipsList, 3);
+
+  const breakdownItems = useMemo(() => {
+    const earnings = (payrollData?.breakdown?.length ? payrollData.breakdown : myPayroll.breakdown).map((item) => ({
+      item: item.label,
+      type: "Earning" as const,
+      classification: "Base & Allowances",
+      amount: item.amount,
+    }));
+    const deductions = (payrollData?.deductions?.items?.length ? payrollData.deductions.items : myPayroll.deductions).map((item) => ({
+      item: item.label,
+      type: "Deduction" as const,
+      classification: "Statutory & Taxes",
+      amount: item.amount,
+    }));
+    return [...earnings, ...deductions];
+  }, [payrollData]);
+
+  const breakdownPage = usePagination(breakdownItems, 5);
 
   const [payRequests, setPayRequests] = useState<any[]>([]);
 
@@ -93,9 +117,28 @@ export function EssPayrollTab() {
   const [payFilterType, setPayFilterType] = useState("all");
   const [paySort, setPaySort] = useState("date-desc");
   const [payType, setPayType] = useState("Payroll Clarification");
-  const [payPeriod, setPayPeriod] = useState("");
+  const [payPeriodStart, setPayPeriodStart] = useState("");
+  const [payPeriodEnd, setPayPeriodEnd] = useState("");
   const [payDetails, setPayDetails] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const formatPeriodDisplay = (startStr: string, endStr: string) => {
+    if (!startStr && !endStr) return "";
+    try {
+      const s = startStr ? new Date(startStr + "T00:00:00") : null;
+      const e = endStr ? new Date(endStr + "T00:00:00") : null;
+      if (s && e) {
+        const sFmt = s.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        const eFmt = e.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        return `${sFmt} – ${eFmt}`;
+      } else if (s) {
+        return `From ${s.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+      }
+    } catch {
+      // fallback
+    }
+    return `${startStr} – ${endStr}`;
+  };
 
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -123,13 +166,19 @@ export function EssPayrollTab() {
       toast.error("Please enter inquiry details or claimed hours.");
       return;
     }
+    const coveredPeriodText = payPeriodStart && payPeriodEnd
+      ? formatPeriodDisplay(payPeriodStart, payPeriodEnd)
+      : payPeriodStart || payPeriodEnd || "";
+
     try {
       setSubmitting(true);
       const res = await essApi.createRequest({
         category_code: "payroll",
         category_name: "Payroll",
         request_type: payType,
-        details: `${payPeriod ? `Period: ${payPeriod}. ` : ""}${payDetails.trim()}`,
+        date_from: payPeriodStart || undefined,
+        date_to: payPeriodEnd || undefined,
+        details: `${coveredPeriodText ? `Covered Period: ${coveredPeriodText}. ` : ""}${payDetails.trim()}`,
       });
       const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
       const isoStr = new Date().toISOString().slice(0, 10);
@@ -140,11 +189,12 @@ export function EssPayrollTab() {
         type: payType,
         status: "Pending",
         statusRank: 0,
-        details: `${payPeriod ? `Period: ${payPeriod}. ` : ""}${payDetails}`,
+        details: `${coveredPeriodText ? `Period: ${coveredPeriodText}. ` : ""}${payDetails.trim()}`,
       };
       setPayRequests([newReq, ...payRequests]);
       toast.success(`${payType} submitted to Payroll Administration.`);
-      setPayPeriod("");
+      setPayPeriodStart("");
+      setPayPeriodEnd("");
       setPayDetails("");
     } catch (err: any) {
       toast.error(err.message || "Failed to submit payroll inquiry.");
@@ -174,136 +224,205 @@ export function EssPayrollTab() {
 
   return (
     <div className="space-y-6">
-      {/* 3 Main Payroll Cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Net Pay (Latest Cut-off)</p>
-              <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600 dark:text-emerald-400">
-                <Wallet className="h-4 w-4" />
-              </div>
-            </div>
-            <p className="mt-1 text-3xl font-bold font-display text-emerald-600 dark:text-emerald-400">₱{currentNet.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-1">Next payout date: <strong className="text-foreground">{nextPayout}</strong></p>
-          </CardContent>
-        </Card>
+      {/* Executive Payroll Summary Hero Header */}
+      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-card via-card to-primary/[0.04] shadow-sm">
+        {/* Ambient Decorative Lighting */}
+        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary/5 blur-3xl" />
+        <div className="pointer-events-none absolute -left-24 -bottom-24 h-72 w-72 rounded-full bg-emerald-500/5 blur-3xl" />
 
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Gross Earnings</p>
-              <div className="rounded-lg bg-primary/10 p-2 text-primary">
-                <TrendingUp className="h-4 w-4" />
-              </div>
-            </div>
-            <p className="mt-1 text-2xl font-bold font-display text-foreground">₱{currentGross.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-1">Includes basic pay, OT &amp; allowances</p>
-          </CardContent>
-        </Card>
+        {/* Hero Top Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border/60 bg-muted/30 px-6 py-4">
+          <div>
+            <h4 className="text-base font-bold font-display text-foreground tracking-tight">
+              Compensation &amp; Payroll Summary
+            </h4>
+            <p className="text-xs text-muted-foreground">
+              Official salary disbursement, tax withholdings, and statutory benefits
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground font-medium">Next Payout:</span>
+            <span className="inline-flex items-center rounded-full bg-primary/10 border border-primary/20 px-3 py-1 text-xs font-semibold text-primary">
+              {nextPayout}
+            </span>
+          </div>
+        </div>
 
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Total Deductions</p>
-              <div className="rounded-lg bg-rose-500/10 p-2 text-rose-600 dark:text-rose-400">
-                <Receipt className="h-4 w-4" />
-              </div>
-            </div>
-            <p className="mt-1 text-2xl font-bold font-display text-rose-600 dark:text-rose-400">
+        {/* Hero Metrics Strip (The 3 Numbers Prominently Featured as Headers) */}
+        <div className="grid gap-4 p-6 sm:grid-cols-3">
+          {/* Net Take-Home Pay */}
+          <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 via-background/60 to-background/80 p-5 backdrop-blur-xs shadow-2xs hover:border-emerald-500/50 transition-all">
+            <p className="text-[11px] uppercase font-bold tracking-wider text-emerald-700 dark:text-emerald-400">
+              Net Take-Home Pay
+            </p>
+            <p className="mt-2 text-3xl sm:text-4xl font-extrabold font-display text-emerald-600 dark:text-emerald-400 tracking-tight">
+              ₱{currentNet.toLocaleString()}
+            </p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Latest cut-off disbursement · Direct deposit
+            </p>
+          </div>
+
+          {/* Total Gross Earnings */}
+          <div className="rounded-xl border border-border/70 bg-background/60 p-5 backdrop-blur-xs shadow-2xs hover:border-primary/40 transition-all">
+            <p className="text-[11px] uppercase font-bold tracking-wider text-muted-foreground">
+              Total Gross Earnings
+            </p>
+            <p className="mt-2 text-3xl sm:text-4xl font-extrabold font-display text-foreground tracking-tight">
+              ₱{currentGross.toLocaleString()}
+            </p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Basic salary, overtime &amp; taxable allowances
+            </p>
+          </div>
+
+          {/* Statutory & Tax Deductions */}
+          <div className="rounded-xl border border-border/70 bg-background/60 p-5 backdrop-blur-xs shadow-2xs hover:border-rose-500/30 transition-all">
+            <p className="text-[11px] uppercase font-bold tracking-wider text-muted-foreground">
+              Statutory &amp; Tax Deductions
+            </p>
+            <p className="mt-2 text-3xl sm:text-4xl font-extrabold font-display text-rose-600 dark:text-rose-400 tracking-tight">
               -₱{currentDeductions.toLocaleString()}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">SSS, PhilHealth, Pag-IBIG &amp; Tax</p>
-          </CardContent>
-        </Card>
+            <p className="text-xs text-muted-foreground mt-2">
+              SSS, PhilHealth, Pag-IBIG &amp; withholding tax
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Payslips & Breakdown Grid */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Released Payslips Table */}
-        <Card className="border-border/70 shadow-xs">
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
+      {/* Unified Payslips & Itemized Breakdown Card */}
+      <Card className="border-border/70 shadow-xs">
+        <Tabs value={payrollSubTab} onValueChange={setPayrollSubTab}>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-border/60">
             <div>
               <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
                 <FileText className="h-5 w-5 text-primary" />
-                Released Payslips
+                {payrollSubTab === "payslips" ? "Released Payslips" : "Latest Pay Stub Breakdown"}
               </CardTitle>
-              <p className="text-xs text-muted-foreground">View and download official itemized pay stubs.</p>
+              <p className="text-xs text-muted-foreground">
+                {payrollSubTab === "payslips"
+                  ? "View and download official itemized pay stubs."
+                  : "Itemized item distribution for current period."}
+              </p>
             </div>
+
+            <TabsList className="bg-muted/60 p-1">
+              <TabsTrigger value="payslips" className="text-xs gap-1.5">
+                <FileText className="h-3.5 w-3.5" />
+                Released Payslips
+                <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0 h-4">
+                  {payslipsList.length}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="breakdown" className="text-xs gap-1.5">
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                Pay Stub Breakdown
+                <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0 h-4">
+                  {breakdownItems.length}
+                </Badge>
+              </TabsTrigger>
+            </TabsList>
           </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Pay Period</TableHead>
-                  <TableHead>Net Pay</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(payrollData?.payslips?.length ? payrollData.payslips : myPayroll.payslips).map((ps, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell className="font-medium text-xs text-foreground">{ps.period}</TableCell>
-                    <TableCell className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                      ₱{ps.net.toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <EssStatusBadge status={ps.status} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 text-xs font-medium text-primary hover:bg-primary/10 gap-1"
-                        onClick={() => openPayslip(ps.period, ps.net)}
-                      >
-                        <Eye className="h-3.5 w-3.5" /> View Payslip
-                      </Button>
-                    </TableCell>
+
+          <CardContent className="pt-4">
+            <TabsContent value="payslips" className="m-0 space-y-4">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Pay Period</TableHead>
+                    <TableHead>Net Pay</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                </TableHeader>
+                <TableBody>
+                  {payslipPage.pageItems.map((ps, idx) => (
+                    <TableRow key={idx} className="hover:bg-muted/50 transition-colors">
+                      <TableCell className="font-medium text-xs text-foreground">{ps.period}</TableCell>
+                      <TableCell className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                        ₱{ps.net.toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <EssStatusBadge status={ps.status} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 text-xs font-medium text-primary hover:bg-primary/10 gap-1"
+                          onClick={() => openPayslip(ps.period, ps.net)}
+                        >
+                          <Eye className="h-3.5 w-3.5" /> View Payslip
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <TablePagination
+                page={payslipPage.page}
+                pageCount={payslipPage.pageCount}
+                from={payslipPage.from}
+                to={payslipPage.to}
+                total={payslipPage.total}
+                label="payslips"
+                onPageChange={payslipPage.setPage}
+              />
+            </TabsContent>
 
-        {/* Current Period Breakdown */}
-        <Card className="border-border/70 shadow-xs">
-          <CardHeader className="pb-3">
-            <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
-              <FileSpreadsheet className="h-5 w-5 text-primary" />
-              Latest Pay Stub Breakdown
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">Itemized item distribution for current period.</p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Earnings</h4>
-              <div className="space-y-1.5 border-t border-border pt-2 text-xs">
-                {(payrollData?.breakdown?.length ? payrollData.breakdown : myPayroll.breakdown).map((item, i) => (
-                  <div key={i} className="flex justify-between">
-                    <span className="text-muted-foreground">{item.label}</span>
-                    <span className="font-medium text-foreground">₱{item.amount.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Deductions</h4>
-              <div className="space-y-1.5 border-t border-border pt-2 text-xs">
-                {(payrollData?.deductions?.items?.length ? payrollData.deductions.items : myPayroll.deductions).map((item, i) => (
-                  <div key={i} className="flex justify-between text-rose-600 dark:text-rose-400">
-                    <span className="text-muted-foreground">{item.label}</span>
-                    <span className="font-medium">-₱{item.amount.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <TabsContent value="breakdown" className="m-0 space-y-4">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item / Description</TableHead>
+                    <TableHead>Classification</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {breakdownPage.pageItems.map((item, idx) => (
+                    <TableRow key={idx} className="hover:bg-muted/50 transition-colors">
+                      <TableCell className="font-medium text-xs text-foreground">{item.item}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{item.classification}</TableCell>
+                      <TableCell>
+                        {item.type === "Earning" ? (
+                          <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px] font-semibold">
+                            Earning
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-rose-500/10 text-rose-600 border-rose-500/30 text-[10px] font-semibold">
+                            Deduction
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell
+                        className={`text-right text-xs font-semibold ${
+                          item.type === "Earning" ? "text-foreground" : "text-rose-600 dark:text-rose-400"
+                        }`}
+                      >
+                        {item.type === "Earning"
+                          ? `₱${item.amount.toLocaleString()}`
+                          : `-₱${Math.abs(item.amount).toLocaleString()}`}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <TablePagination
+                page={breakdownPage.page}
+                pageCount={breakdownPage.pageCount}
+                from={breakdownPage.from}
+                to={breakdownPage.to}
+                total={breakdownPage.total}
+                label="items"
+                onPageChange={breakdownPage.setPage}
+              />
+            </TabsContent>
           </CardContent>
-        </Card>
-      </div>
+        </Tabs>
+      </Card>
 
       {/* Statutory Benefits & Company Loans Section */}
       <Card className="border-border/70 shadow-xs">
@@ -335,7 +454,7 @@ export function EssPayrollTab() {
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/30">Active</span>
               </div>
-              <p className="text-base font-mono font-bold text-foreground">34-5678901-2</p>
+              <p className="text-base font-mono font-bold text-foreground">**-*****67-8</p>
               <p className="text-xs text-muted-foreground">Monthly Contribution: ₱950.00</p>
             </div>
 
@@ -346,7 +465,7 @@ export function EssPayrollTab() {
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/30">Active</span>
               </div>
-              <p className="text-base font-mono font-bold text-foreground">12-345678901-2</p>
+              <p className="text-base font-mono font-bold text-foreground">**-*******01-2</p>
               <p className="text-xs text-muted-foreground">Monthly Premium: ₱450.00</p>
             </div>
 
@@ -357,7 +476,7 @@ export function EssPayrollTab() {
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/30">Active</span>
               </div>
-              <p className="text-base font-mono font-bold text-foreground">1234-5678-9012</p>
+              <p className="text-base font-mono font-bold text-foreground">****-****-*012</p>
               <p className="text-xs text-muted-foreground">Monthly Savings: ₱200.00</p>
             </div>
 
@@ -368,7 +487,7 @@ export function EssPayrollTab() {
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 font-semibold border border-purple-500/30">Maxicare</span>
               </div>
-              <p className="text-base font-mono font-bold text-foreground">MX-8892014</p>
+              <p className="text-base font-mono font-bold text-foreground">MX-****014</p>
               <p className="text-xs text-muted-foreground">MBL Coverage: ₱150,000 / yr</p>
             </div>
           </div>
@@ -432,14 +551,81 @@ export function EssPayrollTab() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Covered Pay Period</Label>
-                <Input
-                  placeholder="e.g., July 1–15, 2026"
-                  value={payPeriod}
-                  onChange={(e) => setPayPeriod(e.target.value)}
-                  required
-                />
+              {/* Covered Pay Period: Starting and Ending Date with Calendar */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-primary" />
+                    Covered Pay Period
+                  </Label>
+                  {payPeriodStart && payPeriodEnd && (
+                    <span className="text-[11px] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                      {formatPeriodDisplay(payPeriodStart, payPeriodEnd)}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-medium text-muted-foreground">
+                      Starting Period
+                    </span>
+                    <Input
+                      type="date"
+                      value={payPeriodStart}
+                      onChange={(e) => setPayPeriodStart(e.target.value)}
+                      onClick={(e) => (e.currentTarget as any).showPicker?.()}
+                      className="cursor-pointer text-xs"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-medium text-muted-foreground">
+                      Ending Period
+                    </span>
+                    <Input
+                      type="date"
+                      value={payPeriodEnd}
+                      min={payPeriodStart || undefined}
+                      onChange={(e) => setPayPeriodEnd(e.target.value)}
+                      onClick={(e) => (e.currentTarget as any).showPicker?.()}
+                      className="cursor-pointer text-xs"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Presets for Philippine Semi-monthly cut-offs */}
+                <div className="flex items-center gap-1.5 pt-0.5">
+                  <span className="text-[10px] text-muted-foreground uppercase font-semibold">Presets:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const now = new Date();
+                      const y = now.getFullYear();
+                      const m = String(now.getMonth() + 1).padStart(2, "0");
+                      setPayPeriodStart(`${y}-${m}-01`);
+                      setPayPeriodEnd(`${y}-${m}-15`);
+                    }}
+                    className="text-[11px] text-primary hover:underline hover:text-primary/80 transition-colors"
+                  >
+                    1st–15th Cut-off
+                  </button>
+                  <span className="text-muted-foreground/40 text-[10px]">·</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const now = new Date();
+                      const y = now.getFullYear();
+                      const m = String(now.getMonth() + 1).padStart(2, "0");
+                      const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+                      setPayPeriodStart(`${y}-${m}-16`);
+                      setPayPeriodEnd(`${y}-${m}-${lastDay}`);
+                    }}
+                    className="text-[11px] text-primary hover:underline hover:text-primary/80 transition-colors"
+                  >
+                    16th–End Cut-off
+                  </button>
+                </div>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Inquiry Details / Hours Claimed</Label>

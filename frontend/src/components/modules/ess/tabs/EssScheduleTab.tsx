@@ -1,11 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   Clock,
-  MapPin,
   CheckCircle2,
-  ShieldCheck,
-  Building2,
-  UserCheck,
   AlertCircle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -82,152 +78,167 @@ export function EssScheduleTab() {
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-12">
-        {/* Left Column: Live Clock & Action Punch Panel (7 cols) */}
-        <div className="lg:col-span-7 space-y-6">
-          {/* Main Clock Terminal Card */}
-          <Card className="border-border/70 shadow-xs overflow-hidden">
-            <CardHeader className="pb-3 border-b border-border/60 bg-muted/20">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="rounded-md bg-primary/10 p-1.5 text-primary">
-                    <Clock className="h-4 w-4" />
-                  </div>
-                  <CardTitle className="font-display text-base font-semibold">Live Timecard Terminal</CardTitle>
-                </div>
-                <Badge variant="outline" className="text-[11px] gap-1 bg-background text-emerald-600 border-emerald-500/30">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Biometric Sync Active
-                </Badge>
-              </div>
-            </CardHeader>
+      {/* Unified Executive Hero: Live Timecard Terminal & Station Verification */}
+      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-card via-card to-primary/[0.04] shadow-sm">
+        {/* Ambient Decorative Lighting */}
+        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary/5 blur-3xl" />
+        <div className="pointer-events-none absolute -left-24 -bottom-24 h-72 w-72 rounded-full bg-amber-500/5 blur-3xl" />
 
-            <CardContent className="p-6 space-y-6">
-              {/* Giant Live Clock Display */}
-              <div className="rounded-2xl border border-primary/20 bg-gradient-to-b from-primary/5 via-muted/30 to-background p-6 text-center shadow-xs space-y-3">
-                <p className="text-xs uppercase font-semibold text-muted-foreground tracking-widest">{formattedDate}</p>
-                <p className="text-4xl sm:text-5xl font-bold font-mono tracking-tight text-foreground">{formattedTime}</p>
-                
-                <div className="flex items-center justify-center gap-2 pt-1">
-                  {currentStatus === "clocked_in" && (
-                    <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 gap-1.5 px-3 py-1 text-xs">
-                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                      Currently On Duty
-                    </Badge>
-                  )}
-                  {currentStatus === "on_break" && (
-                    <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 gap-1.5 px-3 py-1 text-xs">
-                      <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                      On Lunch / Meal Break
-                    </Badge>
-                  )}
-                  {currentStatus === "clocked_out" && (
-                    <Badge className="bg-slate-500/15 text-slate-600 border-slate-500/30 gap-1.5 px-3 py-1 text-xs">
-                      Shift Completed / Clocked Out
-                    </Badge>
-                  )}
-                </div>
-              </div>
+        {/* Hero Top Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border/60 bg-muted/30 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-primary/10 p-2.5 text-primary shadow-2xs">
+              <Clock className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="text-base font-bold font-display text-foreground tracking-tight">
+                Live Timecard Terminal
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                Oxford Suites Makati · Station Terminal Kiosk #01
+              </p>
+            </div>
+          </div>
 
-
-
-              {/* Today's Punch Summary Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-                <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center">
-                  <p className="text-[10px] uppercase font-semibold text-muted-foreground">Time In</p>
-                  <p className="font-bold text-foreground mt-1 text-sm">{punchLog.timeIn}</p>
-                </div>
-                <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center">
-                  <p className="text-[10px] uppercase font-semibold text-muted-foreground">Break Out</p>
-                  <p className="font-bold text-foreground mt-1 text-sm">{punchLog.breakIn}</p>
-                </div>
-                <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center">
-                  <p className="text-[10px] uppercase font-semibold text-muted-foreground">Break In</p>
-                  <p className="font-bold text-foreground mt-1 text-sm">{punchLog.breakOut}</p>
-                </div>
-                <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center">
-                  <p className="text-[10px] uppercase font-semibold text-muted-foreground">Time Out</p>
-                  <p className="font-bold text-foreground mt-1 text-sm">{punchLog.timeOut}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary text-xs font-medium px-2.5 py-1">
+              Station Active
+            </Badge>
+            {currentStatus === "clocked_in" && (
+              <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                Currently On Duty
+              </Badge>
+            )}
+            {currentStatus === "on_break" && (
+              <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
+                <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                On Lunch / Meal Break
+              </Badge>
+            )}
+            {currentStatus === "clocked_out" && (
+              <Badge className="bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
+                Shift Completed / Clocked Out
+              </Badge>
+            )}
+          </div>
         </div>
 
-        {/* Right Column: Station Verification & Guidelines (5 cols) */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Station & Shift Info Card */}
-          <Card className="border-border/70 shadow-xs">
-            <CardHeader className="pb-3">
-              <CardTitle className="font-display text-base font-semibold flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-primary" />
-                Station Verification &amp; Shift Info
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-xs">
-              <div className="flex items-center justify-between rounded-lg border border-border/80 p-3 bg-card">
-                <span className="text-muted-foreground font-medium">Assigned Shift:</span>
-                <span className="font-semibold text-foreground">AM Shift (07:00 AM – 04:00 PM)</span>
-              </div>
-
-              <div className="flex items-center justify-between rounded-lg border border-border/80 p-3 bg-card">
-                <span className="text-muted-foreground font-medium flex items-center gap-1.5">
-                  <MapPin className="h-4 w-4 text-emerald-600" /> Geolocation:
-                </span>
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                  Oxford Suites Makati (Main Kitchen) ✓
+        {/* Hero Body: Split Grid */}
+        <div className="grid gap-6 p-6 lg:grid-cols-12">
+          {/* Left Column: Digital Clock Display & Today's Punches (7 cols) */}
+          <div className="lg:col-span-7 flex flex-col justify-between space-y-4">
+            {/* Giant Live Clock Display */}
+            <div className="relative overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-b from-background/90 via-background/60 to-background/90 p-6 text-center shadow-xs backdrop-blur-sm">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-widest">
+                {formattedDate}
+              </p>
+              <div className="my-2.5">
+                <span className="text-5xl sm:text-6xl font-extrabold font-mono tracking-tight text-foreground drop-shadow-xs">
+                  {formattedTime}
                 </span>
               </div>
-
-              <div className="flex items-center justify-between rounded-lg border border-border/80 p-3 bg-card">
-                <span className="text-muted-foreground font-medium flex items-center gap-1.5">
-                  <UserCheck className="h-4 w-4 text-primary" /> Supervisor:
-                </span>
+              <div className="inline-flex items-center gap-2 rounded-full bg-muted/60 border border-border/80 px-3.5 py-1 text-xs text-muted-foreground">
+                <span>Terminal Mode:</span>
                 <span className="font-semibold text-foreground">
-                  {employeeInfo?.supervisor || "Chef Marco"}
+                  {currentStatus === "clocked_out" ? "Shift Concluded" : "Live Attendance Tracking"}
+                </span>
+              </div>
+            </div>
+
+            {/* Today's Punch Summary Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-xl border border-border/80 p-3 bg-card/80 backdrop-blur-xs text-center hover:border-primary/40 transition-colors shadow-2xs">
+                <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Time In</p>
+                <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.timeIn}</p>
+              </div>
+              <div className="rounded-xl border border-border/80 p-3 bg-card/80 backdrop-blur-xs text-center hover:border-primary/40 transition-colors shadow-2xs">
+                <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Break Out</p>
+                <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.breakIn}</p>
+              </div>
+              <div className="rounded-xl border border-border/80 p-3 bg-card/80 backdrop-blur-xs text-center hover:border-primary/40 transition-colors shadow-2xs">
+                <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Break In</p>
+                <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.breakOut}</p>
+              </div>
+              <div className="rounded-xl border border-border/80 p-3 bg-card/80 backdrop-blur-xs text-center hover:border-primary/40 transition-colors shadow-2xs">
+                <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Time Out</p>
+                <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.timeOut}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Station Verification & Shift Info (5 cols) */}
+          <div className="lg:col-span-5 flex flex-col justify-between rounded-2xl border border-border/70 bg-background/50 p-5 backdrop-blur-xs shadow-2xs">
+            <div>
+              <div className="flex items-center justify-between pb-3.5 border-b border-border/60">
+                <h4 className="font-display text-sm font-semibold text-foreground">
+                  Station Verification &amp; Shift Info
+                </h4>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                  Verified
                 </span>
               </div>
 
-              <div className="flex items-center justify-between rounded-lg border border-border/80 p-3 bg-card">
-                <span className="text-muted-foreground font-medium flex items-center gap-1.5">
-                  <Building2 className="h-4 w-4 text-primary" /> Department:
-                </span>
-                <span className="font-semibold text-foreground">
-                  {employeeInfo?.department || "Food & Beverage"}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
+              <div className="space-y-2.5 pt-3.5 text-xs">
+                <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-card/70 hover:border-primary/30 transition-colors">
+                  <span className="text-muted-foreground font-medium">Assigned Shift:</span>
+                  <span className="font-semibold text-foreground">AM Shift (07:00 AM – 04:00 PM)</span>
+                </div>
 
-          {/* Clocking Guidelines Card */}
-          <Card className="border-border/70 shadow-xs">
-            <CardHeader className="pb-3">
-              <CardTitle className="font-display text-base font-semibold flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-primary" />
-                Clocking Guidelines
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2.5 text-xs text-muted-foreground">
+                <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-card/70 hover:border-primary/30 transition-colors">
+                  <span className="text-muted-foreground font-medium">Geolocation:</span>
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                    Oxford Suites Makati (Main Kitchen) ✓
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-card/70 hover:border-primary/30 transition-colors">
+                  <span className="text-muted-foreground font-medium">Supervisor:</span>
+                  <span className="font-semibold text-foreground">
+                    {employeeInfo?.supervisor || "Chef Marco D. Santos"}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-card/70 hover:border-primary/30 transition-colors">
+                  <span className="text-muted-foreground font-medium">Department:</span>
+                  <span className="font-semibold text-foreground">
+                    {employeeInfo?.department || "Kitchen / Culinary"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Hero Bottom Bar: Clocking Guidelines */}
+        <div className="border-t border-border/60 bg-muted/25 px-6 py-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 shrink-0">
+              <AlertCircle className="h-4 w-4 text-primary shrink-0" />
+              <span className="font-semibold font-display text-foreground">Clocking Guidelines</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-muted-foreground w-full lg:w-auto">
               <div className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Punctuality:</strong> Time In logs are grace-period compliant up to 15 minutes past your assigned shift start.
+                  <strong>Punctuality:</strong> 15-min grace period compliant past shift start.
                 </span>
               </div>
               <div className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Meal Breaks:</strong> Record Break Out and Break In for statutory 1-hour meal intervals.
+                  <strong>Meal Breaks:</strong> 1-hour statutory interval for break out and in.
                 </span>
               </div>
               <div className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Biometric Sync:</strong> Web clocking records sync directly with payroll cut-off timecards.
+                  <strong>Biometric Sync:</strong> Punches sync real-time with payroll cut-off.
                 </span>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       </div>
     </div>

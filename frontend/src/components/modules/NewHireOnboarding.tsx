@@ -26,6 +26,10 @@ import {
   Users,
   X,
   ArrowUpDown,
+  Compass,
+  Flag,
+  Clock,
+  Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -67,6 +71,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { ListSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -82,6 +87,7 @@ import {
   DEFAULT_ACCOUNT_PASSWORD,
   hireStore,
   useHires,
+  useHiresLoading,
   useMasterChecklists,
   usePendingHire,
 } from "@/data/hires";
@@ -141,12 +147,17 @@ function DocumentPreviewModal({
   open,
   onOpenChange,
 }: {
-  fileUrl: string;
-  fileName?: string | undefined;
+  fileUrl?: string | null | undefined;
+  fileName?: string | null | undefined;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const ext = (fileName || fileUrl).split(".").pop()?.toLowerCase() ?? "";
+  if (!open || !fileUrl) {
+    return null;
+  }
+
+  const safeNameOrUrl = fileName || fileUrl || "";
+  const ext = safeNameOrUrl.includes(".") ? safeNameOrUrl.split(".").pop()?.toLowerCase() ?? "" : "";
   const kind: "image" | "pdf" | "other" = ["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(ext)
     ? "image"
     : ext === "pdf"
@@ -361,12 +372,14 @@ function EmployeeSubmissionDetails({
           {submission.notes}
         </p>
       )}
-      <DocumentPreviewModal
-        open={docOpen}
-        onOpenChange={setDocOpen}
-        fileUrl={submission.fileUrl as string}
-        fileName={submission.fileName}
-      />
+      {docOpen && submission.fileUrl && (
+        <DocumentPreviewModal
+          open={docOpen}
+          onOpenChange={setDocOpen}
+          fileUrl={submission.fileUrl}
+          fileName={submission.fileName}
+        />
+      )}
     </div>
   );
 }
@@ -474,7 +487,30 @@ export function NewHireOnboarding({ role }: { role: "superadmin" | "admin" | "em
 function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const isSuperAdmin = role === "superadmin";
   const { gateSensitive, gateDialog } = usePasswordGate();
+
+  /** Pending delete confirmation shared by the checklist template, checklist
+   *  item and requested-checklist delete buttons. */
+  const [confirmDelete, setConfirmDelete] = useState<
+    | { kind: "template"; id: string; label: string }
+    | { kind: "item"; index: number; label: string }
+    | { kind: "requested"; id: string; label: string }
+    | null
+  >(null);
+
+  const confirmDeleteNow = () => {
+    if (!confirmDelete) return;
+    if (confirmDelete.kind === "template") {
+      deleteMasterChecklist(confirmDelete.id);
+    } else if (confirmDelete.kind === "item") {
+      setEditChecklistRichItems((prev) => prev.filter((_, i) => i !== confirmDelete.index));
+      toast.success("Checklist item removed");
+    } else {
+      deleteRequestedItem(confirmDelete.id);
+    }
+    setConfirmDelete(null);
+  };
   const hires = useHires();
+  const hiresLoading = useHiresLoading();
   const setHires = (updater: (prev: NewHire[]) => NewHire[]) => hireStore.setHires(updater);
   const pending = usePendingHire();
   const masterChecklists = useMasterChecklists();
@@ -513,10 +549,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const [knownPositions, setKnownPositions] = useState<
     { dbId: number; id: string; title: string; department: string }[]
   >([]);
-  /** Hired/accepted applicants from the live database, for the add-hire form. */
+  /** Hired/candidate applicants from the live database, for the add-hire form. */
   const [candidateApplicants, setCandidateApplicants] = useState<
-    { id: string; name: string; position: string; email: string; phone: string }[]
+    { id: string; name: string; position: string; email: string; phone: string; stage?: string }[]
   >([]);
+  const [isManualName, setIsManualName] = useState(false);
 
   useEffect(() => {
     checklistRequestsApi
@@ -577,16 +614,15 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       .list({ per_page: 100 })
       .then((res) => {
         if (res?.data) {
-          const hired = res.data
-            .filter((a) => a.stage === "Accepted" || a.stage === "Hired")
-            .map((a) => ({
-              id: String(a.applicant_id),
-              name: a.name,
-              position: a.job_post?.title || "Staff",
-              email: a.email || "",
-              phone: a.phone || "",
-            }));
-          setCandidateApplicants(hired);
+          const candidates = res.data.map((a) => ({
+            id: String(a.applicant_id),
+            name: a.name,
+            position: a.job_post?.title || "Staff",
+            email: a.email || "",
+            phone: a.phone || "",
+            stage: a.stage || "Screened",
+          }));
+          setCandidateApplicants(candidates);
         }
       })
       .catch((err) => console.warn("Could not fetch applicants from API:", err));
@@ -1043,27 +1079,27 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       title: "New Hire Onboarding Report",
       subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })}`,
       sensitive: true,
-        columns: [
-          { header: "New Hire", key: "name", width: "17%" },
-          { header: "Position", key: "position", width: "17%" },
-          { header: "Department", key: "department", width: "15%" },
-          { header: "Stage", key: "stage", width: "13%" },
-          { header: "Days of Work", key: "daysOfWork", width: "11%" },
-          { header: "Progress", key: "progress", width: "11%" },
-          { header: "Start Date", key: "startDate", width: "16%" },
-        ],
-        rows: rowsData,
-        summary: [
-          { label: "Total Hires", value: hires.length },
-          {
-            label: "Pre-onboarding",
-            value: hires.filter((h) => h.stage === "Pre-onboarding").length,
-          },
-          {
-            label: "Probationary",
-            value: hires.filter((h) => h.stage === "Probationary").length,
-          },
-        ],
+      columns: [
+        { header: "New Hire", key: "name", width: "17%" },
+        { header: "Position", key: "position", width: "17%" },
+        { header: "Department", key: "department", width: "15%" },
+        { header: "Stage", key: "stage", width: "13%" },
+        { header: "Days of Work", key: "daysOfWork", width: "11%" },
+        { header: "Progress", key: "progress", width: "11%" },
+        { header: "Start Date", key: "startDate", width: "16%" },
+      ],
+      rows: rowsData,
+      summary: [
+        { label: "Total Hires", value: hires.length },
+        {
+          label: "Pre-onboarding",
+          value: hires.filter((h) => h.stage === "Pre-onboarding").length,
+        },
+        {
+          label: "Probationary",
+          value: hires.filter((h) => h.stage === "Probationary").length,
+        },
+      ],
     };
     gateSensitive(payload, () => {
       exportReport(payload, format);
@@ -1072,8 +1108,8 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   };
 
   /**
-    * Automatic regularization by operation of law (Art. 296, Labor Code; DOLE
-    * 6-month rule). When a probationary hire is allowed to keep working past
+   * Automatic regularization by operation of law (Art. 296, Labor Code; DOLE
+   * 6-month rule). When a probationary hire is allowed to keep working past
    * the maximum probationary period without a completed evaluation, the law
    * deems them a regular employee — no HR action required.
    *
@@ -1538,7 +1574,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {hirePage.pageItems.map((h) => {
+                        {hiresLoading && hires.length === 0 && (
+                          <TableRowsSkeleton cols={7} rows={6} />
+                        )}
+                        {(!hiresLoading || hires.length > 0) &&
+                          hirePage.pageItems.map((h) => {
                           const pct = progress(h);
                           const complete = pct === 100;
                           const awaiting = evaluationRequested.includes(h.id);
@@ -1693,7 +1733,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             </TableRow>
                           );
                         })}
-                        {visible.length === 0 && (
+                        {(!hiresLoading || hires.length > 0) && visible.length === 0 && (
                           <TableRow>
                             <TableCell colSpan={7} className="py-8">
                               <ListEmptyState placeholder="Search name, position..." />
@@ -2427,9 +2467,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                       variant="ghost"
                                       className="h-6 w-6 cursor-pointer"
                                       onClick={() =>
-                                        setEditChecklistRichItems((prev) =>
-                                          prev.filter((_, x) => x !== i),
-                                        )
+                                        setConfirmDelete({
+                                          kind: "item",
+                                          index: i,
+                                          label: item.item_text,
+                                        })
                                       }
                                       aria-label={`Delete ${item.item_text}`}
                                       title="Delete checklist item"
@@ -2526,7 +2568,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   className="h-8 w-8 cursor-pointer hover:text-destructive"
                                   aria-label={`Delete ${c.title}`}
                                   title="Delete checklist"
-                                  onClick={() => deleteMasterChecklist(c.id)}
+                                  onClick={() => setConfirmDelete({ kind: "template", id: c.id, label: c.title })}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -2897,7 +2939,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                     variant="ghost"
                                     className="h-8 w-8 cursor-pointer"
                                     aria-label="Delete requested item"
-                                    onClick={() => deleteRequestedItem(r.id)}
+                                    onClick={() => setConfirmDelete({ kind: "requested", id: r.id, label: r.item })}
                                   >
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
@@ -2936,6 +2978,36 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* DELETE CONFIRMATION — checklist template / checklist item / requested checklist */}
+      <Dialog open={confirmDelete !== null} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {confirmDelete?.kind === "template"
+                ? "Delete checklist?"
+                : confirmDelete?.kind === "item"
+                  ? "Delete checklist item?"
+                  : "Delete requested checklist?"}
+            </DialogTitle>
+            <DialogDescription>
+              “{confirmDelete?.label}” will be permanently removed. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="cursor-pointer"
+              onClick={() => setConfirmDelete(null)}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" className="cursor-pointer" onClick={confirmDeleteNow}>
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* AUTO-REGULARIZATION SETTINGS */}
       <Dialog open={autoRegOpen} onOpenChange={setAutoRegOpen}>
@@ -3058,13 +3130,40 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>Full name</Label>
+              <div className="flex items-center justify-between">
+                <Label>Full name</Label>
+                {!nameLocked && candidateApplicants.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsManualName(!isManualName);
+                      setForm((prev) => ({ ...prev, name: "" }));
+                    }}
+                    className="text-[11px] font-medium text-primary hover:underline cursor-pointer"
+                  >
+                    {isManualName ? "Select from applicants" : "Or type custom name"}
+                  </button>
+                )}
+              </div>
               {nameLocked ? (
                 <>
                   <Input value={form.name} readOnly className="bg-muted/50" />
                   <p className="text-[0.7rem] text-muted-foreground">
                     Accepted applicant — details carried over from assessment.
                   </p>
+                </>
+              ) : isManualName || candidateApplicants.length === 0 ? (
+                <>
+                  <Input
+                    placeholder="Enter hire's full name"
+                    value={form.name}
+                    onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                  />
+                  {candidateApplicants.length === 0 && (
+                    <p className="text-[0.7rem] text-muted-foreground">
+                      No applicants found — enter the candidate's name manually.
+                    </p>
+                  )}
                 </>
               ) : (
                 <Select
@@ -3090,7 +3189,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                       .filter((a) => !hires.some((h) => h.name === a.name))
                       .map((a) => (
                         <SelectItem key={a.id} value={a.name}>
-                          {a.name} — {a.position}
+                          {a.name} — {a.position} {a.stage ? `(${a.stage})` : ""}
                         </SelectItem>
                       ))}
                   </SelectContent>
@@ -3595,6 +3694,66 @@ export function EmployeeOnboarding() {
     };
   }, [syncListHeight, filteredItems, viewingItem]);
 
+  // Calculate Tenure & 30-60-90-180 Day Probation Milestones
+  const hireDateStr = newHire?.start_date || "2026-08-01";
+  const hireDate = useMemo(() => new Date(hireDateStr), [hireDateStr]);
+  const now = useMemo(() => new Date(), []);
+
+  const elapsedDays = useMemo(() => {
+    const diffTime = Math.abs(now.getTime() - hireDate.getTime());
+    return Math.max(1, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+  }, [hireDate, now]);
+
+  const totalProbationDays = 180;
+  const currentMonthNum = Math.min(6, Math.max(1, Math.ceil(elapsedDays / 30)));
+  const daysRemaining = Math.max(0, totalProbationDays - elapsedDays);
+  const tenurePct = Math.min(100, Math.round((elapsedDays / totalProbationDays) * 100));
+
+  const regularizationDate = useMemo(() => {
+    const d = new Date(hireDate);
+    d.setDate(d.getDate() + 180);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }, [hireDate]);
+
+  const milestones = [
+    {
+      id: "w1",
+      dayTarget: 7,
+      label: "Week 1",
+      title: "Orientation & Setup",
+      desc: "Biometrics, company policies & initial tooling",
+      status: elapsedDays >= 7 ? "completed" : "in-progress",
+      targetDate: new Date(hireDate.getTime() + 7 * 86400000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    },
+    {
+      id: "m1",
+      dayTarget: 30,
+      label: "Month 1",
+      title: "30-Day Check-in",
+      desc: "Initial performance touchpoint with supervisor",
+      status: elapsedDays >= 30 ? "completed" : elapsedDays >= 7 ? "in-progress" : "upcoming",
+      targetDate: new Date(hireDate.getTime() + 30 * 86400000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    },
+    {
+      id: "m3",
+      dayTarget: 90,
+      label: "Month 3",
+      title: "Mid-Probation Review",
+      desc: "Mid-term evaluation & KPI performance sync",
+      status: elapsedDays >= 90 ? "completed" : elapsedDays >= 30 ? "in-progress" : "upcoming",
+      targetDate: new Date(hireDate.getTime() + 90 * 86400000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    },
+    {
+      id: "m6",
+      dayTarget: 180,
+      label: "Month 6",
+      title: "Regularization",
+      desc: "Final appraisal for regular employment status",
+      status: elapsedDays >= 180 ? "completed" : elapsedDays >= 90 ? "in-progress" : "upcoming",
+      targetDate: regularizationDate,
+    },
+  ];
+
   const handleExportEmployeeReport = (format: ReportFormat) => {
     if (!newHire) {
       toast.error("Your onboarding record is still loading.");
@@ -3668,52 +3827,114 @@ export function EmployeeOnboarding() {
         </p>
       </div>
 
-      {/* NEW HIRE ONBOARDING Header & Progress Card */}
-      <Card className="border-border/70 overflow-hidden">
+      {/* PROBATIONARY JOURNEY & MILESTONE TIMELINE */}
+      <Card className="border-border/70 shadow-xs overflow-hidden">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 bg-muted/20 border-b border-border/60">
+          <div>
+            <CardTitle className="font-display text-lg sm:text-xl font-semibold flex items-center gap-2">
+              <Compass className="h-5 w-5 text-primary" />
+              Probationary Journey &amp; Milestone Timeline
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Track your active tenure duration, 30-90-180 day performance touchpoints, and regularization pathway.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs font-semibold px-2.5 py-1 flex items-center gap-1.5 shadow-2xs">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              Day {elapsedDays} of {totalProbationDays} Active
+            </Badge>
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs font-semibold px-2.5 py-1">
+              Month {currentMonthNum} of 6
+            </Badge>
+          </div>
+        </CardHeader>
         <CardContent className="p-6 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <p className="eyebrow">NEW HIRE ONBOARDING</p>
-              <h2 className="text-2xl font-semibold font-display text-foreground mt-1">
-                {newHire?.name ?? getUser()?.full_name ?? myProfile.name}
-              </h2>
-              <p className="text-sm font-medium text-muted-foreground mt-0.5">
-                Employee ID:{" "}
-                <span className="text-foreground font-mono font-semibold">
-                  {newHire?.employee_id
-                    ? `OSM-${String(newHire.employee_id).padStart(4, "0")}`
-                    : myProfile.employeeId}
-                </span>
-              </p>
-            </div>
+          {/* Stepper Progression Grid */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {milestones.map((m) => {
+              const isCompleted = m.status === "completed";
+              const isInProgress = m.status === "in-progress";
 
-            {/* Prominent Employment Status — PROBATIONARY */}
-            <div className="flex flex-col sm:items-end gap-1.5">
-              <Badge
-                variant="outline"
-                className="border-gold/40 bg-gold/10 text-gold text-xs px-3 py-1 font-semibold uppercase tracking-wider self-start sm:self-auto"
-              >
-                PROBATIONARY
-              </Badge>
-              <span className="text-xs text-muted-foreground font-medium">Employment Status</span>
-            </div>
+              return (
+                <div
+                  key={m.id}
+                  className={`relative rounded-xl border p-4 transition-all ${
+                    isCompleted
+                      ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/15 shadow-2xs"
+                      : isInProgress
+                      ? "border-primary/60 bg-primary/5 shadow-xs ring-1 ring-primary/25"
+                      : "border-border/70 bg-muted/10 opacity-75"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                        isCompleted
+                          ? "bg-emerald-500/15 text-emerald-600 border border-emerald-500/30"
+                          : isInProgress
+                          ? "bg-primary text-primary-foreground font-semibold"
+                          : "bg-muted text-muted-foreground border border-border"
+                      }`}
+                    >
+                      {m.label}
+                    </span>
+
+                    {isCompleted ? (
+                      <div className="flex items-center gap-1 text-emerald-600 text-xs font-semibold">
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span>Passed</span>
+                      </div>
+                    ) : isInProgress ? (
+                      <div className="flex items-center gap-1 text-primary text-xs font-semibold">
+                        <Clock className="h-4 w-4 animate-pulse" />
+                        <span>Current Stage</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 text-muted-foreground text-xs font-medium">
+                        <Calendar className="h-3.5 w-3.5" />
+                        <span>{m.targetDate}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <h4 className="font-display text-sm font-bold text-foreground">
+                    {m.title}
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-1 leading-snug">
+                    {m.desc}
+                  </p>
+
+                  <div className="mt-3 pt-2.5 border-t border-border/60 flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">Target: Day {m.dayTarget}</span>
+                    <span className="font-semibold text-foreground">
+                      {isCompleted ? "Verified ✓" : isInProgress ? `Day ${elapsedDays} · Active` : m.targetDate}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          {/* Overall Progress */}
-          <div className="border-t border-border pt-4">
-            <div className="flex items-center justify-between text-sm font-medium mb-2">
-              <span className="text-muted-foreground">
-                Verified Progress{" "}
-                <span className="font-normal text-muted-foreground/70">
-                  (HR updates this when they verify your submissions)
-                </span>
+          {/* Overall Probation Timeline Bar */}
+          <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs mb-2">
+              <span className="font-semibold text-foreground flex items-center gap-1.5">
+                <Flag className="h-3.5 w-3.5 text-primary" /> Overall Probationary Elapsed Progress
               </span>
-              <span className="text-primary font-bold">{pct}% Complete</span>
+              <span className="text-muted-foreground">
+                <strong className="text-primary font-bold">{tenurePct}%</strong> elapsed · <strong className="text-foreground">{daysRemaining} days</strong> remaining until regularization review
+              </span>
             </div>
-            <Progress value={pct} className="h-3" />
+            <Progress value={tenurePct} className="h-2.5" />
+            <div className="flex justify-between items-center text-[11px] text-muted-foreground mt-2">
+              <span>Start Date: <strong className="text-foreground">{hireDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</strong></span>
+              <span>Target Regularization: <strong className="text-foreground">{regularizationDate}</strong></span>
+            </div>
           </div>
         </CardContent>
       </Card>
+
 
       {/* SPLIT VIEW CONTAINER: Checklist on Left, Task Detail Panel on Right.
           The checklist card keeps a constant 7-row height and DEFINES the
@@ -3757,9 +3978,7 @@ export function EmployeeOnboarding() {
             <CardContent className="flex min-h-0 flex-1 flex-col">
               <div ref={listScrollRef} className="-mr-2 overflow-y-auto pr-2">
                 {loading ? (
-                  <div className="flex h-full items-center justify-center py-12 text-center text-sm text-muted-foreground">
-                    Loading your probationary onboarding checklist...
-                  </div>
+                  <ListSkeleton items={5} />
                 ) : filteredItems.length === 0 ? (
                   <div className="flex h-full items-center justify-center py-12 px-4 text-center text-sm text-muted-foreground">
                     {totalCount === 0
@@ -3857,12 +4076,14 @@ export function EmployeeOnboarding() {
                   </div>
                 )}
 
-                <DocumentPreviewModal
-                  open={docOpen}
-                  onOpenChange={setDocOpen}
-                  fileUrl={viewingItem.fileUrl as string}
-                  fileName={viewingItem.fileName}
-                />
+                {docOpen && viewingItem.fileUrl && (
+                  <DocumentPreviewModal
+                    open={docOpen}
+                    onOpenChange={setDocOpen}
+                    fileUrl={viewingItem.fileUrl}
+                    fileName={viewingItem.fileName}
+                  />
+                )}
 
                 {/* Upload Dropzone / Placeholder — only when the checklist
                     item requires an upload; stretches to fill leftover

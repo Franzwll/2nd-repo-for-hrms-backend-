@@ -105,11 +105,11 @@ export function PayslipViewerModal({
           payDate="05/08/2026"
           paidDays={15}
           lopDays={0}
-          bankAccount="BDO ****4412"
-          tin="123-456-789-000"
-          sss="34-1234567-8"
-          philHealth="12-345678901-2"
-          pagIbig="1234-5678-9012"
+          bankAccount="BDO *****412"
+          tin="***-***-***-000"
+          sss="**-*****67-8"
+          philHealth="**-*******01-2"
+          pagIbig="****-****-*012"
           earnings={earningsWithYtd}
           deductions={deductionsWithYtd}
           netPay={netPay}

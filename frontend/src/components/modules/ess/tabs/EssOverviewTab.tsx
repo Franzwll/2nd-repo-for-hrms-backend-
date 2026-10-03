@@ -42,18 +42,13 @@ import { toast } from "sonner";
 
 interface EssOverviewTabProps {
   onNavigateTab?: (tab: string) => void;
-  onOpenClock: () => void;
-  onOpenLeave: () => void;
-  onOpenPayslip: () => void;
-  onOpenDocRequest: () => void;
+  onOpenClock?: () => void;
+  onOpenLeave?: () => void;
+  onOpenPayslip?: () => void;
+  onOpenDocRequest?: () => void;
 }
 
-export function EssOverviewTab({
-  onOpenClock,
-  onOpenLeave,
-  onOpenPayslip,
-  onOpenDocRequest,
-}: EssOverviewTabProps) {
+export function EssOverviewTab({}: EssOverviewTabProps) {
   const [overview, setOverview] = useState<ApiEssOverview | null>(null);
   const [activities, setActivities] = useState<any[]>(wireframeActivity);
   const [loading, setLoading] = useState(true);
@@ -331,54 +326,6 @@ export function EssOverviewTab({
         </Card>
       </div>
 
-      {/* Interactive Quick Actions Bar */}
-      <Card className="border-border/70 shadow-xs bg-gradient-to-r from-primary/5 via-card to-card">
-        <CardContent className="p-4 sm:p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <h4 className="text-sm font-semibold font-display text-foreground flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary" />
-                Quick Actions
-              </h4>
-              <p className="text-xs text-muted-foreground">Launch core self-service workflows directly.</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onOpenClock}
-                className="gap-1.5 text-xs h-8 border-primary/30 hover:bg-primary/10 hover:border-primary"
-              >
-                <Clock className="h-3.5 w-3.5 text-primary" /> Web Clocking
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onOpenLeave}
-                className="gap-1.5 text-xs h-8 border-primary/30 hover:bg-primary/10 hover:border-primary"
-              >
-                <Calendar className="h-3.5 w-3.5 text-emerald-600" /> Apply for Leave
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onOpenPayslip}
-                className="gap-1.5 text-xs h-8 border-primary/30 hover:bg-primary/10 hover:border-primary"
-              >
-                <FileText className="h-3.5 w-3.5 text-blue-600" /> Latest Payslip
-              </Button>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={onOpenDocRequest}
-                className="gap-1.5 text-xs h-8 bg-primary text-primary-foreground font-semibold shadow-xs"
-              >
-                <FileCheck className="h-3.5 w-3.5" /> Request Document / COE
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
 
       {/* Recent Activities & Service History */}
