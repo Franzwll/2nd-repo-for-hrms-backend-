@@ -29,6 +29,8 @@ import {
   FileCheck2,
   FileText,
   Flag,
+  Lock,
+  Link2,
   CalendarPlus,
   History,
   Loader2,
@@ -81,6 +83,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -156,10 +168,12 @@ import {
 import { jobs } from "@/data/jobs";
 import { useNavigate } from "@tanstack/react-router";
 import { cn, downloadTextFile } from "@/lib/utils";
+import { getUser } from "@/lib/auth";
 import { SortHead, useSort } from "@/components/portal/sortable";
 import {
   applicantDocumentsApi,
   applicantsApi,
+  assessmentInvitesApi,
   assessmentTestsApi,
   assessmentsApi,
   auditLogApi,
@@ -188,6 +202,13 @@ import {
   type ApiSystemUser,
   type ScreeningReferencePayload,
 } from "@/lib/api";
+import {
+  describeExport,
+  exportReport,
+  type ReportData,
+  type ReportFormat,
+} from "@/lib/report-export";
+import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
 import {
   isValidEmail,
   isValidName,
@@ -385,6 +406,30 @@ function transformApiFinalEvaluation(f: ApiFinalEvaluation): FinalEvaluationRow 
     date: f.evaluation_date,
     evaluatedById: f.evaluated_by_user_id ?? null,
   };
+}
+
+/** Fetches every page of a paginated list endpoint (`{ data, meta }` shape) so
+ *  older records are never cut off by the page size. The interview index orders
+ *  newest-first, so past-date bookings used to fall off page 1 and their
+ *  Reschedule buttons disappeared from the View profile and the pipeline
+ *  Actions menu — this walks all pages instead. */
+async function fetchAllPages<T>(
+  list: (params?: Record<string, any>) => Promise<{ data: T[]; meta: any }>,
+  params?: Record<string, any>,
+  perPage = 500,
+): Promise<T[]> {
+  const all: T[] = [];
+  let page = 1;
+  for (;;) {
+    const res = await list({ ...params, per_page: perPage, page });
+    const items = res?.data ?? [];
+    all.push(...items);
+    const lastPage = (res?.meta as { last_page?: number } | undefined)?.last_page ?? 1;
+    if (page >= lastPage || items.length === 0) break;
+    page += 1;
+    if (page > 50) break; // safety cap: 50 x 500 records
+  }
+  return all;
 }
 
 /** Badge tone per audit action type in the History & Audit log. */
@@ -1811,17 +1856,11 @@ function ReportUnrecognizedDialog({
             <DialogTitle className="font-display text-2xl">
               Report unrecognized entities
             </DialogTitle>
-            <DialogDescription>
-              Every entity flagged UNRECOGNIZED in this screening result is pre-checked. Uncheck
-              anything that should not be reported, then confirm once — the selection appears in
-              Recruitment Management → Screening Setup → Reported Entities.
-            </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-1">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
               <span>
                 {entries.length} unrecognized entr{entries.length === 1 ? "y" : "ies"}
-                {applicantName ? ` · ${applicantName}` : ""}
               </span>
               <span className="flex items-center gap-2">
                 <button
@@ -4658,6 +4697,11 @@ type ApplicantViewScreenProps = {
   showRescheduleInterview?: boolean;
   onStartTest: () => void;
   onStartPractical: () => void;
+  /** Generates a no-login link the APPLICANT opens to answer the assessment
+   *  test on their own device (staff runner stays for supervised sessions). */
+  onCopyTestLink?: () => void;
+  /** True while the applicant test link is being generated. */
+  inviteBusy?: boolean;
   onStartFinal: () => void;
   onViewInterview: (r: AssessmentResult) => void;
   onViewTest: (r: AssessmentTestRow) => void;
@@ -5191,6 +5235,8 @@ function ApplicantViewScreen({
   showRescheduleInterview,
   onStartTest,
   onStartPractical,
+  onCopyTestLink,
+  inviteBusy,
   onStartFinal,
   onViewInterview,
   onViewTest,
@@ -5242,21 +5288,6 @@ function ApplicantViewScreen({
    *  the clicked-through checklist is always the section that opens. */
   const showRequirementsChecklist =
     forceChecklist === true || a.stage === "Offer" || a.stage === "Hired";
-
-  /** Ordered sections for the wizard footer — the right-arrow progression:
-   *  Current Stage → Screening (Resume & Documents) → Interview → Assessment
-   *  Test → Practical Assessment → Final Evaluation → Requirements Checklist. */
-  const flowSections: { key: ViewPanel; label: string }[] = [
-    { key: "current", label: "Current Stage" },
-    { key: "resume", label: "Screening" },
-    { key: "interview", label: "Interview" },
-    { key: "test", label: "Assessment Test" },
-    ...(requiresPrac ? [{ key: "practical" as ViewPanel, label: "Practical Assessment" }] : []),
-    { key: "final", label: "Final Evaluation" },
-    ...(showRequirementsChecklist
-      ? [{ key: "onboarding" as ViewPanel, label: "Requirements Checklist" }]
-      : []),
-  ];
 
   /**
    * Per-stage progress behind the stepper, derived from the recorded results
@@ -5796,9 +5827,9 @@ function ApplicantViewScreen({
         )}
       >
         {panel !== "onboarding" && (
-          <Card className="border-border/70 h-full self-stretch">
-            <CardContent className="h-full p-3">
-              <div className="lg:sticky lg:top-4">
+          <Card className="border-border/70 h-full self-stretch flex flex-col overflow-hidden lg:h-[80vh]">
+            <CardContent className="h-full p-3 lg:overflow-y-auto">
+              <div>
                 <p className="eyebrow mb-2">Applicant sections</p>
                 <div className="space-y-1">
                   {sectionBtn("current", "Current Stage", <Info className="h-4 w-4" />)}
@@ -5856,12 +5887,12 @@ function ApplicantViewScreen({
           </Card>
         )}
 
-        <div className="min-w-0 h-full space-y-4 [&>*]:h-full">
+        <div className="min-w-0 h-full space-y-4 lg:h-[80vh] lg:overflow-y-auto [&>*]:min-h-full">
           {(() => {
             switch (panel) {
               case "current":
                 return (
-                  <Card className="border-border/70 h-full">
+                  <Card className="border-border/70 min-h-full">
                     <CardContent className="p-6">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
@@ -6034,7 +6065,7 @@ function ApplicantViewScreen({
                 );
               case "details":
                 return (
-                  <Card className="border-border/70 h-full">
+                  <Card className="border-border/70 min-h-full">
                     <CardContent className="p-6">
                       <div>
                         <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
@@ -6070,7 +6101,7 @@ function ApplicantViewScreen({
                 );
               case "resume":
                 return (
-                  <Card className="border-border/70 h-full">
+                  <Card className="border-border/70 min-h-full">
                     <CardContent className="p-6">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
@@ -6308,7 +6339,7 @@ function ApplicantViewScreen({
                 );
               case "interview":
                 return (
-                  <Card className="border-border/70 h-full">
+                  <Card className="border-border/70 min-h-full">
                     <CardContent className="p-6">
                       <div>
                         <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
@@ -6447,7 +6478,7 @@ function ApplicantViewScreen({
                 );
               case "test":
                 return (
-                  <Card className="border-border/70 h-full">
+                  <Card className="border-border/70 min-h-full">
                     <CardContent className="p-6">
                       <div>
                         <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
@@ -6493,9 +6524,25 @@ function ApplicantViewScreen({
                               {a.position} — the interview assessment was passed.
                             </p>
                           </div>
-                          <Button size="sm" onClick={onStartTest}>
-                            <BookMarked className="mr-1.5 h-3.5 w-3.5" /> Start Assessment Test
-                          </Button>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={inviteBusy}
+                              onClick={() => onCopyTestLink?.()}
+                              title="Generate a no-login link the applicant opens to answer the test themselves"
+                            >
+                              {inviteBusy ? (
+                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Link2 className="mr-1.5 h-3.5 w-3.5" />
+                              )}
+                              Copy applicant test link
+                            </Button>
+                            <Button size="sm" onClick={onStartTest}>
+                              <BookMarked className="mr-1.5 h-3.5 w-3.5" /> Start Assessment Test
+                            </Button>
+                          </div>
                         </div>
                       ) : (
                         <div className="mt-4">
@@ -6509,7 +6556,7 @@ function ApplicantViewScreen({
                 );
               case "practical":
                 return (
-                  <Card className="border-border/70 h-full">
+                  <Card className="border-border/70 min-h-full">
                     <CardContent className="p-6">
                       <div>
                         <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
@@ -6580,7 +6627,7 @@ function ApplicantViewScreen({
                 );
               case "final":
                 return (
-                  <Card className="border-border/70 h-full">
+                  <Card className="border-border/70 min-h-full">
                     <CardContent className="p-6">
                       <div>
                         <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
@@ -6702,42 +6749,6 @@ function ApplicantViewScreen({
         </div>
       </div>
 
-      {/* Section progression — the right arrow moves to the next section.
-          The Requirements Checklist is the final, focused step: it hides this
-          bar entirely so only the checklist is shown. */}
-      {(() => {
-        if (panel === "onboarding") return null;
-        const flowIndex = flowSections.findIndex((s) => s.key === panel);
-        if (flowIndex === -1) return null;
-        const prev = flowIndex > 0 ? flowSections[flowIndex - 1] : undefined;
-        const next = flowIndex < flowSections.length - 1 ? flowSections[flowIndex + 1] : undefined;
-        return (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 bg-card px-4 py-3">
-            {prev ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="cursor-pointer"
-                onClick={() => setPanel(prev.key)}
-              >
-                <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Previous: {prev.label}
-              </Button>
-            ) : (
-              <span className="text-[11px] text-muted-foreground">First step of the process</span>
-            )}
-            {next && (
-              <Button
-                size="sm"
-                className="cursor-pointer"
-                title={`Open the next section — ${next.label}`}
-                onClick={() => setPanel(next.key)}
-              >
-                Next: {next.label} <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-              </Button>
-            )}
-          </div>
-        );
-      })()}
     </div>
   );
 }
@@ -6750,7 +6761,6 @@ const TOP_FIVE_VISIBLE_CARDS = 3;
 export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) {
   const navigate = useNavigate();
   const [rows, setRows] = useState<Applicant[]>([]);
-
 
   /**
    * Loads every pipeline record that drives the applicant progress bar:
@@ -6766,22 +6776,22 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const excludeStages = "Hired";
     try {
       const [appRes, intRes, asmRes, testRes, practRes, finalRes] = await Promise.allSettled([
-        applicantsApi.list({ per_page: 100, exclude_stages: excludeStages }),
-        interviewsApi.list({ per_page: 100 }),
-        assessmentsApi.list({ per_page: 100 }),
-        assessmentTestsApi.list({ per_page: 100 }),
-        practicalTestsApi.list({ per_page: 100 }),
-        finalEvaluationsApi.list({ per_page: 100 }),
+        fetchAllPages(applicantsApi.list, { exclude_stages: excludeStages }),
+        fetchAllPages(interviewsApi.list),
+        fetchAllPages(assessmentsApi.list),
+        fetchAllPages(assessmentTestsApi.list),
+        fetchAllPages(practicalTestsApi.list),
+        fetchAllPages(finalEvaluationsApi.list),
       ]);
       if (appRes.status === "fulfilled") {
-        setRows((appRes.value?.data ?? []).map(transformApiApplicant));
+        setRows((appRes.value ?? []).map(transformApiApplicant));
       }
       if (intRes.status === "fulfilled") {
-        setInterviews((intRes.value?.data ?? []).map(transformApiInterview));
+        setInterviews((intRes.value ?? []).map(transformApiInterview));
       }
       if (asmRes.status === "fulfilled") {
         setAssessments(
-          (asmRes.value?.data ?? []).map((a) => ({
+          (asmRes.value ?? []).map((a) => ({
             applicantId: a.applicant?.applicant_code ?? `APP-${a.applicant_id}`,
             dbId: a.assessment_id,
             name: a.applicant?.name ?? `Applicant #${a.applicant_id}`,
@@ -6802,13 +6812,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         );
       }
       if (testRes.status === "fulfilled") {
-        setAssessmentTests((testRes.value?.data ?? []).map(transformApiAssessmentTest));
+        setAssessmentTests((testRes.value ?? []).map(transformApiAssessmentTest));
       }
       if (practRes.status === "fulfilled") {
-        setPracticalTests((practRes.value?.data ?? []).map(transformApiPracticalTest));
+        setPracticalTests((practRes.value ?? []).map(transformApiPracticalTest));
       }
       if (finalRes.status === "fulfilled") {
-        setFinalEvaluations((finalRes.value?.data ?? []).map(transformApiFinalEvaluation));
+        setFinalEvaluations((finalRes.value ?? []).map(transformApiFinalEvaluation));
       }
     } catch (err) {
       console.warn("Could not fetch applicants/interviews/assessments from API:", err);
@@ -6879,6 +6889,43 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         console.warn("Could not fetch system users for assessor selector.");
       });
   }, []);
+
+  /* --- Logged-in staff member (default Interviewer / Assessor / Evaluated by) --- */
+  /** system_user_id of the signed-in staff member. Every process step that
+   *  records a name (Interviewer, Practical Assessment Assessor, Evaluated by)
+   *  is pre-filled with this person — they are the one processing the step —
+   *  and stays editable so a different interviewer can be recorded. */
+  const [currentUserId, setCurrentUserId] = useState("");
+  useEffect(() => {
+    const user = getUser();
+    if (user?.system_user_id) setCurrentUserId(String(user.system_user_id));
+  }, []);
+  /** The logged-in user's id, but only when they are a selectable system user
+   *  (before the user list loads we trust the session value so the field is
+   *  never left blank). */
+  const loggedInAssessorId = useMemo(() => {
+    if (!currentUserId) return "";
+    if (assessors.length === 0) return currentUserId;
+    return assessors.some((u) => String(u.system_user_id) === currentUserId)
+      ? currentUserId
+      : "";
+  }, [currentUserId, assessors]);
+
+  /** Applicant currently having a secure assessment test link generated. */
+  const [inviteBusyId, setInviteBusyId] = useState<string | null>(null);
+
+  /* --- Shared confirmation prompt for every pass / fail / save decision --- */
+  /** Pending destructive-or-committing action awaiting the user's confirmation.
+   *  Every Passed / Failed / Save / Recommend / Reject button routes through
+   *  this so nothing is committed (or a stage advanced) on a single stray
+   *  click. */
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    description: string;
+    confirmLabel: string;
+    destructive?: boolean;
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
 
   const [tab, setTab] = useState("ranking");
   const [positionFilter, setPositionFilter] = useState<string>("all");
@@ -7083,10 +7130,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       setViewingApplicant(local);
       return;
     }
-    applicantsApi
-      .list({ per_page: 100 })
-      .then((res) => {
-        const match = (res?.data ?? [])
+    fetchAllPages(applicantsApi.list)
+      .then((items) => {
+        const match = items
           .map(transformApiApplicant)
           .find((r) => r.name.trim().toLowerCase() === wanted);
         if (!match) {
@@ -7116,6 +7162,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   });
   const [reportsOpen, setReportsOpen] = useState(false);
   const [screeningOpen, setScreeningOpen] = useState(false);
+  /** Password-protected export flow — predefined report + format awaiting a file password. */
+  const [csvOpen, setCsvOpen] = useState(false);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvPending, setCsvPending] = useState<
+    | { kind: "applicant"; optionId: string; format: ReportFormat }
+    | { kind: "audit"; format: ReportFormat }
+    | null
+  >(null);
   /* --- Pipeline Overview filters (one row per applicant) --- */
   const [pipelineSearch, setPipelineSearch] = useState("");
   const [pipelinePosition, setPipelinePosition] = useState<string>("all");
@@ -7420,12 +7474,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }, 800);
   };
 
-  const handleExportAuditReport = (format: ReportFormat) => {
+  const buildAuditReportData = (): ReportData => {
     const rowsForReport = auditSort.sorted.length ? auditSort.sorted : auditFiltered;
-    if (rowsForReport.length === 0) {
-      toast.error("No audit entries to export for current filters.");
-      return;
-    }
     const columns = [
       { header: "Date & Time", key: "datetime", width: "14%" },
       { header: "Performed By", key: "actor", width: "14%" },
@@ -7453,10 +7503,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       auditActorFilter !== "all"
         ? `Filters — Action: ${auditActionFilter} | Dept: ${auditDeptFilter} | User: ${auditActorFilter}${auditSearch ? ` | Search: "${auditSearch}"` : ""}`
         : "All audit entries (no filters)";
-    const payload = {
+    return {
       title: "History & Audit Report — Applicant Management",
       subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · ${filterSummary}`,
-      sensitive: true,
       columns,
       rows: rowsData,
       summary: [
@@ -7465,13 +7514,19 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         { label: "Generated", value: new Date().toLocaleString() },
       ],
     };
-    gateSensitive(payload, () => {
-      exportReport(payload, format);
-      toast.success(`Audit report exported as ${format.toUpperCase()}`);
-    });
   };
 
-  const handleExportApplicantReport = (r: (typeof reportOptions)[number], format: ReportFormat) => {
+  /** Every format is password-protected: picking one opens the password gate. */
+  const handleExportAuditReport = (format: ReportFormat) => {
+    if (buildAuditReportData().rows.length === 0) {
+      toast.error("No audit entries to export for current filters.");
+      return;
+    }
+    setCsvPending({ kind: "audit", format });
+    setCsvOpen(true);
+  };
+
+  const buildApplicantReportData = (r: (typeof reportOptions)[number]): ReportData => {
     const cols =
       r.id === "interview"
         ? [
@@ -7513,10 +7568,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 ? true
                 : true,
           );
-    const payload = {
+    return {
       title: `Applicant Management — ${r.title}`,
-      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()}`,
-      sensitive: true,
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: ${r.title}`,
       columns: cols,
       rows: data as any,
       summary: [
@@ -7528,10 +7582,41 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         { label: "Interviews Scheduled", value: interviews.length },
       ],
     };
-    gateSensitive(payload, () => {
-      exportReport(payload, format);
-      toast.success(`${r.title} report exported as ${format.toUpperCase()}`);
-    });
+  };
+
+  /** Every format is password-protected: picking one opens the password gate. */
+  const handleExportApplicantReport = (r: (typeof reportOptions)[number], format: ReportFormat) => {
+    if (buildApplicantReportData(r).rows.length === 0) {
+      toast.error(`No records to export for ${r.title}.`);
+      return;
+    }
+    setCsvPending({ kind: "applicant", optionId: r.id, format });
+    setCsvOpen(true);
+  };
+
+  const confirmCsvExport = async (password: string) => {
+    if (!csvPending) return;
+    setCsvBusy(true);
+    try {
+      const data =
+        csvPending.kind === "audit"
+          ? buildAuditReportData()
+          : buildApplicantReportData(
+              reportOptions.find((o) => o.id === csvPending.optionId) ?? reportOptions[0]!,
+            );
+      await exportReport(data, csvPending.format, { password });
+      const { zipName } = describeExport(data, csvPending.format);
+      toast.success(
+        `${data.title} exported as password-protected ${csvPending.format.toUpperCase()} (${zipName}).`,
+      );
+      setCsvOpen(false);
+      setCsvPending(null);
+    } catch (e) {
+      console.error("Protected export failed:", e);
+      toast.error(e instanceof Error ? e.message : "Protected export failed.");
+    } finally {
+      setCsvBusy(false);
+    }
   };
 
   /** Load verification documents (with their verification results) whenever
@@ -8192,8 +8277,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
   /** Opens the interview assessment dialog for an applicant — shared by the
    *  Pipeline Overview interview cell and the applicant View screen.
-   *  The Assessor is pre-filled with the interviewer booked in
-   *  "Book an Interview" (required to save the interview). */
+   *  The Interviewer is pre-filled with the logged-in staff member (the person
+   *  processing the interview); when the booking names a different interviewer
+   *  that person is used instead. Required to save the interview. */
   const startInterviewFor = (a: Applicant) => {
     setEvaluating(a);
     setEvalScores(Object.fromEntries(assessmentCriteria.map((c) => [c, 4])));
@@ -8203,7 +8289,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const iv =
       interviews.find((x) => x.applicant === a.name && x.status !== "Cancelled") ??
       interviews.find((x) => x.applicant === a.name);
-    setEvalAssessor(assessorIdForInterviewer(iv?.interviewer));
+    setEvalAssessor(loggedInAssessorId || assessorIdForInterviewer(iv?.interviewer));
     setEvalDateTime(isoOf(new Date()));
   };
 
@@ -8659,14 +8745,25 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     );
   };
 
+  /** Queues a confirmation prompt for a committing action (Passed / Failed /
+   *  Save / Recommend / Reject) so the decision is never applied on a single
+   *  stray click. The action runs only when the user confirms. */
+  const askConfirm = (opts: {
+    title: string;
+    description: string;
+    confirmLabel: string;
+    destructive?: boolean;
+    onConfirm: () => void | Promise<void>;
+  }) => setPendingConfirm(opts);
+
   /** Persists an interview to the database API and advances the applicant.
    *  The assessor verdict (Passed / Failed) comes from the Assessor Verdict
    *  buttons in the Interview dialog footer. */
   const saveAssessment = async (verdict?: PassFail) => {
     if (!evaluating) return;
-    // The booked interviewer is the assessor of this interview — required.
+    // The interviewer who conducts/records this interview — required.
     if (!evalAssessor) {
-      toast.error("Select the interviewer (assessor) before saving the interview.");
+      toast.error("Select the interviewer before saving the interview.");
       return;
     }
     const total = Math.round(
@@ -8701,7 +8798,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           result,
           remarks: evalRemarks || "No overall evaluation recorded.",
         });
-        await applicantsApi.update(evaluating.dbId, { stage: "Assessed" });
+        // Secondary stage sync — the assessment row is already saved and the
+        // backend advances the stage in the same request, so a refusal here
+        // must not make the recorded interview look like it was lost.
+        await applicantsApi
+          .update(evaluating.dbId, { stage: "Assessed" })
+          .catch((e) => console.warn("Stage sync deferred for interview assessment:", e));
         // Persist the verdict time on the interview record as well.
         if (completedInterview?.dbId) {
           await interviewsApi
@@ -8786,6 +8888,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const questionSet = getMockAssessmentQuestions(a.position);
     setTestingTest(a);
     setTestTitle(`${a.position} — Job Knowledge Test`);
+    // Defaults to the logged-in staff member processing the test.
+    setTestAssessor(loggedInAssessorId);
     setTestDate(isoOf(new Date()));
     setTestQuestionSet(questionSet);
     setTestQuestions(
@@ -8833,6 +8937,72 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setTestAnswers({});
     setTestTimeLeft(MOCK_TEST_DURATION_SECONDS);
     testAutoSubmitted.current = false;
+  };
+
+  /** Copies text with a legacy fallback for non-secure contexts where the
+   *  async clipboard API is unavailable. */
+  const copyTextToClipboard = async (text: string): Promise<boolean> => {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return ok;
+      } catch {
+        return false;
+      }
+    }
+  };
+
+  /** Generates a single-use secure test link the APPLICANT opens on their own
+   *  device to answer the assessment test (the staff runner above stays for
+   *  supervised sessions) and copies it to the clipboard. The link needs no
+   *  login and expires in 7 days; scoring happens server-side on submit. */
+  const copyApplicantTestLink = async (a: Applicant) => {
+    if (!a.dbId) {
+      toast.error("Sync the applicant record first — the test link needs a saved applicant.");
+      return;
+    }
+    setInviteBusyId(a.id);
+    try {
+      const bank = getMockAssessmentQuestions(a.position);
+      const invite = await assessmentInvitesApi.create(a.dbId, {
+        test_title: `${a.position} — Job Knowledge Test`,
+        questions_json: bank.map((q) => ({
+          title: q.title,
+          scenario: q.scenario,
+          options: q.options,
+          correctIndex: q.correctIndex,
+          points: q.points,
+        })),
+        passing_score: 75,
+      });
+      const url = `${window.location.origin}/assessment-test/${invite.token}`;
+      const copied = await copyTextToClipboard(url);
+      toast.success(copied ? "Applicant test link copied" : "Applicant test link generated", {
+        description: url,
+      });
+      addAudit({
+        actionType: "Assessment Test Link Generated",
+        target: a.name,
+        module: "Applicant Management",
+        details: `Generated a secure assessment test link for ${a.name} (${a.position}).`,
+      });
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Could not generate the applicant test link.",
+      );
+    } finally {
+      setInviteBusyId(null);
+    }
   };
 
   /** Persists an assessment test (auto-checked score result) and advances the applicant. */
@@ -8884,11 +9054,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           test_date: testDate,
           remarks: autoRemarks,
         });
-        await applicantsApi.update(testingTest.dbId, { stage: "Assessment Test" });
       } catch (e) {
         reportStageSaveFailure("Assessment test", e);
         return;
       }
+      // Secondary stage sync — the test row is already saved and the backend
+      // advances the stage in the same request, so a refusal here must not
+      // make the recorded test look like it was lost.
+      await applicantsApi
+        .update(testingTest.dbId, { stage: "Assessment Test" })
+        .catch((e) => console.warn("Stage sync deferred for assessment test:", e));
     }
 
     setAssessmentTests((prev) => [row, ...prev]);
@@ -8942,6 +9117,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setTestingPractical(a);
     setPracticalTask(`${a.position} — Practical Demonstration`);
     setPracticalDate(isoOf(new Date()));
+    // Defaults to the logged-in staff member conducting the practical exam.
+    setPracticalAssessor(loggedInAssessorId);
     setPracticalCriteria(DEFAULT_PRACTICAL_CRITERIA.map((c) => ({ ...c })));
     // Default each criterion to a 4 / 5 rating — mirrors the Interview dialog.
     setPracticalScores(
@@ -8968,7 +9145,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }
     // The person who conducts the hands-on exam must be recorded — required.
     if (!practicalAssessor) {
-      toast.error("Select the assessor before recording the practical assessment.");
+      toast.error(
+        "Select the Practical Assessment Assessor before recording the practical assessment.",
+      );
       return;
     }
     const maxTotal = practicalCriteria.reduce((t, c) => t + (c.maxPoints || 0), 0);
@@ -9016,11 +9195,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           test_date: practicalDate,
           remarks: practicalRemarks || null,
         });
-        await applicantsApi.update(testingPractical.dbId, { stage: "Practical Test" });
       } catch (e) {
         reportStageSaveFailure("Practical assessment", e);
         return;
       }
+      // Secondary stage sync — the practical row is already saved and the
+      // backend advances the stage in the same request, so a refusal here must
+      // not make the recorded assessment look like it was lost.
+      await applicantsApi
+        .update(testingPractical.dbId, { stage: "Practical Test" })
+        .catch((e) => console.warn("Stage sync deferred for practical assessment:", e));
     }
 
     setPracticalTests((prev) => [row, ...prev]);
@@ -9059,6 +9243,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   /** Opens the Final Evaluation dialog for a candidate who completed the pipeline. */
   const openFinalEvaluation = (a: Applicant) => {
     setFinalizing(a);
+    // Defaults to the logged-in staff member signing off the final decision.
+    setFinalAssessor(loggedInAssessorId);
     setFinalDate(isoOf(new Date()));
     setFinalRemarks("");
   };
@@ -9105,11 +9291,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           recommendation,
           overall_remarks: finalRemarks || null,
         });
-        await applicantsApi.update(finalizing.dbId, { stage: "Final Evaluation" });
       } catch (e) {
         reportStageSaveFailure("Final evaluation", e);
         return;
       }
+      // Secondary stage sync — the evaluation row is already saved and the
+      // backend advances the stage in the same request, so a refusal here must
+      // not make the recorded evaluation look like it was lost.
+      await applicantsApi
+        .update(finalizing.dbId, { stage: "Final Evaluation" })
+        .catch((e) => console.warn("Stage sync deferred for final evaluation:", e));
     }
 
     setFinalEvaluations((prev) => [row, ...prev]);
@@ -9880,6 +10071,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           })()}
           onStartTest={() => openAssessmentTest(viewedApplicant)}
           onStartPractical={() => openPractical(viewedApplicant)}
+          onCopyTestLink={() => copyApplicantTestLink(viewedApplicant)}
+          inviteBusy={inviteBusyId === viewedApplicant.id}
           onStartFinal={() => openFinalEvaluation(viewedApplicant)}
           onViewInterview={(r) => setViewingInterview(r)}
           onViewTest={(t) => setViewingAssessmentTest(t)}
@@ -13580,9 +13773,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                             </DropdownMenuItem>
                                           ) : null}
                                           {showStartTest ? (
-                                            <DropdownMenuItem onClick={() => openAssessmentTest(a)}>
-                                              Start assessment test
-                                            </DropdownMenuItem>
+                                            <>
+                                              <DropdownMenuItem onClick={() => openAssessmentTest(a)}>
+                                                Start assessment test
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem
+                                                disabled={inviteBusyId === a.id}
+                                                onClick={() => void copyApplicantTestLink(a)}
+                                              >
+                                                Copy applicant test link
+                                              </DropdownMenuItem>
+                                            </>
                                           ) : null}
                                           {showStartPractical ? (
                                             <DropdownMenuItem onClick={() => openPractical(a)}>
@@ -13776,16 +13977,39 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             <Download className="h-4 w-4" /> Generate Report
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuContent align="end" className="w-64">
                           <DropdownMenuItem onClick={() => handleExportAuditReport("pdf")}>
-                            <FileText className="mr-2 h-4 w-4" /> Export as PDF
+                            <FileText className="mr-2 h-4 w-4" />
+                            <span className="flex items-center gap-1.5">
+                              Export as PDF
+                              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                            </span>
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleExportAuditReport("docx")}>
-                            <FileText className="mr-2 h-4 w-4" /> Export as DOCX
+                            <FileText className="mr-2 h-4 w-4" />
+                            <span className="flex items-center gap-1.5">
+                              Export as DOCX
+                              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                            </span>
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleExportAuditReport("excel")}>
-                            <Download className="mr-2 h-4 w-4" /> Export as Excel
+                            <FileText className="mr-2 h-4 w-4" />
+                            <span className="flex items-center gap-1.5">
+                              Export as Excel
+                              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                            </span>
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleExportAuditReport("csv")}>
+                            <FileText className="mr-2 h-4 w-4" />
+                            <span className="flex items-center gap-1.5">
+                              Export as CSV
+                              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                            </span>
+                          </DropdownMenuItem>
+                          <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+                            Every file is sealed in a password-protected ZIP (AES-256). You will be
+                            asked for a file password.
+                          </p>
                         </DropdownMenuContent>
                       </DropdownMenu>
                       {(auditSearch ||
@@ -13959,13 +14183,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         </>
       )}
 
-      {/* REPORTS DIALOG */}
+      {/* REPORTS DIALOG — predefined reports */}
       <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Generate Report</DialogTitle>
             <DialogDescription>
-              Choose a report type, then use the Generate menu to export as PDF, DOCX, Excel, or CSV.
+              Predefined reports — every format is password-protected (sealed in an AES-256 ZIP; you
+              will be asked for a file password on every export).
             </DialogDescription>
           </DialogHeader>
 
@@ -13985,26 +14210,78 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       <Download className="mr-2 h-4 w-4" /> Generate
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuContent align="end" className="w-60">
                     <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "pdf")}>
-                      <FileText className="mr-2 h-4 w-4" /> Export as PDF
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "docx")}>
-                      <FileText className="mr-2 h-4 w-4" /> Export as DOCX
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "excel")}>
-                      <Download className="mr-2 h-4 w-4" /> Export as Excel
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "csv")}>
-                      <Download className="mr-2 h-4 w-4" /> Export as CSV
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
                     </DropdownMenuItem>
+                    <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+                      Password-protected ZIP — password asked on every export.
+                    </p>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
             ))}
+            <div className="flex items-center justify-between gap-3 rounded-md border border-dashed border-border p-3">
+              <div>
+                <p className="text-sm font-medium">History &amp; Audit</p>
+                <p className="text-xs text-muted-foreground">
+                  Who did what, when — available from the History tab&apos;s Generate Report menu
+                  (same formats, every file is password-protected).
+                </p>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      <SecureExportDialog
+        open={csvOpen}
+        onOpenChange={(o) => {
+          if (!csvBusy) {
+            setCsvOpen(o);
+            if (!o) setCsvPending(null);
+          }
+        }}
+        reportTitle={
+          !csvPending || csvPending.kind === "audit"
+            ? "History & Audit Report — Applicant Management"
+            : `Applicant Management — ${reportOptions.find((o) => o.id === csvPending.optionId)?.title ?? ""}`
+        }
+        formatLabel={
+          !csvPending
+            ? ""
+            : csvPending.format === "pdf"
+              ? "PDF"
+              : csvPending.format === "docx"
+                ? "DOCX"
+                : csvPending.format === "excel"
+                  ? "Excel"
+                  : "CSV"
+        }
+        busy={csvBusy}
+        onConfirm={confirmCsvExport}
+      />
 
       {/* REVIEW DIALOG — resume screening result */}
 
@@ -14095,11 +14372,29 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <Button
                   variant="outline"
                   className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => confirmVerifyFinal("Not Recommended")}
+                  onClick={() =>
+                    askConfirm({
+                      title: "Reject this candidate?",
+                      description: `${verifyingFinal.name}'s verified decision will be recorded as Rejected — the candidate is not accepted for any position.`,
+                      confirmLabel: "Yes, reject candidate",
+                      destructive: true,
+                      onConfirm: () => confirmVerifyFinal("Not Recommended"),
+                    })
+                  }
                 >
                   <XCircle className="mr-1.5 h-4 w-4" /> Reject
                 </Button>
-                <Button onClick={() => confirmVerifyFinal()} disabled={!verifyChoice}>
+                <Button
+                  disabled={!verifyChoice}
+                  onClick={() =>
+                    askConfirm({
+                      title: "Confirm this candidate decision?",
+                      description: `The recorded recommendation "${verifyChoice}" will be verified and the candidate decision finalized.`,
+                      confirmLabel: "Yes, confirm decision",
+                      onConfirm: () => confirmVerifyFinal(),
+                    })
+                  }
+                >
                   Confirm
                 </Button>
               </DialogFooter>
@@ -14154,8 +14449,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   onClick={() => {
                     const f = positionPick;
                     const chosen = positionPickChoice;
-                    setPositionPick(null);
-                    if (f) acceptFinalEvaluation(f, "For Another Position", chosen);
+                    if (!f) return;
+                    askConfirm({
+                      title: "Accept the candidate for another position?",
+                      description: `${f.name} will be accepted for "${chosen}".`,
+                      confirmLabel: "Yes, accept candidate",
+                      onConfirm: () => {
+                        setPositionPick(null);
+                        acceptFinalEvaluation(f, "For Another Position", chosen);
+                      },
+                    });
                   }}
                 >
                   Accept candidate
@@ -14187,6 +14490,40 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Global confirmation for every pass / fail / save / recommend / reject
+          decision — opened by askConfirm(...) so a committing action can never
+          fire on a single stray click. */}
+      <AlertDialog
+        open={!!pendingConfirm}
+        onOpenChange={(o) => {
+          if (!o) setPendingConfirm(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{pendingConfirm?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{pendingConfirm?.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={cn(
+                pendingConfirm?.destructive
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : undefined,
+              )}
+              onClick={() => {
+                const action = pendingConfirm?.onConfirm;
+                setPendingConfirm(null);
+                void action?.();
+              }}
+            >
+              {pendingConfirm?.confirmLabel ?? "Confirm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={!!review} onOpenChange={(o) => !o && closeReview()}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[95vw] w-[95vw] lg:max-w-[1500px]">
@@ -14561,11 +14898,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label>
-                    Assessor <span className="text-destructive">*</span>
+                    Interviewer <span className="text-destructive">*</span>
                   </Label>
                   <Select value={evalAssessor} onValueChange={setEvalAssessor}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select assessor" />
+                      <SelectValue placeholder="Select interviewer" />
                     </SelectTrigger>
                     <SelectContent>
                       {assessors.length === 0 && (
@@ -14582,7 +14919,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     </SelectContent>
                   </Select>
                   <p className="text-[0.7rem] text-muted-foreground">
-                    Defaults to the interviewer booked in “Book an Interview” — required.
+                    Defaults to you (the logged-in user) — change it if another interviewer
+                    conducted this interview. Required.
                   </p>
                 </div>
                 <div className="space-y-1.5">
@@ -14672,14 +15010,29 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   <Button
                     variant="outline"
                     className="border-success/40 text-success hover:bg-success/10 hover:text-success"
-                    onClick={() => saveAssessment("Passed")}
+                    onClick={() =>
+                      askConfirm({
+                        title: "Mark this interview as Passed?",
+                        description: `${evaluating.name}'s interview will be saved with a Passed verdict and the candidate will advance to the assessment test stage.`,
+                        confirmLabel: "Yes, mark Passed",
+                        onConfirm: () => saveAssessment("Passed"),
+                      })
+                    }
                   >
                     <CheckCircle2 className="mr-1.5 h-4 w-4" /> Passed
                   </Button>
                   <Button
                     variant="outline"
                     className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => saveAssessment("Failed")}
+                    onClick={() =>
+                      askConfirm({
+                        title: "Mark this interview as Failed?",
+                        description: `${evaluating.name}'s interview will be saved with a Failed verdict.`,
+                        confirmLabel: "Yes, mark Failed",
+                        destructive: true,
+                        onConfirm: () => saveAssessment("Failed"),
+                      })
+                    }
                   >
                     <XCircle className="mr-1.5 h-4 w-4" /> Failed
                   </Button>
@@ -14815,7 +15168,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               ? "Auto-check now"
                               : `Answer all questions first (${totalQ - answeredCount} remaining)`
                           }
-                          onClick={() => void saveAssessmentTest()}
+                          onClick={() =>
+                            askConfirm({
+                              title: "Submit the assessment test?",
+                              description: `${testingTest.name}'s answers will be auto-checked and the result recorded. Answers cannot be changed after this.`,
+                              confirmLabel: "Yes, submit test",
+                              onConfirm: () => saveAssessmentTest(),
+                            })
+                          }
                         >
                           Finish — auto-check <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                         </Button>
@@ -14861,7 +15221,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label>
-                      Assessor <span className="text-destructive">*</span>
+                      Practical Assessment Assessor <span className="text-destructive">*</span>
                     </Label>
                     <Select value={practicalAssessor} onValueChange={setPracticalAssessor}>
                       <SelectTrigger>
@@ -14978,14 +15338,29 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <Button
                   variant="outline"
                   className="border-success/40 text-success hover:bg-success/10 hover:text-success"
-                  onClick={() => savePractical("Passed")}
+                  onClick={() =>
+                    askConfirm({
+                      title: "Mark the practical assessment as Passed?",
+                      description: `${testingPractical.name}'s practical assessment will be saved with a Passed verdict.`,
+                      confirmLabel: "Yes, mark Passed",
+                      onConfirm: () => savePractical("Passed"),
+                    })
+                  }
                 >
                   <CheckCircle2 className="mr-1.5 h-4 w-4" /> Passed
                 </Button>
                 <Button
                   variant="outline"
                   className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => savePractical("Failed")}
+                  onClick={() =>
+                    askConfirm({
+                      title: "Mark the practical assessment as Failed?",
+                      description: `${testingPractical.name}'s practical assessment will be saved with a Failed verdict.`,
+                      confirmLabel: "Yes, mark Failed",
+                      destructive: true,
+                      onConfirm: () => savePractical("Failed"),
+                    })
+                  }
                 >
                   <XCircle className="mr-1.5 h-4 w-4" /> Failed
                 </Button>
@@ -14994,7 +15369,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           )}
         </DialogContent>
       </Dialog>
-
 
       {/* FINAL EVALUATION DIALOG */}
       <Dialog open={!!finalizing} onOpenChange={(o) => !o && setFinalizing(null)}>
@@ -15071,21 +15445,43 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <Button
                   variant="outline"
                   className="border-success/40 text-success hover:bg-success/10 hover:text-success"
-                  onClick={() => saveFinalEvaluation("Recommended for Hire")}
+                  onClick={() =>
+                    askConfirm({
+                      title: "Complete the final evaluation?",
+                      description: `${finalizing.name} will be evaluated with the recommendation "Recommended for Hire" and the candidate will advance to the job offer stage.`,
+                      confirmLabel: "Yes, complete evaluation",
+                      onConfirm: () => saveFinalEvaluation("Recommended for Hire"),
+                    })
+                  }
                 >
                   <CheckCircle2 className="mr-1.5 h-4 w-4" /> Recommended for Hire
                 </Button>
                 <Button
                   variant="outline"
                   className="border-warning/40 text-warning hover:bg-warning/10 hover:text-warning"
-                  onClick={() => saveFinalEvaluation("For Another Position")}
+                  onClick={() =>
+                    askConfirm({
+                      title: "Complete the final evaluation?",
+                      description: `${finalizing.name} will be evaluated with the recommendation "For Another Position". You will pick the best position when verifying the decision.`,
+                      confirmLabel: "Yes, complete evaluation",
+                      onConfirm: () => saveFinalEvaluation("For Another Position"),
+                    })
+                  }
                 >
                   <Briefcase className="mr-1.5 h-4 w-4" /> For Another Position
                 </Button>
                 <Button
                   variant="outline"
                   className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => saveFinalEvaluation("Not Recommended")}
+                  onClick={() =>
+                    askConfirm({
+                      title: "Complete the final evaluation?",
+                      description: `${finalizing.name} will be evaluated with the recommendation "Not Recommended".`,
+                      confirmLabel: "Yes, complete evaluation",
+                      destructive: true,
+                      onConfirm: () => saveFinalEvaluation("Not Recommended"),
+                    })
+                  }
                 >
                   <XCircle className="mr-1.5 h-4 w-4" /> Not Recommended
                 </Button>

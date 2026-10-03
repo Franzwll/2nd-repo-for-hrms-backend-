@@ -27,6 +27,7 @@ import {
   FilePlus2,
   FileText,
   Flag,
+  Lock,
   Globe,
   GraduationCap,
   GripVertical,
@@ -157,7 +158,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { exportReport, type ReportData, type ReportFormat } from "@/lib/report-export";
+import {
+  describeExport,
+  exportReport,
+  type ReportData,
+  type ReportFormat,
+} from "@/lib/report-export";
+import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
 import {
   RequirementMatchPanel,
   ResumeInfoPanel,
@@ -1922,6 +1929,14 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
   const [tab, setTab] = useState("postings");
   const [mode, setMode] = useState<"template" | "custom">("custom");
+  /** Predefined reports dialog + password-protected export flow (asked on every export). */
+  const [reportsOpen, setReportsOpen] = useState(false);
+  const [csvOpen, setCsvOpen] = useState(false);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvPending, setCsvPending] = useState<{
+    id: RecruitmentReportId;
+    format: ReportFormat;
+  } | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [blocks, setBlocks] = useState<BlockId[]>([]);
   const [dragging, setDragging] = useState<BlockId | null>(null);
@@ -3950,9 +3965,35 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     }));
   }, [linkedReqId, sourceReqId, requisitions]);
 
-  const recruitmentReport = {
+  /** Predefined recruitment reports — the only reports this module exports. */
+  const recruitmentReportOptions = [
+    {
+      id: "postings" as const,
+      title: "Vacancies & Postings",
+      description: "Every job posting with vacancies, filled slots, applicants and status.",
+    },
+    {
+      id: "requisitions" as const,
+      title: "Vacancy Requisitions",
+      description: "Pending staffing requisitions raised from Core HCM.",
+    },
+    {
+      id: "funnel" as const,
+      title: "Time-to-Fill & Funnel",
+      description: "Days open, fill rate and applicants-per-vacancy per posting.",
+    },
+  ];
+  type RecruitmentReportId = (typeof recruitmentReportOptions)[number]["id"];
+
+  const daysOpenOf = (posted: string): number => {
+    const t = new Date(`${posted}T00:00:00`).getTime();
+    if (Number.isNaN(t)) return 0;
+    return Math.max(0, Math.round((Date.now() - t) / 86_400_000));
+  };
+
+  const buildPostingsReport = (): ReportData => ({
     title: "Recruitment Management Report",
-    subtitle: "Vacancies, job postings, and staffing requisitions",
+    subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: Vacancies & Postings`,
     columns: [
       { header: "Job title", key: "title" },
       { header: "Department", key: "department" },
@@ -3979,10 +4020,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       { label: "Total vacancies", value: totalVacancies },
       { label: "Pending requisitions", value: pendingRequisitions.length },
     ],
-  };
-  const requisitionReport = {
+  });
+
+  const buildRequisitionsReport = (): ReportData => ({
     title: "Vacancy Requisitions Report",
-    subtitle: "Pending requisitions from Core HCM",
+    subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: Vacancy Requisitions (pending from Core HCM)`,
     columns: [
       { header: "Reference", key: "id" },
       { header: "Position", key: "position" },
@@ -3993,29 +4035,143 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       { header: "Requested", key: "requestedAt" },
     ],
     rows: filteredRequisitions.map((request) => ({ ...request })),
+    summary: [
+      { label: "Pending requisitions", value: pendingRequisitions.length },
+      { label: "High urgency", value: highUrgencyCount },
+      { label: "Filtered", value: filteredRequisitions.length },
+    ],
+  });
+
+  const buildFunnelReport = (): ReportData => {
+    const rows = jobList.map((job) => {
+      const daysOpen = daysOpenOf(job.posted);
+      const remaining = Math.max(0, job.vacancies - job.filled);
+      const fillRate = job.vacancies > 0 ? Math.round((job.filled / job.vacancies) * 100) : 0;
+      const perVacancy = job.vacancies > 0 ? (job.applicants / job.vacancies).toFixed(1) : "—";
+      return {
+        title: job.title,
+        department: job.department,
+        status: job.status,
+        posted: job.posted,
+        daysOpen,
+        vacancies: job.vacancies,
+        filled: job.filled,
+        remaining,
+        fillRate: `${fillRate}%`,
+        applicants: job.applicants,
+        perVacancy,
+      };
+    });
+    const avgDays = rows.length
+      ? Math.round(rows.reduce((t, r) => t + (r.daysOpen as number), 0) / rows.length)
+      : 0;
+    const totalFilled = jobList.reduce((t, j) => t + j.filled, 0);
+    const totalApplicants = jobList.reduce((t, j) => t + j.applicants, 0);
+    return {
+      title: "Recruitment Time-to-Fill & Funnel Report",
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: Time-to-Fill & Funnel`,
+      columns: [
+        { header: "Job title", key: "title" },
+        { header: "Department", key: "department" },
+        { header: "Status", key: "status" },
+        { header: "Posted", key: "posted" },
+        { header: "Days open", key: "daysOpen" },
+        { header: "Vacancies", key: "vacancies" },
+        { header: "Filled", key: "filled" },
+        { header: "Remaining", key: "remaining" },
+        { header: "Fill rate", key: "fillRate" },
+        { header: "Applicants", key: "applicants" },
+        { header: "Applicants / vacancy", key: "perVacancy" },
+      ],
+      rows,
+      summary: [
+        { label: "Active postings", value: openCount },
+        { label: "Total vacancies", value: totalVacancies },
+        { label: "Total filled", value: totalFilled },
+        { label: "Total applicants", value: totalApplicants },
+        { label: "Avg. days open", value: avgDays },
+      ],
+    };
   };
+
+  const buildRecruitmentReport = (id: RecruitmentReportId): ReportData => {
+    if (id === "requisitions") return buildRequisitionsReport();
+    if (id === "funnel") return buildFunnelReport();
+    return buildPostingsReport();
+  };
+
+  const recruitmentReport = buildPostingsReport();
+  const requisitionReport = buildRequisitionsReport();
+
+  /** Every format is password-protected: picking one opens the password gate. */
+  const handleExportRecruitmentReport = (id: RecruitmentReportId, format: ReportFormat) => {
+    if (buildRecruitmentReport(id).rows.length === 0) {
+      toast.error("No records to export for the current filters.");
+      return;
+    }
+    setCsvPending({ id, format });
+    setCsvOpen(true);
+  };
+
+  const confirmRecruitmentCsv = async (password: string) => {
+    if (!csvPending) return;
+    setCsvBusy(true);
+    try {
+      const data = buildRecruitmentReport(csvPending.id);
+      await exportReport(data, csvPending.format, { password });
+      const { zipName } = describeExport(data, csvPending.format);
+      toast.success(
+        `${data.title} exported as password-protected ${csvPending.format.toUpperCase()} (${zipName}).`,
+      );
+      setCsvOpen(false);
+      setCsvPending(null);
+    } catch (e) {
+      console.error("Protected export failed:", e);
+      toast.error(e instanceof Error ? e.message : "Protected export failed.");
+    } finally {
+      setCsvBusy(false);
+    }
+  };
+
   const ReportMenu = ({
     report,
+    reportId,
     buttonClassName,
   }: {
     report: ReportData;
+    reportId?: RecruitmentReportId;
     buttonClassName?: string;
-  }) => (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" className={cn("gap-2", buttonClassName)}>
-          <Download className="h-4 w-4" /> Generate report
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {(["pdf", "docx", "excel"] as ReportFormat[]).map((format) => (
-          <DropdownMenuItem key={format} onClick={() => exportReport(report, format)}>
-            <FileText className="mr-2 h-4 w-4" /> Export as {format.toUpperCase()}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+  }) => {
+    const id: RecruitmentReportId =
+      reportId ?? (report.title.includes("Requisition") ? "requisitions" : "postings");
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" className={cn("gap-2", buttonClassName)}>
+            <Download className="h-4 w-4" /> Generate report
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          {(["pdf", "docx", "excel", "csv"] as ReportFormat[]).map((format) => (
+            <DropdownMenuItem
+              key={format}
+              onClick={() => handleExportRecruitmentReport(id, format)}
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              <span className="flex items-center gap-1.5">
+                Export as {format.toUpperCase()}
+                <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+              </span>
+            </DropdownMenuItem>
+          ))}
+          <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+            Every file is sealed in a password-protected ZIP (AES-256). You will be asked for a file
+            password.
+          </p>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
 
   const salaryLine =
     draft.salaryMin || draft.salaryMax
@@ -4464,12 +4620,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   return (
     <div>
       <PageHeader
-        eyebrow={role === "superadmin" ? "Super Admin · Recruitment" : "Admin · Recruitment"}
         title="Recruitment Management"
-        description="Open or close postings per position, then build job posts with live multi-platform previews."
         actions={
           <div className="flex items-center gap-2">
-            <ReportMenu report={recruitmentReport} />
+            <Button variant="outline" className="gap-2" onClick={() => setReportsOpen(true)}>
+              <Download className="h-4 w-4" /> Generate Report
+            </Button>
             <Button
               size="icon"
               variant="outline"
@@ -4504,7 +4660,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           <StatCard
             label="Pending Requisitions"
             value={pendingRequisitions.length}
-            hint="From Core HCM"
             icon={FileText}
             tone="success"
             onClick={() => focusRequisitions({ status: "Pending" })}
@@ -4512,7 +4667,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           <StatCard
             label="High Urgency"
             value={highUrgencyCount}
-            hint="Requisitions flagged high urgency"
             icon={AlertTriangle}
             tone="caution"
             onClick={() => focusRequisitions({ urgency: "High" })}
@@ -4521,24 +4675,24 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       )}
 
       <Tabs value={tab} onValueChange={handleTabChange} className="mt-6">
-        <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
+        <TabsList className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
           <TabsTrigger
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+            className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
             value="postings"
           >
-            <Briefcase className="mr-1.5 h-4 w-4" /> Vacancies &amp; Postings
+            <Briefcase className="h-3.5 w-3.5" /> Vacancies &amp; Postings
           </TabsTrigger>
           <TabsTrigger
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+            className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
             value="builder"
           >
-            <FilePlus2 className="mr-1.5 h-4 w-4" /> Job Post Builder
+            <FilePlus2 className="h-3.5 w-3.5" /> Job Post Builder
           </TabsTrigger>
           <TabsTrigger
-            className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
+            className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
             value="requisitions"
           >
-            <Send className="mr-1.5 h-4 w-4" /> Requisitions
+            <Send className="h-3.5 w-3.5" /> Requisitions
             {pendingRequisitions.length ? ` (${pendingRequisitions.length})` : ""}
           </TabsTrigger>
         </TabsList>
@@ -4917,6 +5071,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             to={Math.min(safePage * PAGE_SIZE, filteredJobs.length)}
             total={filteredJobs.length}
             label="postings"
+            showRangeLabel={false}
             onPageChange={setPage}
           />
         </TabsContent>
@@ -4929,10 +5084,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                     <Send className="h-5 w-5 text-primary" /> Vacancy Requisitions
                   </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Requests raised from Core HCM's job position list, pending conversion into a job
-                    post.
-                  </p>
                 </div>
                 <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                   <div className="relative">
@@ -5001,7 +5152,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                       ))}
                     </SelectContent>
                   </Select>
-                  <ReportMenu report={requisitionReport} buttonClassName="h-10 whitespace-nowrap" />
+                  <ReportMenu
+                    report={requisitionReport}
+                    reportId="requisitions"
+                    buttonClassName="h-10 whitespace-nowrap"
+                  />
                 </div>
               </div>
               <ListBody className="mt-4 space-y-2 overflow-x-auto">
@@ -5157,6 +5312,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 to={Math.min(reqPageSafe * REQ_PER_PAGE, filteredRequisitions.length)}
                 total={filteredRequisitions.length}
                 label="requisitions"
+                showRangeLabel={false}
                 onPageChange={setReqPage}
               />
             </CardContent>
@@ -7768,6 +7924,97 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           </Tabs>
         </DialogContent>
       </Dialog>
+
+      {/* PREDEFINED REPORTS DIALOG */}
+      <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">Generate Report</DialogTitle>
+            <DialogDescription>
+              Predefined reports — every format is password-protected (sealed in an AES-256 ZIP; you
+              will be asked for a file password on every export).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {recruitmentReportOptions.map((r) => (
+              <div
+                key={r.id}
+                className="flex items-center justify-between gap-3 rounded-md border border-border p-3"
+              >
+                <div>
+                  <p className="text-sm font-medium">{r.title}</p>
+                  <p className="text-xs text-muted-foreground">{r.description}</p>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="outline">
+                      <Download className="mr-2 h-4 w-4" /> Generate
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-60">
+                    <DropdownMenuItem onClick={() => handleExportRecruitmentReport(r.id, "pdf")}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExportRecruitmentReport(r.id, "docx")}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExportRecruitmentReport(r.id, "excel")}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExportRecruitmentReport(r.id, "csv")}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
+                    </DropdownMenuItem>
+                    <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+                      Password-protected ZIP — password asked on every export.
+                    </p>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <SecureExportDialog
+        open={csvOpen}
+        onOpenChange={(o) => {
+          if (!csvBusy) {
+            setCsvOpen(o);
+            if (!o) setCsvPending(null);
+          }
+        }}
+        reportTitle={
+          csvPending
+            ? (recruitmentReportOptions.find((o) => o.id === csvPending.id)?.title ??
+              "Recruitment report")
+            : "Recruitment report"
+        }
+        formatLabel={
+          !csvPending
+            ? ""
+            : csvPending.format === "pdf"
+              ? "PDF"
+              : csvPending.format === "docx"
+                ? "DOCX"
+                : csvPending.format === "excel"
+                  ? "Excel"
+                  : "CSV"
+        }
+        busy={csvBusy}
+        onConfirm={confirmRecruitmentCsv}
+      />
     </div>
   );
 }
