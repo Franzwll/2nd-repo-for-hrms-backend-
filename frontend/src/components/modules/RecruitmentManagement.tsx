@@ -1,4 +1,4 @@
-﻿import {
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -11,23 +11,28 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  BookOpen,
   Bookmark,
   Briefcase,
   CheckCircle2,
   ChevronsUpDown,
+  ClipboardList,
+  Clock,
   Copy,
   Database,
   Download,
-  ExternalLink,
   Eye,
   Facebook,
+  FileCheck,
   FilePlus2,
   FileText,
+  Flag,
   Globe,
   GraduationCap,
   GripVertical,
   Heart,
   Image as ImageIcon,
+  Info,
   Instagram,
   LayoutGrid,
   List,
@@ -37,6 +42,7 @@ import {
   MoreHorizontal,
   PencilRuler,
   Plus,
+  Repeat,
   ScanLine,
   Search,
   Send,
@@ -83,6 +89,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { CardSkeleton, StatCardsSkeleton } from "@/components/ui/loading-skeletons";
@@ -92,28 +99,48 @@ import { DEFAULT_PAGE_SIZE } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
 import { peso, type Job } from "@/data/jobs";
 import { departments, positions, type Department, type Position } from "@/data/hr";
-import { requisitionStore, useRequisitions, useRequisitionsLoading, type Requisition } from "@/data/requisitions";
+import {
+  requisitionStore,
+  useRequisitions,
+  useRequisitionsLoading,
+  type Requisition,
+} from "@/data/requisitions";
 import {
   assessmentCriteria,
   interviewers,
   screeningCriteria,
   statusMeta,
+  VERIFICATION_DOC_TYPES,
   type ApplicantStatus,
+  type VerificationDocType,
 } from "@/data/applicants";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useSort } from "@/components/portal/sortable";
 import { cn } from "@/lib/utils";
 import {
   API_BASE_URL,
+  applicantDocumentsApi,
   applicantsApi,
   coreHcmApi,
   jobPostsApi,
   resolveStorageUrl,
   screeningApi,
   type ApiJobPost,
+  type ApiRequirementTemplate,
   type ApiScreeningPreview,
   type ApiScreeningReference,
+  type JobAiUsage,
+  type JobDraftErrorPayload,
+  type ScreeningConfiguration,
+  type ScreeningRequirementEntityType,
 } from "@/lib/api";
+import {
+  reportedEntitiesStore,
+  useReportedEntities,
+  type ReportedEntity,
+  type ReportedEntityType,
+} from "@/data/reported-entities";
 import {
   isValidEmail,
   isValidName,
@@ -132,12 +159,24 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { exportReport, type ReportData, type ReportFormat } from "@/lib/report-export";
 import {
-  ScreeningAnalysisSections,
+  RequirementMatchPanel,
+  ResumeInfoPanel,
+  ScreeningDetailsAccordion,
+  ScreeningModalSummary,
   ScreeningReferenceManager,
+  ScreeningResumeDocsMatchDetail,
   keywordLibrary,
+  shortEducationLabel,
+  type ScreeningRequirementRow,
 } from "@/components/modules/ApplicantManagement";
 
 function transformApiJob(j: ApiJobPost): Job {
+  const filled = Number(j.filled_count) || 0;
+  /* Hires can outnumber the posted vacancies (e.g. 7 filled / 4 posted) when
+     candidates arrive from other channels. The Core HCM positions table keeps
+     vacancies >= filled, so the posting is normalized the same way here — the
+     "n/m filled" badge and remaining-slot checks never see an impossible ratio. */
+  const vacancies = Math.max(Number(j.vacancies) || 1, filled);
   const job: Job = {
     id: j.slug || String(j.job_post_id),
     dbId: j.job_post_id,
@@ -147,8 +186,8 @@ function transformApiJob(j: ApiJobPost): Job {
     schedule: j.schedule || "Shifting Schedule",
     salaryMin: Number(j.salary_min) || 0,
     salaryMax: Number(j.salary_max) || 0,
-    vacancies: Number(j.vacancies) || 1,
-    filled: Number(j.filled_count) || 0,
+    vacancies,
+    filled,
     posted: j.posted_date || new Date().toISOString().slice(0, 10),
     status: j.status,
     active: Boolean(j.active),
@@ -186,6 +225,681 @@ function guessRefType(term: string): "skill" | "certification" {
   )
     ? "certification"
     : "skill";
+}
+
+/** Entity types the reported-entity queue can be promoted into. */
+const REPORTED_TYPES: ReportedEntityType[] = [
+  "education",
+  "certification",
+  "skill",
+  "job_role",
+  "experience",
+];
+
+const REPORTED_TYPE_LABELS: Record<ReportedEntityType, string> = {
+  education: "Education",
+  certification: "Certificate",
+  skill: "Skill",
+  job_role: "Job Role",
+  experience: "Experience",
+};
+
+/** Structured job-post levels the education / experience requirement entities map to. */
+const EDUCATION_LEVEL_OPTIONS = [
+  "High School Graduate",
+  "Vocational / TESDA",
+  "College Level",
+  "Bachelor's Degree",
+] as const;
+
+const EXPERIENCE_LEVEL_OPTIONS = ["No Experience", "1-2 Years", "3-5 Years", "5+ Years"] as const;
+
+/**
+ * Requirement-template entity types — the screening entity set (skill, job
+ * role, certification, education, experience) plus the job post target each
+ * one fills when a template is applied in the builder.
+ */
+const REQUIREMENT_ENTITY_META: {
+  value: ScreeningRequirementEntityType;
+  label: string;
+  className: string;
+  appliesTo: string;
+}[] = [
+  {
+    value: "skill",
+    label: "Skill",
+    className: "border-primary/40 bg-primary/10 text-primary",
+    appliesTo: "Required Skills block",
+  },
+  {
+    value: "certification",
+    label: "Certification",
+    className: "border-warning/40 bg-warning/20 text-warning-foreground",
+    appliesTo: "Qualifications — screened as required certifications",
+  },
+  {
+    value: "job_role",
+    label: "Job role",
+    className: "border-success/40 bg-success/10 text-success",
+    appliesTo: "Qualifications — “Experience as …”",
+  },
+  {
+    value: "education",
+    label: "Education",
+    className: "border-border bg-muted text-muted-foreground",
+    appliesTo: "Job post education level",
+  },
+  {
+    value: "experience",
+    label: "Experience",
+    className: "border-border bg-muted text-muted-foreground",
+    appliesTo: "Job post experience level",
+  },
+];
+
+const requirementEntityMeta = (type: ScreeningRequirementEntityType) =>
+  REQUIREMENT_ENTITY_META.find((m) => m.value === type) ?? REQUIREMENT_ENTITY_META[0]!;
+
+/** The same levels the Core HCM / job_posts columns accept (case-insensitive match). */
+const isEducationLevel = (value: string) =>
+  EDUCATION_LEVEL_OPTIONS.find((l) => l.toLowerCase() === value.trim().toLowerCase());
+
+const isExperienceLevel = (value: string) =>
+  EXPERIENCE_LEVEL_OPTIONS.find((l) => l.toLowerCase() === value.trim().toLowerCase());
+
+/**
+ * Reported Entities — the queue filled by the flag buttons on UNRECOGNIZED
+ * entities in every Resume Screening Result. HR either promotes a report into
+ * the DB-managed screening vocabulary (type + optional aliases) or dismisses
+ * it; promoted entries are recognized by the NLP service on the next run.
+ */
+export function ReportedEntitiesManager() {
+  const reports = useReportedEntities();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [typeDrafts, setTypeDrafts] = useState<Record<string, ReportedEntityType>>({});
+  const [aliasDrafts, setAliasDrafts] = useState<Record<string, string>>({});
+
+  const pending = reports.filter((r) => r.status === "pending");
+  const handled = reports.filter((r) => r.status !== "pending");
+  const typeOf = (r: ReportedEntity) => typeDrafts[r.id] ?? r.suggestedType;
+
+  const promote = async (r: ReportedEntity) => {
+    setBusyId(r.id);
+    try {
+      await screeningApi.referenceData.create({
+        data_type: typeOf(r),
+        canonical_value: r.value,
+        aliases_json: (aliasDrafts[r.id] ?? "")
+          .split(",")
+          .map((a) => a.trim())
+          .filter(Boolean),
+        active: true,
+      });
+      reportedEntitiesStore.markProcessed(r.id);
+      toast.success(`"${r.value}" added to the screening vocabulary`, {
+        description: "Future screenings will classify it as recognized.",
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (/unique|already|duplicate/i.test(msg)) {
+        reportedEntitiesStore.markProcessed(r.id);
+        toast.info(`"${r.value}" is already in the vocabulary — marked as processed`);
+      } else {
+        toast.error(`"${r.value}" could not be added — ${msg || "please try again."}`);
+      }
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="flex items-center gap-2 font-display text-base font-semibold">
+            <Flag className="h-4 w-4 text-warning-foreground" /> Reported Entities
+            {pending.length > 0 && <Badge variant="secondary">{pending.length} pending</Badge>}
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Entities HR flagged as UNRECOGNIZED from a Resume Screening Result. Promote them into
+            the vocabulary so every future screening recognizes them.
+          </p>
+        </div>
+        {handled.length > 0 && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="cursor-pointer"
+            onClick={() => reportedEntitiesStore.clearProcessed()}
+          >
+            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Clear handled ({handled.length})
+          </Button>
+        )}
+      </div>
+
+      {pending.length === 0 ? (
+        <p className="rounded-md border border-dashed border-border bg-muted/20 p-6 text-center text-xs text-muted-foreground">
+          Nothing reported yet. Open a Resume Screening Result and use the flag button on an
+          UNRECOGNIZED skill, job role, certificate, education or experience entry.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {pending.map((r) => (
+            <div key={r.id} className="rounded-lg border border-border p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{r.value}</p>
+                  <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
+                    {r.source}
+                    {r.applicant ? ` · ${r.applicant}` : ""} · reported{" "}
+                    {new Date(r.reportedAt).toLocaleString()}
+                  </p>
+                </div>
+                <Badge variant="outline" className="text-[0.65rem]">
+                  Suggested: {REPORTED_TYPE_LABELS[r.suggestedType]}
+                </Badge>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Select
+                  value={typeOf(r)}
+                  onValueChange={(v) =>
+                    setTypeDrafts((p) => ({ ...p, [r.id]: v as ReportedEntityType }))
+                  }
+                >
+                  <SelectTrigger className="h-8 w-40 cursor-pointer text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REPORTED_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {REPORTED_TYPE_LABELS[t]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  className="h-8 min-w-0 flex-1 text-xs"
+                  placeholder="Aliases (comma separated, optional)"
+                  value={aliasDrafts[r.id] ?? ""}
+                  onChange={(e) => setAliasDrafts((p) => ({ ...p, [r.id]: e.target.value }))}
+                />
+                <Button
+                  size="sm"
+                  className="h-8 cursor-pointer"
+                  disabled={busyId === r.id}
+                  onClick={() => promote(r)}
+                >
+                  {busyId === r.id ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  Add to vocabulary
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 cursor-pointer"
+                  disabled={busyId === r.id}
+                  onClick={() => reportedEntitiesStore.dismiss(r.id)}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {handled.length > 0 && (
+        <div className="rounded-md border border-border/70 bg-muted/20 p-3">
+          <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
+            Handled ({handled.length})
+          </p>
+          <ul className="mt-1.5 space-y-1 text-xs text-muted-foreground">
+            {handled.slice(0, 10).map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-2">
+                <CheckCircle2
+                  className={r.status === "processed" ? "h-3.5 w-3.5 text-success" : "h-3.5 w-3.5"}
+                />
+                <span className="font-medium text-foreground">{r.value}</span>
+                <span>· {r.status === "processed" ? "added to vocabulary" : "dismissed"}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Builder flip-card back face: Entities Indicated                      */
+/* Whatever HR fills in the builder inputs and dropdowns is indicated   */
+/* here as screening entities — Recognized chips (green check) match    */
+/* resumes through the NLP service, Unrecognized chips (with a +        */
+/* button) are flagged until added to the vocabulary. Matching order    */
+/* mirrors backend reference_data.canonicalize: exact → boundary        */
+/* substring → token containment.                                       */
+/* ------------------------------------------------------------------ */
+
+type BuilderEntityMapping = Record<
+  "skills" | "job_roles" | "certifications",
+  Record<string, string[]>
+>;
+
+function normalizeEntityText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+interface BuilderEntityIndex {
+  exact: Map<string, string>;
+  keys: string[];
+}
+
+/** Flattens {canonical: aliases} into an exact lookup plus longest-first keys. */
+function buildBuilderEntityIndex(mapping: Record<string, string[]>): BuilderEntityIndex {
+  const exact = new Map<string, string>();
+  Object.entries(mapping ?? {}).forEach(([canonical, aliases]) => {
+    const canonKey = normalizeEntityText(canonical);
+    if (canonKey && !exact.has(canonKey)) exact.set(canonKey, canonical);
+    (aliases ?? []).forEach((alias) => {
+      const key = normalizeEntityText(alias);
+      if (key && !exact.has(key)) exact.set(key, canonical);
+    });
+  });
+  return { exact, keys: [...exact.keys()].sort((a, b) => b.length - a.length) };
+}
+
+/** Exact → boundary-substring → token-containment, like the NLP service. */
+function canonicalizeBuilderEntity(value: string, index: BuilderEntityIndex): string | null {
+  const norm = normalizeEntityText(value);
+  if (!norm) return null;
+  const direct = index.exact.get(norm);
+  if (direct) return direct;
+  const padded = ` ${norm} `;
+  for (const key of index.keys) {
+    if (key.length >= 4 && padded.includes(` ${key} `)) return index.exact.get(key) ?? null;
+  }
+  const valueTokens = new Set(norm.split(" "));
+  let best: string | null = null;
+  let bestLen = 0;
+  for (const key of index.keys) {
+    const keyTokens = key.split(" ");
+    if (keyTokens.length < 2 || key.length <= bestLen) continue;
+    if (keyTokens.every((t) => valueTokens.has(t))) {
+      best = index.exact.get(key) ?? null;
+      bestLen = key.length;
+    }
+  }
+  return best;
+}
+
+interface BuilderEntityHit {
+  canonical: string;
+  sample: string;
+}
+
+/** Splits filled lines into recognized canonicals vs unrecognized raw lines. */
+function analyzeBuilderEntityLines(
+  rawLines: string[],
+  index: BuilderEntityIndex,
+): { recognized: BuilderEntityHit[]; unrecognized: string[] } {
+  const recognized = new Map<string, string>();
+  const unrecognized: string[] = [];
+  const seenUnrecognized = new Set<string>();
+  rawLines.forEach((raw) => {
+    const line = raw.trim();
+    if (!line) return;
+    const hits = new Set<string>();
+    const whole = canonicalizeBuilderEntity(line, index);
+    if (whole) hits.add(whole);
+    const padded = ` ${normalizeEntityText(line)} `;
+    index.keys.forEach((key) => {
+      if (key.length >= 4 && padded.includes(` ${key} `)) {
+        const canonical = index.exact.get(key);
+        if (canonical) hits.add(canonical);
+      }
+    });
+    if (hits.size === 0) {
+      const key = normalizeEntityText(line);
+      if (!seenUnrecognized.has(key)) {
+        seenUnrecognized.add(key);
+        unrecognized.push(line);
+      }
+    } else {
+      hits.forEach((canonical) => {
+        if (!recognized.has(canonical)) recognized.set(canonical, line);
+      });
+    }
+  });
+  return {
+    recognized: [...recognized.entries()].map(([canonical, sample]) => ({ canonical, sample })),
+    unrecognized,
+  };
+}
+
+/** Per-resume scoring reference: group weights (points out of 100) plus the
+ *  pass gate, mirroring matching.match_profile_to_requirements. Weights come
+ *  live from Screening Setup when reachable, otherwise documented defaults. */
+interface BuilderScoringRef {
+  weights: { skills: number; experience: number; education: number; certifications: number };
+  passingScore: number;
+  coverageMin: number;
+  live: boolean;
+}
+
+const DEFAULT_BUILDER_SCORING: BuilderScoringRef = {
+  weights: { skills: 40, experience: 30, education: 20, certifications: 10 },
+  passingScore: 75,
+  coverageMin: 0.6,
+  live: false,
+};
+
+/** Reads live weights out of the saved/effective screening configuration. */
+function builderScoringFromConfig(
+  effective: ScreeningConfiguration | null | undefined,
+): BuilderScoringRef {
+  if (!effective) return DEFAULT_BUILDER_SCORING;
+  const findWeight = (match: string, fallback: number): number => {
+    const entry = Object.entries(effective.criteria ?? {}).find(([name]) =>
+      name.toLowerCase().includes(match),
+    );
+    const raw = entry ? Number(entry[1]?.weight) : NaN;
+    if (!Number.isFinite(raw)) return fallback;
+    // Stored either as percent (40) or fraction (0.4).
+    return raw > 0 && raw <= 1 ? raw * 100 : raw;
+  };
+  const coverageRaw = Number(effective.required_skills_coverage_min);
+  const passingRaw = Number((effective as { passing_score?: unknown }).passing_score);
+  return {
+    weights: {
+      skills: findWeight("skill", 40),
+      experience: findWeight("experience", 30),
+      education: findWeight("education", 20),
+      certifications: findWeight("cert", 10),
+    },
+    passingScore: Number.isFinite(passingRaw) ? passingRaw : 75,
+    coverageMin: Number.isFinite(coverageRaw) ? coverageRaw : 0.6,
+    live: true,
+  };
+}
+
+/** One entity group (skills / roles / certifications) with its chips. */
+function BuilderEntityGroup({
+  icon,
+  title,
+  hint,
+  scoreLine,
+  recognized,
+  unrecognized,
+  addType,
+  addingTerm,
+  onAdd,
+  emptyText,
+}: {
+  icon: ReactNode;
+  title: string;
+  hint: string;
+  scoreLine?: string;
+  recognized: BuilderEntityHit[];
+  unrecognized: string[];
+  addType: (term: string) => "skill" | "job_role" | "certification";
+  addingTerm: boolean;
+  onAdd: (term: string, type: "skill" | "job_role" | "certification") => void;
+  emptyText: string;
+}) {
+  return (
+    <section className="rounded-lg border border-border/60 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+          {icon} {title}
+        </p>
+        <span className="shrink-0 text-right">
+          {scoreLine ? (
+            <span className="block text-[0.7rem] font-semibold text-foreground">{scoreLine}</span>
+          ) : null}
+          <span className="block text-[0.68rem] font-medium text-muted-foreground">
+            {recognized.length} recognized · {unrecognized.length} to review
+          </span>
+        </span>
+      </div>
+      <p className="mt-0.5 text-[0.68rem] text-muted-foreground">{hint}</p>
+      {recognized.length === 0 && unrecognized.length === 0 ? (
+        <p className="mt-2 text-xs italic text-muted-foreground">{emptyText}</p>
+      ) : (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {recognized.map(({ canonical, sample }) => (
+            <Badge key={canonical} variant="secondary" className="gap-1 py-1 pl-2 pr-1 text-xs">
+              <span title={sample !== canonical ? `From: ${sample}` : undefined}>{canonical}</span>
+              <span
+                className="text-[0.6rem] text-success"
+                title="Recognized by the screening model"
+              >
+                ✓
+              </span>
+            </Badge>
+          ))}
+          {unrecognized.map((term) => (
+            <Badge key={term} variant="outline" className="gap-1 py-1 pl-2 pr-1 text-xs">
+              {term}
+              <button
+                type="button"
+                disabled={addingTerm}
+                title={`Add "${term}" to the screening vocabulary so the model recognizes it in resumes`}
+                className="rounded-sm px-0.5 text-[0.65rem] font-bold text-primary transition-colors hover:bg-primary/15 disabled:opacity-50"
+                onClick={() => onAdd(term, addType(term))}
+              >
+                +
+              </button>
+            </Badge>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Back face content: every filled builder field indicated as entities. */
+function BuilderEntitiesCard({
+  draft,
+  mapping,
+  loading,
+  error,
+  addingTerm,
+  scoring,
+  onAdd,
+  onRetry,
+  onFlipBack,
+}: {
+  draft: Draft;
+  mapping: BuilderEntityMapping | null;
+  loading: boolean;
+  error: string | null;
+  addingTerm: boolean;
+  scoring: BuilderScoringRef;
+  onAdd: (term: string, type: "skill" | "job_role" | "certification") => void;
+  onRetry: () => void;
+  onFlipBack: () => void;
+}) {
+  const splitLines = (s: string) =>
+    s
+      .split("\n")
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+  const filledFields: string[] = [];
+  if (draft.title.trim()) filledFields.push(draft.title.trim());
+  if (draft.department.trim()) filledFields.push(draft.department.trim());
+  if (draft.employmentType.trim()) filledFields.push(draft.employmentType.trim());
+  if (draft.schedule.trim()) filledFields.push(draft.schedule.trim());
+  if (draft.vacancies.trim()) filledFields.push(`${draft.vacancies.trim()} vacancies`);
+  if (draft.salaryMin.trim() || draft.salaryMax.trim())
+    filledFields.push(`₱${draft.salaryMin.trim() || "—"} – ₱${draft.salaryMax.trim() || "—"}`);
+
+  const skillsIndex = buildBuilderEntityIndex(mapping?.skills ?? {});
+  const rolesIndex = buildBuilderEntityIndex(mapping?.job_roles ?? {});
+  const certsIndex = buildBuilderEntityIndex(mapping?.certifications ?? {});
+
+  const skillsResult = analyzeBuilderEntityLines(splitLines(draft.skills), skillsIndex);
+  const titleCanonical = draft.title.trim()
+    ? canonicalizeBuilderEntity(draft.title.trim(), rolesIndex)
+    : null;
+  // Only certification-like lines are checked — plain sentences and skill tags
+  // are not certificates, so showing them "to review" would invite adding
+  // garbage to the vocabulary.
+  const certCandidateLines = [
+    ...splitLines(draft.qualifications),
+    ...splitLines(draft.skills),
+  ].filter((line) =>
+    /nc\s*(i{1,3}|iv|1-4)|tesda|certificate|certification|license|licence|food handler/i.test(line),
+  );
+  const certResult = analyzeBuilderEntityLines(certCandidateLines, certsIndex);
+
+  // Per-card scoring lines — simple points each indicated reference is worth
+  // to a resume. Required skills share 70% of the skills weight; each
+  // recognized certificate shares the certifications weight.
+  const perSkill =
+    skillsResult.recognized.length > 0
+      ? (scoring.weights.skills * 0.7) / skillsResult.recognized.length
+      : null;
+  const perCert =
+    certResult.recognized.length > 0
+      ? scoring.weights.certifications / certResult.recognized.length
+      : null;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
+          <ScanLine className="h-4 w-4 text-primary" /> Entities Indicated
+        </h2>
+        <Button type="button" size="sm" variant="outline" onClick={onFlipBack}>
+          <Repeat className="mr-1.5 h-3.5 w-3.5" /> Back to editing
+        </Button>
+      </div>
+      <p className="text-[0.7rem] text-muted-foreground">
+        Whatever is filled in the builder inputs and dropdowns, indicated as screening entities.
+        Recognized terms match resumes — others are flagged until added to the vocabulary.
+      </p>
+
+      {loading ? (
+        <p className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-4 text-xs text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading screening vocabulary…
+        </p>
+      ) : error ? (
+        <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+          <p className="text-xs text-destructive">{error}</p>
+          <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+            Try again
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className="rounded-lg border border-border/60 p-3">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+              Filled fields
+            </p>
+            {filledFields.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {filledFields.map((f) => (
+                  <Badge key={f} variant="secondary" className="text-xs">
+                    {f}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-1.5 text-xs italic text-muted-foreground">
+                Nothing filled yet — fill the builder, then flip here.
+              </p>
+            )}
+          </div>
+
+          <BuilderEntityGroup
+            icon={<Users className="h-3.5 w-3.5 text-primary" />}
+            title="Job role"
+            hint="From the Job title dropdown"
+            recognized={
+              titleCanonical && draft.title.trim()
+                ? [{ canonical: titleCanonical, sample: draft.title.trim() }]
+                : []
+            }
+            unrecognized={draft.title.trim() && !titleCanonical ? [draft.title.trim()] : []}
+            addType={() => "job_role"}
+            addingTerm={addingTerm}
+            onAdd={onAdd}
+            emptyText="No job title selected yet."
+          />
+
+          <BuilderEntityGroup
+            icon={<Briefcase className="h-3.5 w-3.5 text-primary" />}
+            title="Skills"
+            hint="From the Required Skills block"
+            scoreLine={
+              perSkill !== null
+                ? `${scoring.weights.skills} pts · ≈${perSkill.toFixed(2)} pts each`
+                : `${scoring.weights.skills} pts · add recognized skills to score`
+            }
+            recognized={skillsResult.recognized}
+            unrecognized={skillsResult.unrecognized}
+            addType={() => "skill"}
+            addingTerm={addingTerm}
+            onAdd={onAdd}
+            emptyText="No skills filled in the Required Skills block yet."
+          />
+
+          <BuilderEntityGroup
+            icon={<Clock className="h-3.5 w-3.5 text-primary" />}
+            title="Experience"
+            hint="Years of experience required"
+            scoreLine={`${scoring.weights.experience} pts · auto-given, not indicated`}
+            recognized={[]}
+            unrecognized={[]}
+            addType={() => "skill"}
+            addingTerm={addingTerm}
+            onAdd={onAdd}
+            emptyText="Not indicated — the builder has no experience field."
+          />
+
+          <BuilderEntityGroup
+            icon={<BookOpen className="h-3.5 w-3.5 text-primary" />}
+            title="Education"
+            hint="Minimum education level required"
+            scoreLine={`${scoring.weights.education} pts · auto-given, not indicated`}
+            recognized={[]}
+            unrecognized={[]}
+            addType={() => "skill"}
+            addingTerm={addingTerm}
+            onAdd={onAdd}
+            emptyText="Not indicated — the builder has no education field."
+          />
+
+          <BuilderEntityGroup
+            icon={<GraduationCap className="h-3.5 w-3.5 text-primary" />}
+            title="Certifications"
+            hint="Certification-like lines from the Qualifications and Required Skills blocks"
+            scoreLine={
+              perCert !== null
+                ? `${scoring.weights.certifications} pts · ≈${perCert.toFixed(2)} pts each`
+                : `${scoring.weights.certifications} pts · add recognized certs to score`
+            }
+            recognized={certResult.recognized}
+            unrecognized={certResult.unrecognized}
+            addType={(term) => guessRefType(term)}
+            addingTerm={addingTerm}
+            onAdd={onAdd}
+            emptyText="No certifications detected in the filled blocks yet."
+          />
+
+          <p className="rounded-md bg-secondary/40 p-3 text-[0.7rem] leading-relaxed text-muted-foreground">
+            Unrecognized terms are still published with the post — but resumes mentioning them will
+            be flagged for review until the term is added to the vocabulary with the + button.
+            Resumes need ≥{Math.round(scoring.coverageMin * 100)}% of required skills and score ≥{" "}
+            {scoring.passingScore} to pass.
+          </p>
+        </>
+      )}
+    </div>
+  );
 }
 
 /** One-click reveal of a requisition's justification note. */
@@ -281,6 +995,75 @@ const blockLibrary: { id: BlockId; label: string; hint: string }[] = [
 
 const fullBlocks: BlockId[] = blockLibrary.map((b) => b.id);
 
+/** The 6 AI-fillable content blocks (description → about). */
+const AI_CONTENT_BLOCKS: BlockId[] = [
+  "description",
+  "responsibilities",
+  "qualifications",
+  "skills",
+  "instructions",
+  "about",
+];
+
+/** Raw draft text for one content block (used by publish validation). */
+function blockText(d: Draft, id: BlockId): string {
+  switch (id) {
+    case "description":
+      return d.description;
+    case "responsibilities":
+      return d.responsibilities;
+    case "qualifications":
+      return d.qualifications;
+    case "skills":
+      return d.skills;
+    case "instructions":
+      return d.instructions;
+    case "about":
+      return d.about;
+    default:
+      return "";
+  }
+}
+
+/** "45s" / "3m" / "6h 10m" — compact countdown for the AI usage indicator. */
+function aiCountdown(seconds: number): string {
+  if (seconds >= 3600) return `${Math.floor(seconds / 3600)}h ${Math.ceil((seconds % 3600) / 60)}m`;
+  if (seconds >= 60) return `${Math.ceil(seconds / 60)}m`;
+  return `${Math.max(0, seconds)}s`;
+}
+
+/** Short labels for the backend AI failure codes shown in the indicator. */
+const AI_FAILURE_LABELS: Record<string, string> = {
+  quota_day: "Daily usage limit",
+  daily_limit: "Daily limit (set by admin)",
+  rate_minute: "Rate limit",
+  auth: "API key rejected",
+  model: "Model not found",
+  request: "Request rejected",
+  overloaded: "Service overloaded",
+  network: "Connection problem",
+  unreadable: "Unreadable response",
+  not_configured: "AI not configured",
+  provider: "Provider error",
+};
+
+function aiFailureLabel(code: string | null | undefined): string {
+  if (!code) return "AI unavailable";
+  return AI_FAILURE_LABELS[code] ?? "AI unavailable";
+}
+
+/** The 3 code paths that mean "the AI usage is used up" (mirrors the backend). */
+const AI_LIMIT_CODES = new Set(["quota_day", "rate_minute", "daily_limit", "quota"]);
+
+/** Tailwind classes per Generate-with-AI indicator tone. */
+const AI_TONE_CLASS = {
+  ready: "border-success/30 bg-success/10 text-success",
+  busy: "border-primary/30 bg-primary/10 text-primary",
+  limit: "border-amber-500/40 bg-amber-500/10 text-amber-600",
+  off: "border-border bg-muted text-muted-foreground",
+  muted: "border-border bg-muted text-muted-foreground",
+} as const;
+
 /**
  * Enum of work schedule options for the job post builder — kept in sync with
  * the backend WorkSchedule enum (Modules\RecruitmentManagement\Enums).
@@ -300,6 +1083,8 @@ type Draft = {
   department: string;
   employmentType: string;
   schedule: string;
+  /** "" = follow the position's assigned grade; otherwise a salary_grade_id. */
+  salaryGradeId: string;
   salaryMin: string;
   salaryMax: string;
   vacancies: string;
@@ -309,6 +1094,9 @@ type Draft = {
   skills: string;
   instructions: string;
   about: string;
+  /** Structured screening levels — the exact fields the NLP match scoring reads. */
+  educationLevel: Job["education"];
+  experienceLevel: Job["experience"];
 };
 
 const blankDraft: Draft = {
@@ -316,6 +1104,7 @@ const blankDraft: Draft = {
   department: "",
   employmentType: "Full-time",
   schedule: "Shifting Schedule",
+  salaryGradeId: "",
   salaryMin: "",
   salaryMax: "",
   vacancies: "1",
@@ -325,6 +1114,8 @@ const blankDraft: Draft = {
   skills: "",
   instructions: "",
   about: "",
+  educationLevel: "High School Graduate",
+  experienceLevel: "1-2 Years",
 };
 
 const defaultAbout =
@@ -338,15 +1129,21 @@ function jobToDraft(j: Job): Draft {
     department: j.department,
     employmentType: j.employmentType,
     schedule: j.schedule,
+    salaryGradeId: "",
     salaryMin: String(j.salaryMin),
     salaryMax: String(j.salaryMax),
-    vacancies: String(j.vacancies),
+    /* A post can never hold fewer vacancies than the hires it recorded — the
+       "7/4 filled" drift is repaired to "7/7" here as well (backend keeps the
+       stored column aligned on every save). */
+    vacancies: String(Math.max(j.vacancies, j.filled)),
     description: j.summary,
     responsibilities: j.responsibilities.join("\n"),
     qualifications: j.qualifications.join("\n"),
     skills: j.skills.join("\n"),
     instructions: defaultInstructions,
     about: defaultAbout,
+    educationLevel: j.education,
+    experienceLevel: j.experience,
   };
 }
 
@@ -358,6 +1155,7 @@ function hasContentFor(id: BlockId, d: Draft): boolean {
       return (
         d.salaryMin.trim() !== "" ||
         d.salaryMax.trim() !== "" ||
+        d.salaryGradeId.trim() !== "" ||
         (d.vacancies.trim() !== "" && d.vacancies !== "1")
       );
     case "description":
@@ -381,6 +1179,644 @@ function snapshotOf(d: Draft, b: BlockId[]) {
   return JSON.stringify({ d, b });
 }
 
+/* ===================================================================== */
+/* Requirement Templates (Screening Setup)                               */
+/* ===================================================================== */
+
+type RequirementTemplateForm = {
+  name: string;
+  /** "none" = any position, otherwise the Core HCM position_id as a string. */
+  positionId: string;
+  description: string;
+  active: boolean;
+  items: { entity_type: ScreeningRequirementEntityType; value: string }[];
+};
+
+const blankRequirementForm: RequirementTemplateForm = {
+  name: "",
+  positionId: "none",
+  description: "",
+  active: true,
+  items: [],
+};
+
+/**
+ * Screening Setup → Requirement Templates.
+ *
+ * HR defines, per position entity, the requirement entities a resume must
+ * satisfy (skill, job role, certification, education, experience) and applies
+ * a template to a job post — "Use in job post" merges it into the Job Post
+ * Builder draft (Required Skills, Qualifications and the structured education
+ * / experience levels the NLP screening scores against).
+ */
+export function RequirementTemplateManager({
+  templates,
+  loading,
+  error,
+  positions,
+  refValues,
+  busyId,
+  onReload,
+  onToggleActive,
+  onUseTemplate,
+  onAddToVocabulary,
+}: {
+  templates: ApiRequirementTemplate[];
+  loading: boolean;
+  error: string | null;
+  positions: Position[];
+  refValues: Set<string>;
+  busyId: number | null;
+  onReload: () => void;
+  onToggleActive: (template: ApiRequirementTemplate) => void;
+  onUseTemplate: (template: ApiRequirementTemplate) => void;
+  onAddToVocabulary: (term: string, type: "skill" | "job_role" | "certification") => Promise<void>;
+}) {
+  const [search, setSearch] = useState("");
+  const [positionFilter, setPositionFilter] = useState("all");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState<RequirementTemplateForm>(blankRequirementForm);
+  const [itemType, setItemType] = useState<ScreeningRequirementEntityType>("skill");
+  const [itemValue, setItemValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ApiRequirementTemplate | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const isRecognized = (value: string) => refValues.has(value.trim().toLowerCase());
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return templates.filter((t) => {
+      if (positionFilter === "unassigned" && t.position_id !== null) return false;
+      if (
+        positionFilter !== "all" &&
+        positionFilter !== "unassigned" &&
+        String(t.position_id) !== positionFilter
+      ) {
+        return false;
+      }
+      if (!q) return true;
+      const haystack = [
+        t.name,
+        t.position_title ?? "",
+        t.description ?? "",
+        ...t.items.map((i) => i.value),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [templates, search, positionFilter]);
+
+  const openCreate = () => {
+    setEditingId(null);
+    setForm(blankRequirementForm);
+    setItemType("skill");
+    setItemValue("");
+    setEditorOpen(true);
+  };
+
+  const openEdit = (template: ApiRequirementTemplate) => {
+    setEditingId(template.template_id);
+    setForm({
+      name: template.name,
+      positionId: template.position_id === null ? "none" : String(template.position_id),
+      description: template.description ?? "",
+      active: template.active,
+      items: template.items.map((i) => ({ entity_type: i.entity_type, value: i.value })),
+    });
+    setItemType("skill");
+    setItemValue("");
+    setEditorOpen(true);
+  };
+
+  const addItem = (type: ScreeningRequirementEntityType, value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    setForm((f) => {
+      const duplicate = f.items.some(
+        (i) => i.entity_type === type && i.value.toLowerCase() === trimmed.toLowerCase(),
+      );
+      if (duplicate) {
+        toast.info(`"${trimmed}" is already in this template`);
+        return f;
+      }
+      return { ...f, items: [...f.items, { entity_type: type, value: trimmed }] };
+    });
+  };
+
+  const removeItem = (index: number) =>
+    setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== index) }));
+
+  /** Curated starter keywords for the selected position (screening keyword library). */
+  const suggestions = useMemo(() => {
+    if (form.positionId === "none") return [] as string[];
+    const title = positions.find((p) => String(p.dbId) === form.positionId)?.title;
+    return title ? (keywordLibrary[title] ?? []) : [];
+  }, [form.positionId, positions]);
+
+  const save = async () => {
+    if (!form.name.trim()) {
+      toast.error("Give the requirement template a name.");
+      return;
+    }
+    if (form.items.length === 0) {
+      toast.error("Add at least one requirement entity to the template.");
+      return;
+    }
+    setSaving(true);
+    const payload = {
+      name: form.name.trim(),
+      position_id: form.positionId === "none" ? null : Number(form.positionId),
+      description: form.description.trim() || null,
+      active: form.active,
+      items: form.items.map((i) => ({
+        entity_type: i.entity_type,
+        value: i.value,
+        required: true,
+      })),
+    };
+    try {
+      if (editingId !== null) {
+        await screeningApi.requirementTemplates.update(editingId, payload);
+      } else {
+        await screeningApi.requirementTemplates.create(payload);
+      }
+      toast.success(
+        editingId !== null
+          ? `Requirement template "${payload.name}" updated`
+          : `Requirement template "${payload.name}" created`,
+        {
+          description:
+            "Apply it from the Job Post Builder picker below, or press “Use in job post”.",
+        },
+      );
+      setEditorOpen(false);
+      onReload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "The requirement template could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await screeningApi.requirementTemplates.remove(deleteTarget.template_id);
+      toast.success(`Deleted requirement template "${deleteTarget.name}"`);
+      setDeleteTarget(null);
+      onReload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "The template could not be deleted.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">Requirement templates per position</h3>
+          <p className="text-xs text-muted-foreground">
+            What to <span className="font-medium text-foreground">require</span> for a role. Each
+            template lists screening entities — skill, job role, certification, education,
+            experience — and can be applied to a job post, seeding Required Skills, Qualifications
+            and the education / experience levels.
+          </p>
+        </div>
+        <Button size="sm" className="cursor-pointer" onClick={openCreate}>
+          <Plus className="mr-1.5 h-3.5 w-3.5" /> New template
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={positionFilter} onValueChange={setPositionFilter}>
+          <SelectTrigger className="h-9 w-64 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All positions</SelectItem>
+            <SelectItem value="unassigned">Any position (not position-bound)</SelectItem>
+            {positions
+              .filter((p) => p.dbId !== undefined)
+              .map((p) => (
+                <SelectItem key={p.id} value={String(p.dbId)}>
+                  {p.title}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            className="h-9 w-56 pl-8 text-xs"
+            placeholder="Search templates…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <span className="text-[0.7rem] text-muted-foreground">
+          {filtered.length} of {templates.length} template{templates.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {loading ? (
+        <p className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-6 text-xs text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading requirement templates…
+        </p>
+      ) : error ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
+          <Button size="sm" variant="outline" className="ml-3 cursor-pointer" onClick={onReload}>
+            Retry
+          </Button>
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
+          {templates.length === 0
+            ? "No requirement templates yet — create one so every job post for that position reuses the same screening requirements."
+            : "No templates match your filters."}
+        </p>
+      ) : (
+        <div className="max-h-[24rem] space-y-3 overflow-y-auto pr-1">
+          {filtered.map((template) => (
+            <div
+              key={template.template_id}
+              className={cn(
+                "rounded-md border p-3",
+                template.active ? "border-border" : "border-dashed border-border bg-muted/30",
+              )}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                    {template.name}
+                    <Badge variant="outline">{template.position_title ?? "Any position"}</Badge>
+                    {!template.active && <Badge variant="secondary">Inactive</Badge>}
+                  </p>
+                  {template.description && (
+                    <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
+                      {template.description}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 cursor-pointer"
+                    disabled={!template.active}
+                    title={
+                      template.active
+                        ? "Apply this template's requirements to the job post draft"
+                        : "Activate the template to use it in a job post"
+                    }
+                    onClick={() => onUseTemplate(template)}
+                  >
+                    <FilePlus2 className="mr-1.5 h-3.5 w-3.5" /> Use in job post
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 cursor-pointer"
+                    title="Edit template"
+                    onClick={() => openEdit(template)}
+                  >
+                    <PencilRuler className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 cursor-pointer text-destructive"
+                    title="Delete template"
+                    onClick={() => setDeleteTarget(template)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                  <Switch
+                    checked={template.active}
+                    disabled={busyId === template.template_id}
+                    onCheckedChange={() => onToggleActive(template)}
+                  />
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1.5">
+                {REQUIREMENT_ENTITY_META.flatMap((meta) => {
+                  const values = template.items.filter((i) => i.entity_type === meta.value);
+                  if (values.length === 0) return [];
+                  return [
+                    <span
+                      key={`${template.template_id}-${meta.value}`}
+                      className="flex flex-wrap items-center gap-1"
+                    >
+                      <Badge variant="outline" className={cn("text-[0.65rem]", meta.className)}>
+                        {meta.label}
+                      </Badge>
+                      {values.map((item) => (
+                        <Badge
+                          key={item.item_id}
+                          variant="secondary"
+                          className="gap-1 text-[0.65rem]"
+                          title={
+                            isRecognized(item.value)
+                              ? "Recognized by the screening model"
+                              : "Not in the screening vocabulary yet"
+                          }
+                        >
+                          {item.value}
+                          {isRecognized(item.value) ? (
+                            <span className="text-success">✓</span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={busyId !== null}
+                              title={`Add "${item.value}" to the screening vocabulary`}
+                              className="cursor-pointer font-bold text-primary hover:underline disabled:opacity-50"
+                              onClick={() =>
+                                onAddToVocabulary(item.value, guessRefType(item.value))
+                              }
+                            >
+                              +
+                            </button>
+                          )}
+                        </Badge>
+                      ))}
+                    </span>,
+                  ];
+                })}
+                {template.items.length === 0 && (
+                  <span className="text-[0.7rem] text-muted-foreground">
+                    No requirement entities in this template yet — edit it to add some.
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {editingId !== null ? "Edit requirement template" : "New requirement template"}
+            </DialogTitle>
+            <DialogDescription>
+              Pick the position this template belongs to, then add the requirement entities a resume
+              must satisfy. Applying the template to a job post seeds the Required Skills block, the
+              Qualifications block and the structured education / experience levels the screening
+              scores against.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Template name</Label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g. Front Desk Receptionist — Core Requirements"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Position (entity)</Label>
+                <Select
+                  value={form.positionId}
+                  onValueChange={(v) => setForm({ ...form, positionId: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Any position</SelectItem>
+                    {positions
+                      .filter((p) => p.dbId !== undefined)
+                      .map((p) => (
+                        <SelectItem key={p.id} value={String(p.dbId)}>
+                          {p.title}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Description (optional)</Label>
+              <Input
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="What this template covers"
+              />
+            </div>
+
+            <div className="space-y-3 rounded-md border border-border p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label className="text-xs">Requirement entities</Label>
+                <label className="flex items-center gap-2 text-[0.7rem] text-muted-foreground">
+                  Active for the builder
+                  <Switch
+                    checked={form.active}
+                    onCheckedChange={(v) => setForm({ ...form, active: v })}
+                  />
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={itemType}
+                  onValueChange={(v) => setItemType(v as ScreeningRequirementEntityType)}
+                >
+                  <SelectTrigger className="h-9 w-40 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REQUIREMENT_ENTITY_META.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  className="h-9 min-w-0 flex-1 text-xs"
+                  placeholder={
+                    itemType === "skill"
+                      ? "e.g. Guest Relations"
+                      : itemType === "job_role"
+                        ? "e.g. Front Desk Receptionist"
+                        : itemType === "certification"
+                          ? "e.g. TESDA Cookery NC II"
+                          : itemType === "education"
+                            ? "e.g. Bachelor's Degree"
+                            : "e.g. 1-2 Years"
+                  }
+                  value={itemValue}
+                  onChange={(e) => setItemValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && itemValue.trim()) {
+                      e.preventDefault();
+                      addItem(itemType, itemValue);
+                      setItemValue("");
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9 cursor-pointer"
+                  disabled={!itemValue.trim()}
+                  onClick={() => {
+                    addItem(itemType, itemValue);
+                    setItemValue("");
+                  }}
+                >
+                  <Plus className="mr-1.5 h-3.5 w-3.5" /> Add entity
+                </Button>
+              </div>
+
+              <p className="text-[0.7rem] text-muted-foreground">
+                {requirementEntityMeta(itemType).appliesTo} · education / experience values matching{" "}
+                {EDUCATION_LEVEL_OPTIONS.join(" / ")} or {EXPERIENCE_LEVEL_OPTIONS.join(" / ")} fill
+                the job post&apos;s structured levels; any other value is added as a qualification
+                line.
+              </p>
+
+              {suggestions.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border/70 bg-muted/30 p-2">
+                  <span className="text-[0.65rem] font-medium text-muted-foreground">
+                    Suggested for this position:
+                  </span>
+                  {suggestions.map((s) => (
+                    <Badge
+                      key={s}
+                      variant="outline"
+                      className="cursor-pointer gap-1 text-[0.65rem] hover:border-primary/60"
+                      title={`Add "${s}" as a requirement entity`}
+                      onClick={() => addItem(guessRefType(s), s)}
+                    >
+                      <Plus className="h-3 w-3" /> {s}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              {form.items.length === 0 ? (
+                <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-[0.7rem] text-muted-foreground">
+                  No entities yet — add the skills, certifications, education and experience this
+                  role requires.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {REQUIREMENT_ENTITY_META.flatMap((meta) =>
+                    form.items.map((item, index) =>
+                      item.entity_type === meta.value ? (
+                        <div
+                          key={`${item.entity_type}-${index}`}
+                          className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5"
+                        >
+                          <Badge variant="outline" className={cn("text-[0.65rem]", meta.className)}>
+                            {meta.label}
+                          </Badge>
+                          <span className="min-w-0 flex-1 truncate text-xs">{item.value}</span>
+                          {isRecognized(item.value) ? (
+                            <span
+                              className="text-[0.65rem] text-success"
+                              title="Recognized by the screening model"
+                            >
+                              ✓ in vocabulary
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="cursor-pointer text-[0.65rem] font-semibold text-primary hover:underline"
+                              title={`Add "${item.value}" to the screening vocabulary`}
+                              onClick={() =>
+                                onAddToVocabulary(item.value, guessRefType(item.value))
+                              }
+                            >
+                              + vocabulary
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="cursor-pointer text-muted-foreground hover:text-destructive"
+                            title="Remove entity"
+                            onClick={() => removeItem(index)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : null,
+                    ),
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="cursor-pointer"
+              onClick={() => setEditorOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button className="cursor-pointer" disabled={saving} onClick={save}>
+              {saving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…
+                </>
+              ) : editingId !== null ? (
+                "Save template"
+              ) : (
+                "Create template"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete this requirement template?</DialogTitle>
+            <DialogDescription>
+              &quot;{deleteTarget?.name}&quot; will be removed from Screening Setup. Job posts
+              already built with it keep their content.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="cursor-pointer"
+              onClick={() => setDeleteTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="cursor-pointer"
+              disabled={deleting}
+              onClick={confirmDelete}
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting…
+                </>
+              ) : (
+                "Delete template"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }) {
   const [jobList, setJobList] = useState<Job[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
@@ -398,16 +1834,20 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       .finally(() => setJobsLoading(false));
   }, []);
 
-  /** Departments & positions straight from the Core HCM database. */
+  /** Departments, positions & salary grades straight from Core HCM. */
   const [apiDepartments, setApiDepartments] = useState<Department[]>([]);
   const [apiPositions, setApiPositions] = useState<Position[]>([]);
+  const [salaryGrades, setSalaryGrades] = useState<
+    { salary_grade_id: number; code: string; title: string; min_salary: number | null; max_salary: number | null }[]
+  >([]);
 
   useEffect(() => {
     Promise.allSettled([
       coreHcmApi.departments({ per_page: 100 }),
       coreHcmApi.positions({ per_page: 100 }),
+      coreHcmApi.salaryGrades.list({ per_page: 200 }),
     ])
-      .then(([deptRes, posRes]) => {
+      .then(([deptRes, posRes, gradeRes]) => {
         if (deptRes.status === "fulfilled") {
           setApiDepartments(
             (deptRes.value?.data ?? []).map((d) => ({
@@ -422,19 +1862,53 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             })),
           );
         }
+        const gradeById = new Map<number, { code: string; title: string; min_salary: number | null; max_salary: number | null }>();
+        if (gradeRes.status === "fulfilled") {
+          const grades = (gradeRes.value?.data ?? []).map((g) => ({
+            salary_grade_id: g.salary_grade_id,
+            code: g.code,
+            title: g.title,
+            min_salary: g.min_salary !== null && g.min_salary !== undefined ? Number(g.min_salary) : null,
+            max_salary: g.max_salary !== null && g.max_salary !== undefined ? Number(g.max_salary) : null,
+          }));
+          setSalaryGrades(grades);
+          grades.forEach((g) => gradeById.set(g.salary_grade_id, g));
+        }
         if (posRes.status === "fulfilled") {
           setApiPositions(
-            (posRes.value?.data ?? []).map((p) => ({
-              id: p.position_code || `POS-${p.position_id}`,
-              title: p.title,
-              department: p.department_name ?? p.department ?? "General",
-              level: (p.level as Position["level"]) || "Rank & File",
-              headcount: p.headcount,
-              filled: p.filled_count,
-              salaryBand: "",
-              dbId: p.position_id,
-              departmentId: p.department_id,
-            })),
+            (posRes.value?.data ?? []).map((p) => {
+              const gradeId = p.salary_grade_id ?? null;
+              const grade = gradeId !== null ? gradeById.get(gradeId) : undefined;
+              // Prefer the embedded band the API already resolved; fall back
+              // to the freshly fetched grade list (list order isn't guaranteed).
+              const band =
+                p.salary_grade ||
+                (grade
+                  ? `${grade.code} (₱${Number(grade.min_salary ?? 0).toLocaleString()} – ₱${Number(grade.max_salary ?? 0).toLocaleString()})`
+                  : p.salary_grade_code && (p.salary_grade_min !== null || p.salary_grade_max !== null)
+                    ? `${p.salary_grade_code} (₱${Number(p.salary_grade_min ?? 0).toLocaleString()} – ₱${Number(p.salary_grade_max ?? 0).toLocaleString()})`
+                    : (p.salary_grade_code ?? ""));
+              return {
+                id: p.position_code || `POS-${p.position_id}`,
+                title: p.title,
+                department: p.department_name ?? p.department ?? "General",
+                level: (p.level as Position["level"]) || "Rank & File",
+                headcount: p.headcount,
+                filled: p.filled_count,
+                salaryBand: band,
+                dbId: p.position_id,
+                departmentId: p.department_id,
+                salaryGradeId: gradeId,
+                salaryGradeMin:
+                  p.salary_grade_min !== undefined && p.salary_grade_min !== null
+                    ? Number(p.salary_grade_min)
+                    : (grade?.min_salary ?? null),
+                salaryGradeMax:
+                  p.salary_grade_max !== undefined && p.salary_grade_max !== null
+                    ? Number(p.salary_grade_max)
+                    : (grade?.max_salary ?? null),
+              };
+            }),
           );
         }
       })
@@ -480,8 +1954,19 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const [addMethod, setAddMethod] = useState<"file" | "image">("file");
   const [addFileName, setAddFileName] = useState("");
   const [addResumeFile, setAddResumeFile] = useState<File | null>(null);
+  /**
+   * Verification documents uploaded with the applicant (COE, certificates,
+   * credentials, others) — used to verify the content of the resume/CV.
+   */
+  const [verificationDocs, setVerificationDocs] = useState<
+    { docType: VerificationDocType; title: string; originalCopy: boolean; file: File }[]
+  >([]);
   /** True while a file is being dragged over the resume drop zone. */
   const [resumeDragActive, setResumeDragActive] = useState(false);
+  /** Which verification row is currently being dragged over (for drop highlight). */
+  const [verificationDragType, setVerificationDragType] = useState<VerificationDocType | null>(
+    null,
+  );
   /** Pending upload awaiting user confirmation to replace existing details. */
   const [pendingResume, setPendingResume] = useState<File | null>(null);
   const [replaceOpen, setReplaceOpen] = useState(false);
@@ -497,9 +1982,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   });
   /** Confirmation when Step 2 has unsaved fill-up and user tries to Back/X */
   const [confirmStep2ExitOpen, setConfirmStep2ExitOpen] = useState(false);
-  const [pendingStep2ExitAction, setPendingStep2ExitAction] = useState<"back" | "close" | null>(null);
+  const [pendingStep2ExitAction, setPendingStep2ExitAction] = useState<"back" | "close" | null>(
+    null,
+  );
   const hasStep2Data =
-    [addForm.name, addForm.email, addForm.phone, addForm.address].some((v) => v.trim().length > 0) ||
+    [addForm.name, addForm.email, addForm.phone, addForm.address].some(
+      (v) => v.trim().length > 0,
+    ) ||
     Boolean(addFileName) ||
     Boolean(addResumeFile);
   const [screenResult, setScreenResult] = useState<{
@@ -512,7 +2001,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   /** Screening setup dialog (moved from Applicant Management header). */
   const [screeningOpen, setScreeningOpen] = useState(false);
   /** Active tab inside the Screening Setup dialog. */
-  const [screeningTab, setScreeningTab] = useState("scoring");
+  const [screeningTab, setScreeningTab] = useState("templates");
   const [criteria, setCriteria] = useState(screeningCriteria);
   const [passing, setPassing] = useState(75);
   /** Minimum fraction of a post's required skills that must match (0—100%). */
@@ -525,23 +2014,49 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   } | null>(null);
   /** True while the screening configuration is being saved. */
   const [savingConfig, setSavingConfig] = useState(false);
-  /** Requirement Templates tab — selected position + custom-entry form. */
-  const [keywordPosition, setKeywordPosition] = useState(positions[0]!.title);
   /** Vocabulary (Reference Data) lookup so template chips can show which
    *  terms the model already recognizes — loaded when the dialog opens. */
   const [refValues, setRefValues] = useState<Set<string>>(new Set());
-  const [customTerm, setCustomTerm] = useState("");
-  const [customTermType, setCustomTermType] = useState<"skill" | "job_role" | "certification">(
-    "skill",
-  );
   const [addingTerm, setAddingTerm] = useState(false);
+  /** Requirement templates (Screening Setup) — shared by the manager and the
+   *  Job Post Builder picker. */
+  const [requirementTemplates, setRequirementTemplates] = useState<ApiRequirementTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+  const [templateBusyId, setTemplateBusyId] = useState<number | null>(null);
+  /** Builder "Requirement template" picker (reset after a template is applied). */
+  const [builderTemplatePick, setBuilderTemplatePick] = useState("");
   const totalWeight = criteria.reduce((t, c) => t + (c.enabled ? c.weight : 0), 0);
+
+  /** Loads the requirement templates used by the Screening Setup manager and
+   *  the Job Post Builder picker. */
+  const loadRequirementTemplates = useCallback(() => {
+    setTemplatesLoading(true);
+    setTemplatesError(null);
+    screeningApi.requirementTemplates
+      .list()
+      .then((res) => setRequirementTemplates(res.data ?? []))
+      .catch((e) => {
+        console.warn("Could not load requirement templates:", e);
+        setTemplatesError(
+          e instanceof Error && e.message ? e.message : "Could not load requirement templates.",
+        );
+      })
+      .finally(() => setTemplatesLoading(false));
+  }, []);
+
+  useEffect(() => {
+    loadRequirementTemplates();
+  }, [loadRequirementTemplates]);
 
   /** Loads the live screening configuration + NLP service status when the
    *  Screening Setup dialog opens — no fake defaults, everything shown is
    *  what screenings actually run with. The fast vocabulary lookup is fired
    *  first so it is not stuck behind the slow NLP health probe. */
   const loadScreeningStatus = useCallback(() => {
+    // Requirement templates + vocabulary lookup fire first so the manager and
+    // the chips have data without waiting for the slow NLP health probe.
+    loadRequirementTemplates();
     // Vocabulary lookup for the Requirement Templates tab — lets each chip
     // show whether the model already recognizes that term.
     screeningApi.referenceData
@@ -573,7 +2088,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         setCoverageMin(Math.round((effective.required_skills_coverage_min ?? 0.6) * 100));
       })
       .catch((e) => console.warn("Could not load screening configuration status:", e));
-  }, []);
+  }, [loadRequirementTemplates]);
 
   useEffect(() => {
     if (screeningOpen) loadScreeningStatus();
@@ -606,6 +2121,114 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     } finally {
       setSavingConfig(false);
     }
+  };
+
+  /** Activates / deactivates a requirement template (builder availability). */
+  const toggleRequirementTemplate = async (template: ApiRequirementTemplate) => {
+    setTemplateBusyId(template.template_id);
+    try {
+      const res = await screeningApi.requirementTemplates.toggleActive(template.template_id);
+      setRequirementTemplates((prev) =>
+        prev.map((t) => (t.template_id === res.data.template_id ? res.data : t)),
+      );
+      toast.success(
+        `Requirement template "${res.data.name}" ${res.data.active ? "activated" : "deactivated"}`,
+        {
+          description: res.data.active
+            ? "It is available in the Job Post Builder picker again."
+            : "It is hidden from the Job Post Builder picker.",
+        },
+      );
+    } catch (e) {
+      toast.error(
+        e instanceof Error && e.message ? e.message : "The template could not be updated.",
+      );
+    } finally {
+      setTemplateBusyId(null);
+    }
+  };
+
+  /** Applies a requirement template to the Job Post Builder draft: skills seed
+   *  Required Skills, certifications / job roles seed Qualifications (roles as
+   *  an "Experience as …" line) and education / experience entities fill the
+   *  structured levels the NLP screening scores against. Non-standard education
+   *  / experience values become qualification lines instead of being lost. */
+  const applyRequirementTemplateToDraft = (template: ApiRequirementTemplate) => {
+    const mergeLines = (current: string, additions: string[]) => {
+      const existing = new Set(
+        current
+          .split("\n")
+          .map((l) => l.trim().toLowerCase())
+          .filter(Boolean),
+      );
+      return [
+        ...current
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean),
+        ...additions.filter((a) => !existing.has(a.trim().toLowerCase())),
+      ];
+    };
+
+    const skills = template.items.filter((i) => i.entity_type === "skill").map((i) => i.value);
+    const qualificationLines = [
+      ...template.items.filter((i) => i.entity_type === "certification").map((i) => i.value),
+      ...template.items
+        .filter((i) => i.entity_type === "job_role")
+        .map((i) => `Experience as ${i.value}`),
+      ...template.items
+        .filter((i) => i.entity_type === "education" && !isEducationLevel(i.value))
+        .map((i) => `Education: ${i.value}`),
+      ...template.items
+        .filter((i) => i.entity_type === "experience" && !isExperienceLevel(i.value))
+        .map((i) => `Experience: ${i.value}`),
+    ];
+    const educationLevel = template.items
+      .filter((i) => i.entity_type === "education")
+      .map((i) => isEducationLevel(i.value))
+      .find((level) => level !== undefined);
+    const experienceLevel = template.items
+      .filter((i) => i.entity_type === "experience")
+      .map((i) => isExperienceLevel(i.value))
+      .find((level) => level !== undefined);
+
+    const nextSkills = mergeLines(draft.skills, skills);
+    const nextQualifications = mergeLines(draft.qualifications, qualificationLines);
+
+    setDraft((d) => ({
+      ...d,
+      skills: nextSkills.join("\n"),
+      qualifications: nextQualifications.join("\n"),
+      ...(educationLevel ? { educationLevel } : {}),
+      ...(experienceLevel ? { experienceLevel } : {}),
+    }));
+    // Make sure the seeded blocks sit on the builder canvas and are active.
+    setBlocks((b) => {
+      const needed = (["skills", "qualifications"] as BlockId[]).filter((id) => !b.includes(id));
+      return needed.length ? [...b, ...needed] : b;
+    });
+    setActiveBlock("skills");
+    setScreeningOpen(false);
+    setTab("builder");
+    setBuilderStarted(true);
+    setBuilderTemplatePick("");
+
+    const summary: string[] = [];
+    if (skills.length) summary.push(`${skills.length} skill${skills.length === 1 ? "" : "s"}`);
+    if (qualificationLines.length) {
+      summary.push(
+        `${qualificationLines.length} qualification line${
+          qualificationLines.length === 1 ? "" : "s"
+        }`,
+      );
+    }
+    if (educationLevel) summary.push(`education level ${educationLevel}`);
+    if (experienceLevel) summary.push(`experience level ${experienceLevel}`);
+    toast.success(`Requirement template "${template.name}" applied to the job post`, {
+      description: summary.length
+        ? `${summary.join(" · ")} — review them in the builder before saving.`
+        : "Review the builder draft before saving.",
+    });
   };
 
   /** Adds a template term to the Reference Data vocabulary (skill/role/cert)
@@ -641,32 +2264,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     } finally {
       setAddingTerm(false);
     }
-  };
-
-  /** Injects the selected position's template keywords into the Job Post
-   *  Builder's Required Skills block (deduplicated against what's already
-   *  drafted) and jumps straight there — one click instead of copy-paste. */
-  const applyTemplateToBuilder = (templateKeywords: string[]) => {
-    if (templateKeywords.length === 0) return;
-    const existing = new Set(draft.skills.split("\n").map((l) => l.trim().toLowerCase()));
-    const merged = [
-      ...draft.skills
-        .split("\n")
-        .map((l) => l.trim())
-        .filter(Boolean),
-      ...templateKeywords.filter((k) => !existing.has(k.trim().toLowerCase())),
-    ];
-    setDraft((d) => ({ ...d, skills: merged.join("\n") }));
-    // Make sure the Required Skills block is on the builder canvas and active,
-    // so the injected keywords are immediately visible.
-    setBlocks((b) => (b.includes("skills") ? b : [...b, "skills" as BlockId]));
-    setActiveBlock("skills");
-    setScreeningOpen(false);
-    setTab("builder");
-    setBuilderStarted(true);
-    toast.success(`Added ${templateKeywords.length} template keyword(s) to Required Skills`, {
-      description: "Review them in the Job Post Builder, then publish or save the post.",
-    });
   };
 
   /** Maps the NLP service's official status codes to the UI status values. */
@@ -754,7 +2351,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       const res = await applicantsApi.extractResume(fd);
       if (seq !== autofillSeq.current || !res.success) return;
       const pi = res.personal_information ?? {};
-      const filled: string[] = [];
+      // Compute the fields the resume actually supplied up-front: the state
+      // updater below runs asynchronously, so a `filled` array mutated inside
+      // it would still be empty when we check it for the toast.
+      const supplied = (["name", "email", "phone", "address"] as const).filter((key) => {
+        const raw = key === "phone" ? (normalizePHPhone(pi[key]) ?? "") : (pi[key]?.trim() ?? "");
+        return raw.length > 0;
+      });
       setAddForm((prev) => {
         const next = { ...prev };
         const put = (key: "name" | "email" | "phone" | "address", raw?: string | null) => {
@@ -763,7 +2366,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           if (!opts.overwrite && next[key].trim()) return; // merge mode: keep user input
           if (next[key].trim() === value) return; // nothing to change
           next[key] = value;
-          filled.push(key);
         };
         put("name", pi.name);
         put("email", pi.email);
@@ -771,9 +2373,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         put("address", pi.address);
         return next;
       });
-      if (filled.length) {
+      if (supplied.length) {
         toast.info(
-          `${opts.overwrite ? "Replaced" : "Auto-filled"} ${filled.length} field${filled.length === 1 ? "" : "s"} from "${file.name}" — review before continuing.`,
+          `${opts.overwrite ? "Replaced" : "Auto-filled"} ${supplied.length} field${supplied.length === 1 ? "" : "s"} from "${file.name}" — review before continuing.`,
         );
       }
     } catch (e) {
@@ -807,6 +2409,44 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     if (resumePreviewUrl) window.open(resumePreviewUrl, "_blank", "noopener");
   };
 
+  /** True only for natively previewable resumes (images + PDFs). DOCX/DOC
+   *  files have no inline preview — Step 3 hides the preview panel for them
+   *  instead of showing a "not available" placeholder. */
+  const isPreviewableResume = addResumeFile
+    ? /\.(jpe?g|png)$/i.test(addResumeFile.name) ||
+      addResumeFile.type.startsWith("image/") ||
+      /\.pdf$/i.test(addResumeFile.name) ||
+      addResumeFile.type === "application/pdf"
+    : false;
+
+  /** Opens any staged local file (resume or verification doc) in a new tab. */
+  const openLocalFile = (file: File) => {
+    const url = URL.createObjectURL(file);
+    window.open(url, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  };
+
+  /** Downloads any staged local file (resume or verification doc). */
+  const downloadLocalFile = (file: File) => {
+    const url = URL.createObjectURL(file);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
+
+  /** Initials for the Step 3 applicant strip avatar. */
+  const addInitials = (name: string) =>
+    name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0]?.toUpperCase() ?? "")
+      .join("") || "AP";
+
   /** Positions of the department currently selected in the wizard — deduplicated by title. */
   const addPositions = useMemo(() => {
     const filtered = knownPositions.filter((p) => p.department === addDept);
@@ -817,7 +2457,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     return Array.from(seen.values());
   }, [knownPositions, addDept]);
 
-  /** True when the selected department/position pair has a live job post. */
+  /** A posting accepts applicants only while Open, active, and not fully filled. */
+  const isPostAvailable = (j: Job) =>
+    j.active &&
+    (j.status === "Open" || (j.status as string) === "published") &&
+    j.vacancies - j.filled > 0;
+
+  /** True when the department + position pair already has a job post (any status). */
+  const isPairTaken = (dept: string, positionTitle: string) =>
+    positionTitle !== "" && jobList.some((j) => j.department === dept && j.title === positionTitle);
+
+  /** True when the selected department/position pair has an available job post. */
   const postingIndicator = useCallback(
     (dept: string, positionTitle?: string) =>
       jobList.some(
@@ -825,7 +2475,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           j.department === dept &&
           (!positionTitle || j.title === positionTitle) &&
           j.active &&
-          j.status === "Open",
+          (j.status === "Open" || (j.status as string) === "published") &&
+          j.vacancies - j.filled > 0,
       ),
     [jobList],
   );
@@ -834,6 +2485,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setAddStep(1);
     setScreenResult(null);
     setAddResumeFile(null);
+    setVerificationDocs([]);
     setPendingResume(null);
     setReplaceOpen(false);
     setAddFileName("");
@@ -920,52 +2572,42 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
   /**
    * Resolves the job post the applicant will be attached to.
-   * Admin flow: the clicked job post. Super admin flow: an existing open post
-   * for the selected position; when none exists, a Draft post is created so
-   * the NLP screening and the applicant record always have a valid job_post_id.
+   * Applicants may only be added to an available post (Open, active, with
+   * remaining slots). Closed, Draft and fully-filled postings refuse new
+   * applicants — no draft post is auto-created anymore.
    */
   const resolveJobPostId = async (): Promise<number | null> => {
-    // Admin flow — the job post is known up-front.
-    if (addPresetJob?.dbId) return addPresetJob.dbId;
-
-    const positionId = knownPositions.find((p) => p.title === addForm.position)?.dbId;
-    const departmentId = knownDepartments.find((d) => d.name === addDept)?.dbId;
-
-    // Reuse an existing post for this position (any status).
-    const existing = jobList.find((j) => j.title === addForm.position && j.department === addDept);
-    if (existing?.dbId) return existing.dbId;
-
-    // No job post exists yet — create a minimal Draft so the applicant can
-    // still be screened and saved (super admin can apply to any position).
-    if (positionId && departmentId) {
-      try {
-        const created = await jobPostsApi.create({
-          position_id: positionId,
-          department_id: departmentId,
-          title: addForm.position,
-          employment_type: "Full-time",
-          schedule: "Shifting Schedule",
-          vacancies: 1,
-          status: "Draft",
-          active: false,
-          summary: `Auto-created draft post for ${addForm.position} (${addDept}) — created when an applicant was added.`,
-        });
-        const newJob = transformApiJob(created);
-        setJobList((prev) => [newJob, ...prev]);
-        toast.info(
-          `No job post existed for ${addForm.position} — a draft post was created so the applicant can be screened.`,
+    // Admin flow — the job post is known up-front; still verify availability.
+    if (addPresetJob?.dbId) {
+      const preset = jobList.find((j) => j.dbId === addPresetJob.dbId) ?? addPresetJob;
+      if (!isPostAvailable(preset)) {
+        toast.error(
+          `Cannot add applicant: the job post for ${preset.title} is ${
+            preset.status === "Open" || (preset.status as string) === "published"
+              ? "full"
+              : preset.status
+          } and is not accepting applications.`,
         );
-        return created.job_post_id;
-      } catch (e) {
-        console.warn("Could not auto-create draft job post:", e);
-        toast.error("No job post exists for this position and a draft could not be created.");
         return null;
       }
+      return addPresetJob.dbId;
     }
+
+    // Super admin flow — reuse only an available post for the position.
+    const available = jobList.find(
+      (j) => j.title === addForm.position && j.department === addDept && isPostAvailable(j),
+    );
+    if (available?.dbId) return available.dbId;
+
+    const existing = jobList.find((j) => j.title === addForm.position && j.department === addDept);
     toast.error(
       !addForm.position
         ? "Select a position first — this department has no defined positions."
-        : "No job post found for the selected position.",
+        : existing
+          ? `No available job post for ${addForm.position} in ${addDept} — the posting is ${
+              existing.status === "Open" ? "full" : existing.status
+            }. Reopen it before adding applicants.`
+          : `No job post exists for ${addForm.position} in ${addDept} — create and publish one before adding applicants.`,
     );
     return null;
   };
@@ -1046,12 +2688,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       return;
     }
 
-    const res = screenResult!;
+    const res = screenResult;
+    if (!res) {
+      toast.error("Run the resume screening first before saving.");
+      return;
+    }
     const now = new Date();
     const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-
-    setAddOpen(false);
-    resetAddWizard();
 
     try {
       const jobPostId = addPresetJob?.dbId ?? (await resolveJobPostId());
@@ -1085,8 +2728,31 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         }
         payload = fd;
       }
-      await applicantsApi.create(payload);
+      const created = await applicantsApi.create(payload);
+
+      // Persist verification documents against the newly created applicant
+      // (COE / Certificate / Credential / Others — resume content proofs).
+      if (verificationDocs.length > 0 && created?.applicant_id) {
+        for (const doc of verificationDocs) {
+          try {
+            const fd = new FormData();
+            fd.append("doc_type", doc.docType);
+            fd.append("title", doc.title);
+            fd.append("original_copy", doc.originalCopy ? "1" : "0");
+            fd.append("file", doc.file);
+            await applicantDocumentsApi.upload(created.applicant_id, fd);
+          } catch (docErr) {
+            console.warn("Could not persist verification document:", docErr);
+          }
+        }
+        toast.success(
+          `${verificationDocs.length} verification document(s) attached for resume verification`,
+        );
+      }
+
       toast.success(`${base.name} added to the applicant list in Applicant Management`);
+      setAddOpen(false);
+      resetAddWizard();
     } catch (e) {
       console.warn("Could not persist applicant to database API:", e);
       toast.error(
@@ -1101,6 +2767,21 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const reqsLoading = useRequisitionsLoading();
 
   const [draft, setDraft] = useState<Draft>(blankDraft);
+
+  /** Active requirement templates for the builder picker — the draft's own
+   *  position is listed first so the matching template is one click away. */
+  const builderTemplateOptions = useMemo(() => {
+    const draftPositionId = knownPositions.find((p) => p.title === draft.title)?.dbId;
+    return requirementTemplates
+      .filter((t) => t.active)
+      .sort((a, b) => {
+        const aMatch = a.position_id !== null && a.position_id === draftPositionId ? 0 : 1;
+        const bMatch = b.position_id !== null && b.position_id === draftPositionId ? 0 : 1;
+        if (aMatch !== bMatch) return aMatch - bMatch;
+        return a.name.localeCompare(b.name);
+      });
+  }, [requirementTemplates, draft.title, knownPositions]);
+
   const [platforms, setPlatforms] = useState<Record<string, boolean>>({
     Website: true,
     Facebook: true,
@@ -1113,6 +2794,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const [customPosterUrl, setCustomPosterUrl] = useState<string | null>(null);
   /** The actual File object, uploaded with the job post on publish. */
   const [posterFile, setPosterFile] = useState<File | null>(null);
+  /** True while the Google AI draft is being generated for the builder. */
+  const [generatingDraft, setGeneratingDraft] = useState(false);
 
   const [deptDialogOpen, setDeptDialogOpen] = useState(false);
   const [pendingDept, setPendingDept] = useState("");
@@ -1123,8 +2806,106 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const [confirmTemplateOpen, setConfirmTemplateOpen] = useState(false);
   const [pendingTemplateJob, setPendingTemplateJob] = useState<Job | null>(null);
+  /** Styled confirm before AI generation overwrites filled builder blocks. */
+  const [confirmGenerateOpen, setConfirmGenerateOpen] = useState(false);
+  /** Block awaiting delete-confirmation (only set when it holds user content). */
+  const [pendingRemoveBlock, setPendingRemoveBlock] = useState<BlockId | null>(null);
+  /** "Do this for all" — skips the remove-confirm for the rest of this session only (in-memory, resets on reload). */
+  const [skipRemoveConfirm, setSkipRemoveConfirm] = useState(false);
+  /** Checkbox state inside the remove-confirm dialog. */
+  const [removeForAll, setRemoveForAll] = useState(false);
   const [templateSearch, setTemplateSearch] = useState("");
   const [savedSnapshot, setSavedSnapshot] = useState<string>(snapshotOf(blankDraft, []));
+  /** Entities view: false shows the builder canvas, true shows Entities Indicated. */
+  const [builderFlipped, setBuilderFlipped] = useState(false);
+  /** Screening vocabulary for entity indication — lazy-loaded on first flip. */
+  const [entityMapping, setEntityMapping] = useState<BuilderEntityMapping | null>(null);
+  const [entityLoading, setEntityLoading] = useState(false);
+  const [entityError, setEntityError] = useState<string | null>(null);
+  /** Live scoring weights for the scoring reference — same lazy load. */
+  const [entityScoring, setEntityScoring] = useState<BuilderScoringRef>(DEFAULT_BUILDER_SCORING);
+  /** AI usage/limit snapshot behind the Generate with AI indicator. */
+  const [aiUsage, setAiUsage] = useState<JobAiUsage | null>(null);
+  /** Live countdown (seconds) until the AI limit resets — 0 when not blocked. */
+  const [aiBlockedSeconds, setAiBlockedSeconds] = useState(0);
+  /** Content Templates palette — the fallback target when AI usage is used up. */
+  const templatesCardRef = useRef<HTMLDivElement | null>(null);
+
+  /** Loads the live screening vocabulary the first time the card flips. */
+  const loadEntityMapping = useCallback(() => {
+    setEntityLoading(true);
+    setEntityError(null);
+    screeningApi.referenceData
+      .mapping()
+      .then((res) => setEntityMapping(res.data))
+      .catch(() =>
+        setEntityError(
+          "Could not load the screening vocabulary. Check the connection, then try again.",
+        ),
+      )
+      .finally(() => setEntityLoading(false));
+    screeningApi.configuration
+      .status()
+      .then((res) =>
+        setEntityScoring(builderScoringFromConfig(res.data.saved ?? res.data.effective)),
+      )
+      .catch(() => setEntityScoring(DEFAULT_BUILDER_SCORING));
+  }, []);
+
+  const toggleBuilderFlip = () => {
+    const next = !builderFlipped;
+    setBuilderFlipped(next);
+    if (next && !entityMapping && !entityLoading) loadEntityMapping();
+  };
+
+  /**
+   * Refreshes the AI usage/limit snapshot shown beside Generate with AI.
+   * Best-effort: a failing indicator must never block the builder.
+   */
+  const loadAiUsage = useCallback(() => {
+    jobPostsApi
+      .aiUsage()
+      .then((res) => setAiUsage(res.data))
+      .catch(() => {
+        // Keep the last known snapshot — no toast, this is background data.
+      });
+  }, []);
+
+  useEffect(() => {
+    void loadAiUsage();
+  }, [loadAiUsage]);
+
+  // Tick the "resets in …" countdown locally while the AI limit is active.
+  useEffect(() => {
+    if (!aiUsage?.blocked_until) {
+      setAiBlockedSeconds(0);
+      return;
+    }
+    const target = new Date(aiUsage.blocked_until).getTime();
+    let refreshed = false;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((target - Date.now()) / 1000));
+      setAiBlockedSeconds(remaining);
+      // Cool-down expired — pull a fresh snapshot so the chip flips back to
+      // "ready" with real counters instead of the stale blocked state.
+      if (remaining === 0 && !refreshed) {
+        refreshed = true;
+        void loadAiUsage();
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [aiUsage?.blocked_until, loadAiUsage]);
+
+  /** Adds an unrecognized builder term to the vocabulary, then reflects it locally. */
+  const addEntityTerm = async (term: string, type: "skill" | "job_role" | "certification") => {
+    await addTermToVocabulary(term, type);
+    const key = type === "skill" ? "skills" : type === "job_role" ? "job_roles" : "certifications";
+    setEntityMapping((prev) =>
+      prev ? { ...prev, [key]: { ...prev[key], [term.trim()]: [] } } : prev,
+    );
+  };
 
   const canSaveDraft = useMemo(
     () => blocks.some((id) => hasContentFor(id, draft)),
@@ -1134,6 +2915,63 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     () => tab === "builder" && canSaveDraft && snapshotOf(draft, blocks) !== savedSnapshot,
     [tab, canSaveDraft, draft, blocks, savedSnapshot],
   );
+
+  /**
+   * "Generate with AI" usage indicator: which state the AI is in right now
+   * (ready / generating / limit reached / not configured) and how many drafts
+   * were used today. `limited` also disables the button while the provider
+   * cool-down is running — a click cannot succeed until it expires.
+   */
+  const aiIndicator = useMemo(() => {
+    const used = aiUsage?.used_today ?? 0;
+    const limit = aiUsage?.daily_limit ?? 0;
+    const usage = limit > 0 ? `${used}/${limit}` : `${used}`;
+
+    if (generatingDraft) {
+      return {
+        tone: "busy" as const,
+        label: "Generating…",
+        title: "The AI is writing the 6 content blocks now.",
+        limited: false,
+      };
+    }
+    if (!aiUsage) {
+      return {
+        tone: "muted" as const,
+        label: "AI status…",
+        title: "Checking the AI usage and limits.",
+        limited: false,
+      };
+    }
+    if (!aiUsage.configured) {
+      return {
+        tone: "off" as const,
+        label: "AI not configured",
+        title:
+          "No GEMINI_API_KEY / OPENROUTER_API_KEY is set on the API server — ask an admin to configure one.",
+        limited: false,
+      };
+    }
+    if (aiBlockedSeconds > 0) {
+      return {
+        tone: "limit" as const,
+        label: `AI limit · resets in ${aiCountdown(aiBlockedSeconds)}`,
+        title: `${aiFailureLabel(aiUsage.blocked_code)} — ${
+          aiUsage.blocked_reason ?? "the AI usage is used up."
+        } Use a Content Template meanwhile.`,
+        limited: true,
+      };
+    }
+
+    return {
+      tone: "ready" as const,
+      label: `AI · ${usage} today`,
+      title: `Ready — ${used} AI draft(s) today${
+        limit > 0 ? ` of ${limit}` : ""
+      } via ${aiUsage.primary_model}.`,
+      limited: false,
+    };
+  }, [aiUsage, aiBlockedSeconds, generatingDraft]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -1156,6 +2994,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       editingJobId ??
       `draft-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now().toString().slice(-4)}`;
     const existing = jobList.find((j) => j.id === draftId);
+    // One posting per position + department — refuse a new draft that
+    // duplicates another posting's pair (updates to the same post are fine).
+    const draftClash = jobList.find(
+      (j) => j.id !== draftId && j.title === title && j.department === draft.department,
+    );
+    if (!existing?.dbId && draftClash) {
+      toast.error(
+        `A job post already exists for ${title} in ${draft.department} (${draftClash.status}) — edit the existing post instead of creating a duplicate.`,
+      );
+      return;
+    }
     const payload: Job = {
       id: draftId,
       title,
@@ -1292,27 +3141,157 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     toast.success(`${t.name} applied to the draft`);
   };
 
+  /**
+   * One-click AI fill for the 6 builder content blocks (description,
+   * responsibilities, qualifications, skills, instructions, about).
+   * The backend grounds skills/qualifications in the screening vocabulary so
+   * applicant match scores stay meaningful. Nothing is published — HR reviews
+   * the filled draft in the builder first.
+   */
+  const generateDraftWithAI = () => {
+    if (!draft.title.trim()) {
+      toast.error("Select a job position first — the AI needs a role to write about.");
+      return;
+    }
+    // Filled blocks would be overwritten — confirm in the app's own dialog
+    // instead of the browser's native alert so it matches the design system.
+    if (AI_CONTENT_BLOCKS.some((id) => hasContentFor(id, draft))) {
+      setConfirmGenerateOpen(true);
+      return;
+    }
+    void runGenerateDraft();
+  };
+
+  const runGenerateDraft = async () => {
+    setGeneratingDraft(true);
+    try {
+      const res = await jobPostsApi.generateDraft({
+        position_title: draft.title.trim(),
+        department: draft.department || undefined,
+        employment_type: draft.employmentType || undefined,
+        schedule: draft.schedule || undefined,
+        vacancies: Number(draft.vacancies) || 1,
+      });
+      const generated = res.data;
+      setDraft((d) => ({
+        ...d,
+        description: generated.description || d.description,
+        responsibilities: (generated.responsibilities || []).join("\n"),
+        qualifications: (generated.qualifications || []).join("\n"),
+        skills: (generated.skills || []).join("\n"),
+        instructions: generated.instructions || d.instructions,
+        about: generated.about || d.about,
+      }));
+      // Make sure all 6 AI-filled blocks are on the canvas and visible.
+      setBlocks((b) => [...b, ...AI_CONTENT_BLOCKS.filter((id) => !b.includes(id))]);
+      setActiveBlock("description");
+      if (res.meta?.usage) setAiUsage(res.meta.usage);
+      const fresh = res.meta?.skills_new ?? [];
+      const via = res.meta?.generated_via;
+      const viaNote = via ? ` via ${via.service}${via.free ? " (free model)" : ""}` : "";
+      const usageNote = res.meta?.usage ? ` · ${res.meta.usage.used_today} AI draft(s) today` : "";
+      toast.success(`AI draft ready for “${draft.title}” — 6 components filled${viaNote}`, {
+        description:
+          fresh.length > 0
+            ? `${fresh.length} new skill(s) not in your vocabulary — add them via Screening setup.${usageNote}`
+            : `Review each block, then Save draft or Publish.${usageNote}`,
+      });
+    } catch (e) {
+      const err = e as Error & { status?: number; payload?: JobDraftErrorPayload };
+      const payload = err.payload;
+      if (payload?.usage) setAiUsage(payload.usage);
+
+      // Usage-limit failures drive the indicator state: say what ran out, when
+      // it resets, and offer the Content Templates as the offline path.
+      if (payload?.code && AI_LIMIT_CODES.has(payload.code)) {
+        const seconds =
+          payload.retry_after_seconds ??
+          (payload.resets_at
+            ? Math.max(0, Math.ceil((new Date(payload.resets_at).getTime() - Date.now()) / 1000))
+            : null);
+        toast.error(aiFailureLabel(payload.code), {
+          duration: 12000,
+          description: `${payload.message ?? "The AI usage is used up."}${
+            seconds ? ` Resets in ${aiCountdown(seconds)}.` : ""
+          }`,
+          action: {
+            label: "Use a template",
+            onClick: () =>
+              templatesCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
+          },
+        });
+        void loadAiUsage();
+        return;
+      }
+
+      toast.error(
+        err.message && !err.message.startsWith("Request failed")
+          ? err.message
+          : "AI draft failed — check the API key, then retry or use a template.",
+      );
+      void loadAiUsage();
+    } finally {
+      setGeneratingDraft(false);
+    }
+  };
+
   const publish = async () => {
     const chosen = Object.keys(platforms).filter((k) => platforms[k]);
+    // Both footer buttons ("Publish job post" for new posts, "Update template"
+    // when editing) run this same function, so every guard below applies to
+    // creating AND updating. Toasts name the active mode so that's visible.
+    const verb = editingJobId ? "updating the template" : "publishing";
     if (!draft.title.trim()) {
       toast.error("Job title is required");
       return;
     }
-    const vac = Number(draft.vacancies);
-    if (isNaN(vac) || vac < 1) {
+    const rawVac = Number(draft.vacancies);
+    if (isNaN(rawVac) || rawVac < 1) {
       toast.error("Vacancies must be a valid positive number (at least 1).");
       return;
     }
+    const vac = rawVac;
     const sMin = Number(draft.salaryMin) || 0;
     const sMax = Number(draft.salaryMax) || 0;
     if (sMin < 0 || sMax < 0) {
       toast.error("Salary amounts cannot be negative.");
       return;
     }
+    // Unrealistic salaries (e.g. 0–10) are rejected — blank stays allowed and
+    // publishes as "Salary to be discussed". Raise MIN_REALISTIC_SALARY to
+    // tighten (e.g. 1000) without touching the logic below.
+    const MIN_REALISTIC_SALARY = 10;
+    const minEntered = draft.salaryMin.trim() !== "";
+    const maxEntered = draft.salaryMax.trim() !== "";
+    if (
+      (minEntered && sMin <= MIN_REALISTIC_SALARY) ||
+      (maxEntered && sMax <= MIN_REALISTIC_SALARY)
+    ) {
+      toast.error(`Salary must be over ₱${MIN_REALISTIC_SALARY} — or leave both blank.`);
+      return;
+    }
     if (sMin > sMax && sMax > 0) {
       toast.error("Minimum salary cannot be greater than maximum salary.");
       return;
     }
+    // Publishing requires a complete post — every content block must hold
+    // real text (drafts may stay partial via "Save draft"). Missing blocks
+    // are added to the canvas and focused so HR can fill them immediately.
+    const missingIds = AI_CONTENT_BLOCKS.filter((id) => lines(blockText(draft, id)).length === 0);
+    const missingLabels = missingIds.map(
+      (id) => blockLibrary.find((b) => b.id === id)?.label ?? id,
+    );
+    if (!String(draft.department ?? "").trim()) missingLabels.unshift("Department");
+    if (missingLabels.length > 0) {
+      setBlocks((b) => [...b, ...missingIds.filter((id) => !b.includes(id))]);
+      const firstMissing = missingIds[0];
+      if (firstMissing) setActiveBlock(firstMissing);
+      toast.error(`Complete these before ${verb}: ${missingLabels.join(", ")}`, {
+        description: "Use Generate with AI or fill each block manually.",
+      });
+      return;
+    }
+    const editingFilled = editingJobId ? (jobList.find((j) => j.id === editingJobId)?.filled ?? 0) : 0;
     const jobPayload: Job = {
       id:
         editingJobId ??
@@ -1326,15 +3305,15 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       salaryMin: Number(draft.salaryMin) || 0,
       salaryMax: Number(draft.salaryMax) || 0,
       vacancies: Number(draft.vacancies) || 1,
-      filled: editingJobId ? (jobList.find((j) => j.id === editingJobId)?.filled ?? 0) : 0,
+      filled: editingFilled,
       posted: editingJobId
         ? (jobList.find((j) => j.id === editingJobId)?.posted ??
           new Date().toISOString().slice(0, 10))
         : new Date().toISOString().slice(0, 10),
       status: chosen.length ? "Open" : "Draft",
       active: chosen.length > 0,
-      experience: "1-2 Years",
-      education: "High School Graduate",
+      experience: draft.experienceLevel,
+      education: draft.educationLevel,
       summary: draft.description,
       description: draft.description,
       responsibilities: lines(draft.responsibilities),
@@ -1364,6 +3343,19 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     // Persist to backend database API — resolve the position & department
     // from the database (Core HCM) and auto-create them when the role is new,
     // so every posting carries a valid position_id / department_id.
+    // NOTE: department creation requires a unique `code` and position creation
+    // requires a `salary_grade_id` — both are supplied here so a brand-new
+    // title/department from the builder never fails validation server-side.
+    const deptCodeFor = (name: string) => {
+      const initials = name
+        .split(/[\s&/\\-]+/)
+        .filter(Boolean)
+        .map((w) => w[0])
+        .join("")
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "");
+      return (initials || "DEPT").slice(0, 20);
+    };
     let positionId = positionsForDepartment(draft.department).find(
       (p) => p.title === draft.title,
     )?.dbId;
@@ -1371,17 +3363,53 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
     try {
       if (!departmentId) {
-        const created = await coreHcmApi.createDepartment({
-          name: draft.department,
-        });
-        departmentId = created.department_id;
+        let code = deptCodeFor(draft.department);
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const created = await coreHcmApi.createDepartment({
+              name: draft.department,
+              code,
+            });
+            departmentId = created.department_id;
+            break;
+          } catch (deptErr) {
+            const codeTaken = (deptErr as { errors?: Record<string, string[]> })?.errors?.["code"];
+            if (codeTaken && attempt < 2) {
+              code = `${deptCodeFor(draft.department)}${attempt + 2}`.slice(0, 20);
+              continue;
+            }
+            throw deptErr;
+          }
+        }
       }
       if (!positionId) {
+        // Positions require a salary grade — prefer the Job Info grade picker,
+        // then the grade whose range fits the draft salary, falling back to
+        // the lowest grade. HR can adjust it later in Core HCM → Departments
+        // & Positions.
+        const gradesRes = await coreHcmApi.salaryGrades.list({ per_page: 100 });
+        const grades = gradesRes?.data ?? [];
+        const explicit = draft.salaryGradeId
+          ? grades.find((g) => String(g.salary_grade_id) === draft.salaryGradeId)
+          : undefined;
+        const draftMin = Number(draft.salaryMin) || 0;
+        const byMin = [...grades].sort((a, b) => Number(a.min_salary) - Number(b.min_salary));
+        const inRange = byMin.find((g) => {
+          const lo = Number(g.min_salary) || 0;
+          const hi =
+            g.max_salary === null || g.max_salary === undefined ? Infinity : Number(g.max_salary);
+          return draftMin >= lo && draftMin <= hi;
+        });
+        const gradePick = explicit ?? inRange ?? byMin[0];
+        if (!gradePick) {
+          throw new Error("No salary grade exists — create one in Core HCM → Salary Grades first.");
+        }
         const created = await coreHcmApi.createPosition({
           title: draft.title,
           department_id: departmentId,
+          salary_grade_id: gradePick.salary_grade_id,
           level: "Rank & File",
-          headcount: 1,
+          headcount: Number(draft.vacancies) || 1,
         });
         positionId = created.position_id;
       }
@@ -1397,6 +3425,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         vacancies: jobPayload.vacancies,
         status: jobPayload.status,
         active: jobPayload.active,
+        /* Structured screening levels — the NLP match scoring reads them. */
+        experience_level: jobPayload.experience,
+        education_level: jobPayload.education,
         summary: jobPayload.summary,
         description: jobPayload.description,
         responsibilities: jobPayload.responsibilities,
@@ -1426,6 +3457,20 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
       let createdJobId: number | undefined;
       const existing = editingJobId ? jobList.find((j) => j.id === editingJobId) : undefined;
+      // One posting per position + department — refuse a new post that
+      // duplicates another posting's pair (updates to the same post are fine).
+      const clash = jobList.find(
+        (j) =>
+          j.id !== jobPayload.id &&
+          j.title === jobPayload.title &&
+          j.department === jobPayload.department,
+      );
+      if (!(editingJobId && existing?.dbId) && clash) {
+        toast.error(
+          `A job post already exists for ${jobPayload.title} in ${jobPayload.department} (${clash.status}) — edit the existing post instead of creating a duplicate.`,
+        );
+        return;
+      }
       if (editingJobId && existing?.dbId) {
         await jobPostsApi.update(existing.dbId, payload);
       } else {
@@ -1452,12 +3497,53 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       );
     } catch (e) {
       console.warn("Could not persist job post to database API:", e);
-      toast.error("The job posting could not be saved to the database.");
+      const err = e as { status?: number; code?: string; message?: string };
+      if (err?.code === "DUPLICATE_JOB_POST" || err?.status === 409) {
+        toast.error(
+          err?.message ||
+            `A job post already exists for “${jobPayload.title}” — edit the existing post instead of creating a duplicate.`,
+        );
+      } else if (err?.message) {
+        toast.error(`The job posting could not be saved to the database: ${err.message}`);
+      } else {
+        toast.error("The job posting could not be saved to the database.");
+      }
     }
   };
 
+  /** Seed salary grade/band + salary range from a Core HCM position. */
+  const seedFromPosition = (department: string, title: string, base: Draft): Draft => {
+    const departmentId = knownDepartments.find((d) => d.name === department)?.dbId;
+    const position = knownPositions.find(
+      (p) =>
+        (((departmentId !== undefined && p.departmentId === departmentId) ||
+          (p.departmentId === undefined && p.department === department)) &&
+          p.title === title),
+    );
+    if (!position) return base;
+    const grade = position.salaryGradeId
+      ? salaryGrades.find((g) => g.salary_grade_id === position.salaryGradeId)
+      : null;
+    return {
+      ...base,
+      salaryGradeId: position.salaryGradeId ? String(position.salaryGradeId) : base.salaryGradeId,
+      salaryMin:
+        base.salaryMin ||
+        (grade?.min_salary ?? position.salaryGradeMin ?? null)?.toString() ||
+        base.salaryMin,
+      salaryMax:
+        base.salaryMax ||
+        (grade?.max_salary ?? position.salaryGradeMax ?? null)?.toString() ||
+        base.salaryMax,
+    };
+  };
+
   const startNewPost = (department: string, position?: string) => {
-    const seeded: Draft = { ...blankDraft, department, title: position ?? "" };
+    const seeded: Draft = seedFromPosition(
+      department,
+      position ?? "",
+      { ...blankDraft, department, title: position ?? "" },
+    );
     setDraft(seeded);
     setBlocks(position ? ["title"] : []);
     setBuilderStarted(true);
@@ -1503,13 +3589,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const convertRequisition = (reqId: string) => {
     const req = requisitions.find((r) => r.id === reqId);
     if (!req) return;
-    const seeded: Draft = {
-      ...blankDraft,
-      title: req.position,
-      department: req.department,
-      vacancies: String(req.count),
-      description: `We are looking for ${req.count} ${req.position}(s) to join our ${req.department} team.`,
-    };
+    const seeded: Draft = seedFromPosition(
+      req.department,
+      req.position,
+      {
+        ...blankDraft,
+        title: req.position,
+        department: req.department,
+        vacancies: String(req.count),
+        description: `We are looking for ${req.count} ${req.position}(s) to join our ${req.department} team.`,
+      },
+    );
     setDraft(seeded);
     setBlocks(fullBlocks);
     setEditingJobId(null);
@@ -1529,6 +3619,58 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setActiveBlock(id);
   };
   const removeBlock = (id: BlockId) => setBlocks((b) => b.filter((x) => x !== id));
+
+  /** True when removing this block would discard text the user entered. */
+  const blockHasContent = (id: BlockId): boolean => {
+    if (id === "picture") return posterFile !== null || customPosterUrl !== null;
+    if (id === "title") return false;
+    return hasContentFor(id, draft);
+  };
+
+  /** Clears the draft data behind a block being removed. */
+  const clearBlockContent = (id: BlockId) => {
+    if ((AI_CONTENT_BLOCKS as BlockId[]).includes(id)) {
+      setDraft((d) => ({
+        ...d,
+        description: id === "description" ? "" : d.description,
+        responsibilities: id === "responsibilities" ? "" : d.responsibilities,
+        qualifications: id === "qualifications" ? "" : d.qualifications,
+        skills: id === "skills" ? "" : d.skills,
+        instructions: id === "instructions" ? "" : d.instructions,
+        about: id === "about" ? "" : d.about,
+      }));
+      return;
+    }
+    if (id === "info")
+      setDraft((d) => ({ ...d, salaryGradeId: "", salaryMin: "", salaryMax: "" }));
+    if (id === "picture") handlePosterRemove();
+  };
+
+  /** Trash-icon handler: a filled block asks first so text is never lost by accident. */
+  const requestRemoveBlock = (id: BlockId) => {
+    if (skipRemoveConfirm) {
+      // "Do this for all" was checked earlier this session — same outcome as
+      // confirming: remove the block and clear its text, no dialog.
+      clearBlockContent(id);
+      removeBlock(id);
+      return;
+    }
+    if (blockHasContent(id)) {
+      setRemoveForAll(false);
+      setPendingRemoveBlock(id);
+      return;
+    }
+    removeBlock(id);
+  };
+
+  const confirmRemoveBlock = () => {
+    if (removeForAll) setSkipRemoveConfirm(true);
+    if (pendingRemoveBlock) {
+      clearBlockContent(pendingRemoveBlock);
+      removeBlock(pendingRemoveBlock);
+    }
+    setPendingRemoveBlock(null);
+  };
 
   /**
    * Focuses a block's first editor control (textarea or combobox trigger).
@@ -1623,7 +3765,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setPage(1);
   }, [search, statusFilter, deptFilter, dateFilter]);
 
-  const listGridCols = "grid-cols-[minmax(220px,1.4fr)_110px_150px_190px_210px_110px_190px]";
+  const listGridCols =
+    "md:grid-cols-[minmax(220px,1.5fr)_90px_150px_180px_minmax(180px,1fr)_130px_minmax(240px,auto)]";
 
   // Metric cards jump to the postings list with the matching filter applied.
   const focusPostings = (status: "all" | "Open" | "Closed", sortBy?: "filled" | "applicants") => {
@@ -1916,6 +4059,79 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     );
   };
 
+  /** The Core HCM position behind the current draft (department + title). */
+  const draftPosition = useMemo(
+    () =>
+      positionsForDepartment(draft.department).find((p) => p.title === draft.title) ?? null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [draft.department, draft.title, knownPositions, knownDepartments],
+  );
+
+  /** Salary grade object currently selected in Job Info ("") = position grade. */
+  const draftGrade = useMemo(() => {
+    if (draft.salaryGradeId) {
+      return salaryGrades.find((g) => String(g.salary_grade_id) === draft.salaryGradeId) ?? null;
+    }
+    if (draftPosition?.salaryGradeId) {
+      return (
+        salaryGrades.find((g) => g.salary_grade_id === draftPosition.salaryGradeId) ?? null
+      );
+    }
+    return null;
+  }, [draft.salaryGradeId, draftPosition, salaryGrades]);
+
+  /**
+   * Applies a Core HCM position's assigned salary grade/band to the Job Info
+   * draft, filling salary min/max from the band. Explicit salary edits are
+   * kept — pass forceSalary to overwrite them (used when the position itself
+   * changes).
+   */
+  const applyPositionToDraft = (
+    department: string,
+    title: string,
+    opts: { forceSalary?: boolean } = {},
+  ) => {
+    const position =
+      knownPositions.find((p) => {
+        const departmentId = knownDepartments.find((d) => d.name === department)?.dbId;
+        const sameDept =
+          (departmentId !== undefined && p.departmentId === departmentId) ||
+          (p.departmentId === undefined && p.department === department);
+        return sameDept && p.title === title;
+      }) ?? null;
+
+    setDraft((d) => {
+      const next: Draft = { ...d, department, title };
+      if (position?.salaryGradeId) {
+        next.salaryGradeId = String(position.salaryGradeId);
+      }
+      const grade =
+        (position?.salaryGradeId &&
+          salaryGrades.find((g) => g.salary_grade_id === position.salaryGradeId)) ||
+        null;
+      const bandMin = grade?.min_salary ?? position?.salaryGradeMin ?? null;
+      const bandMax = grade?.max_salary ?? position?.salaryGradeMax ?? null;
+      if (opts.forceSalary || d.salaryMin.trim() === "") {
+        if (bandMin !== null && bandMin !== undefined) next.salaryMin = String(bandMin);
+      }
+      if (opts.forceSalary || d.salaryMax.trim() === "") {
+        if (bandMax !== null && bandMax !== undefined) next.salaryMax = String(bandMax);
+      }
+      return next;
+    });
+
+    if (position) {
+      const grade = position.salaryGradeId
+        ? salaryGrades.find((g) => g.salary_grade_id === position.salaryGradeId)
+        : null;
+      if (grade) {
+        toast.info(`Job Info synced from Core HCM — ${position.title}`, {
+          description: `${grade.code} (${peso(Number(grade.min_salary ?? 0))} – ${peso(Number(grade.max_salary ?? 0))})`,
+        });
+      }
+    }
+  };
+
   const handlePosterUpload = (file: File | null) => {
     if (!file) return;
     setPosterFile(file);
@@ -1961,7 +4177,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     </div>
   );
 
-  /** Hiring poster template with the current position overlaid — imitates the design team's artwork. */
+  /** Hiring poster template — the position name is already burned into the
+   *  image by the backend template-picture endpoint (white box on the left),
+   *  so no frontend overlay is rendered. This guarantees the title can never
+   *  drift over the red shapes / building photo on the right. */
   const HiringPoster = ({ className }: { className?: string }) => (
     <div className={cn("relative aspect-square w-full overflow-hidden bg-card", className)}>
       <img
@@ -1969,9 +4188,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         alt="Oxford Suites Makati hiring poster"
         className="h-full w-full object-cover"
       />
-      <p className="absolute left-[10%] top-[41%] max-w-[45%] font-display text-[6.5%] font-bold uppercase leading-tight text-foreground">
-        {draft.title || "Position"}
-      </p>
     </div>
   );
 
@@ -2440,223 +4656,256 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               )
             ) : (
               <>
-            {viewMode === "list" && (
-              <div className="space-y-2">
-                <div
-                  className={cn(
-                    "hidden items-center gap-3 rounded-md border border-transparent px-3 py-1.5 md:grid",
-                    listGridCols,
-                  )}
-                >
-                  <ListSortHead sortKey="title">Position</ListSortHead>
-                  <ListSortHead sortKey="status">Status</ListSortHead>
-                  <ListSortHead sortKey="salary">Salary</ListSortHead>
-                  <ListSortHead sortKey="filled">Filled</ListSortHead>
-                  <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Published to
-                  </span>
-                  <ListSortHead sortKey="posted">Posted</ListSortHead>
-                  <span className="text-right text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Actions
-                  </span>
-                </div>
-                {pagedJobs.map((j) => {
-                  const pct = Math.min(
-                    100,
-                    Math.round((j.filled / Math.max(1, j.vacancies)) * 100),
-                  );
-                  return (
-                    <Card
-                      key={j.id}
-                      className={j.active ? "border-success/40" : "border-border/70 opacity-80"}
+                {viewMode === "list" && (
+                  <div className="space-y-2 overflow-x-auto pb-1">
+                    <div
+                      className={cn(
+                        "hidden min-w-[1240px] items-center gap-3 rounded-md border border-transparent px-3 py-1.5 md:grid",
+                        listGridCols,
+                      )}
                     >
-                      <CardContent className={cn("grid items-center gap-3 p-3", listGridCols)}>
-                        <div className="min-w-0">
-                          <p className="eyebrow truncate">{j.department}</p>
-                          <h3 className="truncate font-display text-base font-semibold leading-tight">
-                            {j.title}
-                          </h3>
-                          <p className="truncate text-[0.7rem] text-muted-foreground">
-                            {j.employmentType} · {j.schedule}
-                          </p>
-                        </div>
-                        <div>
-                          <Badge
-                            variant="outline"
-                            className={
-                              j.status === "Open"
-                                ? "border-success/30 bg-success/15 text-success"
-                                : "border-border"
-                            }
+                      <ListSortHead sortKey="title">Position</ListSortHead>
+                      <ListSortHead sortKey="status">Status</ListSortHead>
+                      <ListSortHead sortKey="salary">Salary</ListSortHead>
+                      <ListSortHead sortKey="filled">Filled</ListSortHead>
+                      <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Published to
+                      </span>
+                      <ListSortHead sortKey="posted">Posted</ListSortHead>
+                      <span className="text-right text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Actions
+                      </span>
+                    </div>
+                    {pagedJobs.map((j) => {
+                      const pct = Math.min(
+                        100,
+                        Math.round((j.filled / Math.max(1, j.vacancies)) * 100),
+                      );
+                      return (
+                        <Card
+                          key={j.id}
+                          className={cn(
+                            "md:min-w-[1240px]",
+                            j.active ? "border-success/40" : "border-border/70 opacity-80",
+                          )}
+                        >
+                          <CardContent
+                            className={cn("grid items-center gap-3 p-3 md:grid", listGridCols)}
                           >
-                            {j.status}
-                          </Badge>
-                        </div>
-                        <p className="truncate text-xs font-medium">
-                          {peso(j.salaryMin)} — {peso(j.salaryMax)}
-                        </p>
-                        <div>
-                          <div className="flex justify-between text-[0.65rem] text-muted-foreground">
-                            <span>
-                              {j.filled}/{j.vacancies} filled
+                            <div className="min-w-0">
+                              <p className="eyebrow truncate">{j.department}</p>
+                              <h3 className="truncate font-display text-base font-semibold leading-tight">
+                                {j.title}
+                              </h3>
+                              <p className="truncate text-[0.7rem] text-muted-foreground">
+                                {j.employmentType} · {j.schedule}
+                              </p>
+                            </div>
+                            <div>
+                              <Badge
+                                variant="outline"
+                                className={
+                                  j.status === "Open"
+                                    ? "border-success/30 bg-success/15 text-success"
+                                    : "border-border"
+                                }
+                              >
+                                {j.status}
+                              </Badge>
+                            </div>
+                            <p className="truncate text-xs font-medium">
+                              {peso(j.salaryMin)} — {peso(j.salaryMax)}
+                            </p>
+                            <div>
+                              <div className="flex justify-between text-[0.65rem] text-muted-foreground">
+                                <span>
+                                  {j.filled}/{j.vacancies} filled
+                                </span>
+                                <span>{j.applicants} applicants</span>
+                              </div>
+                              <Progress value={pct} className="mt-1 h-1.5" />
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1">
+                              {j.platforms.map((p) => (
+                                <Badge key={p} variant="secondary" className="text-[0.6rem]">
+                                  {p}
+                                </Badge>
+                              ))}
+                            </div>
+                            <span
+                              className="whitespace-nowrap text-[0.7rem] text-muted-foreground"
+                              title={`Posted ${j.posted}`}
+                            >
+                              Posted {j.posted}
                             </span>
-                            <span>{j.applicants} applicants</span>
+                            <div className="flex items-center justify-end gap-2">
+                              {role === "admin" && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => openAddApplicantForJob(j)}
+                                  disabled={!isPostAvailable(j)}
+                                  title={
+                                    isPostAvailable(j)
+                                      ? `Add applicant for ${j.title}`
+                                      : `Cannot add applicant — this posting is ${j.status === "Open" ? "full" : j.status}`
+                                  }
+                                >
+                                  <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add applicant
+                                </Button>
+                              )}
+                              <Button size="sm" variant="outline" onClick={() => editTemplate(j)}>
+                                Edit
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => copyAndUseTemplate(j)}
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                              <Switch
+                                checked={j.active}
+                                onCheckedChange={() => toggleActive(j.id)}
+                                aria-label={`Toggle posting for ${j.title}`}
+                              />
+                              {role === "superadmin" && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 border border-destructive/40 text-destructive hover:text-destructive"
+                                  onClick={() => deleteJob(j)}
+                                  aria-label={`Delete posting for ${j.title}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+                {viewMode === "grid" &&
+                  pagedJobs.map((j) => {
+                    const pct = Math.min(
+                      100,
+                      Math.round((j.filled / Math.max(1, j.vacancies)) * 100),
+                    );
+                    return (
+                      <Card
+                        key={j.id}
+                        className={j.active ? "border-success/40" : "border-border/70 opacity-80"}
+                      >
+                        <CardContent className="flex h-full flex-col p-5">
+                          <div className="min-h-0 flex-1">
+                            <img
+                              src={
+                                j.picture ||
+                                `${API_BASE_URL}/job-posts/template-picture?title=${encodeURIComponent(j.title)}`
+                              }
+                              alt={`${j.title} hiring poster`}
+                              className="mb-3 aspect-video w-full rounded-md border border-border object-cover"
+                            />
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <p className="eyebrow">{j.department}</p>
+                                <h3 className="font-display text-xl font-semibold">{j.title}</h3>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {j.employmentType} · {j.schedule}
+                                </p>
+                              </div>
+                              <Badge
+                                variant="outline"
+                                className={
+                                  j.status === "Open"
+                                    ? "border-success/30 bg-success/15 text-success"
+                                    : "border-border"
+                                }
+                              >
+                                {j.status}
+                              </Badge>
+                            </div>
+
+                            <p className="mt-3 text-sm font-medium">
+                              {peso(j.salaryMin)} — {peso(j.salaryMax)}
+                            </p>
+
+                            <div className="mt-3 flex justify-between text-xs text-muted-foreground">
+                              <span>
+                                {j.filled} filled of {j.vacancies}
+                              </span>
+                              <span>{j.applicants} applicants</span>
+                            </div>
+                            <Progress value={pct} className="mt-2 h-2" />
+
+                            <div className="mt-3 flex flex-wrap gap-1">
+                              {j.platforms.map((p) => (
+                                <Badge key={p} variant="secondary" className="text-[0.65rem]">
+                                  {p}
+                                </Badge>
+                              ))}
+                            </div>
                           </div>
-                          <Progress value={pct} className="mt-1 h-1.5" />
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1">
-                          {j.platforms.map((p) => (
-                            <Badge key={p} variant="secondary" className="text-[0.6rem]">
-                              {p}
-                            </Badge>
-                          ))}
-                        </div>
-                        <span className="truncate text-[0.65rem] text-muted-foreground">
-                          Posted {j.posted}
-                        </span>
-                        <div className="flex items-center justify-end gap-2">
-                          {role === "admin" && (
+                          <div className="mt-4 flex min-h-[76px] flex-wrap content-end gap-2 border-t border-border pt-3">
+                            {role === "admin" && (
+                              <Button
+                                size="sm"
+                                onClick={() => openAddApplicantForJob(j)}
+                                disabled={!isPostAvailable(j)}
+                                title={
+                                  isPostAvailable(j)
+                                    ? `Add applicant for ${j.title}`
+                                    : `Cannot add applicant — this posting is ${j.status === "Open" ? "full" : j.status}`
+                                }
+                              >
+                                <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add applicant
+                              </Button>
+                            )}
+                            <Button size="sm" variant="outline" onClick={() => editTemplate(j)}>
+                              Edit Template
+                            </Button>
                             <Button
                               size="sm"
-                              onClick={() => openAddApplicantForJob(j)}
-                              title={`Add applicant for ${j.title}`}
+                              variant="outline"
+                              onClick={() => copyAndUseTemplate(j)}
                             >
-                              <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add applicant
+                              <Copy className="mr-1.5 h-3.5 w-3.5" /> Copy & Use Template
                             </Button>
-                          )}
-                          <Button size="sm" variant="outline" onClick={() => editTemplate(j)}>
-                            Edit
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => copyAndUseTemplate(j)}>
-                            <Copy className="h-3.5 w-3.5" />
-                          </Button>
-                          <Switch
-                            checked={j.active}
-                            onCheckedChange={() => toggleActive(j.id)}
-                            aria-label={`Toggle posting for ${j.title}`}
-                          />
-                          {role === "superadmin" && (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8 border border-destructive/40 text-destructive hover:text-destructive"
-                              onClick={() => deleteJob(j)}
-                              aria-label={`Delete posting for ${j.title}`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-            {viewMode === "grid" &&
-              pagedJobs.map((j) => {
-                const pct = Math.min(100, Math.round((j.filled / Math.max(1, j.vacancies)) * 100));
-                return (
-                  <Card
-                    key={j.id}
-                    className={j.active ? "border-success/40" : "border-border/70 opacity-80"}
-                  >
-                    <CardContent className="flex h-full flex-col p-5">
-                      <div className="min-h-0 flex-1">
-                        <img
-                          src={
-                            j.picture ||
-                            `${API_BASE_URL}/job-posts/template-picture?title=${encodeURIComponent(j.title)}`
-                          }
-                          alt={`${j.title} hiring poster`}
-                          className="mb-3 aspect-video w-full rounded-md border border-border object-cover"
-                        />
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="eyebrow">{j.department}</p>
-                            <h3 className="font-display text-xl font-semibold">{j.title}</h3>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {j.employmentType} · {j.schedule}
-                            </p>
+                            {role === "superadmin" && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="border border-destructive/40 text-destructive hover:text-destructive"
+                                onClick={() => deleteJob(j)}
+                              >
+                                <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
+                              </Button>
+                            )}
                           </div>
-                          <Badge
-                            variant="outline"
-                            className={
-                              j.status === "Open"
-                                ? "border-success/30 bg-success/15 text-success"
-                                : "border-border"
-                            }
-                          >
-                            {j.status}
-                          </Badge>
-                        </div>
 
-                        <p className="mt-3 text-sm font-medium">
-                          {peso(j.salaryMin)} — {peso(j.salaryMax)}
-                        </p>
-
-                        <div className="mt-3 flex justify-between text-xs text-muted-foreground">
-                          <span>
-                            {j.filled} filled of {j.vacancies}
-                          </span>
-                          <span>{j.applicants} applicants</span>
-                        </div>
-                        <Progress value={pct} className="mt-2 h-2" />
-
-                        <div className="mt-3 flex flex-wrap gap-1">
-                          {j.platforms.map((p) => (
-                            <Badge key={p} variant="secondary" className="text-[0.65rem]">
-                              {p}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="mt-4 flex min-h-[76px] flex-wrap content-end gap-2 border-t border-border pt-3">
-                        {role === "admin" && (
-                          <Button size="sm" onClick={() => openAddApplicantForJob(j)}>
-                            <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add applicant
-                          </Button>
-                        )}
-                        <Button size="sm" variant="outline" onClick={() => editTemplate(j)}>
-                          Edit Template
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => copyAndUseTemplate(j)}>
-                          <Copy className="mr-1.5 h-3.5 w-3.5" /> Copy & Use Template
-                        </Button>
-                        {role === "superadmin" && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="border border-destructive/40 text-destructive hover:text-destructive"
-                            onClick={() => deleteJob(j)}
-                          >
-                            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
-                          </Button>
-                        )}
-                      </div>
-
-                      <div className="mt-3 flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Posted {j.posted}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-medium">
-                            {j.active ? "Open" : "Closed"}
-                          </span>
-                          <Switch
-                            checked={j.active}
-                            onCheckedChange={() => toggleActive(j.id)}
-                            aria-label={`Toggle posting for ${j.title}`}
-                          />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            {filteredJobs.length === 0 && (
-              <div className="md:col-span-2 xl:col-span-3">
-                <ListEmptyState placeholder="Search posted positions…" />
-              </div>
-            )}
+                          <div className="mt-3 flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">Posted {j.posted}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium">
+                                {j.active ? "Open" : "Closed"}
+                              </span>
+                              <Switch
+                                checked={j.active}
+                                onCheckedChange={() => toggleActive(j.id)}
+                                aria-label={`Toggle posting for ${j.title}`}
+                              />
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                {filteredJobs.length === 0 && (
+                  <div className="md:col-span-2 xl:col-span-3">
+                    <ListEmptyState placeholder="Search posted positions…" />
+                  </div>
+                )}
               </>
             )}
           </ListBody>
@@ -2764,132 +5013,140 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   </Card>
                 ) : (
                   <>
-                <div
-                  className={cn(
-                    "hidden min-w-[960px] items-center gap-2 px-3 py-1.5 md:grid",
-                    reqGridCols,
-                  )}
-                >
-                  <RequisitionSortHead sortKey="id" sort={reqSort.sort} onSort={reqSort.toggle}>
-                    Ref Number
-                  </RequisitionSortHead>
-                  <RequisitionSortHead
-                    sortKey="department"
-                    sort={reqSort.sort}
-                    onSort={reqSort.toggle}
-                  >
-                    Department
-                  </RequisitionSortHead>
-                  <RequisitionSortHead sortKey="count" sort={reqSort.sort} onSort={reqSort.toggle}>
-                    Openings
-                  </RequisitionSortHead>
-                  <RequisitionSortHead
-                    sortKey="requestedAt"
-                    sort={reqSort.sort}
-                    onSort={reqSort.toggle}
-                  >
-                    Requested
-                  </RequisitionSortHead>
-                  <RequisitionSortHead
-                    sortKey="urgency"
-                    sort={reqSort.sort}
-                    onSort={reqSort.toggle}
-                  >
-                    Urgency
-                  </RequisitionSortHead>
-                  <RequisitionSortHead sortKey="status" sort={reqSort.sort} onSort={reqSort.toggle}>
-                    Status
-                  </RequisitionSortHead>
-                  <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Set status
-                  </span>
-                  <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Note
-                  </span>
-                  <span className="text-right text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Job post
-                  </span>
-                </div>
-                {visibleRequisitions.map((r) => (
-                  <Card key={r.id} className="border-border/70">
-                    <CardContent
+                    <div
                       className={cn(
-                        "grid min-w-[960px] items-center gap-2 px-3 py-2 md:grid",
+                        "hidden min-w-[960px] items-center gap-2 px-3 py-1.5 md:grid",
                         reqGridCols,
                       )}
                     >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="eyebrow shrink-0">{r.id}</span>
-                        <span className="truncate text-sm font-semibold leading-tight">
-                          {r.position}
-                        </span>
-                      </div>
-                      <p className="truncate text-sm text-muted-foreground">{r.department}</p>
-                      <p className="text-xs font-medium">{r.count}</p>
-                      <p className="truncate text-[0.7rem] text-muted-foreground">
-                        {r.requestedAt}
-                      </p>
-                      <div>
-                        <Badge variant="outline" className={urgencyBadge(r.urgency)}>
-                          {r.urgency}
-                        </Badge>
-                      </div>
-                      <div>
-                        <Badge
-                          variant="outline"
-                          className={
-                            r.status === "Done"
-                              ? "border-success/30 bg-success/15 text-success"
-                              : r.status === "Converted"
-                                ? "border-border bg-muted text-muted-foreground"
-                                : "border-caution/40 bg-caution/15 text-caution"
-                          }
+                      <RequisitionSortHead sortKey="id" sort={reqSort.sort} onSort={reqSort.toggle}>
+                        Ref Number
+                      </RequisitionSortHead>
+                      <RequisitionSortHead
+                        sortKey="department"
+                        sort={reqSort.sort}
+                        onSort={reqSort.toggle}
+                      >
+                        Department
+                      </RequisitionSortHead>
+                      <RequisitionSortHead
+                        sortKey="count"
+                        sort={reqSort.sort}
+                        onSort={reqSort.toggle}
+                      >
+                        Openings
+                      </RequisitionSortHead>
+                      <RequisitionSortHead
+                        sortKey="requestedAt"
+                        sort={reqSort.sort}
+                        onSort={reqSort.toggle}
+                      >
+                        Requested
+                      </RequisitionSortHead>
+                      <RequisitionSortHead
+                        sortKey="urgency"
+                        sort={reqSort.sort}
+                        onSort={reqSort.toggle}
+                      >
+                        Urgency
+                      </RequisitionSortHead>
+                      <RequisitionSortHead
+                        sortKey="status"
+                        sort={reqSort.sort}
+                        onSort={reqSort.toggle}
+                      >
+                        Status
+                      </RequisitionSortHead>
+                      <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Set status
+                      </span>
+                      <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Note
+                      </span>
+                      <span className="text-right text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Job post
+                      </span>
+                    </div>
+                    {visibleRequisitions.map((r) => (
+                      <Card key={r.id} className="border-border/70">
+                        <CardContent
+                          className={cn(
+                            "grid min-w-[960px] items-center gap-2 px-3 py-2 md:grid",
+                            reqGridCols,
+                          )}
                         >
-                          {r.status}
-                        </Badge>
-                      </div>
-                      <div>
-                        {r.status === "Converted" ? (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        ) : (
-                          <Select
-                            value={r.status}
-                            onValueChange={(v) =>
-                              requisitionStore.update(r.id, {
-                                status: v as Requisition["status"],
-                              })
-                            }
-                          >
-                            <SelectTrigger className="h-8 w-full text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Pending">Pending</SelectItem>
-                              <SelectItem value="Done">Mark as Done</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </div>
-                      <div className="flex min-w-0 items-center">
-                        <RequisitionNote req={r} />
-                      </div>
-                      <div className="flex items-center justify-end">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 gap-1.5 px-2 text-xs"
-                          title="Convert to job post"
-                          onClick={() => convertRequisition(r.id)}
-                        >
-                          <SquareArrowOutUpRight className="h-3.5 w-3.5" />
-                          Convert
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="eyebrow shrink-0">{r.id}</span>
+                            <span className="truncate text-sm font-semibold leading-tight">
+                              {r.position}
+                            </span>
+                          </div>
+                          <p className="truncate text-sm text-muted-foreground">{r.department}</p>
+                          <p className="text-xs font-medium">{r.count}</p>
+                          <p className="truncate text-[0.7rem] text-muted-foreground">
+                            {r.requestedAt}
+                          </p>
+                          <div>
+                            <Badge variant="outline" className={urgencyBadge(r.urgency)}>
+                              {r.urgency}
+                            </Badge>
+                          </div>
+                          <div>
+                            <Badge
+                              variant="outline"
+                              className={
+                                r.status === "Done"
+                                  ? "border-success/30 bg-success/15 text-success"
+                                  : r.status === "Converted"
+                                    ? "border-border bg-muted text-muted-foreground"
+                                    : "border-caution/40 bg-caution/15 text-caution"
+                              }
+                            >
+                              {r.status}
+                            </Badge>
+                          </div>
+                          <div>
+                            {r.status === "Converted" ? (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            ) : (
+                              <Select
+                                value={r.status}
+                                onValueChange={(v) =>
+                                  requisitionStore.update(r.id, {
+                                    status: v as Requisition["status"],
+                                  })
+                                }
+                              >
+                                <SelectTrigger className="h-8 w-full text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Pending">Pending</SelectItem>
+                                  <SelectItem value="Done">Mark as Done</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </div>
+                          <div className="flex min-w-0 items-center">
+                            <RequisitionNote req={r} />
+                          </div>
+                          <div className="flex items-center justify-end">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 gap-1.5 px-2 text-xs"
+                              title="Convert to job post"
+                              onClick={() => convertRequisition(r.id)}
+                            >
+                              <SquareArrowOutUpRight className="h-3.5 w-3.5" />
+                              Convert
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
 
-                {filteredRequisitions.length === 0 && <ListEmptyState subject="requisitions" />}
+                    {filteredRequisitions.length === 0 && <ListEmptyState subject="requisitions" />}
                   </>
                 )}
               </ListBody>
@@ -2967,11 +5224,46 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 >
                   {draft.title || "Untitled position"}
                 </button>
+
+                {/* Requirement template picker — seeds the post's screening
+                    requirements from a Screening Setup template. */}
+                <div className="ml-auto flex items-center gap-2">
+                  <ClipboardList className="h-3.5 w-3.5 text-primary" />
+                  <Select
+                    value={builderTemplatePick}
+                    onValueChange={(v) => {
+                      const template = requirementTemplates.find(
+                        (t) => String(t.template_id) === v,
+                      );
+                      if (template) applyRequirementTemplateToDraft(template);
+                    }}
+                  >
+                    <SelectTrigger
+                      className="h-7 w-64 text-xs"
+                      title="Apply a requirement template to this job post"
+                    >
+                      <SelectValue placeholder="Use requirement template…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {builderTemplateOptions.map((t) => (
+                        <SelectItem key={t.template_id} value={String(t.template_id)}>
+                          {t.name}
+                          {t.position_title ? ` · ${t.position_title}` : ""}
+                        </SelectItem>
+                      ))}
+                      {builderTemplateOptions.length === 0 && (
+                        <SelectItem value="__no_templates" disabled>
+                          No active templates — create one in Screening setup
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="grid gap-4 xl:grid-cols-[190px_minmax(0,1fr)_360px]">
                 {/* Component palette */}
-                <Card className="border-border/70">
+                <Card className="border-border/70" ref={templatesCardRef}>
                   <CardContent className="p-3">
                     <p className="eyebrow mb-2 font-bold">Add Components</p>
                     <div className="space-y-1.5">
@@ -3012,26 +5304,34 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                         {(() => {
                           const q = templateSearch.trim().toLowerCase();
                           const filtered = q
-                            ? jobList.filter((j) => `${j.title} ${j.department}`.toLowerCase().includes(q))
+                            ? jobList.filter((j) =>
+                                `${j.title} ${j.department}`.toLowerCase().includes(q),
+                              )
                             : jobList;
-                          const grouped: Record<string, Job[]> = { Draft: [], Open: [], Closed: [] };
+                          const grouped: Record<string, Job[]> = {
+                            Draft: [],
+                            Open: [],
+                            Closed: [],
+                          };
                           for (const j of filtered) {
                             const s = j.status as string;
                             if (grouped[s]) grouped[s].push(j);
                             else grouped[j.status]?.push(j);
                           }
                           const order: (keyof typeof grouped)[] = ["Draft", "Open", "Closed"];
-                          const hasAny = order.some((k) => grouped[k].length > 0);
+                          const hasAny = order.some((k) => (grouped[k]?.length ?? 0) > 0);
                           if (!hasAny) {
                             return (
                               <p className="py-2 text-xs text-muted-foreground">
-                                {q ? `No templates match "${templateSearch}"` : "No templates yet — create a draft, open or closed post."}
+                                {q
+                                  ? `No templates match "${templateSearch}"`
+                                  : "No templates yet — create a draft, open or closed post."}
                               </p>
                             );
                           }
                           return order.map((status) => {
                             const list = grouped[status];
-                            if (list.length === 0) return null;
+                            if (!list || list.length === 0) return null;
                             return (
                               <div key={status}>
                                 <p className="text-[0.68rem] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -3065,314 +5365,648 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   </CardContent>
                 </Card>
 
-                {/* Canvas / composer */}
+                {/* Canvas / composer — toggles to Entities Indicated via the header button */}
                 <Card className="border-border/70">
-                  <CardContent className="space-y-3 p-4">
-                    <div className="flex items-center justify-between">
-                      <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
-                        <FilePlus2 className="h-4 w-4 text-primary" />
-                        {editingJobId ? "Edit Your Job Post" : "Edit Your Job Post"}
-                      </h2>
-                    </div>
-
-                    <div className="space-y-2" ref={composerRef}>
-                      {blocks.map((id) => {
-                        const meta = blockLibrary.find((b) => b.id === id)!;
-                        return (
-                          <div
-                            key={id}
-                            data-block-id={id}
-                            draggable
-                            onDragStart={() => setDragging(id)}
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={() => dropOn(id)}
-                            onClick={(e) => selectBlock(id, e)}
-                            className={`rounded-md border px-3 py-2 transition ${
-                              activeBlock === id
-                                ? "border-primary bg-secondary/40"
-                                : "border-border hover:border-primary/40"
-                            }`}
+                  {builderFlipped ? (
+                    <CardContent className="space-y-3 p-4">
+                      <BuilderEntitiesCard
+                        draft={draft}
+                        mapping={entityMapping}
+                        loading={entityLoading}
+                        error={entityError}
+                        addingTerm={addingTerm}
+                        scoring={entityScoring}
+                        onAdd={addEntityTerm}
+                        onRetry={loadEntityMapping}
+                        onFlipBack={() => setBuilderFlipped(false)}
+                      />
+                    </CardContent>
+                  ) : (
+                    <CardContent className="space-y-3 p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
+                          <FilePlus2 className="h-4 w-4 text-primary" />
+                          {editingJobId ? "Edit Your Job Post" : "Edit Your Job Post"}
+                        </h2>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={toggleBuilderFlip}
+                            title="See entities indicated from whatever is filled in the builder"
                           >
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center gap-2 text-xs font-medium">
-                                <GripVertical className="h-3 w-3 cursor-grab text-muted-foreground" />
-                                {meta.label}
-                                <span className="text-[0.65rem] font-normal text-muted-foreground">
-                                  {meta.hint}
-                                </span>
-                              </span>
+                            <Repeat className="mr-1.5 h-3.5 w-3.5" />
+                            Entities
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={generatingDraft || !draft.title.trim() || aiIndicator.limited}
+                            onClick={generateDraftWithAI}
+                            title={
+                              aiIndicator.limited
+                                ? aiIndicator.title
+                                : draft.title.trim()
+                                  ? "Auto-fill description, responsibilities, qualifications, skills, instructions and about with Google AI (grounded in your screening vocabulary)"
+                                  : "Select a job position first"
+                            }
+                          >
+                            {generatingDraft ? (
+                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                            )}
+                            {generatingDraft ? "Generating…" : "Generate with AI"}
+                          </Button>
+                          {/* Usage/limit indicator — ready · used today · limit reset countdown */}
+                          <span
+                            className={`hidden items-center gap-1.5 rounded-full border px-2 py-0.5 text-[0.65rem] font-medium sm:inline-flex ${AI_TONE_CLASS[aiIndicator.tone]}`}
+                            title={aiIndicator.title}
+                          >
+                            <span
+                              className="h-1.5 w-1.5 rounded-full bg-current"
+                              aria-hidden="true"
+                            />
+                            {aiIndicator.label}
+                          </span>
+                          <Popover>
+                            <PopoverTrigger asChild>
                               <button
                                 type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  removeBlock(id);
-                                }}
-                                aria-label={`Remove ${meta.label}`}
+                                aria-label="How Generate with AI works"
+                                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                               >
-                                <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                                <Info className="h-4 w-4" />
                               </button>
-                            </div>
-
-                            {activeBlock === id && (
-                              <div className="mt-2 space-y-2">
-                                {id === "title" && (
-                                  <div className="grid gap-2 sm:grid-cols-2">
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Department</Label>
-                                      <Select
-                                        value={draft.department}
-                                        onValueChange={(department) => {
-                                          const firstPosition =
-                                            positionsForDepartment(department)[0];
-                                          setDraft({
-                                            ...draft,
-                                            department,
-                                            title: firstPosition?.title ?? "",
-                                          });
-                                        }}
-                                      >
-                                        <SelectTrigger className="h-8 text-xs">
-                                          <SelectValue placeholder="Select a department" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {knownDepartments.map((d) => (
-                                            <SelectItem key={d.code} value={d.name}>
-                                              {d.name}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Job title</Label>
-                                      <Select
-                                        value={draft.title}
-                                        onValueChange={(v) => setDraft({ ...draft, title: v })}
-                                      >
-                                        <SelectTrigger className="h-8 text-xs">
-                                          <SelectValue placeholder="Select a position from Core HR" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {positionsForDepartment(draft.department).map((p) => (
-                                            <SelectItem key={p.id} value={p.title}>
-                                              {p.title}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                  </div>
-                                )}
-                                {id === "info" && (
-                                  <div className="grid gap-2 sm:grid-cols-3">
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Type</Label>
-                                      <Select
-                                        value={draft.employmentType}
-                                        onValueChange={(v) =>
-                                          setDraft({ ...draft, employmentType: v })
-                                        }
-                                      >
-                                        <SelectTrigger className="h-8 text-xs">
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {["Full-time", "Part-time", "Contract", "Seasonal"].map(
-                                            (t) => (
-                                              <SelectItem key={t} value={t}>
-                                                {t}
-                                              </SelectItem>
-                                            ),
+                            </PopoverTrigger>
+                            <PopoverContent align="end" className="w-80 space-y-3 p-4 text-left">
+                              <div>
+                                <p className="font-display text-sm font-semibold">
+                                  What Generate with AI fills
+                                </p>
+                                <p className="text-[0.7rem] text-muted-foreground">
+                                  One click fills these 6 components on the canvas:
+                                </p>
+                              </div>
+                              <ul className="space-y-1">
+                                {AI_CONTENT_BLOCKS.map((id) => (
+                                  <li
+                                    key={id}
+                                    className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                                  >
+                                    <CheckCircle2 className="h-3 w-3 shrink-0 text-gold" />
+                                    {blockLibrary.find((b) => b.id === id)?.label ?? id}
+                                  </li>
+                                ))}
+                              </ul>
+                              <div className="space-y-1.5 rounded-md bg-secondary/40 p-3">
+                                <p className="text-[0.7rem] font-semibold">How it is built</p>
+                                <ol className="list-decimal space-y-1 pl-4 text-[0.7rem] leading-relaxed text-muted-foreground">
+                                  <li>
+                                    <span className="font-medium text-foreground">Job input</span> —
+                                    position, department, type, schedule & vacancies from this
+                                    builder.
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-foreground">
+                                      + Screening vocabulary
+                                    </span>{" "}
+                                    — recognized skills & certifications, so applicant matching
+                                    keeps working. New terms (max 2) are flagged for your review.
+                                  </li>
+                                  <li>
+                                    <span className="font-medium text-foreground">
+                                      + Gemini 3.5 Flash-Lite
+                                    </span>{" "}
+                                    — server default model; writes the 6 components from the job +
+                                    vocabulary.
+                                  </li>
+                                </ol>
+                              </div>
+                              {/* Usage & limits — the indicator's detail view */}
+                              <div className="space-y-1.5 rounded-md bg-secondary/40 p-3">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-[0.7rem] font-semibold">Usage &amp; limits</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => void loadAiUsage()}
+                                    className="text-[0.65rem] font-medium text-primary underline-offset-2 hover:underline"
+                                  >
+                                    Refresh
+                                  </button>
+                                </div>
+                                {aiUsage ? (
+                                  <>
+                                    <p className="text-[0.7rem] leading-relaxed text-muted-foreground">
+                                      {aiUsage.used_today} draft(s) today
+                                      {aiUsage.daily_limit > 0 ? ` of ${aiUsage.daily_limit}` : ""}
+                                      {aiUsage.failures_today > 0
+                                        ? ` · ${aiUsage.failures_today} failed`
+                                        : ""}
+                                      {aiUsage.tokens_today > 0
+                                        ? ` · ${aiUsage.tokens_today.toLocaleString()} tokens`
+                                        : ""}
+                                    </p>
+                                    {aiUsage.daily_limit > 0 && (
+                                      <Progress
+                                        value={Math.min(
+                                          100,
+                                          (aiUsage.used_today / aiUsage.daily_limit) * 100,
+                                        )}
+                                        className="h-1.5"
+                                      />
+                                    )}
+                                    <ul className="space-y-1">
+                                      {aiUsage.providers.map((p) => (
+                                        <li
+                                          key={`${p.kind}-${p.service}-${p.model}`}
+                                          className="flex items-start gap-1.5 text-[0.68rem] leading-relaxed text-muted-foreground"
+                                        >
+                                          {p.blocked ? (
+                                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
+                                          ) : (
+                                            <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-success" />
                                           )}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Schedule</Label>
-                                      <Select
-                                        value={draft.schedule || "Shifting Schedule"}
-                                        onValueChange={(v) => setDraft({ ...draft, schedule: v })}
-                                      >
-                                        <SelectTrigger className="h-8 text-xs">
-                                          <SelectValue placeholder="Select work schedule" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {WORK_SCHEDULE_OPTIONS.map((s) => (
-                                            <SelectItem key={s} value={s}>
-                                              {s}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Vacancies</Label>
-                                      <Input
-                                        type="number"
-                                        min={1}
-                                        className="h-8 text-xs"
-                                        value={draft.vacancies}
-                                        disabled={role === "admin" && Boolean(sourceReqId)}
-                                        onChange={(e) =>
-                                          setDraft({
-                                            ...draft,
-                                            vacancies: sanitizeDigitsOnly(e.target.value),
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Salary min (₱)</Label>
-                                      <Input
-                                        type="number"
-                                        min={0}
-                                        className="h-8 text-xs"
-                                        value={draft.salaryMin}
-                                        onChange={(e) =>
-                                          setDraft({
-                                            ...draft,
-                                            salaryMin: sanitizeDecimalString(e.target.value),
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                    <div className="space-y-1">
-                                      <Label className="text-[0.7rem]">Salary max (₱)</Label>
-                                      <Input
-                                        type="number"
-                                        min={0}
-                                        className="h-8 text-xs"
-                                        value={draft.salaryMax}
-                                        onChange={(e) =>
-                                          setDraft({
-                                            ...draft,
-                                            salaryMax: sanitizeDecimalString(e.target.value),
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                  </div>
-                                )}
-                                {id === "description" && (
-                                  <Textarea
-                                    autoFocus
-                                    rows={2}
-                                    className="text-xs"
-                                    value={draft.description}
-                                    onChange={(e) =>
-                                      setDraft({ ...draft, description: e.target.value })
-                                    }
-                                    placeholder="Short pitch of the role…"
-                                  />
-                                )}
-                                {id === "picture" && (
-                                  <div className="space-y-2">
-                                    <HiringPoster className="mx-auto max-w-md" />
-                                    <PosterUploadControl />
-                                  </div>
-                                )}
-                                {id === "responsibilities" && (
-                                  <Textarea
-                                    autoFocus
-                                    rows={3}
-                                    className="text-xs"
-                                    value={draft.responsibilities}
-                                    onChange={(e) =>
-                                      setDraft({ ...draft, responsibilities: e.target.value })
-                                    }
-                                    placeholder="One responsibility per line…"
-                                  />
-                                )}
-                                {id === "qualifications" && (
-                                  <Textarea
-                                    autoFocus
-                                    rows={3}
-                                    className="text-xs"
-                                    value={draft.qualifications}
-                                    onChange={(e) =>
-                                      setDraft({ ...draft, qualifications: e.target.value })
-                                    }
-                                    placeholder="One qualification per line…"
-                                  />
-                                )}
-                                {id === "skills" && (
-                                  <Textarea
-                                    autoFocus
-                                    rows={2}
-                                    className="text-xs"
-                                    value={draft.skills}
-                                    onChange={(e) => setDraft({ ...draft, skills: e.target.value })}
-                                    placeholder="One skill per line…"
-                                  />
-                                )}
-                                {id === "instructions" && (
-                                  <Textarea
-                                    autoFocus
-                                    rows={2}
-                                    className="text-xs"
-                                    value={draft.instructions}
-                                    onChange={(e) =>
-                                      setDraft({ ...draft, instructions: e.target.value })
-                                    }
-                                    placeholder="How should applicants apply?"
-                                  />
-                                )}
-                                {id === "about" && (
-                                  <Textarea
-                                    autoFocus
-                                    rows={2}
-                                    className="text-xs"
-                                    value={draft.about}
-                                    onChange={(e) => setDraft({ ...draft, about: e.target.value })}
-                                    placeholder="Company blurb…"
-                                  />
+                                          <span>
+                                            <span className="font-medium text-foreground">
+                                              {p.service}
+                                            </span>{" "}
+                                            — {p.model}
+                                            {p.blocked
+                                              ? ` · ${p.blocked_reason ?? "cooling down"}`
+                                              : ""}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                    {aiUsage.blocked_until && aiBlockedSeconds > 0 && (
+                                      <p className="text-[0.68rem] font-medium text-amber-600">
+                                        Limit reached — ready again in{" "}
+                                        {aiCountdown(aiBlockedSeconds)}.
+                                      </p>
+                                    )}
+                                    {aiUsage.last_error && (
+                                      <p className="text-[0.68rem] leading-relaxed text-muted-foreground">
+                                        Last failure: {aiFailureLabel(aiUsage.last_error.code)} —{" "}
+                                        {aiUsage.last_error.message}
+                                      </p>
+                                    )}
+                                  </>
+                                ) : (
+                                  <p className="text-[0.7rem] italic text-muted-foreground">
+                                    Usage is unavailable right now — the indicator updates after the
+                                    next attempt.
+                                  </p>
                                 )}
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                      <div
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={() => dragging && addBlock(dragging)}
-                        className="rounded-md border border-dashed border-border py-3 text-center text-[0.7rem] text-muted-foreground"
-                      >
-                        Drop a component here
+                              <p className="text-[0.65rem] italic text-muted-foreground">
+                                Nothing publishes automatically — review each block, then Save draft
+                                or Publish.
+                              </p>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="rounded-md border border-border p-3">
-                      <p className="eyebrow mb-2">Publish To</p>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {platformMeta.map((p) => (
-                          <div key={p.key} className="flex items-center justify-between">
-                            <span className="flex items-center gap-2 text-xs">
-                              <p.icon className="h-3.5 w-3.5 text-muted-foreground" /> {p.key}
-                            </span>
-                            <Switch
-                              checked={platforms[p.key] ?? false}
-                              onCheckedChange={(v) => setPlatforms({ ...platforms, [p.key]: v })}
-                            />
-                          </div>
-                        ))}
+                      <div className="space-y-2" ref={composerRef}>
+                        {blocks.map((id) => {
+                          const meta = blockLibrary.find((b) => b.id === id)!;
+                          return (
+                            <div
+                              key={id}
+                              data-block-id={id}
+                              draggable
+                              onDragStart={() => setDragging(id)}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={() => dropOn(id)}
+                              onClick={(e) => selectBlock(id, e)}
+                              className={`rounded-md border px-3 py-2 transition ${
+                                activeBlock === id
+                                  ? "border-primary bg-secondary/40"
+                                  : "border-border hover:border-primary/40"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="flex items-center gap-2 text-xs font-medium">
+                                  <GripVertical className="h-3 w-3 cursor-grab text-muted-foreground" />
+                                  {meta.label}
+                                  <span className="text-[0.65rem] font-normal text-muted-foreground">
+                                    {meta.hint}
+                                  </span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    requestRemoveBlock(id);
+                                  }}
+                                  aria-label={`Remove ${meta.label}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                                </button>
+                              </div>
+
+                              {activeBlock === id && (
+                                <div className="mt-2 space-y-2">
+                                  {id === "title" && (
+                                    <div className="space-y-2">
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                      <div className="space-y-1">
+                                        <Label className="text-[0.7rem]">Department</Label>
+                                        <Select
+                                          value={draft.department}
+                                          onValueChange={(department) => {
+                                            const firstPosition =
+                                              positionsForDepartment(department)[0];
+                                            if (firstPosition) {
+                                              applyPositionToDraft(department, firstPosition.title, {
+                                                forceSalary: true,
+                                              });
+                                            } else {
+                                              setDraft({ ...draft, department, title: "" });
+                                            }
+                                          }}
+                                        >
+                                          <SelectTrigger className="h-8 text-xs">
+                                            <SelectValue placeholder="Select a department" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {knownDepartments.map((d) => (
+                                              <SelectItem key={d.code} value={d.name}>
+                                                {d.name}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                      <div className="space-y-1">
+                                        <Label className="text-[0.7rem]">Job title</Label>
+                                        <Select
+                                          value={draft.title}
+                                          onValueChange={(v) =>
+                                            applyPositionToDraft(draft.department, v, {
+                                              forceSalary: true,
+                                            })
+                                          }
+                                        >
+                                          <SelectTrigger className="h-8 text-xs">
+                                            <SelectValue placeholder="Select a position from Core HR" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {positionsForDepartment(draft.department).map((p) => (
+                                              <SelectItem key={p.id} value={p.title}>
+                                                {p.title}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                    </div>
+                                    {draftPosition?.salaryBand && (
+                                      <p className="rounded-md bg-secondary/40 px-2.5 py-1.5 text-[0.65rem] leading-relaxed text-muted-foreground">
+                                        Core HCM salary band — {draftPosition.salaryBand}
+                                      </p>
+                                    )}
+                                    </div>
+                                  )}
+                                  {id === "info" && (
+                                    <div className="space-y-2">
+                                    <div className="grid gap-2 sm:grid-cols-3">
+                                        <div className="space-y-1 sm:col-span-1">
+                                          <Label className="text-[0.7rem]">Salary grade / band</Label>
+                                          <Select
+                                            value={draft.salaryGradeId || (draftPosition?.salaryGradeId ? String(draftPosition.salaryGradeId) : "position")}
+                                            onValueChange={(v) => {
+                                              if (v === "position") {
+                                                const posGrade = draftPosition?.salaryGradeId
+                                                  ? salaryGrades.find((g) => g.salary_grade_id === draftPosition.salaryGradeId)
+                                                  : null;
+                                                setDraft((d) => ({
+                                                  ...d,
+                                                  salaryGradeId: "",
+                                                  salaryMin: posGrade?.min_salary !== null && posGrade?.min_salary !== undefined ? String(posGrade.min_salary) : d.salaryMin,
+                                                  salaryMax: posGrade?.max_salary !== null && posGrade?.max_salary !== undefined ? String(posGrade.max_salary) : d.salaryMax,
+                                                }));
+                                              } else {
+                                                const grade = salaryGrades.find((g) => String(g.salary_grade_id) === v);
+                                                setDraft((d) => ({
+                                                  ...d,
+                                                  salaryGradeId: v,
+                                                  salaryMin: grade?.min_salary !== null && grade?.min_salary !== undefined ? String(grade.min_salary) : d.salaryMin,
+                                                  salaryMax: grade?.max_salary !== null && grade?.max_salary !== undefined ? String(grade.max_salary) : d.salaryMax,
+                                                }));
+                                              }
+                                            }}
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue placeholder="From position" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="position">
+                                                From position{draftPosition?.salaryBand ? ` — ${draftPosition.salaryBand}` : ""}
+                                              </SelectItem>
+                                              {salaryGrades.map((g) => (
+                                                <SelectItem key={g.salary_grade_id} value={String(g.salary_grade_id)}>
+                                                  {g.code} — {g.title} (₱{Number(g.min_salary ?? 0).toLocaleString()} – ₱{Number(g.max_salary ?? 0).toLocaleString()})
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <div className="space-y-1 sm:col-span-2">
+                                          <Label className="text-[0.7rem]">Band range</Label>
+                                          <div className="flex h-8 items-center justify-between gap-2 rounded-md border border-border bg-secondary/30 px-2.5 text-[0.7rem]">
+                                            <span className="truncate font-medium">
+                                              {draftGrade
+                                                ? `${draftGrade.code} · ${peso(Number(draftGrade.min_salary ?? 0))} – ${peso(Number(draftGrade.max_salary ?? 0))}`
+                                                : "No band — pick a grade or position"}
+                                            </span>
+                                            {draftGrade && (
+                                              <button
+                                                type="button"
+                                                className="shrink-0 font-medium text-primary hover:underline"
+                                                onClick={() =>
+                                                  setDraft((d) => ({
+                                                    ...d,
+                                                    salaryMin: draftGrade.min_salary !== null && draftGrade.min_salary !== undefined ? String(draftGrade.min_salary) : d.salaryMin,
+                                                    salaryMax: draftGrade.max_salary !== null && draftGrade.max_salary !== undefined ? String(draftGrade.max_salary) : d.salaryMax,
+                                                  }))
+                                                }
+                                              >
+                                                Apply band
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Type</Label>
+                                          <Select
+                                            value={draft.employmentType}
+                                            onValueChange={(v) =>
+                                              setDraft({ ...draft, employmentType: v })
+                                            }
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {[
+                                                "Full-time",
+                                                "Part-time",
+                                                "Contract",
+                                                "Seasonal",
+                                              ].map((t) => (
+                                                <SelectItem key={t} value={t}>
+                                                  {t}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Schedule</Label>
+                                          <Select
+                                            value={draft.schedule || "Shifting Schedule"}
+                                            onValueChange={(v) =>
+                                              setDraft({ ...draft, schedule: v })
+                                            }
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue placeholder="Select work schedule" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {WORK_SCHEDULE_OPTIONS.map((s) => (
+                                                <SelectItem key={s} value={s}>
+                                                  {s}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Vacancies</Label>
+                                          <Input
+                                            type="number"
+                                            min={1}
+                                            className="h-8 text-xs"
+                                            value={draft.vacancies}
+                                            disabled={role === "admin" && Boolean(sourceReqId)}
+                                            onChange={(e) =>
+                                              setDraft({
+                                                ...draft,
+                                                vacancies: sanitizeDigitsOnly(e.target.value),
+                                              })
+                                            }
+                                          />
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Salary min (₱)</Label>
+                                          <Input
+                                            type="number"
+                                            min={0}
+                                            className="h-8 text-xs"
+                                            value={draft.salaryMin}
+                                            onChange={(e) =>
+                                              setDraft({
+                                                ...draft,
+                                                salaryMin: sanitizeDecimalString(e.target.value),
+                                              })
+                                            }
+                                          />
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Salary max (₱)</Label>
+                                          <Input
+                                            type="number"
+                                            min={0}
+                                            className="h-8 text-xs"
+                                            value={draft.salaryMax}
+                                            onChange={(e) =>
+                                              setDraft({
+                                                ...draft,
+                                                salaryMax: sanitizeDecimalString(e.target.value),
+                                              })
+                                            }
+                                          />
+                                        </div>
+                                        {/* Structured screening levels — filled by requirement
+                                        templates and scored by the NLP match analysis. */}
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Education level</Label>
+                                          <Select
+                                            value={draft.educationLevel}
+                                            onValueChange={(v) =>
+                                              setDraft({
+                                                ...draft,
+                                                educationLevel: v as Job["education"],
+                                              })
+                                            }
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {EDUCATION_LEVEL_OPTIONS.map((level) => (
+                                                <SelectItem key={level} value={level}>
+                                                  {level}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-[0.7rem]">Experience level</Label>
+                                          <Select
+                                            value={draft.experienceLevel}
+                                            onValueChange={(v) =>
+                                              setDraft({
+                                                ...draft,
+                                                experienceLevel: v as Job["experience"],
+                                              })
+                                            }
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {EXPERIENCE_LEVEL_OPTIONS.map((level) => (
+                                                <SelectItem key={level} value={level}>
+                                                  {level}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    )}
+                                  {id === "description" && (
+                                    <Textarea
+                                      autoFocus
+                                      rows={2}
+                                      className="text-xs"
+                                      value={draft.description}
+                                      onChange={(e) =>
+                                        setDraft({ ...draft, description: e.target.value })
+                                      }
+                                      placeholder="Short pitch of the role…"
+                                    />
+                                  )}
+                                  {id === "picture" && (
+                                    <div className="space-y-2">
+                                      <HiringPoster className="mx-auto max-w-md" />
+                                      <PosterUploadControl />
+                                    </div>
+                                  )}
+                                  {id === "responsibilities" && (
+                                    <Textarea
+                                      autoFocus
+                                      rows={3}
+                                      className="text-xs"
+                                      value={draft.responsibilities}
+                                      onChange={(e) =>
+                                        setDraft({ ...draft, responsibilities: e.target.value })
+                                      }
+                                      placeholder="One responsibility per line…"
+                                    />
+                                  )}
+                                  {id === "qualifications" && (
+                                    <Textarea
+                                      autoFocus
+                                      rows={3}
+                                      className="text-xs"
+                                      value={draft.qualifications}
+                                      onChange={(e) =>
+                                        setDraft({ ...draft, qualifications: e.target.value })
+                                      }
+                                      placeholder="One qualification per line…"
+                                    />
+                                  )}
+                                  {id === "skills" && (
+                                    <Textarea
+                                      autoFocus
+                                      rows={2}
+                                      className="text-xs"
+                                      value={draft.skills}
+                                      onChange={(e) =>
+                                        setDraft({ ...draft, skills: e.target.value })
+                                      }
+                                      placeholder="One skill per line…"
+                                    />
+                                  )}
+                                  {id === "instructions" && (
+                                    <Textarea
+                                      autoFocus
+                                      rows={2}
+                                      className="text-xs"
+                                      value={draft.instructions}
+                                      onChange={(e) =>
+                                        setDraft({ ...draft, instructions: e.target.value })
+                                      }
+                                      placeholder="How should applicants apply?"
+                                    />
+                                  )}
+                                  {id === "about" && (
+                                    <Textarea
+                                      autoFocus
+                                      rows={2}
+                                      className="text-xs"
+                                      value={draft.about}
+                                      onChange={(e) =>
+                                        setDraft({ ...draft, about: e.target.value })
+                                      }
+                                      placeholder="Company blurb…"
+                                    />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        <div
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => dragging && addBlock(dragging)}
+                          className="rounded-md border border-dashed border-border py-3 text-center text-[0.7rem] text-muted-foreground"
+                        >
+                          Drop a component here
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!canSaveDraft}
-                        onClick={saveDraftAction}
-                      >
-                        Save draft
-                      </Button>
-                      <Button size="sm" onClick={publish}>
-                        <Send className="mr-2 h-4 w-4" />
-                        {editingJobId ? "Update template" : "Publish job post"}
-                      </Button>
-                    </div>
-                  </CardContent>
+                      <div className="rounded-md border border-border p-3">
+                        <p className="eyebrow mb-2">Publish To</p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {platformMeta.map((p) => (
+                            <div key={p.key} className="flex items-center justify-between">
+                              <span className="flex items-center gap-2 text-xs">
+                                <p.icon className="h-3.5 w-3.5 text-muted-foreground" /> {p.key}
+                              </span>
+                              <Switch
+                                checked={platforms[p.key] ?? false}
+                                onCheckedChange={(v) => setPlatforms({ ...platforms, [p.key]: v })}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!canSaveDraft}
+                          onClick={saveDraftAction}
+                        >
+                          Save draft
+                        </Button>
+                        <Button size="sm" onClick={publish}>
+                          <Send className="mr-2 h-4 w-4" />
+                          {editingJobId ? "Update template" : "Publish job post"}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  )}
                 </Card>
 
                 {/* Preview */}
@@ -3546,6 +6180,15 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   )}
                 </SelectContent>
               </Select>
+              {isPairTaken(pendingDept, pendingPosition) && (
+                <p className="flex items-start gap-1.5 text-xs font-medium text-destructive">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    A job post already exists for this position and department — edit the existing
+                    post instead of creating a duplicate.
+                  </span>
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -3559,7 +6202,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               <X className="mr-2 h-4 w-4" /> Cancel
             </Button>
             <Button
-              disabled={!pendingPosition}
+              disabled={!pendingPosition || isPairTaken(pendingDept, pendingPosition)}
+              title={
+                isPairTaken(pendingDept, pendingPosition)
+                  ? "A job post already exists for this position and department"
+                  : "Start a new job post"
+              }
               onClick={() => startNewPost(pendingDept, pendingPosition)}
             >
               <PencilRuler className="mr-2 h-4 w-4" /> Start job post
@@ -3757,6 +6405,28 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     )}
                   </SelectContent>
                 </Select>
+                {!addPresetJob && (
+                  <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      Position not listed? Create it first in Core HCM → Departments &amp;
+                      Positions, then create and publish a job post — applicants can only be added
+                      to open postings with remaining slots.
+                    </span>
+                  </p>
+                )}
+                {!addPresetJob &&
+                  addForm.position !== "" &&
+                  addDept !== "" &&
+                  !postingIndicator(addDept, addForm.position) && (
+                    <p className="flex items-start gap-1.5 text-xs font-medium text-destructive">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        No available job post for {addForm.position} in {addDept} — the posting is
+                        closed, in draft, or full. Reopen or publish it before adding applicants.
+                      </span>
+                    </p>
+                  )}
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -3884,15 +6554,166 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 />
               </label>
 
+              {/* VERIFICATION DOCUMENTS — prove the content claimed in the resume */}
+              <div className="space-y-2 rounded-md border border-border/70 bg-muted/20 p-4">
+                <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground">
+                  <FileCheck className="h-3.5 w-3.5" /> VERIFICATION OF RESUME (OPTIONAL)
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Upload proof of the content claimed in the resume/CV. Requirements needed to
+                  verify: COE (work experience), Certificates (trainings), Credentials (diploma,
+                  license, TOR), and Others (awards, portfolio). Original copies are prioritized.
+                </p>
+                <div className="space-y-2">
+                  {VERIFICATION_DOC_TYPES.map((t) => {
+                    const existing = verificationDocs.filter((d) => d.docType === t.type);
+                    const isDragging = verificationDragType === t.type;
+                    const addVerificationFiles = (files: File[]) => {
+                      if (!files.length) return;
+                      setVerificationDocs((prev) => [
+                        ...prev,
+                        ...files.map((file) => ({
+                          docType: t.type,
+                          title: file.name,
+                          originalCopy: false,
+                          file,
+                        })),
+                      ]);
+                    };
+                    return (
+                      <div
+                        key={t.type}
+                        onDragEnter={(e) => {
+                          e.preventDefault();
+                          setVerificationDragType(t.type);
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (verificationDragType !== t.type) setVerificationDragType(t.type);
+                        }}
+                        onDragLeave={(e) => {
+                          e.preventDefault();
+                          if (!e.currentTarget.contains(e.relatedTarget as Node))
+                            setVerificationDragType(null);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setVerificationDragType(null);
+                          addVerificationFiles(Array.from(e.dataTransfer.files ?? []));
+                        }}
+                        className={cn(
+                          "rounded-md border bg-background px-3 py-2 transition-colors",
+                          isDragging
+                            ? "border-dashed border-primary bg-primary/5 ring-1 ring-primary"
+                            : "border-border/70",
+                        )}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium">{t.label}</p>
+                            <p className="text-[0.7rem] text-muted-foreground">{t.verifies}</p>
+                          </div>
+                          <label className="cursor-pointer text-xs font-medium text-primary hover:underline">
+                            <Upload className="mr-1 inline h-3 w-3" />
+                            {isDragging ? "Drop files here" : "Upload"}
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                              multiple
+                              onChange={(e) => {
+                                addVerificationFiles(Array.from(e.target.files ?? []));
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                        </div>
+                        <p
+                          className={cn(
+                            "mt-1.5 rounded border border-dashed px-2 py-1.5 text-center text-[0.7rem]",
+                            isDragging
+                              ? "border-primary bg-primary/10 font-medium text-primary"
+                              : "border-border/60 text-muted-foreground",
+                          )}
+                        >
+                          {isDragging
+                            ? `Drop to attach to ${t.label}`
+                            : "Drag & drop files here or click Upload"}
+                        </p>
+                        {existing.map((d, i) => {
+                          const globalIdx = verificationDocs.indexOf(d);
+                          return (
+                            <div
+                              key={`${t.type}-${i}`}
+                              className="mt-1.5 flex items-center justify-between gap-2 rounded border border-border/60 bg-muted/30 px-2 py-1"
+                            >
+                              <span className="min-w-0 flex-1 truncate text-xs">
+                                {d.title}
+                                {d.originalCopy && (
+                                  <Badge className="ml-1.5 bg-gold text-gold-foreground">
+                                    Original
+                                  </Badge>
+                                )}
+                              </span>
+                              <label className="flex shrink-0 items-center gap-1 text-[0.7rem] text-muted-foreground">
+                                <input
+                                  type="checkbox"
+                                  className="accent-primary"
+                                  checked={d.originalCopy}
+                                  onChange={(e) =>
+                                    setVerificationDocs((prev) =>
+                                      prev.map((x, xi) =>
+                                        xi === globalIdx
+                                          ? { ...x, originalCopy: e.target.checked }
+                                          : x,
+                                      ),
+                                    )
+                                  }
+                                />
+                                Original copy
+                              </label>
+                              <button
+                                type="button"
+                                className="shrink-0 text-destructive hover:underline"
+                                onClick={() =>
+                                  setVerificationDocs((prev) =>
+                                    prev.filter((_, xi) => xi !== globalIdx),
+                                  )
+                                }
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               <DialogFooter className="gap-2">
                 <Button variant="outline" onClick={requestBackToStep1}>
                   Back
                 </Button>
                 <Button
+                  disabled={
+                    screeningLoading ||
+                    (!addPresetJob &&
+                      addForm.position !== "" &&
+                      addDept !== "" &&
+                      !postingIndicator(addDept, addForm.position))
+                  }
                   onClick={() => {
                     if (!addForm.position) {
                       toast.error(
                         "Select a position first — this department has no defined positions.",
+                      );
+                      return;
+                    }
+                    if (!addPresetJob && !postingIndicator(addDept, addForm.position)) {
+                      toast.error(
+                        `No available job post for ${addForm.position} in ${addDept} — reopen or publish the posting before adding applicants.`,
                       );
                       return;
                     }
@@ -3951,138 +6772,182 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
           {addStep === 3 && screenResult && (
             <div className="space-y-4">
-              <div className="grid gap-6 lg:grid-cols-[460px_1fr] lg:items-start">
-                <div className="flex h-full flex-col overflow-hidden rounded-md border border-border bg-card lg:sticky lg:top-0">
-                  <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2">
-                    <span
-                      className="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-medium"
-                      style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                    >
-                      {addMethod === "image" ? (
-                        <ImageIcon className="h-3.5 w-3.5 shrink-0 text-primary" />
-                      ) : (
-                        <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
-                      )}
-                      <span
-                        className="min-w-0 flex-1 break-words whitespace-normal text-primary underline underline-offset-2"
-                        style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                        title={addFileName || `${addForm.name || "applicant"}_Resume`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          openResumePreview();
-                        }}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            openResumePreview();
-                          }
-                        }}
-                      >
-                        {addFileName || `${addForm.name || "applicant"}_Resume`}
-                      </span>
+              {/* Applicant strip — mirrors the Review dialog header */}
+              <div className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-card p-4">
+                <Avatar className="h-12 w-12 shrink-0">
+                  <AvatarFallback className="bg-primary text-base font-semibold text-primary-foreground">
+                    {addInitials(addForm.name || "Applicant")}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-display text-lg font-semibold leading-tight">
+                      {addForm.name || "Applicant"}
+                    </p>
+                    <Badge variant="outline" className={statusMeta[screenResult.status].className}>
+                      {statusMeta[screenResult.status].label}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                      <Users className="h-3.5 w-3.5 text-primary" />{" "}
+                      {addForm.position || "Position"}
                     </span>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        onClick={() => setAddPreviewZoom((z) => Math.max(50, z - 10))}
-                        disabled={addPreviewZoom <= 50}
-                        aria-label="Zoom out"
+                    <span className="inline-flex items-center gap-1">{addDept}</span>
+                  </p>
+                </div>
+                {addResumeFile && (
+                  <div className="flex items-center gap-2.5 rounded-lg border border-border/70 px-3 py-2">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-destructive/10 text-destructive">
+                      <FileText className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 max-w-52">
+                      <p className="truncate text-xs font-semibold" title={addFileName}>
+                        {addFileName}
+                      </p>
+                      <p className="text-[0.7rem] text-muted-foreground">
+                        {/\.pdf$/i.test(addResumeFile.name)
+                          ? "PDF · Resume"
+                          : /\.(jpe?g|png)$/i.test(addResumeFile.name) ||
+                              addResumeFile.type.startsWith("image/")
+                            ? "Image · Resume"
+                            : "DOCX · Resume"}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-[0.7rem]"
+                      onClick={() => openLocalFile(addResumeFile)}
+                    >
+                      <Eye className="mr-1 h-3 w-3" /> View
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-[0.7rem]"
+                      onClick={() => downloadLocalFile(addResumeFile)}
+                    >
+                      <Download className="mr-1 h-3 w-3" /> Download
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <div
+                className={cn(
+                  "grid gap-6 lg:items-start",
+                  isPreviewableResume && "lg:grid-cols-[460px_1fr]",
+                )}
+              >
+                {isPreviewableResume && (
+                  <div className="flex h-full flex-col overflow-hidden rounded-md border border-border bg-card lg:sticky lg:top-0">
+                    <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2">
+                      <span
+                        className="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-medium"
+                        style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
                       >
-                        <ZoomOut className="h-3.5 w-3.5" />
-                      </Button>
-                      <span className="w-8 text-center text-[0.65rem] text-muted-foreground">
-                        {addPreviewZoom}%
+                        {addMethod === "image" ? (
+                          <ImageIcon className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        ) : (
+                          <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        )}
+                        <span
+                          className="min-w-0 flex-1 break-words whitespace-normal text-primary underline underline-offset-2"
+                          style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+                          title={addFileName || `${addForm.name || "applicant"}_Resume`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openResumePreview();
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              openResumePreview();
+                            }
+                          }}
+                        >
+                          {addFileName || `${addForm.name || "applicant"}_Resume`}
+                        </span>
                       </span>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        onClick={() => setAddPreviewZoom((z) => Math.min(300, z + 10))}
-                        disabled={addPreviewZoom >= 300}
-                        aria-label="Zoom in"
-                      >
-                        <ZoomIn className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => setAddPreviewZoom((z) => Math.max(50, z - 10))}
+                          disabled={addPreviewZoom <= 50}
+                          aria-label="Zoom out"
+                        >
+                          <ZoomOut className="h-3.5 w-3.5" />
+                        </Button>
+                        <span className="w-8 text-center text-[0.65rem] text-muted-foreground">
+                          {addPreviewZoom}%
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => setAddPreviewZoom((z) => Math.min(300, z + 10))}
+                          disabled={addPreviewZoom >= 300}
+                          aria-label="Zoom in"
+                        >
+                          <ZoomIn className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="relative flex-1 min-h-[420px] overflow-auto bg-muted/30 p-3">
+                      {(() => {
+                        if (!resumePreviewUrl || !addResumeFile) return null;
+                        const name = addResumeFile.name;
+                        const isImage =
+                          /\.(jpe?g|png)$/i.test(name) || addResumeFile.type.startsWith("image/");
+                        if (isImage) {
+                          return (
+                            <div className="flex h-full w-full items-center justify-center">
+                              <img
+                                src={resumePreviewUrl}
+                                alt={`Uploaded resume: ${addFileName}`}
+                                className="max-h-full max-w-full rounded-sm border border-border object-contain shadow-sm transition-transform"
+                                style={{
+                                  transform: `scale(${addPreviewZoom / 100})`,
+                                  transformOrigin: "center center",
+                                }}
+                              />
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="h-full w-full overflow-auto">
+                            <div
+                              style={{
+                                transform: `scale(${addPreviewZoom / 100})`,
+                                transformOrigin: "top center",
+                                height:
+                                  addPreviewZoom !== 100
+                                    ? `${(100 / addPreviewZoom) * 100}%`
+                                    : "100%",
+                              }}
+                              className="h-full w-full"
+                            >
+                              <iframe
+                                src={resumePreviewUrl}
+                                title={`Uploaded resume: ${addFileName}`}
+                                className="h-full w-full rounded-sm border border-border bg-white"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
-                  <div className="relative flex-1 min-h-[420px] overflow-auto bg-muted/30 p-3">
-                    {resumePreviewUrl && addResumeFile ? (
-                      /\.(jpe?g|png)$/i.test(addResumeFile.name) ||
-                      addResumeFile.type.startsWith("image/") ? (
-                        <div className="flex h-full w-full items-center justify-center">
-                          <img
-                            src={resumePreviewUrl}
-                            alt={`Uploaded resume: ${addFileName}`}
-                            className="max-h-full max-w-full rounded-sm border border-border object-contain shadow-sm transition-transform"
-                            style={{
-                              transform: `scale(${addPreviewZoom / 100})`,
-                              transformOrigin: "center center",
-                            }}
-                          />
-                        </div>
-                      ) : /\.pdf$/i.test(addResumeFile.name) ||
-                        addResumeFile.type === "application/pdf" ? (
-                        <div className="h-full w-full overflow-auto">
-                          <div
-                            style={{
-                              transform: `scale(${addPreviewZoom / 100})`,
-                              transformOrigin: "top center",
-                              height:
-                                addPreviewZoom !== 100
-                                  ? `${(100 / addPreviewZoom) * 100}%`
-                                  : "100%",
-                            }}
-                            className="h-full w-full"
-                          >
-                            <iframe
-                              src={resumePreviewUrl}
-                              title={`Uploaded resume: ${addFileName}`}
-                              className="h-full w-full rounded-sm border border-border bg-white"
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center">
-                          <FileText className="h-10 w-10 text-muted-foreground" />
-                          <p className="text-xs text-muted-foreground">
-                            Preview not available for this file type. Open the file to view it.
-                          </p>
-                          <Button size="sm" variant="outline" onClick={openResumePreview}>
-                            <ExternalLink className="mr-2 h-3.5 w-3.5" /> Open file
-                          </Button>
-                        </div>
-                      )
-                    ) : (
-                      <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center">
-                        {addMethod === "image" ? (
-                          <ImageIcon className="h-8 w-8 text-muted-foreground" />
-                        ) : (
-                          <FileText className="h-8 w-8 text-muted-foreground" />
-                        )}
-                        <p className="text-xs text-muted-foreground">
-                          {addFileName || "No file selected"}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                )}
 
                 <div className="space-y-4 lg:overflow-y-auto lg:pr-2">
                   {(() => {
-                    const verdictCopy: Record<string, string> = {
-                      fit: "Strong match — meets or exceeds the requirements for this role.",
-                      "other-role":
-                        "Not the strongest fit here, but the profile suggests they'd do well in a different role.",
-                      credential:
-                        "A credential issue was found (invalid format or unverifiable against system reference data). This does not imply fraud.",
-                      "not-fit":
-                        "Falls short of the core requirements and no open role matched strongly enough.",
-                    };
                     const detail = screenResult.detail;
                     const breakdown = detail?.score_breakdown;
                     const passed = screenResult.score >= passing;
@@ -4091,164 +6956,263 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                       screenResult.entities.filter((e) => e.label === "SKILL").map((e) => e.value);
                     const missing =
                       breakdown?.["skills"]?.missing_required ?? (matched.length === 0 ? [] : []);
-                    const experience: string[] =
-                      (detail?.profile?.work_experience ?? [])
-                        .map((w) => w.job_title)
-                        .filter((t): t is string => Boolean(t)) ||
-                      screenResult.entities.filter((e) => e.label === "ORG").map((e) => e.value);
                     const education: string[] =
                       detail?.profile?.education ??
                       screenResult.entities.filter((e) => e.label === "EDU").map((e) => e.value);
-                    const skills = screenResult.entities.filter((e) => e.label === "SKILL");
-                    const unrecognizedSkills =
-                      detail?.validation?.skill_analysis?.unrecognized ?? [];
+                    const yearsExperience =
+                      detail?.profile?.estimated_years_experience ??
+                      breakdown?.["experience"]?.estimated_years ??
+                      null;
+                    const educationLabel = shortEducationLabel(education);
+                    const profileSkills = detail?.profile?.skills ?? [];
+                    const entitySkills = screenResult.entities
+                      .filter((e) => e.label === "SKILL")
+                      .map((e) => e.value);
+                    const panelSkills = (
+                      profileSkills.length > 0 ? profileSkills : entitySkills
+                    ).slice(0, 12);
+                    const recognizedRoles =
+                      detail?.profile?.job_roles?.recognized ??
+                      detail?.validation?.job_role_analysis?.recognized ??
+                      [];
+                    const unrecognizedRoles =
+                      detail?.profile?.job_roles?.unrecognized ??
+                      detail?.validation?.job_role_analysis?.unrecognized ??
+                      [];
+                    const workExperience = detail?.profile?.work_experience ?? [];
+                    const certifications = detail?.profile?.certifications ?? [];
+                    const unrecognizedCerts =
+                      (detail?.profile as { unrecognized_certifications?: string[] } | undefined)
+                        ?.unrecognized_certifications ?? [];
+                    const personal = detail?.profile?.personal_information;
+                    const personalInfo = {
+                      name: personal?.name ?? (addForm.name || null),
+                      email: personal?.email ?? (addForm.email || null),
+                      phone: personal?.phone ?? (addForm.phone || null),
+                    };
+                    const rows: ScreeningRequirementRow[] = [
+                      ...matched.map((label) => ({
+                        label,
+                        state: "found" as const,
+                        group: "skills" as const,
+                        hint: "Detected in resume",
+                      })),
+                      ...missing.map((label) => ({
+                        label,
+                        state: "missing" as const,
+                        group: "skills" as const,
+                        hint: "Not detected in resume",
+                      })),
+                    ];
+                    const expBreak = breakdown?.["experience"];
+                    let expMinYears: number | null = expBreak?.min_years_required ?? null;
+                    if (expBreak) {
+                      const met = !!expBreak.requirement_met;
+                      const minYears = expBreak.min_years_required ?? null;
+                      rows.push({
+                        label: minYears ? `${minYears}+ Years Experience` : "Work Experience",
+                        state: met ? "meets" : "missing",
+                        group: "experience",
+                        hint:
+                          yearsExperience !== null
+                            ? `Applicant ${yearsExperience} yrs`
+                            : met
+                              ? "Requirement satisfied"
+                              : "Below requirement",
+                      });
+                    } else if (yearsExperience !== null) {
+                      rows.push({
+                        label: "2+ Years Experience",
+                        state: yearsExperience >= 2 ? "meets" : "missing",
+                        group: "experience",
+                        hint: `Applicant ${yearsExperience} yrs`,
+                      });
+                      expMinYears = 2;
+                    }
+                    const eduBreak = breakdown?.["education"];
+                    if (eduBreak && !eduBreak.no_requirements) {
+                      const reqLevel =
+                        eduBreak.required_level || eduBreak.matched?.[0] || "Bachelor's Degree";
+                      const eduMissing = eduBreak.missing ?? [];
+                      const eduFound = eduMissing.length === 0;
+                      rows.push({
+                        label: reqLevel,
+                        state: eduFound ? "found" : "missing",
+                        group: "education",
+                        hint: eduFound
+                          ? `Applicant: ${education[0] ?? reqLevel}`
+                          : `Required: ${reqLevel}`,
+                      });
+                    } else if (education.length > 0) {
+                      rows.push({
+                        label: educationLabel,
+                        state: "found",
+                        group: "education",
+                        hint: `Applicant: ${education[0] ?? educationLabel}`,
+                      });
+                    }
+                    const certBreak = breakdown?.["certifications"];
+                    if (certBreak && !certBreak.no_requirements) {
+                      (certBreak.matched ?? []).forEach((label) =>
+                        rows.push({
+                          label,
+                          state: "found",
+                          group: "certifications",
+                          hint: "Detected in resume",
+                        }),
+                      );
+                      (certBreak.missing ?? []).forEach((label) =>
+                        rows.push({
+                          label,
+                          state: "missing",
+                          group: "certifications",
+                          hint: "Not detected in resume",
+                        }),
+                      );
+                    }
                     const alt = detail?.alternative_job;
+                    const addVm = {
+                      score: screenResult.score,
+                      detail,
+                      /* Preview screening has no stored documents yet, so the
+                         ranking score equals the resume score here. */
+                      resumeScore: detail?.resume_match_score ?? screenResult.score,
+                      verification: detail?.document_verification ?? null,
+                      matched,
+                      missing,
+                      rows,
+                      skills: panelSkills,
+                      skillsRecognized: profileSkills.length > 0,
+                      recognizedRoles,
+                      unrecognizedRoles,
+                      workExperience,
+                      education,
+                      certifications,
+                      unrecognizedCertifications: unrecognizedCerts,
+                      personalInfo,
+                      yearsExperience,
+                      experienceMinYears: expMinYears,
+                      educationLabel,
+                    };
 
                     return (
                       <>
-                        <p className="eyebrow">Resume Screening Result</p>
-                        {/* Score + verdict */}
-                        <div className="flex items-center gap-4 rounded-md border border-border p-4">
-                          <div className="text-center">
-                            <p className="font-display text-4xl font-semibold text-primary">
-                              {Math.round(screenResult.score)}%
-                            </p>
-                            <p className="eyebrow">Match score</p>
-                          </div>
-                          <div className="flex-1 space-y-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge
-                                variant="outline"
-                                className={statusMeta[screenResult.status].className}
-                              >
-                                {statusMeta[screenResult.status].label}
-                              </Badge>
-                              <Badge
-                                variant="outline"
-                                className={
-                                  passed
-                                    ? "border-success/30 bg-success/10 text-success"
-                                    : "border-destructive/30 bg-destructive/10 text-destructive"
-                                }
-                              >
-                                {passed ? "Passed threshold" : "Below threshold"}
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              {verdictCopy[screenResult.status]}
-                            </p>
-                          </div>
+                        <ScreeningModalSummary
+                          status={screenResult.status}
+                          score={screenResult.score}
+                          matchedCount={matched.length}
+                          missingCount={missing.length}
+                          yearsExperience={yearsExperience}
+                          educationLabel={educationLabel}
+                        />
+
+                        <div className="grid items-stretch gap-4 lg:grid-cols-3">
+                          <ResumeInfoPanel
+                            title="Key Information Extracted"
+                            variant="modal"
+                            skills={panelSkills}
+                            recognizedRoles={recognizedRoles}
+                            unrecognizedRoles={unrecognizedRoles}
+                            workExperience={workExperience}
+                            education={education}
+                            experienceYears={yearsExperience}
+                            certifications={certifications}
+                            personalInfo={personalInfo}
+                            skillsRecognized={profileSkills.length > 0}
+                            unrecognizedCertifications={unrecognizedCerts}
+                          />
+                          <RequirementMatchPanel rows={rows} experienceMinYears={expMinYears} />
+                          <ScreeningResumeDocsMatchDetail
+                            docs={[]}
+                            loading={false}
+                            resumeName={personalInfo.name ?? addForm.name}
+                            resumeEducation={education}
+                            resumeCertifications={certifications}
+                          />
                         </div>
 
-                        {/* Keyword match */}
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-md border border-success/30 bg-success/5 p-3">
-                            <p className="eyebrow mb-2 text-success">
-                              Matched keywords ({matched.length})
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {matched.length === 0 && (
-                                <span className="text-xs text-muted-foreground">None found</span>
-                              )}
-                              {matched.map((k) => (
-                                <Badge
-                                  key={k}
-                                  variant="outline"
-                                  className="border-success/30 bg-success/10 text-success"
-                                >
-                                  ✓ {k}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="rounded-md border border-border p-3">
-                            <p className="eyebrow mb-2 text-muted-foreground">
-                              Missing keywords ({missing.length})
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {missing.length === 0 && (
-                                <span className="text-xs text-muted-foreground">
-                                  All keywords covered
-                                </span>
-                              )}
-                              {missing.map((k) => (
-                                <Badge key={k} variant="outline" className="text-muted-foreground">
-                                  ‑ {k}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Compact summary — 2Ã—2 grid, easy to scan, no scroll needed */}
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-md border border-border bg-card p-3">
-                            <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                              <Briefcase className="h-3.5 w-3.5" /> Work experience
-                            </p>
-                            <p className="text-sm leading-relaxed">
-                              {experience.length > 0 ? (
-                                <>
-                                  {experience.join(", ")}
-                                  {detail?.profile?.estimated_years_experience
-                                    ? ` (~${detail.profile.estimated_years_experience} yrs)`
-                                    : ""}
-                                </>
-                              ) : (
-                                <span className="text-muted-foreground">
-                                  No employer history detected
-                                </span>
-                              )}
-                            </p>
-                          </div>
-                          <div className="rounded-md border border-border bg-card p-3">
-                            <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                              <GraduationCap className="h-3.5 w-3.5" /> Education
-                            </p>
-                            <p className="text-sm leading-relaxed">
-                              {education.length > 0 ? (
-                                education.join(", ")
-                              ) : (
-                                <span className="text-muted-foreground">Not specified</span>
-                              )}
-                            </p>
-                          </div>
-                          <div className="rounded-md border border-border bg-card p-3">
-                            <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                              <Sparkles className="h-3.5 w-3.5" /> Key skills
-                            </p>
-                            <p className="text-sm leading-relaxed">
-                              {skills.length > 0 ? (
-                                skills.map((s) => s.value).join(", ")
-                              ) : (
-                                <span className="text-muted-foreground">None listed</span>
-                              )}
-                            </p>
-                          </div>
-                          <div className="rounded-md border border-border bg-card p-3">
-                            <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                              <AlertTriangle className="h-3.5 w-3.5" />{" "}
-                              {unrecognizedSkills.length > 0
-                                ? "Unrecognized skills"
-                                : "Skills note"}
-                            </p>
-                            <p
-                              className={cn(
-                                "text-sm leading-relaxed",
-                                unrecognizedSkills.length > 0
-                                  ? "text-amber-600"
-                                  : "text-muted-foreground",
-                              )}
+                        {/* Supporting documents staged in this application */}
+                        <div className="rounded-xl border border-border bg-card p-5">
+                          <div className="flex items-center justify-between gap-2">
+                            <h3 className="flex items-center gap-2 font-display text-base font-semibold">
+                              <FileCheck className="h-4.5 w-4.5 text-primary" /> Supporting Document
+                              Verification
+                            </h3>
+                            <Badge
+                              variant="outline"
+                              className="border-border bg-secondary text-secondary-foreground"
                             >
-                              {unrecognizedSkills.length > 0
-                                ? unrecognizedSkills.join(", ")
-                                : "All skills recognized — clean"}
-                            </p>
+                              {verificationDocs.length} document
+                              {verificationDocs.length === 1 ? "" : "s"}
+                            </Badge>
                           </div>
+                          <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
+                            Proofs staged with this application — they will be verified against the
+                            resume after the applicant is saved.
+                          </p>
+                          {verificationDocs.length === 0 ? (
+                            <p className="mt-3 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
+                              <Info className="h-4 w-4 shrink-0" /> No verification papers staged.
+                              Upload a COE, certificate or credential in Step 2 (optional).
+                            </p>
+                          ) : (
+                            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                              {verificationDocs.map((d, i) => (
+                                <div
+                                  key={`${d.docType}-${d.file.name}-${i}`}
+                                  className="rounded-lg border border-border/70 p-3"
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-destructive/10 text-destructive">
+                                      <FileText className="h-4 w-4" />
+                                    </span>
+                                    <Badge
+                                      variant="outline"
+                                      className="border-border bg-secondary text-[0.65rem] text-muted-foreground"
+                                    >
+                                      Staged
+                                    </Badge>
+                                  </div>
+                                  <p
+                                    className="mt-2 truncate text-xs font-semibold"
+                                    title={d.title}
+                                  >
+                                    {d.title}
+                                  </p>
+                                  <p className="truncate text-[0.7rem] text-muted-foreground">
+                                    {d.docType} · {d.originalCopy ? "Original" : "Copy"}
+                                  </p>
+                                  <div className="mt-2 flex gap-1.5">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 flex-1 px-2 text-[0.7rem]"
+                                      onClick={() => openLocalFile(d.file)}
+                                    >
+                                      <Eye className="mr-1 h-3 w-3" /> View
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 flex-1 px-2 text-[0.7rem]"
+                                      onClick={() => downloadLocalFile(d.file)}
+                                    >
+                                      <Download className="mr-1 h-3 w-3" /> Download
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
 
-                        {/* Missing info / job-role / credential analysis (SOP 2) */}
-                        <ScreeningAnalysisSections detail={detail} />
+                        <ScreeningDetailsAccordion
+                          detail={detail}
+                          variant="modal"
+                          position={addForm.position || "Position"}
+                          score={screenResult.score}
+                          vm={addVm}
+                        />
 
                         {/* Alternative job recommendation */}
                         {alt && (
@@ -4260,18 +7224,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                             {alt.reason && (
                               <p className="mt-1 text-xs text-muted-foreground">{alt.reason}</p>
                             )}
-                          </div>
-                        )}
-
-                        {/* Screening explanation */}
-                        {(detail?.reasons?.length ?? 0) > 0 && (
-                          <div className="rounded-md border border-border p-3">
-                            <p className="eyebrow mb-2">Why this result (system explanation)</p>
-                            <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-                              {detail!.reasons!.map((r, i) => (
-                                <li key={i}>{r}</li>
-                              ))}
-                            </ul>
                           </div>
                         )}
 
@@ -4325,7 +7277,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           <DialogHeader>
             <DialogTitle>Use this template?</DialogTitle>
             <DialogDescription>
-              This will fill all components in the builder with &quot;{pendingTemplateJob?.title}&quot;
+              This will fill all components in the builder with &quot;{pendingTemplateJob?.title}
+              &quot;
               {pendingTemplateJob ? ` — ${pendingTemplateJob.department}` : ""} data. Missing
               components will be automatically created. Continue?
             </DialogDescription>
@@ -4347,10 +7300,77 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 setBuilderStarted(true);
                 setSavedSnapshot(snapshotOf(seeded, fullBlocks));
                 setConfirmTemplateOpen(false);
-                toast.success(`Template "${pendingTemplateJob.title}" applied — all components filled`);
+                toast.success(
+                  `Template "${pendingTemplateJob.title}" applied — all components filled`,
+                );
               }}
             >
               Fill all components
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* AI GENERATE CONFIRMATION — replaces the 6 filled content blocks */}
+      <Dialog open={confirmGenerateOpen} onOpenChange={setConfirmGenerateOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Generate with AI?</DialogTitle>
+            <DialogDescription>
+              This will replace the current Job Description, Key Responsibilities, Qualifications,
+              Required Skills, Application Instruction and About Company with AI-generated content
+              grounded in your screening vocabulary. Continue?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setConfirmGenerateOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={generatingDraft}
+              onClick={() => {
+                setConfirmGenerateOpen(false);
+                void runGenerateDraft();
+              }}
+            >
+              {generatingDraft ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-4 w-4" />
+              )}
+              Generate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* REMOVE BLOCK CONFIRMATION — only when the block holds user content */}
+      <Dialog
+        open={pendingRemoveBlock !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingRemoveBlock(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Remove {blockLibrary.find((b) => b.id === pendingRemoveBlock)?.label ?? "block"}?
+            </DialogTitle>
+            <DialogDescription>
+              This component has text in it. Removing it will also delete that text. To keep the
+              text, cancel and copy it elsewhere first.
+            </DialogDescription>
+          </DialogHeader>
+          <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground hover:border-primary/40">
+            <Checkbox checked={removeForAll} onCheckedChange={(v) => setRemoveForAll(v === true)} />
+            Do this for all deletes this session (don&apos;t ask again until reload)
+          </label>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPendingRemoveBlock(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmRemoveBlock}>
+              <Trash2 className="mr-2 h-4 w-4" /> Remove & clear text
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -4467,9 +7487,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   <ScanLine className="h-5 w-5 text-primary" /> Screening Setup
                 </DialogTitle>
                 <DialogDescription>
-                  Scoring — how resumes are scored. Requirement Templates — what to require per
-                  position. Reference Data — the vocabulary the model recognizes in resumes. Saved
-                  settings apply to every new screening run.
+                  Requirement Templates — the requirement entities a resume must satisfy per
+                  position, ready to apply in a job post. Scoring — how resumes are scored.
+                  Reference Data — the vocabulary the model recognizes in resumes, one section per
+                  entity type with bulk upload. Reported Entities — unrecognized entities flagged
+                  from screening results, ready to add. Saved settings apply to every new screening
+                  run.
                 </DialogDescription>
               </DialogHeader>
 
@@ -4514,9 +7537,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
               <TabsList className="h-auto w-full justify-start rounded-lg border border-border/70 bg-muted/70 p-1">
                 {[
+                  { value: "templates", label: "Requirement Templates", icon: ClipboardList },
                   { value: "scoring", label: "Scoring", icon: Sliders },
-                  { value: "keywords", label: "Requirement Templates", icon: FilePlus2 },
                   { value: "reference", label: "Reference Data", icon: Database },
+                  { value: "reported", label: "Reported Entities", icon: Flag },
                 ].map((t) => (
                   <TabsTrigger
                     key={t.value}
@@ -4684,169 +7708,19 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 </div>
               </TabsContent>
 
-              <TabsContent value="keywords" className="mt-0">
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-sm font-semibold">Requirement templates per position</h3>
-                    <p className="text-xs text-muted-foreground">
-                      What to <span className="font-medium text-foreground">require</span> for this
-                      role — use the chips to seed a job post&apos;s requirements, or add a term to
-                      the vocabulary so the model recognizes it in resumes.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-xs">Job position</Label>
-                    <Select value={keywordPosition} onValueChange={(v) => setKeywordPosition(v)}>
-                      <SelectTrigger className="max-w-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {positions.map((p) => (
-                          <SelectItem key={p.id} value={p.title}>
-                            {p.title}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {(() => {
-                    const template = keywordLibrary[keywordPosition] ?? [];
-                    const inVocab = (k: string) => refValues.has(k.trim().toLowerCase());
-                    const missing = template.filter((k) => !inVocab(k));
-                    return (
-                      <>
-                        <div className="flex flex-wrap gap-1.5 rounded-md border border-border bg-muted/30 p-3">
-                          {template.map((k) => (
-                            <Badge
-                              key={k}
-                              variant={inVocab(k) ? "secondary" : "outline"}
-                              className="group gap-1 py-1 pl-2 pr-1 text-xs"
-                            >
-                              {k}
-                              {inVocab(k) ? (
-                                <span
-                                  className="text-[0.6rem] text-success"
-                                  title="Already in the screening vocabulary"
-                                >
-                                  ✓
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  disabled={addingTerm}
-                                  title={`Add "${k}" to the screening vocabulary so the model recognizes it in resumes`}
-                                  className="rounded-sm px-0.5 text-[0.65rem] font-bold text-primary transition-colors hover:bg-primary/15 disabled:opacity-50"
-                                  onClick={() => addTermToVocabulary(k, guessRefType(k))}
-                                >
-                                  +
-                                </button>
-                              )}
-                            </Badge>
-                          ))}
-                          {template.length === 0 && (
-                            <span className="text-xs text-muted-foreground">
-                              No template keywords for this position yet — add custom terms below.
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button
-                            size="sm"
-                            className="cursor-pointer"
-                            disabled={template.length === 0}
-                            onClick={() => applyTemplateToBuilder(template)}
-                          >
-                            <FilePlus2 className="mr-1.5 h-3.5 w-3.5" /> Use in Job Post Builder
-                          </Button>
-                          {missing.length > 0 && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="cursor-pointer"
-                              disabled={addingTerm}
-                              onClick={() =>
-                                Promise.all(
-                                  missing.map((k) => addTermToVocabulary(k, guessRefType(k))),
-                                )
-                              }
-                            >
-                              <Plus className="mr-1.5 h-3.5 w-3.5" /> Add all {missing.length}{" "}
-                              missing to vocabulary
-                            </Button>
-                          )}
-                          <p className="text-[0.7rem] text-muted-foreground">
-                            {missing.length === 0 && template.length > 0
-                              ? "All template terms are already recognized by the model."
-                              : `${missing.length} of ${template.length} terms are not yet in the vocabulary — terms not in the vocabulary are flagged for review when found in resumes.`}
-                          </p>
-                        </div>
-                      </>
-                    );
-                  })()}
-
-                  <div className="space-y-2 rounded-md border border-border p-3">
-                    <Label className="text-xs">Add a custom term to the vocabulary</Label>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Select
-                        value={customTermType}
-                        onValueChange={(v) => setCustomTermType(v as typeof customTermType)}
-                      >
-                        <SelectTrigger className="h-9 w-40 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="skill">Skill</SelectItem>
-                          <SelectItem value="job_role">Job role</SelectItem>
-                          <SelectItem value="certification">Certification</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        className="h-9 min-w-0 flex-1 text-xs"
-                        placeholder="e.g. Opera Cloud, Micros POS, Guest Service Officer"
-                        value={customTerm}
-                        onChange={(e) => setCustomTerm(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && customTerm.trim()) {
-                            e.preventDefault();
-                            addTermToVocabulary(customTerm, customTermType).then(() =>
-                              setCustomTerm(""),
-                            );
-                          }
-                        }}
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-9 cursor-pointer"
-                        disabled={addingTerm || !customTerm.trim()}
-                        onClick={() =>
-                          addTermToVocabulary(customTerm, customTermType).then(() =>
-                            setCustomTerm(""),
-                          )
-                        }
-                      >
-                        {addingTerm ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Plus className="h-3.5 w-3.5" />
-                        )}
-                        Add
-                      </Button>
-                    </div>
-                    <p className="text-[0.7rem] text-muted-foreground">
-                      Terms added here appear on the Reference Data tab and are matched in every new
-                      screening — aliases can be managed there.
-                    </p>
-                  </div>
-
-                  <p className="text-[0.7rem] text-muted-foreground">
-                    Entities captured from every resume:{" "}
-                    {["PERSON", "EDUCATION", "JOB_TITLE", "SKILL", "CERTIFICATION"].join(" · ")}
-                  </p>
-                </div>
+              <TabsContent value="templates" className="mt-0">
+                <RequirementTemplateManager
+                  templates={requirementTemplates}
+                  loading={templatesLoading}
+                  error={templatesError}
+                  positions={knownPositions}
+                  refValues={refValues}
+                  busyId={templateBusyId}
+                  onReload={loadRequirementTemplates}
+                  onToggleActive={toggleRequirementTemplate}
+                  onUseTemplate={applyRequirementTemplateToDraft}
+                  onAddToVocabulary={addTermToVocabulary}
+                />
               </TabsContent>
 
               <TabsContent value="reference" className="mt-0">
@@ -4858,6 +7732,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 </p>
                 <ScreeningReferenceManager />
               </TabsContent>
+
+              <TabsContent value="reported" className="mt-0">
+                <ReportedEntitiesManager />
+              </TabsContent>
             </div>
 
             {/* Footer — sticky save bar for the scoring tab */}
@@ -4866,8 +7744,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 <p className="text-[0.7rem] text-muted-foreground">
                   {screeningTab === "scoring"
                     ? "Weights and thresholds apply to every new resume screening after saving."
-                    : screeningTab === "keywords"
-                      ? "Templates seed job post requirements; the + buttons add terms to the screening vocabulary."
+                    : screeningTab === "templates"
+                      ? "Templates seed a job post's requirements; the + buttons add terms to the screening vocabulary."
                       : "Reference Data changes apply to the next screening immediately."}
                 </p>
                 <Button

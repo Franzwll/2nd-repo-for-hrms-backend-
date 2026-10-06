@@ -4,6 +4,7 @@ namespace Modules\ApplicantManagement\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Mail\ApplicantAcceptedMail;
+use App\Mail\FacilityApprovalMail;
 use App\Mail\InterviewCancelledMail;
 use App\Mail\InterviewRescheduledMail;
 use App\Services\AuditLogger;
@@ -26,7 +27,7 @@ class InterviewController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Interview::with('applicant.jobPost.department')
+        $query = Interview::with(['applicant.jobPost.department', 'facility'])
             ->orderByDesc('scheduled_date');
 
         if ($applicantId = $request->query('applicant_id')) {
@@ -76,6 +77,16 @@ class InterviewController extends Controller
         $data['status'] = $data['status'] ?? 'Scheduled';
         $data['interview_code'] = Interview::generateCode();
 
+        // Facility request: when a facility is reserved for the interview the
+        // schedule starts in "Waiting for Facility Approval". Confirmation of
+        // the facility request (mock auto-approval from the UI after 3s, or
+        // the approve endpoint) flips it to "Facility Approved".
+        if (! empty($data['facility_id'])) {
+            $data['facility_status'] = 'Waiting for Facility Approval';
+        } else {
+            $data['facility_status'] = 'Not Required';
+        }
+
         $interview = Interview::create($data);
 
         // Advance applicant to "Interview Scheduled" stage
@@ -117,7 +128,66 @@ class InterviewController extends Controller
             }
         }
 
-        return response()->json(new InterviewResource($interview->load('applicant.jobPost.department')), 201);
+        return response()->json(new InterviewResource($interview->load(['applicant.jobPost.department', 'facility'])), 201);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/interviews/{interview}/facility-approve                */
+    /* Confirms the facility request and emails the applicant. The UI     */
+    /* calls this (mock) after 3 seconds of "Waiting for Facility Approval"*/
+    /* ------------------------------------------------------------------ */
+
+    public function facilityApprove(int $interview): JsonResponse
+    {
+        $model = Interview::with(['applicant.jobPost.department', 'facility'])->findOrFail($interview);
+        $applicant = $model->applicant;
+
+        if (! $model->facility_id || ! $model->facility) {
+            return response()->json(['message' => 'This interview has no facility request to approve.'], 422);
+        }
+
+        if ($model->facility_status === 'Facility Approved') {
+            return response()->json(new InterviewResource($model));
+        }
+
+        $model->update(['facility_status' => 'Facility Approved']);
+
+        AuditLogger::log(
+            action: 'Facility Request Approved',
+            module: 'Applicant Management',
+            severity: 'Info',
+            targetType: 'Interview',
+            targetId: (string) $model->interview_id,
+            details: "Facility request approved — {$model->facility->name} for {$applicant?->name}'s interview on {$model->scheduled_date} at {$model->scheduled_time}. Confirmation email sent to {$applicant?->email}."
+        );
+
+        NotificationService::send(
+            title: "Facility request approved: {$model->facility->name}",
+            body: "{$applicant?->name}'s interview schedule is confirmed. Confirmation email sent.",
+            module: 'Applicant Management',
+            type: 'success',
+            targetType: 'Interview',
+            targetId: (string) $model->interview_id
+        );
+
+        // Automatically email the applicant their confirmed schedule.
+        if ($applicant?->email) {
+            try {
+                Mail::to($applicant->email)->send(new FacilityApprovalMail(
+                    recipientEmail: $applicant->email,
+                    applicantName: $applicant->name,
+                    position: $applicant->jobPost?->title ?? 'Position',
+                    facilityName: $model->facility->name,
+                    interviewDate: (string) $model->scheduled_date,
+                    interviewTime: (string) $model->scheduled_time,
+                    facilityLocation: $model->facility->location,
+                ));
+            } catch (\Throwable $e) {
+                Log::warning("Failed to send facility approval notice to {$applicant->email}: " . $e->getMessage());
+            }
+        }
+
+        return response()->json(new InterviewResource($model));
     }
 
     /* ------------------------------------------------------------------ */

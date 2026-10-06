@@ -95,6 +95,7 @@ export function EssPayrollTab() {
   const [payType, setPayType] = useState("Payroll Clarification");
   const [payPeriod, setPayPeriod] = useState("");
   const [payDetails, setPayDetails] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -116,23 +117,40 @@ export function EssPayrollTab() {
 
   const payPage = usePagination(filteredPayRequests);
 
-  const handlePaySubmit = (e: React.FormEvent) => {
+  const handlePaySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    const isoStr = new Date().toISOString().slice(0, 10);
-    const newReq = {
-      id: `REQ-${Date.now().toString().slice(-4)}`,
-      date: todayStr,
-      isoDate: isoStr,
-      type: payType,
-      status: "Pending",
-      statusRank: 0,
-      details: `${payPeriod ? `Period: ${payPeriod}. ` : ""}${payDetails}`,
-    };
-    setPayRequests([newReq, ...payRequests]);
-    toast.success(`${payType} submitted to Payroll Administration.`);
-    setPayPeriod("");
-    setPayDetails("");
+    if (!payDetails.trim()) {
+      toast.error("Please enter inquiry details or claimed hours.");
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const res = await essApi.createRequest({
+        category_code: "payroll",
+        category_name: "Payroll",
+        request_type: payType,
+        details: `${payPeriod ? `Period: ${payPeriod}. ` : ""}${payDetails.trim()}`,
+      });
+      const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      const isoStr = new Date().toISOString().slice(0, 10);
+      const newReq = {
+        id: res?.request?.request_code || `REQ-${Date.now().toString().slice(-4)}`,
+        date: todayStr,
+        isoDate: isoStr,
+        type: payType,
+        status: "Pending",
+        statusRank: 0,
+        details: `${payPeriod ? `Period: ${payPeriod}. ` : ""}${payDetails}`,
+      };
+      setPayRequests([newReq, ...payRequests]);
+      toast.success(`${payType} submitted to Payroll Administration.`);
+      setPayPeriod("");
+      setPayDetails("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to submit payroll inquiry.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const openPayslip = (period: string, net: number) => {
@@ -224,7 +242,7 @@ export function EssPayrollTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {myPayroll.payslips.map((ps, idx) => (
+                {(payrollData?.payslips?.length ? payrollData.payslips : myPayroll.payslips).map((ps, idx) => (
                   <TableRow key={idx}>
                     <TableCell className="font-medium text-xs text-foreground">{ps.period}</TableCell>
                     <TableCell className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
@@ -263,7 +281,7 @@ export function EssPayrollTab() {
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Earnings</h4>
               <div className="space-y-1.5 border-t border-border pt-2 text-xs">
-                {myPayroll.breakdown.map((item, i) => (
+                {(payrollData?.breakdown?.length ? payrollData.breakdown : myPayroll.breakdown).map((item, i) => (
                   <div key={i} className="flex justify-between">
                     <span className="text-muted-foreground">{item.label}</span>
                     <span className="font-medium text-foreground">₱{item.amount.toLocaleString()}</span>
@@ -275,7 +293,7 @@ export function EssPayrollTab() {
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Deductions</h4>
               <div className="space-y-1.5 border-t border-border pt-2 text-xs">
-                {myPayroll.deductions.map((item, i) => (
+                {(payrollData?.deductions?.items?.length ? payrollData.deductions.items : myPayroll.deductions).map((item, i) => (
                   <div key={i} className="flex justify-between text-rose-600 dark:text-rose-400">
                     <span className="text-muted-foreground">{item.label}</span>
                     <span className="font-medium">-₱{item.amount.toLocaleString()}</span>
@@ -433,8 +451,8 @@ export function EssPayrollTab() {
                   required
                 />
               </div>
-              <Button type="submit" className="w-full gap-1.5">
-                <Send className="h-4 w-4" /> Submit Payroll Inquiry
+              <Button type="submit" disabled={submitting} className="w-full gap-1.5">
+                <Send className="h-4 w-4" /> {submitting ? "Submitting..." : "Submit Payroll Inquiry"}
               </Button>
             </form>
           </CardContent>

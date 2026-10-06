@@ -181,9 +181,11 @@ class ScreeningReferenceController extends Controller
             'meta' => [
                 'total' => $rows->count(),
                 'counts_by_type' => [
+                    'education' => $rows->where('data_type', 'education')->count(),
+                    'certification' => $rows->where('data_type', 'certification')->count(),
                     'skill' => $rows->where('data_type', 'skill')->count(),
                     'job_role' => $rows->where('data_type', 'job_role')->count(),
-                    'certification' => $rows->where('data_type', 'certification')->count(),
+                    'experience' => $rows->where('data_type', 'experience')->count(),
                 ],
             ],
         ]);
@@ -330,7 +332,10 @@ class ScreeningReferenceController extends Controller
         return response()->json(['success' => true, 'data' => $row]);
     }
 
-    /** Grouped {skills, job_roles, certifications} mappings with short caching. */
+    /** Grouped {skills, job_roles, certifications, education, experience}
+     *  mappings with short caching. The NLP service consumes the first three
+     *  groups today; the education / experience groups make the managed
+     *  vocabulary forward-compatible. */
     public static function groupedMapping(): array
     {
         return Cache::remember('screening_reference_data', 300, function () {
@@ -338,6 +343,8 @@ class ScreeningReferenceController extends Controller
                 'skills' => ScreeningReferenceData::mappingFor(ScreeningReferenceData::TYPE_SKILL),
                 'job_roles' => ScreeningReferenceData::mappingFor(ScreeningReferenceData::TYPE_JOB_ROLE),
                 'certifications' => ScreeningReferenceData::mappingFor(ScreeningReferenceData::TYPE_CERTIFICATION),
+                'education' => ScreeningReferenceData::mappingFor(ScreeningReferenceData::TYPE_EDUCATION),
+                'experience' => ScreeningReferenceData::mappingFor(ScreeningReferenceData::TYPE_EXPERIENCE),
             ];
         });
     }

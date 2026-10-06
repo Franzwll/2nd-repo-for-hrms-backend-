@@ -18,8 +18,10 @@ class StoreAssessmentRequest extends FormRequest
             'assessor_user_id'=> ['nullable', 'integer', 'exists:system_users,system_user_id'],
             'assessment_date' => ['required', 'date'],
             'scores_json'     => ['nullable', 'array'],
+            'comments_json'   => ['nullable', 'array'],
             'total_score'     => ['nullable', 'numeric', 'min:0', 'max:100'],
             'outcome'         => ['required', 'string', 'in:Recommended,Hold,Not Recommended'],
+            'result'          => ['nullable', 'string', 'in:Passed,Failed'],
             'remarks'         => ['nullable', 'string'],
         ];
     }

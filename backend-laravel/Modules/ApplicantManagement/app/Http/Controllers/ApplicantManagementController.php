@@ -20,6 +20,7 @@ use Modules\ApplicantManagement\Http\Requests\UpdateApplicantRequest;
 use Modules\ApplicantManagement\Http\Resources\ApplicantResource;
 use Modules\ApplicantManagement\Models\Applicant;
 use Modules\ApplicantManagement\Services\ScreeningService;
+use Modules\RecruitmentManagement\Models\JobPost;
 use App\Services\NlpService;
 
 class ApplicantManagementController extends Controller
@@ -37,6 +38,7 @@ class ApplicantManagementController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Applicant::with(['jobPost.department', 'screeningEntities', 'screeningScores', 'latestScreening'])
+            ->withCount('documents')
             ->orderByDesc('applied_at');
 
         // Search by name or email
@@ -110,6 +112,13 @@ class ApplicantManagementController extends Controller
             );
         }
 
+        // Applicants may only be attached to an available job post (Open /
+        // published, active, with remaining slots) — same rule as the public
+        // landing apply. Closed, Draft or fully-filled posts reject new adds.
+        if ($blocked = $this->unavailableJobPostResponse((int) ($data['job_post_id'] ?? 0))) {
+            return $blocked;
+        }
+
         // Handle resume upload
         if ($request->hasFile('resume')) {
             $data['resume_hash'] = DuplicateApplicationService::hashFile($request->file('resume'));
@@ -177,6 +186,36 @@ class ApplicantManagementController extends Controller
     }
 
     /* ------------------------------------------------------------------ */
+    /* Availability guard shared by store/update                             */
+    /* A job post accepts applicants only while it is Open (or published),   */
+    /* active, and still has unfilled vacancies. Returns a 422 response when */
+    /* the post is unavailable, null when the applicant may proceed.         */
+    /* ------------------------------------------------------------------ */
+
+    private function unavailableJobPostResponse(int $jobPostId): ?JsonResponse
+    {
+        $jobPost = JobPost::find($jobPostId);
+
+        if (! $jobPost) {
+            return response()->json(['message' => 'The selected job post no longer exists.'], 422);
+        }
+
+        if (! $jobPost->active || ! in_array($jobPost->status, ['published', 'Open'], true)) {
+            return response()->json([
+                'message' => "Cannot add applicant: the job post for '{$jobPost->title}' is {$jobPost->status} and is not accepting applications.",
+            ], 422);
+        }
+
+        if ($jobPost->remainingSlots() <= 0) {
+            return response()->json([
+                'message' => "Cannot add applicant: all slots for '{$jobPost->title}' have been filled.",
+            ], 422);
+        }
+
+        return null;
+    }
+
+    /* ------------------------------------------------------------------ */
     /* GET /api/v1/applicants/{applicant}                                  */
     /* ------------------------------------------------------------------ */
 
@@ -189,6 +228,7 @@ class ApplicantManagementController extends Controller
             'interviews',
             'assessment',
             'latestScreening',
+            'documents',
         ])->findOrFail($applicant);
 
         return response()->json(new ApplicantResource($model));
@@ -209,6 +249,50 @@ class ApplicantManagementController extends Controller
         }
 
         return response()->json(['data' => $screening]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/applicants/{applicant}/screening/recompute              */
+    /* Re-runs the classification stage with the current supporting-document */
+    /* evidence so the ranking percentage, rank order and official status    */
+    /* reflect the verification of the resume claims.                        */
+    /* ------------------------------------------------------------------ */
+
+    public function recomputeScreening(int $applicant): JsonResponse
+    {
+        $model = Applicant::with('jobPost')->findOrFail($applicant);
+
+        $screening = $this->screening->recomputeWithDocuments($model);
+
+        if (! $screening) {
+            return response()->json([
+                'message' => 'No completed resume screening is available to recompute, or the NLP service is offline.',
+            ], 422);
+        }
+
+        AuditLogger::log(
+            action: 'Screening Recomputed With Supporting Documents',
+            module: 'Applicant Management',
+            severity: $screening->screening_result === 'credential' ? 'Warning' : 'Info',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            details: sprintf(
+                'Ranking score recomputed to %s%% using %d supporting document(s).',
+                rtrim(rtrim((string) $screening->match_score, '0'), '.'),
+                $model->documents()->count()
+            )
+        );
+
+        return response()->json([
+            'data'      => $screening,
+            'applicant' => new ApplicantResource($model->fresh([
+                'jobPost.department',
+                'screeningEntities',
+                'screeningScores',
+                'latestScreening',
+                'documents',
+            ])),
+        ]);
     }
 
     /* ------------------------------------------------------------------ */
@@ -271,9 +355,15 @@ class ApplicantManagementController extends Controller
             ?? (function_exists('mime_content_type') ? @mime_content_type($path) : null)
             ?? 'application/octet-stream';
 
+        // Keep the filename header-safe: quotes / line breaks in the stored
+        // original name would otherwise break out of Content-Disposition and
+        // flip an inline preview into a forced download (or worse). The
+        // RFC 5987 filename* carries the exact name for Unicode clients.
+        $safeName = (string) preg_replace('/[\r\n"]+/', '_', (string) $name);
+
         return response()->file($path, [
             'Content-Type'        => $mime,
-            'Content-Disposition' => 'inline; filename="' . $name . '"',
+            'Content-Disposition' => 'inline; filename="' . $safeName . '"; filename*=UTF-8\'\'' . rawurlencode((string) $name),
         ]);
     }
 
@@ -413,6 +503,13 @@ class ApplicantManagementController extends Controller
         $data  = $request->validated();
         $oldStage = $model->stage;
         $oldJobPostId = $model->job_post_id;
+
+        // Transfers (referrals) may only target an available job post.
+        if (isset($data['job_post_id']) && (int) $data['job_post_id'] !== (int) $oldJobPostId) {
+            if ($blocked = $this->unavailableJobPostResponse((int) $data['job_post_id'])) {
+                return $blocked;
+            }
+        }
 
         // Handle resume replacement
         if ($request->hasFile('resume')) {
@@ -563,17 +660,29 @@ class ApplicantManagementController extends Controller
     {
         $model = Applicant::with(['jobPost'])->findOrFail($applicant);
 
+        // Strict pre-hiring workflow: an offer may only be extended from a
+        // Final Evaluation with a "Recommended for Hire" verdict. There are
+        // no shortcuts from earlier stages — the candidate must complete the
+        // assessment test, practical test (when required) and final evaluation.
         $nextStage = match ($model->stage) {
-            'Assessed'            => 'Offer',
+            'Final Evaluation'    => 'Offer',
             'Offer'               => 'Hired',
-            'Accepted'            => 'Offer',
             default               => null,
         };
 
         if (! $nextStage) {
             return response()->json([
-                'message' => "Cannot advance from stage '{$model->stage}' using the hire action.",
+                'message' => "Cannot advance from stage '{$model->stage}' using the hire action. Complete the required evaluation workflow first.",
             ], 422);
+        }
+
+        if ($model->stage === 'Final Evaluation') {
+            $final = $model->finalEvaluation()->latest('final_evaluation_id')->first();
+            if (! $final || $final->recommendation !== 'Recommended for Hire') {
+                return response()->json([
+                    'message' => 'A final evaluation with a "Recommended for Hire" recommendation is required before extending an offer.',
+                ], 422);
+            }
         }
 
         $model->update(['stage' => $nextStage]);

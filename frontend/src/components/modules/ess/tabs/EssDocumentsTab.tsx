@@ -41,6 +41,7 @@ export function EssDocumentsTab() {
               status: d.status,
               date: d.issuedDate,
               size: d.fileSize,
+              downloadUrl: d.downloadUrl,
             }))
           );
         }
@@ -105,6 +106,25 @@ export function EssDocumentsTab() {
   const openUploadForDoc = (title: string) => {
     setUploadTargetTitle(title);
     setUploadModalOpen(true);
+  };
+
+  const handleDownloadDoc = (doc: any) => {
+    if (doc.downloadUrl && doc.downloadUrl !== "#") {
+      window.open(doc.downloadUrl, "_blank");
+      toast.success(`Opening ${doc.title}...`);
+    } else {
+      const content = `OXFORD SUITES MAKATI\nOfficial Employment Record\n\nDocument: ${doc.title}\nCategory: ${doc.category}\nStatus: Verified\nDate on File: ${doc.date}\nSystem Verification ID: ${doc.id}\n`;
+      const blob = new Blob([content], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${doc.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`Downloaded ${doc.title}`);
+    }
   };
 
   const handleRowClick = (req: any) => {
@@ -230,7 +250,14 @@ export function EssDocumentsTab() {
                         <Upload className="h-3.5 w-3.5" /> Upload Now
                       </Button>
                     ) : (
-                      <span className="text-xs text-muted-foreground font-medium pr-2">On File ✓</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 text-xs text-primary hover:bg-primary/10 gap-1 font-medium"
+                        onClick={() => handleDownloadDoc(doc)}
+                      >
+                        <Download className="h-3.5 w-3.5" /> Download
+                      </Button>
                     )}
                   </TableCell>
                 </TableRow>

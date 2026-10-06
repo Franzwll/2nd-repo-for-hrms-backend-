@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, FileCheck, FileText, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import { essApi } from "@/lib/api";
 
 interface DocumentUploadModalProps {
   open: boolean;
@@ -31,27 +32,42 @@ export function DocumentUploadModal({
   const [docCategory, setDocCategory] = useState("Government Clearance");
   const [expiryDate, setExpiryDate] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) {
       toast.error("Please select a file to upload.");
       return;
     }
 
-    const uploadedDoc = {
-      id: `DOC-${Date.now().toString().slice(-3)}`,
-      title: docName,
-      category: docCategory,
-      status: "Submitted",
-      date: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
-      size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-    };
+    try {
+      setSubmitting(true);
+      const res = await essApi.uploadDocument({
+        title: docName,
+        category: docCategory,
+        file_path: `/storage/documents/${file.name}`,
+      });
 
-    onUploadSuccess?.(uploadedDoc);
-    toast.success(`${docName} uploaded successfully and sent to HR for verification.`);
-    onOpenChange(false);
-    setFile(null);
+      const uploadedDoc = {
+        id: res?.document?.document_code || `DOC-${Date.now().toString().slice(-3)}`,
+        title: docName,
+        category: docCategory,
+        status: "Submitted",
+        date: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
+        size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+        downloadUrl: res?.document?.file_path || `/storage/documents/${file.name}`,
+      };
+
+      onUploadSuccess?.(uploadedDoc);
+      toast.success(`${docName} uploaded successfully and sent to HR for verification.`);
+      onOpenChange(false);
+      setFile(null);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload document.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -145,8 +161,8 @@ export function DocumentUploadModal({
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" className="gap-1.5">
-              <Upload className="h-4 w-4" /> Upload Document
+            <Button type="submit" disabled={submitting} className="gap-1.5">
+              <Upload className="h-4 w-4" /> {submitting ? "Uploading..." : "Upload Document"}
             </Button>
           </DialogFooter>
         </form>

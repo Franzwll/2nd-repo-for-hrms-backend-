@@ -9,6 +9,8 @@ interface TablePaginationProps {
   total: number;
   /** Plural noun used in the "Showing 1–10 of 24 records" label. */
   label?: string;
+  /** When false, hides the "Showing X–Y of Z label" text (pagination buttons stay). */
+  showRangeLabel?: boolean;
   onPageChange: (page: number) => void;
   className?: string;
 }
@@ -40,6 +42,7 @@ export function TablePagination({
   to,
   total,
   label = "records",
+  showRangeLabel = true,
   onPageChange,
   className,
 }: TablePaginationProps) {
@@ -49,9 +52,13 @@ export function TablePagination({
 
   return (
     <div className={cn("mt-4 flex flex-wrap items-center justify-between gap-3", className)}>
-      <p className="text-xs text-muted-foreground">
-        Showing {from}–{to} of {total} {label}
-      </p>
+      {showRangeLabel ? (
+        <p className="text-xs text-muted-foreground">
+          Showing {from}–{to} of {total} {label}
+        </p>
+      ) : (
+        <span />
+      )}
       <div className="flex items-center gap-1">
         <Button
           size="sm"

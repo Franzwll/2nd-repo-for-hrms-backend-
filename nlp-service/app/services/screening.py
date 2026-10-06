@@ -4,13 +4,20 @@ Documented decision logic (order matters):
 
 1. Any credential issue per validation rules (missing required certification,
    malformed email/phone, unparseable credential)  -> INVALID_CREDENTIAL.
-2. Mandatory requirements met AND overall score >= PERFECT_SCORE_THRESHOLD
-   -> PERFECT_FOR_THE_JOB.
-3. Otherwise every other open job is scored the same way; if the best
-   alternative satisfies its mandatory requirements, reaches
+2. A supporting document (COE / Certificate / Credential) that contradicts a
+   resume claim (DISCREPANCY_FOUND) -> INVALID_CREDENTIAL, because the paper
+   proof and the resume cannot both be right.
+3. Mandatory requirements met AND the RANKING score (resume match score blended
+   with the supporting-document evidence, see verification_scoring.py) >=
+   PERFECT_SCORE_THRESHOLD -> PERFECT_FOR_THE_JOB.
+4. Otherwise every other open job is scored the same way (blended too); if the
+   best alternative satisfies its mandatory requirements, reaches
    ALT_JOB_SCORE_THRESHOLD and outscores the applied job
    -> FIT_FOR_OTHER_JOB with a recommendation payload.
-4. Otherwise -> NOT_FITTED_TO_JOB.
+5. Otherwise -> NOT_FITTED_TO_JOB.
+
+Applicants with no usable supporting-document evidence keep their resume-only
+score, so this feature never silently penalises them.
 
 Unrecognized skills/roles NEVER trigger rejection by themselves; they are only
 flagged for review.
@@ -18,13 +25,14 @@ flagged for review.
 from typing import Dict, List, Optional
 
 from app import config
-from app.services import matching
+from app.services import matching, verification_scoring
 
 
 def _credential_blockers(validation: Dict) -> List[Dict]:
     return [i for i in validation.get("credential_issues", []) if i.get("type") in {
         "INVALID_FORMAT",
         "UNVERIFIABLE_REQUIRED_CREDENTIAL",
+        "CREDENTIAL_VERIFICATION_CONCERN",
     }]
 
 
@@ -70,16 +78,21 @@ def classify_applied_job(
     requirements: Dict,
     weights: Optional[Dict] = None,
     thresholds: Optional[Dict[str, float]] = None,
+    document_verifications: Optional[List[Dict]] = None,
 ) -> Dict:
     match = matching.match_profile_to_requirements(profile, validation, requirements, weights)
     blockers = _credential_blockers(validation)
     reasons: List[str] = []
     threshold = (thresholds or {}).get("perfect", config.PERFECT_SCORE_THRESHOLD)
     coverage_min = (thresholds or {}).get("coverage_min", config.REQUIRED_SKILLS_COVERAGE_MIN)
+    # Resume-only score, before the supporting-document evidence is blended in.
+    resume_score = float(match["match_score"])
+    evidence = verification_scoring.aggregate_document_verifications(document_verifications)
 
     result = {
         "screening_status": None,
         "match_score": match["match_score"],
+        "resume_match_score": resume_score,
         "score_breakdown": match["score_breakdown"],
         "mandatory_requirements_met": match["mandatory_requirements_met"],
         "mandatory_detail": match["mandatory_detail"],
@@ -87,8 +100,38 @@ def classify_applied_job(
         "reasons": reasons,
         "alternative_job": None,
         "matched_summary": matching.summarize_match(match, requirements),
+        "document_verification": evidence,
     }
 
+    # Apply credential verification penalty if warnings were detected
+    verification = validation.get("credential_verification") or {}
+    score_penalty = float(verification.get("score_penalty", 0.0))
+    if score_penalty > 0.0:
+        orig_score = match["match_score"]
+        match["match_score"] = max(0.0, round(match["match_score"] - score_penalty, 2))
+        result["match_score"] = match["match_score"]
+        reasons.append(
+            f"Credential verification penalty applied: -{score_penalty} pts "
+            f"({verification.get('warning_count', 0)} warning(s) detected; match score adjusted from {orig_score}% to {match['match_score']}%)."
+        )
+
+    # The resume-only score is final once the resume-internal credential
+    # penalty is applied, and the supporting-document evidence is blended into
+    # the RANKING score that HR ranks by (no-op without usable documents).
+    resume_score = float(match["match_score"])
+    result["resume_match_score"] = resume_score
+    blended_score = verification_scoring.apply_document_evidence(resume_score, evidence)
+    match["match_score"] = blended_score
+    result["match_score"] = blended_score
+    if evidence.get("credit_ratio") is not None:
+        summary = verification_scoring.summarize_evidence(evidence, resume_score, blended_score)
+        if summary:
+            reasons.append(summary)
+        for flag in evidence.get("flags") or []:
+            if flag not in reasons:
+                reasons.append(flag)
+
+    # Resume-level credential blockers: the applicant is flagged for HR review.
     if blockers:
         result["screening_status"] = config.CLASS_INVALID_CREDENTIAL
         for blocker in blockers:
@@ -97,6 +140,22 @@ def classify_applied_job(
             "Classification INVALID_CREDENTIAL means 'invalid or requires verification "
             "based on system validation rules'; it does not imply fraud."
         )
+        return result
+
+    # Supporting documents are the paper proof behind the resume claims, so a
+    # contradicting document is a credential problem rather than a scoring
+    # detail: escalate to INVALID_CREDENTIAL for HR review.
+    if evidence.get("escalate_invalid"):
+        fields = ", ".join(evidence.get("mismatched_fields") or []) or "the resume claims"
+        reasons.append(
+            f"Supporting-document verification found a discrepancy on {fields} - the uploaded "
+            "document contradicts the resume claims."
+        )
+        reasons.append(
+            "Classification INVALID_CREDENTIAL means 'invalid or requires verification "
+            "based on system validation rules'; it does not imply fraud."
+        )
+        result["screening_status"] = config.CLASS_INVALID_CREDENTIAL
         return result
 
     if match["mandatory_requirements_met"] and match["match_score"] >= threshold:
@@ -159,9 +218,13 @@ def evaluate_alternative_jobs(
     open_jobs: List[Dict],
     weights: Optional[Dict] = None,
     thresholds: Optional[Dict[str, float]] = None,
+    document_verifications: Optional[List[Dict]] = None,
 ) -> List[Dict]:
     evaluated = []
     alt_threshold = (thresholds or {}).get("alternative", config.ALT_JOB_SCORE_THRESHOLD)
+    # Alternative roles are ranked with the same verified evidence as the
+    # applied job, so a referral never points at a role the documents contradict.
+    evidence = verification_scoring.aggregate_document_verifications(document_verifications)
     for job in open_jobs:
         requirements = matching.parse_requirements(job)
         # Defensive guard: a job with no criteria at all would trivially score
@@ -174,6 +237,14 @@ def evaluate_alternative_jobs(
         ):
             continue
         match = matching.match_profile_to_requirements(profile, validation, requirements, weights)
+        verification = validation.get("credential_verification") or {}
+        score_penalty = float(verification.get("score_penalty", 0.0))
+        if score_penalty > 0.0:
+            match["match_score"] = max(0.0, round(match["match_score"] - score_penalty, 2))
+        resume_score = float(match["match_score"])
+        match["match_score"] = verification_scoring.apply_document_evidence(
+            resume_score, dict(evidence)
+        )
         eligible = (
             match["mandatory_requirements_met"]
             and match["match_score"] >= alt_threshold
@@ -182,6 +253,7 @@ def evaluate_alternative_jobs(
             "job_post_id": requirements["job_post_id"],
             "title": requirements["title"],
             "match_score": match["match_score"],
+            "resume_match_score": resume_score,
             "eligible": eligible,
             "mandatory_requirements_met": match["mandatory_requirements_met"],
             "matched_skills": match["score_breakdown"]["skills"]["matched_required"],
@@ -198,12 +270,14 @@ def full_classification(
     requirements: Dict,
     open_jobs: List[Dict] | None = None,
     settings: Dict | None = None,
+    document_verifications: List[Dict] | None = None,
 ) -> Dict:
     thresholds = _thresholds(settings)
     applied = classify_applied_job(
         profile, validation, requirements,
         weights=(settings or {}).get("weights"),
         thresholds=thresholds,
+        document_verifications=document_verifications,
     )
 
     if applied["screening_status"] is not None:
@@ -215,6 +289,7 @@ def full_classification(
             profile, validation, open_jobs,
             weights=(settings or {}).get("weights"),
             thresholds=thresholds,
+            document_verifications=document_verifications,
         )
         if requirements.get("job_post_id") is None or alt["job_post_id"] != requirements.get("job_post_id")
     ]

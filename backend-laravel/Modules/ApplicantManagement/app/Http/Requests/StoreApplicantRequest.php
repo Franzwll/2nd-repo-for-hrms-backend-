@@ -38,7 +38,11 @@ class StoreApplicantRequest extends FormRequest
             'status'       => ['required', 'string', 'in:fit,other-role,credential,not-fit'],
             'stage'        => ['required', 'string', 'in:Screened,Interview Scheduled,Assessed,Offer,Hired,Rejected,Accepted'],
             'fit_score'    => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'resume'       => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp,heic,heif,bmp,gif,tiff,tif,avif,svg', 'max:20480'],
+            // `extensions` (not `mimes`): validates the uploaded file's own
+            // extension instead of the MIME type guessed from its bytes, which
+            // Windows/PHP fileinfo often reports as application/octet-stream —
+            // that mismatch rejected perfectly valid PDF/DOCX/PNG/JPG uploads.
+            'resume'       => ['nullable', 'file', 'extensions:pdf,doc,docx,jpg,jpeg,png,webp,heic,heif,bmp,gif,tiff,tif,avif,svg', 'max:20480'],
         ];
     }
 }

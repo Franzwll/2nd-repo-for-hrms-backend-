@@ -76,6 +76,10 @@ export type Position = {
   dbId?: number;
   /** Numeric department id (Core HCM) — set when positions come from the API. */
   departmentId?: number | null;
+  /** Assigned Core HCM salary grade (if the position came from the API). */
+  salaryGradeId?: number | null;
+  salaryGradeMin?: number | null;
+  salaryGradeMax?: number | null;
 };
 
 export const positions: Position[] = [
@@ -206,6 +210,10 @@ export const orgChart: OrgNode = {
 export type NewHire = {
   id: string;
   dbId?: number;
+  /** Database applicant id this hire was created from (when handed over from
+   *  Applicant Management) — lets the applicant View profile link the hire's
+   *  requirements checklist to the offered / hired candidate. */
+  applicantId?: number | null;
   name: string;
   position: string;
   department: string;

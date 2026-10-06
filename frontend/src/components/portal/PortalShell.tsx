@@ -592,7 +592,6 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
       </div>
 
       <AnnouncementDialog open={announceOpen} onOpenChange={setAnnounceOpen} author={meta.user} />
-      <AiConciergeWidget role={role} />
     </div>
   );
 }

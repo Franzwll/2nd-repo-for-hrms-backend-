@@ -8,9 +8,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Award, Download, Printer, CheckCircle2, ShieldCheck } from "lucide-react";
+import { Award, Download, Printer, CheckCircle2, ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { myProfile } from "@/data/ess";
+import { getUser } from "@/lib/auth";
+import { downloadCertificatePdf } from "@/lib/downloadCertificatePdf";
 
 interface LmsCertificateModalProps {
   open: boolean;
@@ -29,13 +31,38 @@ export function LmsCertificateModal({
   completedDate = "Jul 10, 2026",
   score = "95%",
 }: LmsCertificateModalProps) {
+  const user = getUser();
+  const recipientName = user?.full_name || myProfile.name;
+  const recipientRole = user?.department_name ? `${user.department_name} Staff` : myProfile.position;
+  const recipientDept = user?.department_name || myProfile.department;
+  const [downloading, setDownloading] = useState(false);
+
   const handlePrint = () => {
     window.print();
     toast.success("Printing certificate...");
   };
 
-  const handleDownload = () => {
-    toast.success(`Certificate for "${courseTitle}" downloaded as PDF.`);
+  const handleDownload = async () => {
+    try {
+      setDownloading(true);
+      const safeTitle = courseTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      const filename = `Certificate-${safeTitle}.pdf`;
+      await downloadCertificatePdf(filename, {
+        companyName: "OXFORD SUITES MAKATI",
+        recipientName: recipientName,
+        recipientRole: recipientRole,
+        recipientDepartment: recipientDept,
+        courseTitle: courseTitle,
+        category: category,
+        completedDate: completedDate,
+        score: score,
+      });
+      toast.success(`Certificate for "${courseTitle}" downloaded as PDF.`);
+    } catch {
+      toast.error("Failed to generate certificate PDF.");
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
@@ -61,8 +88,8 @@ export function LmsCertificateModal({
 
           <div>
             <p className="text-xs uppercase text-muted-foreground font-medium">This is proudly presented to</p>
-            <h3 className="text-2xl font-bold font-display text-foreground mt-1">{myProfile.name}</h3>
-            <p className="text-xs text-muted-foreground">{myProfile.position} · {myProfile.department}</p>
+            <h3 className="text-2xl font-bold font-display text-foreground mt-1">{recipientName}</h3>
+            <p className="text-xs text-muted-foreground">{recipientRole} · {recipientDept}</p>
           </div>
 
           <div className="py-2 border-y border-border/80">
@@ -98,8 +125,9 @@ export function LmsCertificateModal({
             <Button variant="outline" size="sm" onClick={handlePrint} className="gap-1.5 text-xs">
               <Printer className="h-3.5 w-3.5" /> Print
             </Button>
-            <Button size="sm" onClick={handleDownload} className="gap-1.5 text-xs">
-              <Download className="h-3.5 w-3.5" /> Download PDF
+            <Button size="sm" onClick={handleDownload} disabled={downloading} className="gap-1.5 text-xs">
+              {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              {downloading ? "Generating PDF..." : "Download PDF"}
             </Button>
           </div>
         </DialogFooter>

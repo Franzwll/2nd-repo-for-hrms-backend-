@@ -245,7 +245,8 @@ class ScreeningService
                 $requirements,
                 $openJobs,
                 referenceData: $this->referenceData(),
-                screeningSettings: self::screeningSettings()
+                screeningSettings: self::screeningSettings(),
+                documentVerifications: $this->documentVerifications($applicant)
             );
 
             if ($response['ok']) {
@@ -288,6 +289,87 @@ class ScreeningService
     }
 
     /* ------------------------------------------------------------------ */
+    /* Supporting-document evidence                                        */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * The applicant's supporting documents expressed for the NLP classifier.
+     * Every stored verification result is forwarded (PENDING/verifying rows
+     * included — the NLP side ignores those), so the evidence block in the
+     * screening result always mirrors the applicant's real document set.
+     */
+    public function documentVerifications(Applicant $applicant): array
+    {
+        return $applicant->documents()
+            ->whereNotNull('verification_status')
+            ->orderBy('applicant_document_id')
+            ->get()
+            ->map(function ($document) {
+                $result = is_array($document->verification_result_json)
+                    ? $document->verification_result_json
+                    : [];
+
+                return [
+                    'applicant_document_id' => (int) $document->applicant_document_id,
+                    'doc_type' => $document->doc_type,
+                    'verification_status' => $document->verification_status,
+                    'verification_result' => [
+                        'checks' => $result['checks'] ?? [],
+                        'summary' => $result['summary'] ?? null,
+                    ],
+                ];
+            })
+            ->all();
+    }
+
+    /**
+     * Human-readable explanation of the document evidence for the applicant
+     * summary line; null when no decisive document participated in the score
+     * (no documents, still verifying, or nothing comparable).
+     */
+    protected function documentEvidenceSentence(array $result): ?string
+    {
+        $evidence = $result['document_verification'] ?? null;
+        if (! is_array($evidence)
+            || ! in_array($evidence['status'] ?? '', ['VERIFIED', 'PARTIAL', 'DISCREPANCY'], true)) {
+            return null;
+        }
+
+        $score = function ($value): string {
+            if (! is_numeric($value)) {
+                return '—';
+            }
+
+            return rtrim(rtrim(number_format((float) $value, 2, '.', ''), '0'), '.');
+        };
+
+        return sprintf(
+            'Supporting-document verification: %d verified, %d with discrepancies, %d unable to verify — ranking score %s%% (resume match %s%%).',
+            (int) ($evidence['verified_count'] ?? 0),
+            (int) ($evidence['discrepancy_count'] ?? 0),
+            (int) ($evidence['unable_count'] ?? 0),
+            $score($result['match_score'] ?? null),
+            $score($result['resume_match_score'] ?? null)
+        );
+    }
+
+    /**
+     * Evidence flags for the applicant's flags_json, prefixed so they can be
+     * refreshed on recompute without disturbing the resume-screening flags.
+     */
+    protected function documentEvidenceFlags(array $result): array
+    {
+        $flags = [];
+        foreach (($result['document_verification']['flags'] ?? []) as $flag) {
+            if (is_string($flag) && $flag !== '') {
+                $flags[] = '[DOCUMENT] ' . $flag;
+            }
+        }
+
+        return $flags;
+    }
+
+    /* ------------------------------------------------------------------ */
     /* Persistence                                                         */
     /* ------------------------------------------------------------------ */
 
@@ -312,12 +394,16 @@ class ScreeningService
             'processing_status' => $result['processing_status'] ?? 'PROCESSED',
             'screening_result' => $statusValue,
             'match_score' => $result['match_score'] ?? null,
+            /* Resume-only score before the supporting-document evidence was
+               blended in (Candidate Ranking shows the blended match_score). */
+            'resume_match_score' => $result['resume_match_score'] ?? null,
             'score_breakdown_json' => $result['score_breakdown'] ?? null,
             'profile_json' => $result['profile'] ?? null,
             'entities_json' => $result['entities'] ?? null,
             'missing_information_json' => $result['validation']['missing_information'] ?? [],
             'validation_json' => $result['validation'] ?? null,
             'alternative_job_json' => $result['alternative_job'] ?? null,
+            'document_verification_json' => $result['document_verification'] ?? null,
             'reasons_json' => $result['screening_reasons'] ?? [],
             'model_info_json' => $result['model_info'] ?? null,
             'error_message' => $error,
@@ -359,6 +445,19 @@ class ScreeningService
         foreach (($validation['missing_information'] ?? []) as $missing) {
             $flags[] = "Missing: {$missing}";
         }
+        foreach (($validation['credential_verification']['flags'] ?? []) as $vFlag) {
+            $severity = $vFlag['severity'] ?? 'WARNING';
+            $detail = $vFlag['detail'] ?? '';
+            if ($detail !== '') {
+                $flags[] = "[{$severity}] {$detail}";
+            }
+        }
+
+        /* Supporting-document evidence (verified / discrepancy / unable) — the
+           same sentences shown next to the ranking percentage in the UI. */
+        foreach ($this->documentEvidenceFlags($result) as $documentFlag) {
+            $flags[] = $documentFlag;
+        }
 
         $alternative = $result['alternative_job'] ?? null;
         if ($alternative) {
@@ -371,8 +470,20 @@ class ScreeningService
 
         $summaryParts = [$result['matched_summary'] ?? null];
 
+        /* Explain how the supporting documents moved the ranking score, so the
+           single percentage shown in Candidate Ranking is self-explanatory. */
+        $evidenceSentence = $this->documentEvidenceSentence($result);
+        if ($evidenceSentence) {
+            $summaryParts[] = $evidenceSentence;
+        }
+
         if ($statusValue === 'credential') {
-            $summaryParts[] = 'Invalid credential or requires verification based on system validation rules.';
+            $verificationSummary = $validation['credential_verification']['summary'] ?? null;
+            if ($verificationSummary) {
+                $summaryParts[] = $verificationSummary;
+            } else {
+                $summaryParts[] = 'Invalid credential or requires verification based on system validation rules.';
+            }
         } elseif ($statusValue === 'not-fit') {
             $summaryParts[] = 'No available position achieved the required qualification level.';
         }
@@ -390,5 +501,93 @@ class ScreeningService
         ]);
 
         return $screening;
+    }
+
+    /**
+     * Recomputes the applicant's latest screening result with the CURRENT
+     * supporting-document evidence. Called after a document is uploaded,
+     * re-verified or deleted, so the candidate's ranking percentage, rank
+     * order and official status reflect the verification of the resume claims
+     * without re-uploading or re-OCR-ing the resume: the stored profile +
+     * validation are replayed through the NLP classification stage.
+     *
+     * Returns the updated ApplicantScreening, or null when there is nothing to
+     * recompute (no screening yet, job post gone, or NLP unavailable).
+     */
+    public function recomputeWithDocuments(Applicant $applicant): ?ApplicantScreening
+    {
+        $screening = $applicant->screenings()->latest('screening_id')->first();
+        $profile = $screening?->profile_json;
+
+        if (! $screening || ! is_array($profile) || $profile === []) {
+            // Documents uploaded before the resume was ever screened stay
+            // PENDING; the next screening run picks them up automatically.
+            return null;
+        }
+
+        $jobPost = JobPost::find($screening->job_post_id ?? $applicant->job_post_id);
+        if (! $jobPost) {
+            return null;
+        }
+
+        $response = $this->nlp->reclassifyScreening([
+            'profile' => $profile,
+            'validation' => is_array($screening->validation_json) ? $screening->validation_json : [],
+            'requirements' => $this->buildRequirements($jobPost),
+            'open_jobs' => $this->buildOpenJobs($jobPost),
+            'document_verifications' => $this->documentVerifications($applicant),
+            'screening_settings' => self::screeningSettings(),
+            'reference_data' => $this->referenceData(),
+        ]);
+
+        $data = $response['ok'] ? ($response['data'] ?? null) : null;
+
+        if (! is_array($data) || ! ($data['success'] ?? false)) {
+            Log::warning(sprintf(
+                'Supporting-document recompute failed for applicant %d: %s',
+                $applicant->applicant_id,
+                $response['error'] ?? 'unexpected NLP response'
+            ));
+
+            return null;
+        }
+
+        $statusValue = self::STATUS_MAP[$data['screening_status'] ?? ''] ?? null;
+
+        $screening->update([
+            'screening_result' => $statusValue ?? $screening->screening_result,
+            'match_score' => $data['match_score'] ?? $screening->match_score,
+            'resume_match_score' => $data['resume_match_score'] ?? $screening->resume_match_score,
+            'document_verification_json' => $data['document_verification'] ?? $screening->document_verification_json,
+            'alternative_job_json' => $data['alternative_job'] ?? null,
+            'reasons_json' => $data['screening_reasons'] ?? $screening->reasons_json,
+            'processed_at' => now(),
+        ]);
+
+        /* Keep the applicant's ranking fields in sync: Candidate Ranking, the
+           Top 5 list and the applicants table all read fit_score + status. */
+        $flags = array_values(array_filter(
+            $applicant->flags_json ?? [],
+            fn ($flag) => ! is_string($flag) || ! str_starts_with($flag, '[DOCUMENT]')
+        ));
+        foreach ($this->documentEvidenceFlags($data) as $documentFlag) {
+            $flags[] = $documentFlag;
+        }
+
+        $summaryParts = array_filter([$data['matched_summary'] ?? null]);
+        $evidenceSentence = $this->documentEvidenceSentence($data);
+        if ($evidenceSentence) {
+            $summaryParts[] = $evidenceSentence;
+        }
+        $summary = trim(implode(' ', $summaryParts)) ?: $applicant->summary;
+
+        $applicant->update([
+            'fit_score' => $data['match_score'] ?? $applicant->fit_score,
+            'status' => $statusValue ?? $applicant->status,
+            'summary' => $summary,
+            'flags_json' => $flags,
+        ]);
+
+        return $screening->refresh();
     }
 }

@@ -86,6 +86,39 @@ class Applicant extends Model
         return $this->hasMany(ApplicantAssessment::class, 'applicant_id', 'applicant_id');
     }
 
+    public function assessmentTests(): HasMany
+    {
+        return $this->hasMany(AssessmentTest::class, 'applicant_id', 'applicant_id');
+    }
+
+    public function latestAssessmentTest(): HasOne
+    {
+        return $this->hasOne(AssessmentTest::class, 'applicant_id', 'applicant_id')
+                    ->latestOfMany('assessment_test_id');
+    }
+
+    public function practicalTests(): HasMany
+    {
+        return $this->hasMany(PracticalTest::class, 'applicant_id', 'applicant_id');
+    }
+
+    public function latestPracticalTest(): HasOne
+    {
+        return $this->hasOne(PracticalTest::class, 'applicant_id', 'applicant_id')
+                    ->latestOfMany('practical_test_id');
+    }
+
+    public function finalEvaluation(): HasOne
+    {
+        return $this->hasOne(FinalEvaluation::class, 'applicant_id', 'applicant_id')
+                    ->latestOfMany('final_evaluation_id');
+    }
+
+    public function documents(): HasMany
+    {
+        return $this->hasMany(ApplicantDocument::class, 'applicant_id', 'applicant_id');
+    }
+
     /* ------------------------------------------------------------------ */
     /* Helpers                                                              */
     /* ------------------------------------------------------------------ */

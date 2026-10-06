@@ -67,19 +67,22 @@ export function EssAiAssistantModal({
   const userDept = user?.department_name || myProfile.department;
 
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<Message[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
-    }
-    return [];
-  });
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [mounted, setMounted] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [overview, setOverview] = useState<ApiEssOverview | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) setMessages(JSON.parse(saved));
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     if (open) {
@@ -88,12 +91,13 @@ export function EssAiAssistantModal({
   }, [open]);
 
   useEffect(() => {
+    if (!mounted) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
     } catch {
       // ignore
     }
-  }, [messages]);
+  }, [messages, mounted]);
 
   useEffect(() => {
     if (messages.length > 0) {

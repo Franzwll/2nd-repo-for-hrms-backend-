@@ -38,7 +38,9 @@ class UpdateApplicantRequest extends FormRequest
             'flags_json'   => ['nullable', 'array'],
             'status'       => ['sometimes', 'string', 'in:fit,other-role,credential,not-fit'],
             'stage'        => ['sometimes', 'string', 'in:Screened,Interview Scheduled,Assessed,Offer,Hired,Rejected,Accepted'],
-            'resume'       => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:10240'],
+            // Same extension-based rule as StoreApplicantRequest — see the note
+            // there on why `mimes` was replaced by `extensions`.
+            'resume'       => ['nullable', 'file', 'extensions:pdf,doc,docx,jpg,jpeg,png,webp,heic,heif,bmp,gif,tiff,tif,avif,svg', 'max:20480'],
         ];
     }
 }

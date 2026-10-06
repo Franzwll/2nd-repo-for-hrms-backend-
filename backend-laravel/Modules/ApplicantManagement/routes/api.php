@@ -3,8 +3,14 @@
 use Illuminate\Support\Facades\Route;
 use Modules\ApplicantManagement\Http\Controllers\ApplicantManagementController;
 use Modules\ApplicantManagement\Http\Controllers\ApplicantAssessmentController;
+use Modules\ApplicantManagement\Http\Controllers\AssessmentTestController;
+use Modules\ApplicantManagement\Http\Controllers\ApplicantDocumentController;
+use Modules\ApplicantManagement\Http\Controllers\FinalEvaluationController;
+use Modules\ApplicantManagement\Http\Controllers\FacilityController;
+use Modules\ApplicantManagement\Http\Controllers\PracticalTestController;
 use Modules\ApplicantManagement\Http\Controllers\ScreeningEvaluationController;
 use Modules\ApplicantManagement\Http\Controllers\ScreeningReferenceController;
+use Modules\ApplicantManagement\Http\Controllers\ScreeningRequirementTemplateController;
 use Modules\ApplicantManagement\Http\Controllers\InterviewController;
 
 /*
@@ -21,6 +27,11 @@ use Modules\ApplicantManagement\Http\Controllers\InterviewController;
 Route::prefix('v1')->middleware('api')->group(function () {
      Route::get('applicants/{applicant}/resume-document', [ApplicantManagementController::class, 'resumeDocument'])
           ->name('applicants.resume-document');
+
+     // Supporting-document file preview / download (same token-auth rationale
+     // as the resume preview above: <iframe>/<a> requests carry ?token=).
+     Route::get('applicant-documents/{applicantDocument}/file', [ApplicantDocumentController::class, 'file'])
+          ->name('applicants.documents.file');
 });
 
 Route::prefix('v1')
@@ -44,6 +55,11 @@ Route::prefix('v1')
            // Latest full spaCy screening detail for one applicant
            Route::get('applicants/{applicant}/screening', [ApplicantManagementController::class, 'screeningDetail'])
                 ->name('applicants.screening');
+
+           // Recompute the ranking score/status with the current supporting-
+           // document evidence (after uploading / re-verifying documents).
+           Route::post('applicants/{applicant}/screening/recompute', [ApplicantManagementController::class, 'recomputeScreening'])
+                ->name('applicants.screening.recompute');
 
           // Research evaluation (SOP 1/2/3/5)
           Route::post('applicants/{applicant}/ground-truth', [ScreeningEvaluationController::class, 'storeGroundTruth'])
@@ -78,6 +94,19 @@ Route::prefix('v1')
           Route::delete('screening/reference-data/{id}', [ScreeningReferenceController::class, 'destroy'])
                ->name('screening.reference-data.destroy');
 
+          // Requirement templates (Screening Setup) — reusable per-position
+          // requirement entities applied to a job post in the Job Post Builder.
+          Route::get('screening/requirement-templates', [ScreeningRequirementTemplateController::class, 'index'])
+               ->name('screening.requirement-templates.index');
+          Route::post('screening/requirement-templates', [ScreeningRequirementTemplateController::class, 'store'])
+               ->name('screening.requirement-templates.store');
+          Route::put('screening/requirement-templates/{id}', [ScreeningRequirementTemplateController::class, 'update'])
+               ->name('screening.requirement-templates.update');
+          Route::patch('screening/requirement-templates/{id}/toggle', [ScreeningRequirementTemplateController::class, 'toggle'])
+               ->name('screening.requirement-templates.toggle');
+          Route::delete('screening/requirement-templates/{id}', [ScreeningRequirementTemplateController::class, 'destroy'])
+               ->name('screening.requirement-templates.destroy');
+
           Route::apiResource('applicants', ApplicantManagementController::class)
                ->parameters(['applicants' => 'applicant'])
                ->names('applicant');
@@ -98,8 +127,19 @@ Route::prefix('v1')
                ->except(['create', 'edit'])
                ->names('interview');
 
+          // Facility request: confirm the reserved interview facility (mock
+          // auto-approval) and automatically email the applicant.
+          Route::post('interviews/{interview}/facility-approve', [InterviewController::class, 'facilityApprove'])
+               ->name('interview.facility-approve');
+
           /* ------------------------------------------------------------------ */
-          /* Assessments                                                          */
+          /* Facilities                                                           */
+          /* ------------------------------------------------------------------ */
+          Route::get('facilities', [FacilityController::class, 'index'])
+               ->name('facilities.index');
+
+          /* ------------------------------------------------------------------ */
+          /* Interview assessments (criteria comments + Passed/Failed verdict)    */
           /* ------------------------------------------------------------------ */
           Route::get('assessments', [ApplicantAssessmentController::class, 'index'])
                ->name('assessments.index');
@@ -109,4 +149,55 @@ Route::prefix('v1')
 
           Route::put('assessments/{assessment}', [ApplicantAssessmentController::class, 'update'])
                ->name('assessments.update');
+
+          /* ------------------------------------------------------------------ */
+          /* Assessment tests (after interview assessment)                        */
+          /* ------------------------------------------------------------------ */
+          Route::get('assessment-tests', [AssessmentTestController::class, 'index'])
+               ->name('assessment-tests.index');
+
+          Route::post('applicants/{applicant}/assessment-tests', [AssessmentTestController::class, 'store'])
+               ->name('applicants.assessment-tests.store');
+
+          Route::put('assessment-tests/{assessmentTest}', [AssessmentTestController::class, 'update'])
+               ->name('assessment-tests.update');
+
+          /* ------------------------------------------------------------------ */
+          /* Practical assessments (designated positions only)                    */
+          /* ------------------------------------------------------------------ */
+          Route::get('practical-tests', [PracticalTestController::class, 'index'])
+               ->name('practical-tests.index');
+
+          Route::post('applicants/{applicant}/practical-tests', [PracticalTestController::class, 'store'])
+               ->name('applicants.practical-tests.store');
+
+          Route::put('practical-tests/{practicalTest}', [PracticalTestController::class, 'update'])
+               ->name('practical-tests.update');
+
+          /* ------------------------------------------------------------------ */
+          /* Final evaluations (whole-process verdict)                            */
+          /* ------------------------------------------------------------------ */
+          Route::get('final-evaluations', [FinalEvaluationController::class, 'index'])
+               ->name('final-evaluations.index');
+
+          Route::post('applicants/{applicant}/final-evaluations', [FinalEvaluationController::class, 'store'])
+               ->name('applicants.final-evaluations.store');
+
+          Route::put('final-evaluations/{finalEvaluation}', [FinalEvaluationController::class, 'update'])
+               ->name('final-evaluations.update');
+
+          /* ------------------------------------------------------------------ */
+          /* Verification documents (COE / Certificate / Credential / Others)     */
+          /* ------------------------------------------------------------------ */
+          Route::post('applicants/{applicant}/documents', [ApplicantDocumentController::class, 'store'])
+               ->name('applicants.documents.store');
+
+          Route::get('applicants/{applicant}/documents', [ApplicantDocumentController::class, 'index'])
+               ->name('applicants.documents.index');
+
+          Route::delete('applicant-documents/{applicantDocument}', [ApplicantDocumentController::class, 'destroy'])
+               ->name('applicants.documents.destroy');
+
+          Route::post('applicant-documents/{applicantDocument}/verify', [ApplicantDocumentController::class, 'verify'])
+               ->name('applicants.documents.verify');
      });

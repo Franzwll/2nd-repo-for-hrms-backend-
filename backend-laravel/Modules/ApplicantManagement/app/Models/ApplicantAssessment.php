@@ -15,13 +15,16 @@ class ApplicantAssessment extends Model
         'assessor_user_id',
         'assessment_date',
         'scores_json',
+        'comments_json',
         'total_score',
         'outcome',
+        'result',
         'remarks',
     ];
 
     protected $casts = [
         'scores_json'     => 'array',
+        'comments_json'   => 'array',
         'total_score'     => 'decimal:2',
         'assessment_date' => 'date',
     ];

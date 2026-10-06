@@ -79,18 +79,11 @@ function getSessionId(): string {
 export function Chatbot() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<Msg[]>(() => {
-    const saved = loadMessages();
-    return saved.length ? saved : [GREETING];
-  });
+  const [messages, setMessages] = useState<Msg[]>([GREETING]);
   const [typing, setTyping] = useState(false);
   const [topic, setTopic] = useState<string | null>(null);
   const [reducedMode, setReducedMode] = useState(false);
-  const [unread, setUnread] = useState(() => {
-    const saved = loadMessages();
-    const last = saved[saved.length - 1];
-    return saved.length > 1 && last?.from === "bot";
-  });
+  const [unread, setUnread] = useState(false);
   const viewportRef = useRef<React.ElementRef<typeof ScrollAreaPrimitive.Viewport>>(null);
   const sessionRef = useRef<string>("");
 
@@ -98,15 +91,21 @@ export function Chatbot() {
 
   useEffect(() => {
     setMounted(true);
-  }, []);
-
-  useEffect(() => {
+    const saved = loadMessages();
+    if (saved.length) {
+      setMessages(saved);
+      const last = saved[saved.length - 1];
+      if (saved.length > 1 && last?.from === "bot") {
+        setUnread(true);
+      }
+    }
     sessionRef.current = getSessionId();
   }, []);
 
   useEffect(() => {
+    if (!mounted) return;
     saveMessages(messages);
-  }, [messages]);
+  }, [messages, mounted]);
 
   useEffect(() => {
     if (open) setUnread(false);

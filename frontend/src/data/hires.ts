@@ -20,6 +20,17 @@ export type PendingHire = {
   applicantId?: number;
 };
 
+/** Hand-off for the "View Checklist" action on the New Hire Onboarding
+ *  pipeline: opens the linked applicant's View profile → Requirements
+ *  Checklist (with a "Back to New Hire Onboarding" action there). */
+export type ChecklistViewTarget = {
+  /** Applicant database id — the profile to open (null when the hire has no
+   *  linked applicant record). */
+  applicantId: number | null;
+  /** Hire name, used in the message shown when no applicant is linked. */
+  applicantName: string;
+};
+
 export type MasterChecklistItem = {
   item_text: string;
   instructions?: string;
@@ -53,6 +64,7 @@ function transformApiNewHire(h: ApiNewHire): NewHire {
   return {
     id: h.new_hire_code || `NH-${h.new_hire_id}`,
     dbId: h.new_hire_id,
+    applicantId: h.applicant_id ?? null,
     name: h.name,
     initials,
     position: h.position || "Staff",
@@ -98,6 +110,7 @@ function transformApiTemplate(t: ApiChecklistTemplate): MasterChecklistTemplate 
 let hires: NewHire[] = [];
 let hireEmployees: Employee[] = [];
 let pendingHire: PendingHire | null = null;
+let pendingChecklistView: ChecklistViewTarget | null = null;
 
 let masterChecklists: MasterChecklistTemplate[] = [];
 
@@ -165,6 +178,37 @@ if (typeof window !== "undefined") {
     if (document.visibilityState === "visible") syncFromApi();
   }, SYNC_INTERVAL_MS);
   window.addEventListener("focus", syncFromApi);
+}
+
+/**
+ * A pending probationary evaluation must never run on an incomplete checklist:
+ * the moment a tick is removed so the requirements are no longer all done, the
+ * evaluation request is cancelled — locally and in the database — and HR is
+ * told why. Ticking everything back up lets HR request the evaluation again.
+ *
+ * The completeness rule mirrors the UI: for a Probationary hire only the
+ * Probationary-phase items count; otherwise the whole checklist counts.
+ */
+function stopEvaluationIfChecklistIncomplete(hireId: string) {
+  const target = hires.find((h) => h.id === hireId);
+  if (!target?.evaluationRequestedAt) return;
+  const phaseItems = target.checklist.filter((c) => (c.phase ?? "Probationary") === "Probationary");
+  const pool =
+    target.stage === "Probationary" && phaseItems.length > 0 ? phaseItems : target.checklist;
+  if (pool.length > 0 && pool.every((c) => c.done)) return;
+
+  hires = hires.map((h) => (h.id === hireId ? { ...h, evaluationRequestedAt: null } : h));
+  emit();
+  toast.warning(`Evaluation stopped for ${target.name}`, {
+    description:
+      "The checklist is no longer complete, so the evaluation request was cancelled. Request the evaluation again once every requirement is ticked.",
+  });
+
+  if (target.dbId) {
+    newHiresApi
+      .update(target.dbId, { evaluation_requested_at: null })
+      .catch((e) => console.warn("API evaluation auto-cancel error:", e));
+  }
 }
 
 export const DEFAULT_ACCOUNT_PASSWORD = "Oxford@2026";
@@ -242,6 +286,18 @@ export const hireStore = {
     pendingHire = null;
     if (p) emit();
     return p;
+  },
+  /** Queues the "View Checklist" hand-off from New Hire Onboarding. */
+  setPendingChecklistView: (t: ChecklistViewTarget | null) => {
+    pendingChecklistView = t;
+    emit();
+  },
+  /** Atomically takes the queued checklist view (returns null if none). */
+  consumePendingChecklistView: () => {
+    const t = pendingChecklistView;
+    pendingChecklistView = null;
+    if (t) emit();
+    return t;
   },
   /** True when a hire with the same name + position already exists. */
   exists: (name: string, position: string) =>
@@ -482,6 +538,10 @@ export const hireStore = {
     );
     emit();
 
+    // Un-ticking a requirement breaks the 100% the evaluation hand-over needs —
+    // a pending evaluation request is stopped right away.
+    stopEvaluationIfChecklistIncomplete(hireId);
+
     if (!target?.dbId) return;
     try {
       let itemId = item?.dbId;
@@ -515,6 +575,9 @@ export const hireStore = {
     );
     emit();
 
+    // Bulk un-ticking also breaks the 100% the evaluation hand-over needs.
+    stopEvaluationIfChecklistIncomplete(hireId);
+
     if (!target.dbId) return;
     await Promise.all(
       (target.checklist || []).map(async (c) => {
@@ -547,7 +610,11 @@ export function useHires() {
 /** True while the first hire-list fetch is in flight. Gate skeletons on
  *  `loading && hires.length === 0` so background syncs never flash. */
 export function useHiresLoading() {
-  return useSyncExternalStore(subscribe, () => hiresFetching, () => hiresFetching);
+  return useSyncExternalStore(
+    subscribe,
+    () => hiresFetching,
+    () => hiresFetching,
+  );
 }
 
 export function useHireEmployees() {

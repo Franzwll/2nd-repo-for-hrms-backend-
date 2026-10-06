@@ -88,7 +88,8 @@ class NlpService
         array $openJobs = [],
         int $timeoutSeconds = 120,
         ?array $referenceData = null,
-        ?array $screeningSettings = null
+        ?array $screeningSettings = null,
+        ?array $documentVerifications = null
     ): array {
         if (!is_file($filePath)) {
             return ['ok' => false, 'data' => null, 'error' => "Resume file not found at {$filePath}"];
@@ -107,6 +108,13 @@ class NlpService
             // HR-configurable weights / thresholds from the Screening Setup.
             if ($screeningSettings) {
                 $payload['screening_settings'] = json_encode($screeningSettings);
+            }
+            // Already-verified supporting documents (COE / Certificate /
+            // Credential). The NLP service blends their evidence into the
+            // ranking score so the percentage and status reflect both the
+            // resume screening and the verification of its claims.
+            if ($documentVerifications) {
+                $payload['document_verifications'] = json_encode(array_values($documentVerifications));
             }
 
             $response = Http::timeout($timeoutSeconds)
@@ -133,6 +141,102 @@ class NlpService
                 'ok' => false,
                 'data' => null,
                 'error' => 'Could not reach the NLP screening service: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Re-runs ONLY the classification stage on the applicant's STORED screening
+     * data (profile_json + validation_json) together with the current
+     * supporting-document evidence. Called after a document is uploaded,
+     * re-verified or deleted so the ranking percentage, rank order and official
+     * status stay in sync WITHOUT re-uploading or re-OCR-ing the resume.
+     * Returns ['ok' => bool, 'data' => ?array, 'error' => ?string].
+     */
+    public function reclassifyScreening(array $payload, int $timeoutSeconds = 30): array
+    {
+        try {
+            $response = Http::timeout($timeoutSeconds)
+                ->post("{$this->baseUrl}/screening/reclassify", $payload);
+
+            if ($response->successful()) {
+                return ['ok' => true, 'data' => $response->json(), 'error' => null];
+            }
+
+            $body = $response->json();
+            $detail = is_array($body) ? ($body['detail'] ?? $response->body()) : $response->body();
+
+            return [
+                'ok' => false,
+                'data' => null,
+                'error' => "NLP service returned HTTP {$response->status()}: "
+                    . (is_string($detail) ? mb_substr($detail, 0, 500) : json_encode($detail)),
+            ];
+        } catch (\Throwable $e) {
+            Log::error("Failed to reach the NLP reclassification service: " . $e->getMessage());
+
+            return [
+                'ok' => false,
+                'data' => null,
+                'error' => 'Could not reach the NLP screening service: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Supporting-document verification: sends the uploaded document (COE /
+     * Certificate / Credential) plus the applicant's resume profile to the
+     * NLP service, which extracts the document's claims and compares them
+     * field-by-field against the resume.
+     * Returns ['ok' => bool, 'data' => ?array, 'error' => ?string] so callers never fail silently.
+     */
+    public function verifySupportingDocument(
+        string $filePath,
+        string $originalName,
+        string $docType,
+        array $resumeProfile,
+        ?array $referenceData = null,
+        int $timeoutSeconds = 60
+    ): array {
+        if (!is_file($filePath)) {
+            return ['ok' => false, 'data' => null, 'error' => "Document file not found at {$filePath}"];
+        }
+
+        try {
+            $payload = [
+                'doc_type'       => $docType,
+                'resume_profile' => json_encode($resumeProfile),
+            ];
+            // DB-managed reference data (skills/roles/certifications + aliases);
+            // the NLP service falls back to its bundled seed JSON when absent.
+            if ($referenceData) {
+                $payload['reference_data'] = json_encode($referenceData);
+            }
+
+            $response = Http::timeout($timeoutSeconds)
+                ->attach('file', file_get_contents($filePath), $originalName)
+                ->post("{$this->baseUrl}/verification/supporting-document", $payload);
+
+            if ($response->successful()) {
+                return ['ok' => true, 'data' => $response->json(), 'error' => null];
+            }
+
+            $body = $response->json();
+            $detail = is_array($body) ? ($body['detail'] ?? $response->body()) : $response->body();
+
+            return [
+                'ok' => false,
+                'data' => null,
+                'error' => "NLP service returned HTTP {$response->status()}: "
+                    . (is_string($detail) ? mb_substr($detail, 0, 500) : json_encode($detail)),
+            ];
+        } catch (\Throwable $e) {
+            Log::error("Failed to connect to NLP document verification service: " . $e->getMessage());
+
+            return [
+                'ok' => false,
+                'data' => null,
+                'error' => 'Could not reach the NLP document verification service: ' . $e->getMessage(),
             ];
         }
     }

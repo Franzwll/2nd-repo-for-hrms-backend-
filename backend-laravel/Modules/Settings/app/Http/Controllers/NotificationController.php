@@ -27,6 +27,8 @@ class NotificationController extends Controller
                 'detail'     => $n->body ?? '',
                 'module'     => $n->module_name,
                 'tone'       => $n->type ?? 'info',
+                'target_type' => $n->target_type,
+                'target_id'  => $n->target_id,
                 'read'       => (bool) $n->is_read,
                 'time'       => $n->created_at ? $n->created_at->diffForHumans() : 'Just now',
                 'created_at' => $n->created_at?->toISOString(),
