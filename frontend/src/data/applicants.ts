@@ -613,6 +613,16 @@ export type PracticalTestRow = {
 export type FinalRecommendation =
   "Recommended for Hire" | "For Another Position" | "Not Recommended";
 
+/** One line of the system-calculated score breakdown (display only). */
+export type FinalScoreBreakdownItem = {
+  key: string;
+  label: string;
+  score: number | null;
+  weight: number;
+  applied: boolean;
+  contribution: number | null;
+};
+
 /** Final evaluation row — whole-process verdict with a stage snapshot. */
 export type FinalEvaluationRow = {
   id: string;
@@ -629,13 +639,33 @@ export type FinalEvaluationRow = {
   practicalRequired: boolean;
   practicalTestScore: number | null;
   practicalTestResult: PassFail | null;
+  /** System-calculated overall score — never edited by HR. */
+  overallScore: number | null;
+  overallScoreRounded: number | null;
+  scoreBreakdown: FinalScoreBreakdownItem[] | null;
   recommendation: FinalRecommendation;
+  recommendedJobPostId?: number | null;
+  recommendedPositionTitle?: string | null;
   overallRemarks: string;
   date: string;
   /** Evaluator recorded with the final evaluation (name + system user id). */
   evaluatedBy?: string | null;
   evaluatedById?: number | null;
 };
+
+/**
+ * Final-evaluation weighting rubric (display fallback only).
+ * The backend (`FinalEvaluationScoreService` + preview endpoint) is
+ * authoritative — this mirror exists so the UI can label weights before
+ * the preview loads, and must stay in sync with
+ * `Modules/ApplicantManagement/config/config.php`.
+ */
+export const FINAL_EVALUATION_WEIGHTS = {
+  screening: 20,
+  interview: 30,
+  assessment: 25,
+  practical: 25,
+} as const;
 
 /** Verification document uploaded against the resume/CV content. */
 export type VerificationDocType = "COE" | "Certificate" | "Credential" | "Others";

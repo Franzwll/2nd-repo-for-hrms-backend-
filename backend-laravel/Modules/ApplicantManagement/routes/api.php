@@ -197,11 +197,14 @@ Route::prefix('v1')
           /* ------------------------------------------------------------------ */
           /* Final evaluations (whole-process verdict)                            */
           /* ------------------------------------------------------------------ */
-          Route::get('final-evaluations', [FinalEvaluationController::class, 'index'])
-               ->name('final-evaluations.index');
+           Route::get('final-evaluations', [FinalEvaluationController::class, 'index'])
+                ->name('final-evaluations.index');
 
-          Route::post('applicants/{applicant}/final-evaluations', [FinalEvaluationController::class, 'store'])
-               ->name('applicants.final-evaluations.store');
+           Route::get('applicants/{applicant}/final-evaluations/preview', [FinalEvaluationController::class, 'preview'])
+                ->name('applicants.final-evaluations.preview');
+
+           Route::post('applicants/{applicant}/final-evaluations', [FinalEvaluationController::class, 'store'])
+                ->name('applicants.final-evaluations.store');
 
           Route::put('final-evaluations/{finalEvaluation}', [FinalEvaluationController::class, 'update'])
                ->name('final-evaluations.update');

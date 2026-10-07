@@ -26,7 +26,13 @@ class FinalEvaluationResource extends JsonResource
             'practical_required'       => (bool) $this->practical_required,
             'practical_test_score'     => $this->practical_test_score !== null ? (float) $this->practical_test_score : null,
             'practical_test_result'    => $this->practical_test_result,
+            // System-calculated overall score (backend authoritative, read-only).
+            'overall_score'            => $this->overall_score !== null ? (float) $this->overall_score : null,
+            'overall_score_rounded'    => $this->overall_score !== null ? round((float) $this->overall_score, 1) : null,
+            'score_breakdown'          => $this->score_breakdown_json ?? null,
             'recommendation'           => $this->recommendation,
+            'recommended_job_post_id'  => $this->recommended_job_post_id,
+            'recommended_position_title' => $this->recommended_position_title,
             'overall_remarks'          => $this->overall_remarks,
             'created_at'               => $this->created_at?->toISOString(),
             'updated_at'               => $this->updated_at?->toISOString(),
