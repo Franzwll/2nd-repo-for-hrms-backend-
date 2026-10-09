@@ -1,11 +1,16 @@
-import { useState, useEffect } from "react";
 import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  Play,
+  Coffee,
+  RotateCcw,
+  LogOut,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { myAttendance } from "@/data/ess";
 import { essApi, type ApiEssEmployee } from "@/lib/api";
 
@@ -63,7 +68,37 @@ export function EssScheduleTab() {
     day: "numeric",
   });
 
-  const currentStatus = punchLog.timeOut !== "—" ? "clocked_out" : "clocked_in";
+  const [currentDutyStatus, setCurrentDutyStatus] = useState<"clocked_in" | "on_break" | "clocked_out">(
+    punchLog.timeOut !== "—" ? "clocked_out" : "clocked_in"
+  );
+
+  const handleClockIn = () => {
+    const timeStr = currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+    setPunchLog((prev) => ({ ...prev, timeIn: timeStr, timeOut: "—" }));
+    setCurrentDutyStatus("clocked_in");
+    toast.success(`Successfully Clocked In at ${timeStr}! Have a safe and productive shift. ⏱️`);
+  };
+
+  const handleBreakOut = () => {
+    const timeStr = currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+    setPunchLog((prev) => ({ ...prev, breakIn: timeStr }));
+    setCurrentDutyStatus("on_break");
+    toast.info(`Meal break started at ${timeStr}. Enjoy your 1-hour statutory interval! ☕`);
+  };
+
+  const handleBreakIn = () => {
+    const timeStr = currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+    setPunchLog((prev) => ({ ...prev, breakOut: timeStr }));
+    setCurrentDutyStatus("clocked_in");
+    toast.success(`Duty resumed at ${timeStr}. Welcome back to your station! 💼`);
+  };
+
+  const handleClockOut = () => {
+    const timeStr = currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+    setPunchLog((prev) => ({ ...prev, timeOut: timeStr }));
+    setCurrentDutyStatus("clocked_out");
+    toast.success(`Shift completed! Clocked Out at ${timeStr}. Rest well! 🏁`);
+  };
 
   return (
     <div className="space-y-6">
@@ -104,19 +139,19 @@ export function EssScheduleTab() {
             <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary text-xs font-medium px-2.5 py-1">
               Station Active
             </Badge>
-            {currentStatus === "clocked_in" && (
+            {currentDutyStatus === "clocked_in" && (
               <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
                 <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                 Currently On Duty
               </Badge>
             )}
-            {currentStatus === "on_break" && (
+            {currentDutyStatus === "on_break" && (
               <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
                 <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
                 On Lunch / Meal Break
               </Badge>
             )}
-            {currentStatus === "clocked_out" && (
+            {currentDutyStatus === "clocked_out" && (
               <Badge className="bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
                 Shift Completed / Clocked Out
               </Badge>
@@ -141,8 +176,58 @@ export function EssScheduleTab() {
               <div className="inline-flex items-center gap-2 rounded-full bg-muted/60 border border-border/80 px-3.5 py-1 text-xs text-muted-foreground">
                 <span>Terminal Mode:</span>
                 <span className="font-semibold text-foreground">
-                  {currentStatus === "clocked_out" ? "Shift Concluded" : "Live Attendance Tracking"}
+                  {currentDutyStatus === "clocked_out" ? "Shift Concluded" : "Live Attendance Tracking"}
                 </span>
+              </div>
+            </div>
+
+            {/* DAILY WEB CLOCKING INTERACTIVE BUTTONS */}
+            <div className="rounded-2xl border border-border/80 bg-muted/20 p-4 space-y-2.5">
+              <div className="flex items-center justify-between pb-1">
+                <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-primary" /> Daily Web Clocking Actions
+                </p>
+                <span className="text-[10px] text-muted-foreground font-mono">1-Click Punch Sync</span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <Button
+                  type="button"
+                  onClick={handleClockIn}
+                  className="h-10 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs gap-1.5 cursor-pointer active:scale-95 transition-all"
+                >
+                  <Play className="h-3.5 w-3.5" />
+                  <span>Clock In</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  onClick={handleBreakOut}
+                  variant="outline"
+                  className="h-10 text-xs font-bold border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 shadow-2xs gap-1.5 cursor-pointer active:scale-95 transition-all"
+                >
+                  <Coffee className="h-3.5 w-3.5" />
+                  <span>Break Out</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  onClick={handleBreakIn}
+                  variant="outline"
+                  className="h-10 text-xs font-bold border-teal-500/40 text-teal-600 dark:text-teal-400 bg-teal-500/10 hover:bg-teal-500/20 shadow-2xs gap-1.5 cursor-pointer active:scale-95 transition-all"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>Break In</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  onClick={handleClockOut}
+                  className="h-10 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs gap-1.5 cursor-pointer active:scale-95 transition-all"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span>Clock Out</span>
+                </Button>
               </div>
             </div>
 

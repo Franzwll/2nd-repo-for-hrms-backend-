@@ -205,27 +205,27 @@ export function EssPerformanceTab() {
                 <TableHead>Course Title</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Score</TableHead>
-                <TableHead>Date Completed</TableHead>
+                <TableHead className="text-right">Score</TableHead>
+                <TableHead className="text-left pl-6">Date Completed</TableHead>
                 <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {courses.map((c) => (
                 <TableRow key={c.id}>
-                  <TableCell className="font-semibold text-sm text-foreground">{c.title}</TableCell>
+                  <TableCell className="font-semibold text-xs text-foreground">{c.title}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{c.category}</TableCell>
                   <TableCell>
                     <EssStatusBadge status={c.status} />
                   </TableCell>
-                  <TableCell className="text-xs font-semibold text-foreground">{c.score}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{c.completedDate}</TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right text-xs font-semibold font-mono text-foreground">{c.score}</TableCell>
+                  <TableCell className="text-left pl-6 text-xs text-muted-foreground">{c.completedDate}</TableCell>
+                  <TableCell className="text-right py-1">
                     {c.status === "Completed" ? (
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-8 text-xs text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 gap-1"
+                        className="h-6 px-2 text-xs text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 gap-1 font-medium"
                         onClick={() => handleOpenCert(c)}
                       >
                         <CheckCircle2 className="h-3.5 w-3.5" /> Certificate
@@ -233,11 +233,11 @@ export function EssPerformanceTab() {
                     ) : (
                       <Button
                         size="sm"
-                        variant="outline"
-                        className="h-8 text-xs"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs text-primary hover:bg-primary/10 gap-1 font-medium"
                         onClick={() => toast.info(`Resuming ${c.title}...`)}
                       >
-                        Continue Course
+                        Continue →
                       </Button>
                     )}
                   </TableCell>

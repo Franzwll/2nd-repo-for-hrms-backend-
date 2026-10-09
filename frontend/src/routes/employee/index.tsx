@@ -7,18 +7,18 @@ import {
   FileCheck,
   ClipboardCheck,
   ArrowRight,
-  Activity,
   AlertCircle,
   CheckCircle2,
   Award,
   Bot,
+  Share2,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { AnnouncementsCard } from "@/components/portal/AnnouncementsCard";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { StatCard } from "@/components/portal/StatCard";
 import {
-  CardSkeleton,
   ListSkeleton,
   StatCardsSkeleton,
 } from "@/components/ui/loading-skeletons";
@@ -30,7 +30,6 @@ import {
   newHiresApi,
   onboardingItemsApi,
   type ApiEssOverview,
-  type ApiEssRequestItem,
   type ApiRecognitionItem,
 } from "@/lib/api";
 import { getUser } from "@/lib/auth";
@@ -42,7 +41,6 @@ export const Route = createFileRoute("/employee/")({
 function EmployeeDashboard() {
   const user = getUser();
   const [overview, setOverview] = useState<ApiEssOverview | null>(null);
-  const [requests, setRequests] = useState<ApiEssRequestItem[]>([]);
   const [recognitions, setRecognitions] = useState<ApiRecognitionItem[]>([]);
   const [pendingTasks, setPendingTasks] = useState<string[]>([]);
   const [loadingOnboarding, setLoadingOnboarding] = useState(true);
@@ -71,17 +69,7 @@ function EmployeeDashboard() {
       .then(setOverview)
       .catch(() => { });
 
-    // 2. Fetch ESS Requests
-    essApi
-      .myRequests()
-      .then((res) => {
-        if (res.requests && res.requests.length > 0) {
-          setRequests(res.requests);
-        }
-      })
-      .catch(() => { });
-
-    // 3. Fetch Social Recognitions
+    // 2. Fetch Social Recognitions
     essApi
       .recognitions()
       .then((res) => {
@@ -92,7 +80,7 @@ function EmployeeDashboard() {
       .catch(() => { })
       .finally(() => setLoadingRecognitions(false));
 
-    // 4. Fetch Onboarding Tasks
+    // 3. Fetch Onboarding Tasks
     newHiresApi
       .list({ per_page: 100 })
       .then((res) => {
@@ -122,24 +110,6 @@ function EmployeeDashboard() {
       .finally(() => setLoadingOnboarding(false));
   }, [employeeName, user?.employee_id, user?.email]);
 
-  const topActions = useMemo(() => {
-    if (requests && requests.length > 0) {
-      return requests.slice(0, 5).map((r) => ({
-        type: r.type,
-        category: r.category,
-        date: r.filed,
-        status: r.status,
-      }));
-    }
-    return [
-      { type: "Vacation Leave (VL) Request", category: "Attendance", date: "Aug 18, 2026", status: "Approved" },
-      { type: "Biometrics Correction", category: "Attendance", date: "Aug 14, 2026", status: "Completed" },
-      { type: "Certificate of Employment (COE)", category: "Documents", date: "Aug 10, 2026", status: "Pending" },
-      { type: "Night Differential Inquiry", category: "Payroll", date: "Aug 05, 2026", status: "Completed" },
-      { type: "Food Safety Level 2 Certification", category: "Performance", date: "Aug 02, 2026", status: "Completed" },
-    ];
-  }, [requests]);
-
   const shiftBadgeText = overview?.today_schedule?.is_rest_day
     ? "Rest Day (Off Duty)"
     : `On Shift (${overview?.today_schedule?.time || "07:00 AM – 04:00 PM"})`;
@@ -160,7 +130,7 @@ function EmployeeDashboard() {
       const res = await essApi.reactKudos(recId, reaction);
       if (res?.reactions) {
         setRecognitions((prev) =>
-          prev.map((r) => (r.id === recId ? { ...r, reactions: res.reactions } : r))
+          prev.map((r) => (r.id === recId ? { ...r, reactions: res.reactions as { clap: number; heart: number; fire: number; star: number } } : r))
         );
       }
     } catch {
@@ -186,7 +156,7 @@ function EmployeeDashboard() {
             </Badge>
           </div>
         }
-        title={`${greeting}, ${firstName} 👋`}
+        title={`${greeting}, ${firstName}`}
         description="Here's what's happening with your employment today."
       />
 
@@ -267,222 +237,102 @@ function EmployeeDashboard() {
         </div>
       )}
 
-      {/* Quick Actions Grid (Compact Box Type 3x3 Grid) */}
+      {/* Quick Actions in a compact single row */}
       <div className="mt-6">
         <Card className="border-border/70 shadow-xs">
-          <CardHeader className="pb-3">
-            <CardTitle className="font-display text-lg font-semibold">Quick Actions</CardTitle>
-            <p className="text-xs text-muted-foreground">Access core employee self-service modules and automated HR tools.</p>
+          <CardHeader className="py-3 px-4 sm:px-6">
+            <CardTitle className="font-display text-sm font-semibold">Quick Actions</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid gap-3.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              {/* Row 1, Col 1: Attendance */}
-              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-sm hover:-translate-y-0.5 group">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
-                  <Clock className="h-5 w-5" />
+          <CardContent className="px-4 pb-4 sm:px-6 pt-0">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 sm:gap-2.5">
+              {/* 1: Attendance */}
+              <Link
+                to="/employee/ess"
+                search={{ category: "Attendance" }}
+                className="rounded-lg border border-primary/20 bg-card hover:bg-primary/5 hover:border-primary py-2.5 px-2 flex flex-col items-center justify-center text-center gap-1.5 transition-all hover:shadow-2xs group cursor-pointer"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/15 transition-transform group-hover:scale-105">
+                  <Clock className="h-4 w-4" />
                 </div>
-                <div className="space-y-1 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Attendance</h3>
-                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
-                    Monitor daily time-in/out records, weekly shift rosters, and DTR corrections.
-                  </p>
-                </div>
-                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
-                  <Link to="/employee/ess" search={{ category: "Attendance" }}>
-                    View Details
-                  </Link>
-                </Button>
-              </div>
+                <span className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors truncate max-w-full">
+                  Attendance
+                </span>
+              </Link>
 
-              {/* Row 1, Col 2: Payroll */}
-              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-sm hover:-translate-y-0.5 group">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
-                  <FileText className="h-5 w-5" />
+              {/* 2: Payroll */}
+              <Link
+                to="/employee/ess"
+                search={{ category: "Payroll" }}
+                className="rounded-lg border border-primary/20 bg-card hover:bg-primary/5 hover:border-primary py-2.5 px-2 flex flex-col items-center justify-center text-center gap-1.5 transition-all hover:shadow-2xs group cursor-pointer"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/15 transition-transform group-hover:scale-105">
+                  <FileText className="h-4 w-4" />
                 </div>
-                <div className="space-y-1 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Payroll</h3>
-                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
-                    Inspect itemized payslips, net pay, loan schedule, and statutory benefits.
-                  </p>
-                </div>
-                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
-                  <Link to="/employee/ess" search={{ category: "Payroll" }}>
-                    View Details
-                  </Link>
-                </Button>
-              </div>
+                <span className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors truncate max-w-full">
+                  Payroll
+                </span>
+              </Link>
 
-              {/* Row 1, Col 3: Performance */}
-              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
-                  <TrendingUp className="h-5 w-5" />
+              {/* 3: Performance */}
+              <Link
+                to="/employee/ess"
+                search={{ category: "Performance" }}
+                className="rounded-lg border border-primary/20 bg-card hover:bg-primary/5 hover:border-primary py-2.5 px-2 flex flex-col items-center justify-center text-center gap-1.5 transition-all hover:shadow-2xs group cursor-pointer"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/15 transition-transform group-hover:scale-105">
+                  <TrendingUp className="h-4 w-4" />
                 </div>
-                <div className="space-y-1 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Performance</h3>
-                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
-                    Track LMS courses, competency modules, and performance reviews.
-                  </p>
-                </div>
-                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
-                  <Link to="/employee/ess" search={{ category: "Performance" }}>
-                    View Details
-                  </Link>
-                </Button>
-              </div>
+                <span className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors truncate max-w-full">
+                  Performance
+                </span>
+              </Link>
 
-              {/* Row 2, Col 1: Company Documents */}
-              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
-                  <FileCheck className="h-5 w-5" />
+              {/* 4: Documents */}
+              <Link
+                to="/employee/ess"
+                search={{ category: "Documents" }}
+                className="rounded-lg border border-primary/20 bg-card hover:bg-primary/5 hover:border-primary py-2.5 px-2 flex flex-col items-center justify-center text-center gap-1.5 transition-all hover:shadow-2xs group cursor-pointer"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/15 transition-transform group-hover:scale-105">
+                  <FileCheck className="h-4 w-4" />
                 </div>
-                <div className="space-y-1.5 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Documents</h3>
-                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
-                    Request official Certificate of Employment (COE) and clearances.
-                  </p>
-                </div>
-                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
-                  <Link to="/employee/ess" search={{ category: "Documents" }}>
-                    View Details
-                  </Link>
-                </Button>
-              </div>
+                <span className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors truncate max-w-full">
+                  Documents
+                </span>
+              </Link>
 
-              {/* Row 2, Col 2: Social Recognition */}
-              <div className="rounded-xl border border-primary/20 bg-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs transition-transform group-hover:scale-105">
-                  <Award className="h-5 w-5" />
+              {/* 5: Recognition */}
+              <Link
+                to="/employee/ess"
+                search={{ category: "Recognition" }}
+                className="rounded-lg border border-primary/20 bg-card hover:bg-primary/5 hover:border-primary py-2.5 px-2 flex flex-col items-center justify-center text-center gap-1.5 transition-all hover:shadow-2xs group cursor-pointer"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/15 transition-transform group-hover:scale-105">
+                  <Award className="h-4 w-4" />
                 </div>
-                <div className="space-y-1 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground">Social Recognition</h3>
-                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
-                    Send peer kudos, celebrate hotel values, and browse the Wall of Fame.
-                  </p>
-                </div>
-                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
-                  <Link to="/employee/ess" search={{ category: "Recognition" }}>
-                    View Details
-                  </Link>
-                </Button>
-              </div>
+                <span className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors truncate max-w-full">
+                  Recognition
+                </span>
+              </Link>
 
-              {/* Row 2, Col 3: HR AI Concierge */}
-              <div className="rounded-xl border border-primary/40 bg-gradient-to-b from-primary/5 via-card to-card p-4 min-h-[175px] flex flex-col items-center text-center justify-between gap-2.5 transition-all hover:border-primary hover:shadow-md hover:-translate-y-0.5 group">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-2xs transition-transform group-hover:scale-105">
-                  <Bot className="h-5 w-5" />
+              {/* 6: HR AI Concierge */}
+              <Link
+                to="/employee/ai"
+                className="rounded-lg border border-primary/30 bg-gradient-to-b from-primary/10 to-card hover:bg-primary/15 hover:border-primary py-2.5 px-2 flex flex-col items-center justify-center text-center gap-1.5 transition-all hover:shadow-2xs group cursor-pointer"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-2xs transition-transform group-hover:scale-105">
+                  <Bot className="h-4 w-4" />
                 </div>
-                <div className="space-y-1 flex-1 flex flex-col justify-center">
-                  <h3 className="font-display text-sm sm:text-base font-bold text-foreground flex items-center justify-center gap-1.5">
-                    HR AI Concierge
-                  </h3>
-                  <p className="text-[11px] text-muted-foreground leading-snug max-w-[220px]">
-                    24/7 automated assistant for policy, leave &amp; payout questions.
-                  </p>
-                </div>
-                <Button asChild size="sm" className="px-5 h-7 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-[11px] shadow-xs">
-                  <Link to="/employee/ai">
-                    View Details
-                  </Link>
-                </Button>
-              </div>
+                <span className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors truncate max-w-full">
+                  AI Concierge
+                </span>
+              </Link>
             </div>
           </CardContent>
         </Card>
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        {/* ESS Overview Card (analytics + logs) */}
-        <Card className="border-border/70 flex flex-col justify-between">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 font-display text-xl font-semibold">
-                <Activity className="h-5 w-5 text-primary" />
-                ESS Overview
-              </div>
-              <Button asChild variant="ghost" size="sm" className="text-primary">
-                <Link to="/employee/ess" search={{}}>
-                  Open ESS <ArrowRight className="ml-1 h-3.5 w-3.5" />
-                </Link>
-              </Button>
-            </div>
-
-            {loadingOverview ? (
-              <CardSkeleton rows={6} className="mt-4" />
-            ) : (
-            <>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <Link
-                to="/employee/ess"
-                search={{ category: "Attendance" }}
-                className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5"
-              >
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  <Clock className="h-3.5 w-3.5 text-primary" /> Attendance
-                </div>
-                <p className="mt-1 text-lg font-bold font-display">{overview?.monthly_attendance?.present ?? 18} Present</p>
-                <p className="text-xs text-muted-foreground">
-                  {overview?.today_attendance?.time_in ? `In ${overview.today_attendance.time_in}` : "Not clocked in"} · {overview?.monthly_attendance?.late ?? 0} late
-                </p>
-              </Link>
-              <Link
-                to="/employee/ess"
-                search={{ category: "Payroll" }}
-                className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5"
-              >
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  <FileText className="h-3.5 w-3.5 text-emerald-600" /> Payroll
-                </div>
-                <p className="mt-1 text-lg font-bold font-display">₱{netPay.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">Next payout {nextPayoutDate}</p>
-              </Link>
-              <Link
-                to="/employee/ess"
-                search={{ category: "Performance" }}
-                className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5"
-              >
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  <TrendingUp className="h-3.5 w-3.5 text-purple-600" /> Performance
-                </div>
-                <p className="mt-1 text-lg font-bold font-display">{lmsDone}/{lmsTotal} Courses</p>
-                <p className="text-xs text-muted-foreground">{overview?.performance_summary?.competency_level ?? "Proficient"} rating</p>
-              </Link>
-              <Link
-                to="/employee/ess"
-                search={{ category: "Documents" }}
-                className="rounded-lg border border-border/70 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5"
-              >
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  <FileCheck className="h-3.5 w-3.5 text-blue-600" /> Documents
-                </div>
-                <p className="mt-1 text-lg font-bold font-display">{requests.filter((r) => r.category === "Documents" || r.type.includes("COE")).length || 3} Files</p>
-                <p className="text-xs text-muted-foreground">{overview?.pending_requests_count ?? 0} active request(s)</p>
-              </Link>
-            </div>
-
-            {/* Recent activities log */}
-            <div className="mt-4 space-y-2 border-t border-border pt-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Recent activities
-                </p>
-                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
-                  Top 5 Latest
-                </Badge>
-              </div>
-              {topActions.map((act, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between gap-2 text-xs border-b border-border/50 pb-1.5"
-                >
-                  <span className="font-medium text-foreground truncate">{act.type}</span>
-                  <span className="shrink-0 text-muted-foreground">{act.date}</span>
-                </div>
-              ))}
-            </div>
-            </>
-            )}
-          </CardContent>
-        </Card>
         {/* Social Recognition & Wall of Fame Card */}
         <Card className="border-border/70 flex flex-col justify-between shadow-xs">
           <CardContent className="p-6">
@@ -595,7 +445,27 @@ function EmployeeDashboard() {
                       >
                         🔥 {rec.reactions?.fire ?? 0}
                       </button>
-                      <span className="ml-auto text-[10px] text-muted-foreground">{rec.timeAgo}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const citation = `⭐ [${rec.badge}] ${rec.recipient} recognized by ${rec.sender}: "${rec.message}" — Oxford Suites Wall of Fame`;
+                          if (navigator?.clipboard?.writeText) {
+                            navigator.clipboard.writeText(citation).then(() => {
+                              toast.success("Praise citation copied to clipboard! 📋");
+                            }).catch(() => {
+                              toast.info(citation);
+                            });
+                          } else {
+                            toast.info(citation);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 hover:bg-muted hover:border-primary/40 hover:text-primary transition-colors cursor-pointer text-muted-foreground ml-auto"
+                        title="Share praise citation"
+                      >
+                        <Share2 className="h-3 w-3" />
+                        <span>Share</span>
+                      </button>
+                      <span className="text-[10px] text-muted-foreground">{rec.timeAgo}</span>
                     </div>
                   </div>
                 ))}
@@ -605,14 +475,13 @@ function EmployeeDashboard() {
 
             <Button asChild size="sm" className="mt-4 w-full sm:w-auto bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs shadow-xs">
               <Link to="/employee/ess" search={{ category: "Recognition" }}>
-                Give Kudos &amp; View Wall <Award className="ml-1.5 h-3.5 w-3.5" />
+                Explore Wall of Fame <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
               </Link>
             </Button>
           </CardContent>
         </Card>
-      </div>
 
-      <div className="mt-6">
+        {/* Announcements & Bulletins Card */}
         <AnnouncementsCard role="employee" />
       </div>
     </div>

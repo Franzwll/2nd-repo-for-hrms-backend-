@@ -402,7 +402,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
                     className="cursor-pointer hover:bg-muted/50 transition-colors"
                     onClick={() => handleRowClick(item)}
                   >
-                    <TableCell className="font-medium text-sm text-foreground">
+                    <TableCell className="font-medium text-xs text-foreground">
                       {item.type}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">{item.category}</TableCell>
@@ -410,8 +410,8 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
                     <TableCell>
                       <EssStatusBadge status={item.status} />
                     </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" className="h-7 text-xs text-primary">
+                    <TableCell className="text-right py-1">
+                      <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-primary">
                         Timeline →
                       </Button>
                     </TableCell>

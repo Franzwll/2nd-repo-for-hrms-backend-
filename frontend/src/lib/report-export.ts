@@ -915,3 +915,53 @@ export function printReport(report: ReportData): void {
   );
 }
 
+export function build201FileReport(data: {
+  employeeName: string;
+  employeeCode: string;
+  position: string;
+  department: string;
+  status: string;
+  employmentType: string;
+  dateHired: string;
+  email: string;
+  phone: string;
+  supervisor: string;
+  documents: { name: string; status: string; file?: string }[];
+  history: { type: string; date: string; detail: string }[];
+}): ReportData {
+  return {
+    title: `201 File Dossier: ${data.employeeName}`,
+    subtitle: `${data.employeeCode} · ${data.position} · ${data.department}`,
+    columns: [
+      { header: "Record / Document", key: "item" },
+      { header: "Type / Category", key: "type" },
+      { header: "Status / Date", key: "status" },
+      { header: "Details", key: "detail" },
+    ],
+    rows: [
+      ...data.documents.map((d) => ({
+        item: d.name,
+        type: "Document",
+        status: d.status,
+        detail: d.file ? `Attached: ${d.file}` : "On file",
+      })),
+      ...data.history.map((h) => ({
+        item: h.type,
+        type: "Employment History",
+        status: h.date,
+        detail: h.detail,
+      })),
+    ],
+    summary: [
+      { label: "Employee Name", value: data.employeeName },
+      { label: "ID Code", value: data.employeeCode },
+      { label: "Department", value: data.department },
+      { label: "Position", value: data.position },
+      { label: "Status", value: data.status },
+      { label: "Date Hired", value: data.dateHired },
+      { label: "Supervisor", value: data.supervisor },
+    ],
+    sensitive: true,
+  };
+}
+

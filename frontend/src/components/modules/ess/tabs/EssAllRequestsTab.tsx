@@ -291,7 +291,7 @@ export function EssAllRequestsTab() {
                     <TableCell className="text-xs font-mono font-medium text-foreground">
                       {r.id}
                     </TableCell>
-                    <TableCell className="text-sm font-bold text-foreground">
+                    <TableCell className="text-xs font-semibold text-foreground">
                       {r.type}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">{r.category}</TableCell>
@@ -302,8 +302,8 @@ export function EssAllRequestsTab() {
                     <TableCell>
                       <EssStatusBadge status={r.status} />
                     </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" className="h-7 text-xs text-primary font-medium">
+                    <TableCell className="text-right py-1">
+                      <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-primary font-medium">
                         Timeline →
                       </Button>
                     </TableCell>

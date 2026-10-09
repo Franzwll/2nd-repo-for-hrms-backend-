@@ -40,6 +40,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Printer,
   Repeat2,
   RefreshCw,
   Save,
@@ -129,6 +130,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
 import {
   DEFAULT_PRACTICAL_CRITERIA,
+  FINAL_EVALUATION_WEIGHTS,
   PRACTICAL_POSITIONS,
   VERIFICATION_DOC_TYPES,
   computeTopCandidateTier,
@@ -141,6 +143,7 @@ import {
   type FacilityStatus,
   type FinalEvaluationRow,
   type FinalRecommendation,
+  type FinalScoreBreakdownItem,
   type PassFail,
   type PracticalTestRow,
   type VerificationDocType,
@@ -193,6 +196,7 @@ import {
   type ApiDepartment,
   type ApiFacility,
   type ApiFinalEvaluation,
+  type ApiFinalEvaluationPreview,
   type ApiInterview,
   type ApiJobPost,
   type ApiPosition,
@@ -205,6 +209,7 @@ import {
 import {
   describeExport,
   exportReport,
+  printReport,
   type ReportData,
   type ReportFormat,
 } from "@/lib/report-export";
@@ -401,7 +406,12 @@ function transformApiFinalEvaluation(f: ApiFinalEvaluation): FinalEvaluationRow 
     practicalRequired: f.practical_required,
     practicalTestScore: f.practical_test_score,
     practicalTestResult: f.practical_test_result,
+    overallScore: f.overall_score ?? null,
+    overallScoreRounded: f.overall_score_rounded ?? (f.overall_score != null ? Math.round(f.overall_score * 10) / 10 : null),
+    scoreBreakdown: (f.score_breakdown as FinalScoreBreakdownItem[] | null) ?? null,
     recommendation: f.recommendation,
+    recommendedJobPostId: f.recommended_job_post_id ?? null,
+    recommendedPositionTitle: f.recommended_position_title ?? null,
     overallRemarks: f.overall_remarks ?? "",
     date: f.evaluation_date,
     evaluatedById: f.evaluated_by_user_id ?? null,
@@ -954,9 +964,9 @@ const screeningToneClass: Record<ScreeningTone, { card: string; value: string; l
     label: "text-primary/80",
   },
   gold: {
-    card: "border-gold/30 bg-gold-soft",
-    value: "text-gold-foreground",
-    label: "text-gold-foreground/70",
+    card: "border-gold/30 bg-gold-soft dark:bg-gold/15",
+    value: "text-gold-foreground dark:text-gold",
+    label: "text-gold-foreground/70 dark:text-gold/70",
   },
 };
 
@@ -2526,7 +2536,7 @@ function ScreeningDocIcon({ docType, label }: { docType: string; label?: string 
       : t === "certificate"
         ? "bg-success/10 text-success"
         : t === "credential"
-          ? "bg-gold-soft text-gold-foreground"
+          ? "bg-gold-soft text-gold-foreground dark:bg-gold/15 dark:text-gold"
           : "bg-destructive/10 text-destructive";
   const caption =
     label ??
@@ -4049,6 +4059,17 @@ function DocVerificationCheckRow({
               : "CAN'T COMPARE"}
         </p>
         {check.note && <p className="text-[0.65rem] italic text-muted-foreground">{check.note}</p>}
+        {check.compared_resume_entry && check.compared_resume_entry.total_entries > 1 && (
+          <p className="text-[0.65rem] italic text-muted-foreground">
+            Compared against work entry{" "}
+            {(check.compared_resume_entry.entry_index ?? 0) + 1} of{" "}
+            {check.compared_resume_entry.total_entries}
+            {check.compared_resume_entry.job_title ||
+            check.compared_resume_entry.company
+              ? ` (${[check.compared_resume_entry.job_title, check.compared_resume_entry.company].filter(Boolean).join(" · ")})`
+              : ""}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -4273,18 +4294,42 @@ function worstStatus(statuses: MatchSectionStatus[]): MatchSectionStatus {
 function pickCheck(
   docs: ApiApplicantDocument[],
   key: string,
+  targetDocTypes?: string[],
 ): { check: ApiDocumentVerificationCheck; doc: ApiApplicantDocument } | null {
+  const filteredDocs =
+    targetDocTypes && targetDocTypes.length > 0
+      ? docs.filter((d) => !d.doc_type || targetDocTypes.includes(d.doc_type))
+      : docs;
   const samples: { check: ApiDocumentVerificationCheck; doc: ApiApplicantDocument }[] = [];
-  docs.forEach((doc) => {
+  (filteredDocs.length > 0 ? filteredDocs : docs).forEach((doc) => {
     const check = doc.verification_result?.checks?.[key];
     if (check) samples.push({ check, doc });
   });
   if (samples.length === 0) return null;
+  // Verification semantics: a genuine discrepancy in ANY paper must surface
+  // for HR review — a match elsewhere must never hide it. (E.g. the current-
+  // employer COE matches while the previous-employer COE exposes a 3-month
+  // start-date gap; showing only the match would certify a false history.)
+  // UNABLE_TO_EXTRACT samples rank last: "can't compare" never overrides a
+  // real verdict in either direction.
   return (
     samples.find((s) => s.check.result === "MISMATCH") ??
     samples.find((s) => s.check.result === "MATCH") ??
     samples[0]!
   );
+}
+
+/** "Compared against work entry 2 of 3" — traces a COE verdict back to the
+ *  exact resume stint the paper was measured against. */
+function comparedEntrySource(check: ApiDocumentVerificationCheck | undefined): string | undefined {
+  const entry = check?.compared_resume_entry;
+  if (!entry || entry.total_entries < 1) return undefined;
+  const position =
+    entry.entry_index !== null && entry.entry_index !== undefined
+      ? `entry ${(entry.entry_index ?? 0) + 1} of ${entry.total_entries}`
+      : `1 of ${entry.total_entries} ${entry.total_entries === 1 ? "entry" : "entries"}`;
+  const what = [entry.job_title, entry.company].filter(Boolean).join(" · ");
+  return `Compared against work ${position}${what ? ` (${what})` : ""}`;
 }
 
 export function ScreeningResumeDocsMatchDetail({
@@ -4347,10 +4392,10 @@ export function ScreeningResumeDocsMatchDetail({
     };
 
     // — Work experience (COE papers): employer + title + dates —
-    const company = pickCheck(docs, "company");
-    const position = pickCheck(docs, "position");
-    const start = pickCheck(docs, "start_date");
-    const end = pickCheck(docs, "end_date");
+    const company = pickCheck(docs, "company", ["COE"]);
+    const position = pickCheck(docs, "position", ["COE"]);
+    const start = pickCheck(docs, "start_date", ["COE"]);
+    const end = pickCheck(docs, "end_date", ["COE"]);
     const dateStatuses = [start, end]
       .filter((x): x is NonNullable<typeof x> => x !== null)
       .map((x) => checkStatus(x.check.result));
@@ -4363,6 +4408,7 @@ export function ScreeningResumeDocsMatchDetail({
         resume: company.check.resume_value,
         papers: company.check.document_value,
         status: checkStatus(company.check.result),
+        source: comparedEntrySource(company.check),
       });
     if (position)
       workFields.push({
@@ -4370,18 +4416,23 @@ export function ScreeningResumeDocsMatchDetail({
         resume: position.check.resume_value,
         papers: position.check.document_value,
         status: checkStatus(position.check.result),
+        source: comparedEntrySource(position.check),
       });
-    if (start || end)
+    if (start || end) {
+      const dateNote = start?.check.note ?? end?.check.note ?? undefined;
+      const entrySource = comparedEntrySource(start?.check ?? end?.check);
       workFields.push({
         label: "Employment dates",
         resume: dateResume,
         papers: datePapers,
         status: worstStatus(dateStatuses),
+        source: [entrySource, dateNote].filter(Boolean).join(" — ") || undefined,
       });
+    }
     const workDocs = new Set(
-      [company, position, start, end]
-        .filter((x): x is NonNullable<typeof x> => x !== null)
-        .map((x) => x.doc.applicant_document_id),
+      docs
+        .filter((d) => d.doc_type === "COE" || d.verification_result?.checks?.company)
+        .map((d) => d.applicant_document_id),
     ).size;
     const work: MatchSection = {
       key: "work",
@@ -4394,8 +4445,8 @@ export function ScreeningResumeDocsMatchDetail({
     };
 
     // — Education (certificate papers): degree + school —
-    const degree = pickCheck(docs, "degree");
-    const institution = pickCheck(docs, "institution");
+    const degree = pickCheck(docs, "degree", ["Certificate", "Credential"]);
+    const institution = pickCheck(docs, "institution", ["Certificate", "Credential"]);
     const eduFields: MatchEvidence[] = [];
     if (degree)
       eduFields.push({
@@ -4412,9 +4463,13 @@ export function ScreeningResumeDocsMatchDetail({
         status: checkStatus(institution.check.result),
       });
     const eduDocs = new Set(
-      [degree, institution]
-        .filter((x): x is NonNullable<typeof x> => x !== null)
-        .map((x) => x.doc.applicant_document_id),
+      docs
+        .filter(
+          (d) =>
+            (d.doc_type === "Certificate" || d.doc_type === "Credential") &&
+            d.verification_result?.checks?.degree,
+        )
+        .map((d) => d.applicant_document_id),
     ).size;
     const education: MatchSection = {
       key: "education",
@@ -4426,8 +4481,8 @@ export function ScreeningResumeDocsMatchDetail({
     };
 
     // — Certifications (credential papers): licence + issuer —
-    const cert = pickCheck(docs, "certification");
-    const issuer = pickCheck(docs, "issuer");
+    const cert = pickCheck(docs, "certification", ["Credential", "Certificate"]);
+    const issuer = pickCheck(docs, "issuer", ["Credential", "Certificate"]);
     const certFields: MatchEvidence[] = [];
     if (cert)
       certFields.push({
@@ -4444,9 +4499,13 @@ export function ScreeningResumeDocsMatchDetail({
         status: checkStatus(issuer.check.result),
       });
     const certDocs = new Set(
-      [cert, issuer]
-        .filter((x): x is NonNullable<typeof x> => x !== null)
-        .map((x) => x.doc.applicant_document_id),
+      docs
+        .filter(
+          (d) =>
+            (d.doc_type === "Credential" || d.doc_type === "Certificate") &&
+            d.verification_result?.checks?.certification,
+        )
+        .map((d) => d.applicant_document_id),
     ).size;
     const certification: MatchSection = {
       key: "certification",
@@ -4624,6 +4683,14 @@ export function ScreeningResumeDocsMatchDetail({
                         >
                           Papers: {field.papers ?? "—"}
                         </p>
+                        {field.source && (
+                          <p
+                            className="truncate text-[0.65rem] italic text-muted-foreground/80"
+                            title={field.source}
+                          >
+                            {field.source}
+                          </p>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -5146,10 +5213,10 @@ function RequirementsChecklistCard({
                     <div className="flex items-center gap-3 border-b border-gold/30 bg-gold/10 px-4 py-3">
                       <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
                         <span className="absolute inline-flex h-9 w-9 animate-ping rounded-full bg-gold/20" />
-                        <Loader2 className="relative h-5 w-5 animate-spin text-gold-foreground" />
+                        <Loader2 className="relative h-5 w-5 animate-spin text-gold-foreground dark:text-gold" />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="font-display text-sm font-semibold leading-tight text-gold-foreground">
+                        <p className="font-display text-sm font-semibold leading-tight text-gold-foreground dark:text-gold">
                           Waiting for evaluation
                         </p>
                         <p className="text-[0.7rem] text-muted-foreground">
@@ -5165,7 +5232,7 @@ function RequirementsChecklistCard({
                       </div>
                       <Badge
                         variant="outline"
-                        className="shrink-0 border-gold/40 bg-gold/10 text-[0.65rem] text-gold-foreground"
+                        className="shrink-0 border-gold/40 bg-gold/10 text-[0.65rem] text-gold-foreground dark:text-gold"
                       >
                         In review
                       </Badge>
@@ -5640,7 +5707,7 @@ function ApplicantViewScreen({
               {/* Onboarding hand-over — the employee's first day of work. */}
               {linkedHire?.startDate && (
                 <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <CalendarClock className="h-3.5 w-3.5 text-gold-foreground" />
+                  <CalendarClock className="h-3.5 w-3.5 text-gold-foreground dark:text-gold" />
                   Start Date as Employee:{" "}
                   <span className="font-medium text-foreground">{linkedHire.startDate}</span>
                 </p>
@@ -6438,7 +6505,7 @@ function ApplicantViewScreen({
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge
                               variant="outline"
-                              className="border-gold/40 bg-gold-soft text-gold-foreground"
+                              className="border-gold/40 bg-gold-soft text-gold-foreground dark:bg-gold/15 dark:text-gold"
                             >
                               {interview.status}
                             </Badge>
@@ -7067,6 +7134,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [finalAssessor, setFinalAssessor] = useState("");
   const [finalDate, setFinalDate] = useState(() => isoOf(new Date()));
   const [finalRemarks, setFinalRemarks] = useState("");
+  /* System-assisted final evaluation: backend preview (scores + overall),
+     HR-chosen recommendation, single alternative position, breakdown toggle. */
+  const [finalPreview, setFinalPreview] = useState<ApiFinalEvaluationPreview | null>(null);
+  const [finalPreviewLoading, setFinalPreviewLoading] = useState(false);
+  const [finalChoice, setFinalChoice] = useState<FinalRecommendation | null>(null);
+  const [finalAltJobPostId, setFinalAltJobPostId] = useState("");
+  const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
   const [viewingFinal, setViewingFinal] = useState<FinalEvaluationRow | null>(null);
   /** Interview result being viewed (View button in the Interview tab). */
   const [viewingInterview, setViewingInterview] = useState<AssessmentResult | null>(null);
@@ -7527,11 +7601,23 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   };
 
   const buildApplicantReportData = (r: (typeof reportOptions)[number]): ReportData => {
+    // Department resolver — Core HCM master first (org-chart source of truth),
+    // then static fallbacks. Mirrors deptForPosition / departmentOf used by the
+    // ranking list, scheduler and review screen so the report can never drift
+    // from the Organizational Chart's Department ↔ Position mapping.
+    const deptOfPosition = (position: string) =>
+      displayPositions.find((p) => p.title === position)?.department ??
+      positions.find((p) => p.title === position)?.department ??
+      jobs.find((j) => j.title === position)?.department ??
+      "—";
+    // Org-chart column arrangement: Position immediately followed by
+    // Department (Employee → Position → Department → Status).
     const cols =
       r.id === "interview"
         ? [
             { header: "Applicant", key: "applicant" },
             { header: "Position", key: "position" },
+            { header: "Department", key: "department" },
             { header: "Date", key: "date" },
             { header: "Time", key: "time" },
             { header: "Mode", key: "mode" },
@@ -7543,6 +7629,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               { header: "ID", key: "id" },
               { header: "Name", key: "name" },
               { header: "Position", key: "position" },
+              { header: "Department", key: "department" },
               { header: "Email", key: "email" },
               { header: "Score", key: "score" },
               { header: "Status", key: "status" },
@@ -7551,28 +7638,54 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           : [
               { header: "ID", key: "id" },
               { header: "Name", key: "name" },
-              { header: "Email", key: "email" },
               { header: "Position", key: "position" },
+              { header: "Department", key: "department" },
+              { header: "Email", key: "email" },
               { header: "Score", key: "score" },
               { header: "Status", key: "status" },
               { header: "Stage", key: "stage" },
               { header: "Applied", key: "appliedAt" },
             ];
-    const data =
-      r.id === "interview"
-        ? interviews
-        : rows.filter((a) =>
-            r.id === "passed"
-              ? a.score >= passing
-              : r.id === "position" || r.id === "status"
-                ? true
-                : true,
-          );
+    const byDeptThenPosition = (a: any, b: any) =>
+      String(a.department ?? "").localeCompare(String(b.department ?? "")) ||
+      String(a.position ?? "").localeCompare(String(b.position ?? "")) ||
+      String(a.name ?? a.applicant ?? "").localeCompare(String(b.name ?? b.applicant ?? ""));
+    let reportRows: Record<string, any>[];
+    if (r.id === "interview") {
+      reportRows = (interviews as any[])
+        .map((i: any) => ({ ...i, department: deptOfPosition(i.position) }))
+        .sort(byDeptThenPosition);
+    } else {
+      const data =
+        r.id === "interview"
+          ? interviews
+          : rows.filter((a) =>
+              r.id === "passed"
+                ? a.score >= passing
+                : r.id === "position" || r.id === "status"
+                  ? true
+                  : true,
+            );
+      reportRows = (data as any[])
+        .map((a: any) => ({ ...a, department: deptOfPosition(a.position) }))
+        .sort(byDeptThenPosition);
+    }
+    const scopeParts = [
+      `Position: ${positionFilter}`,
+      `Status: ${statusFilter}`,
+      `Stage: ${stageFilter}`,
+    ];
+    const departmentsCovered = new Set(
+      reportRows.map((x: any) => x.department).filter((d) => d && d !== "—"),
+    ).size;
     return {
       title: `Applicant Management — ${r.title}`,
-      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: ${r.title}`,
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: ${r.title} · ${scopeParts.join(" | ")}`,
       columns: cols,
-      rows: data as any,
+      rows: reportRows as any,
+      // Same security logic as every other module: applicant rows carry PII
+      // (names + emails) so the export must be password-gated like the roster.
+      sensitive: true,
       summary: [
         { label: "Total Applicants", value: rows.length },
         {
@@ -7580,6 +7693,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           value: rows.filter((a) => a.score >= passing).length,
         },
         { label: "Interviews Scheduled", value: interviews.length },
+        { label: "Departments Covered", value: departmentsCovered },
+        { label: "Rows in Report", value: reportRows.length },
       ],
     };
   };
@@ -9240,18 +9355,33 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     };
   };
 
-  /** Opens the Final Evaluation dialog for a candidate who completed the pipeline. */
+  /** Opens the Final Evaluation dialog for a candidate who completed the pipeline.
+   *  Fetches the backend preview (system scores + overall) — the dialog
+   *  displays it read-only; HR only picks the recommendation. */
   const openFinalEvaluation = (a: Applicant) => {
     setFinalizing(a);
     // Defaults to the logged-in staff member signing off the final decision.
     setFinalAssessor(loggedInAssessorId);
     setFinalDate(isoOf(new Date()));
     setFinalRemarks("");
+    setFinalChoice(null);
+    setFinalAltJobPostId("");
+    setShowScoreBreakdown(false);
+    setFinalPreview(null);
+    if (a.dbId) {
+      setFinalPreviewLoading(true);
+      finalEvaluationsApi
+        .preview(a.dbId)
+        .then((p) => setFinalPreview(p))
+        .catch((e) => console.warn("Could not load final evaluation preview:", e))
+        .finally(() => setFinalPreviewLoading(false));
+    }
   };
 
   /** Persists the final evaluation with the whole-process verdict. The
-   *  recommendation comes from the choice buttons in the dialog footer
-   *  (Recommended for Hire / For Another Position / Not Recommended). */
+   *  recommendation comes from the HR-selected radio choice in the dialog
+   *  (Recommended for Hire / For Another Position / Not Recommended).
+   *  Scores are NEVER sent — the backend recalculates authoritatively. */
   const saveFinalEvaluation = async (recommendation: FinalRecommendation) => {
     if (!finalizing) return;
     // Whoever signs off the final decision must be recorded — required.
@@ -9259,22 +9389,39 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       toast.error("Select who evaluated this candidate before saving the final evaluation.");
       return;
     }
+    if (recommendation === "For Another Position" && !finalAltJobPostId) {
+      toast.error("Select one alternative position for this candidate.");
+      return;
+    }
+    if (recommendation === "Not Recommended" && !finalRemarks.trim()) {
+      toast.error("Evaluator remarks are required when the candidate is Not Recommended.");
+      return;
+    }
     const snap = finalSnapshotFor(finalizing);
+    const previewOverall = finalPreview?.overall_score_rounded ?? finalPreview?.overall_score ?? null;
     const row: FinalEvaluationRow = {
       id: `FIN-${Date.now()}`,
       applicantId: finalizing.id,
       name: finalizing.name,
       position: finalizing.position,
-      screeningScore: snap.screeningScore,
-      screeningStatus: snap.screeningStatus,
-      interviewScore: snap.interviewScore,
-      interviewResult: snap.interviewResult,
-      assessmentTestScore: snap.testScore,
-      assessmentTestResult: snap.testResult,
-      practicalRequired: snap.practicalRequired,
-      practicalTestScore: snap.practicalScore,
-      practicalTestResult: snap.practicalResult,
+      screeningScore: finalPreview?.scores.screening_score ?? snap.screeningScore,
+      screeningStatus: finalPreview?.scores.screening_status ?? snap.screeningStatus,
+      interviewScore: finalPreview?.scores.interview_score ?? snap.interviewScore,
+      interviewResult: (finalPreview?.scores.interview_result as PassFail | null) ?? snap.interviewResult,
+      assessmentTestScore: finalPreview?.scores.assessment_test_score ?? snap.testScore,
+      assessmentTestResult: (finalPreview?.scores.assessment_test_result as PassFail | null) ?? snap.testResult,
+      practicalRequired: finalPreview?.practical_required ?? snap.practicalRequired,
+      practicalTestScore: finalPreview ? finalPreview.scores.practical_test_score : snap.practicalScore,
+      practicalTestResult: finalPreview
+        ? (finalPreview.scores.practical_test_result as PassFail | null)
+        : snap.practicalResult,
+      overallScore: finalPreview?.overall_score ?? previewOverall,
+      overallScoreRounded: previewOverall,
+      scoreBreakdown: (finalPreview?.score_breakdown as FinalScoreBreakdownItem[] | undefined) ?? null,
       recommendation,
+      recommendedJobPostId: finalAltJobPostId ? Number(finalAltJobPostId) : null,
+      recommendedPositionTitle:
+        dbJobPosts.find((j: any) => String(j.job_post_id) === String(finalAltJobPostId))?.title ?? null,
       overallRemarks: finalRemarks,
       date: finalDate,
       evaluatedBy:
@@ -9285,12 +9432,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     // Persist FIRST: a refused save must never be reported as saved.
     if (finalizing.dbId) {
       try {
-        await finalEvaluationsApi.create(finalizing.dbId, {
+        const saved = await finalEvaluationsApi.create(finalizing.dbId, {
           evaluated_by_user_id: finalAssessor ? Number(finalAssessor) : null,
           evaluation_date: finalDate,
           recommendation,
           overall_remarks: finalRemarks || null,
+          ...(recommendation === "For Another Position" && finalAltJobPostId
+            ? { recommended_job_post_id: Number(finalAltJobPostId) }
+            : {}),
         });
+        const mapped = transformApiFinalEvaluation(saved);
+        row.overallScore = mapped.overallScore ?? row.overallScore;
+        row.overallScoreRounded = mapped.overallScoreRounded ?? row.overallScoreRounded;
+        row.scoreBreakdown = mapped.scoreBreakdown ?? row.scoreBreakdown;
+        row.recommendedJobPostId = mapped.recommendedJobPostId ?? row.recommendedJobPostId;
+        row.recommendedPositionTitle = mapped.recommendedPositionTitle ?? row.recommendedPositionTitle;
       } catch (e) {
         reportStageSaveFailure("Final evaluation", e);
         return;
@@ -9309,10 +9465,15 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       actionType: "Final Evaluation Completed",
       target: finalizing.name,
       module: "Applicant Management",
-      details: `Final evaluation completed for ${finalizing.name} — recommendation: ${recommendation}.`,
+      details: `Final evaluation completed for ${finalizing.name} — Overall ${
+        row.overallScoreRounded ?? "n/a"
+      }% (system calculated) — recommendation: ${recommendation}.`,
     });
     toast.success(`Final evaluation completed — ${recommendation}`);
     setFinalizing(null);
+    setFinalPreview(null);
+    setFinalChoice(null);
+    setFinalAltJobPostId("");
     // Re-read the saved records — the completed final evaluation turns every
     // applicable stage on the progress bar green.
     syncAfterStageChange();
@@ -14010,6 +14171,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             Every file is sealed in a password-protected ZIP (AES-256). You will be
                             asked for a file password.
                           </p>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => {
+                              const data = buildAuditReportData();
+                              printReport(data);
+                              toast.success(`${data.title} sent to printer.`);
+                            }}
+                          >
+                            <Printer className="mr-2 h-4 w-4" /> Print…
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                       {(auditSearch ||
@@ -14238,6 +14409,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
                       Password-protected ZIP — password asked on every export.
                     </p>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => {
+                        const data = buildApplicantReportData(r);
+                        printReport(data);
+                        toast.success(`${data.title} sent to printer.`);
+                      }}
+                    >
+                      <Printer className="mr-2 h-4 w-4" /> Print…
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -15370,7 +15551,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         </DialogContent>
       </Dialog>
 
-      {/* FINAL EVALUATION DIALOG */}
+      {/* FINAL EVALUATION DIALOG — system-assisted: system scores read-only,
+          HR picks the recommendation. */}
       <Dialog open={!!finalizing} onOpenChange={(o) => !o && setFinalizing(null)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto overflow-x-hidden sm:max-w-7xl">
           {finalizing && (
@@ -15378,13 +15560,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <DialogHeader>
                 <DialogTitle className="font-display text-2xl">Final Evaluation</DialogTitle>
                 <DialogDescription>
-                  {finalizing.name} — {finalizing.position}. Preview of every process that
-                  occurred before the final recommendation.
+                  {finalizing.name} — {finalizing.position}. System-calculated scores below
+                  are read-only; HR makes the final recommendation.
                 </DialogDescription>
               </DialogHeader>
 
-              {/* Evaluated by + date first (where the recruitment process
-                  preview used to be) */}
+              {/* Evaluated by + date */}
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label>
@@ -15413,77 +15594,275 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 </div>
               </div>
 
-              {/* Presented result of the resume screening, interview assessment,
-                  assessment test and practical assessment (when required) —
-                  shown together instead of behind View buttons */}
               {(() => {
                 const snap = finalSnapshotFor(finalizing);
-                return stageResultBlocks({
-                  applicantId: finalizing.id,
-                  screeningScore: snap.screeningScore,
-                  screeningStatus: snap.screeningStatus,
-                  practicalRequired: snap.practicalRequired,
-                });
+                const preview = finalPreview;
+                const practicalRequired = preview?.practical_required ?? snap.practicalRequired;
+                const screening = preview?.scores.screening_score ?? snap.screeningScore;
+                const interview = preview?.scores.interview_score ?? snap.interviewScore;
+                const assessment = preview?.scores.assessment_test_score ?? snap.testScore;
+                const practical = preview
+                  ? preview.scores.practical_test_score
+                  : snap.practicalScore;
+                const overall = preview?.overall_score_rounded ?? preview?.overall_score ?? null;
+                const breakdown = (preview?.score_breakdown as FinalScoreBreakdownItem[] | undefined) ?? null;
+                const reqs = preview?.requirements ?? null;
+                const interviewOk = reqs ? reqs.interview_passed : snap.interviewResult === "Passed";
+                const assessmentOk = reqs ? reqs.assessment_passed : snap.testResult === "Passed";
+                const practicalState: "passed" | "missing_or_failed" | "not_required" = reqs
+                  ? reqs.practical
+                  : !practicalRequired
+                    ? "not_required"
+                    : snap.practicalResult === "Passed"
+                      ? "passed"
+                      : "missing_or_failed";
+                const availableAltPosts = dbJobPosts.filter(
+                  (j: any) =>
+                    j.status === "Open" &&
+                    j.active !== false &&
+                    (Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0)) > 0,
+                );
+                return (
+                  <div className="space-y-3">
+                    {/* Detailed stage results first (existing presentation) */}
+                    {stageResultBlocks({
+                      applicantId: finalizing.id,
+                      screeningScore: screening,
+                      screeningStatus: preview?.scores.screening_status ?? snap.screeningStatus,
+                      practicalRequired,
+                    })}
+
+                    {/* SYSTEM-GENERATED evaluation summary (read-only) */}
+                    <div className="rounded-md border border-border bg-muted/30 p-3">
+                      <p className="eyebrow">Evaluation Summary — System Generated (read-only)</p>
+                      {finalPreviewLoading ? (
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Calculating scores from completed evaluations…
+                        </p>
+                      ) : (
+                        <div className="mt-2 space-y-1 text-sm">
+                          <div className="flex items-center justify-between gap-3">
+                            <span>Screening / Role Fit</span>
+                            <span className="font-display font-semibold text-primary">
+                              {screening != null ? `${Math.round(screening)}%` : "—"}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span>Interview Score</span>
+                            <span className="font-display font-semibold text-primary">
+                              {interview != null ? `${Math.round(interview)}%` : "—"}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span>Assessment Test</span>
+                            <span className="font-display font-semibold text-primary">
+                              {assessment != null ? `${Math.round(assessment)}%` : "—"}
+                            </span>
+                          </div>
+                          {practicalRequired && (
+                            <div className="flex items-center justify-between gap-3">
+                              <span>Practical Test</span>
+                              <span className="font-display font-semibold text-primary">
+                                {practical != null ? `${Math.round(practical)}%` : "—"}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between gap-3 border-t border-border pt-2">
+                            <span className="font-medium">
+                              Overall Score{" "}
+                              <Badge variant="outline" className="ml-1 border-primary/40 text-primary">
+                                System Calculated
+                              </Badge>
+                            </span>
+                            <span className="font-display text-xl font-semibold text-primary">
+                              {overall != null ? `${overall}%` : "—"}
+                            </span>
+                          </div>
+                          {preview && !preview.calculation_complete && (
+                            <p className="text-xs text-destructive">
+                              Scores incomplete — the Overall Score cannot be calculated yet.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {/* Transparent score breakdown */}
+                      <button
+                        type="button"
+                        className="mt-2 text-xs font-medium text-primary underline-offset-4 hover:underline"
+                        onClick={() => setShowScoreBreakdown((v) => !v)}
+                      >
+                        {showScoreBreakdown ? "Hide score calculation" : "Show score calculation"}
+                      </button>
+                      {showScoreBreakdown && (
+                        <div className="mt-2 space-y-1 rounded-md border border-border bg-background p-2.5 text-xs">
+                          {(breakdown ?? []).filter((b) => b.applied).map((b) => (
+                            <div key={b.key} className="flex items-center justify-between gap-3">
+                              <span>
+                                {b.label} — {b.score != null ? `${Math.round(b.score)}%` : "—"} ×{" "}
+                                {b.weight}%
+                              </span>
+                              <span className="font-medium">
+                                = {b.contribution != null ? b.contribution.toFixed(2) : "—"}
+                              </span>
+                            </div>
+                          ))}
+                          {!breakdown && (
+                            <p className="text-muted-foreground">
+                              Screening {FINAL_EVALUATION_WEIGHTS.screening}% · Interview{" "}
+                              {FINAL_EVALUATION_WEIGHTS.interview}% · Assessment{" "}
+                              {FINAL_EVALUATION_WEIGHTS.assessment}%
+                              {practicalRequired
+                                ? ` · Practical ${FINAL_EVALUATION_WEIGHTS.practical}%`
+                                : " · Practical not required (weights normalized)"}
+                              .
+                            </p>
+                          )}
+                          <div className="border-t border-border pt-1 font-medium">
+                            Overall Score = {preview?.overall_score != null ? preview.overall_score.toFixed(2) : "—"}%
+                            {overall != null && preview?.overall_score != null && overall !== preview.overall_score
+                              ? ` · Rounded = ${overall}%`
+                              : ""}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* SYSTEM-GENERATED requirement status (read-only) */}
+                    <div className="rounded-md border border-border p-3">
+                      <p className="eyebrow">Requirement Status — System Generated</p>
+                      <div className="mt-2 space-y-1 text-sm">
+                        <p className={interviewOk ? "text-success" : "text-destructive"}>
+                          {interviewOk ? "✓" : "✗"} Interview {interviewOk ? "Passed" : "Not Passed"}
+                        </p>
+                        <p className={assessmentOk ? "text-success" : "text-destructive"}>
+                          {assessmentOk ? "✓" : "✗"} Assessment Test{" "}
+                          {assessmentOk ? "Passed" : "Not Passed"}
+                        </p>
+                        {practicalState === "not_required" ? (
+                          <p className="text-muted-foreground">— Practical Test Not Required</p>
+                        ) : (
+                          <p
+                            className={
+                              practicalState === "passed" ? "text-success" : "text-destructive"
+                            }
+                          >
+                            {practicalState === "passed" ? "✓" : "✗"} Practical Test{" "}
+                            {practicalState === "passed" ? "Passed" : "Not Passed"}
+                          </p>
+                        )}
+                        {preview && preview.blocking_verification_issues > 0 && (
+                          <p className="text-xs text-destructive">
+                            ⚠ {preview.blocking_verification_issues} document verification
+                            discrepanc{preview.blocking_verification_issues === 1 ? "y" : "ies"} must
+                            be resolved before “Recommended for Hire”.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* HR-ENTERED final recommendation */}
+                    <div className="rounded-md border border-primary/30 p-3">
+                      <p className="eyebrow">Final Recommendation — HR Decision</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        The Overall Score supports your decision — it never hires automatically. Only
+                        “Recommended for Hire” can proceed to Offer.
+                      </p>
+                      <div className="mt-2 space-y-2">
+                        {(
+                          [
+                            "Recommended for Hire",
+                            "For Another Position",
+                            "Not Recommended",
+                          ] as FinalRecommendation[]
+                        ).map((r) => (
+                          <label
+                            key={r}
+                            className={cn(
+                              "flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm transition-colors",
+                              finalChoice === r
+                                ? r === "Not Recommended"
+                                  ? "border-destructive bg-destructive/5"
+                                  : "border-success bg-success/5"
+                                : "border-border hover:border-primary/40",
+                            )}
+                          >
+                            <input
+                              type="radio"
+                              name="finalChoice"
+                              className={r === "Not Recommended" ? "accent-destructive" : "accent-primary"}
+                              checked={finalChoice === r}
+                              onChange={() => setFinalChoice(r)}
+                            />
+                            {r}
+                          </label>
+                        ))}
+                      </div>
+                      {finalChoice === "For Another Position" && (
+                        <div className="mt-3 space-y-1.5">
+                          <Label>
+                            Recommended Position <span className="text-destructive">*</span>
+                          </Label>
+                          <Select value={finalAltJobPostId} onValueChange={setFinalAltJobPostId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select one available position" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableAltPosts.map((j: any) => (
+                                <SelectItem key={j.job_post_id} value={String(j.job_post_id)}>
+                                  {j.title} — {j.department ?? ""} (
+                                  {Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0)} slot
+                                  {Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0) === 1 ? "" : "s"})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {!availableAltPosts.length && (
+                            <p className="text-xs text-destructive">
+                              No open positions with vacancies right now.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      <div className="mt-3 space-y-2">
+                        <Label>
+                          Evaluator Remarks{" "}
+                          {finalChoice === "Not Recommended" && (
+                            <span className="text-destructive">*</span>
+                          )}
+                        </Label>
+                        <Textarea
+                          rows={3}
+                          value={finalRemarks}
+                          onChange={(e) => setFinalRemarks(e.target.value)}
+                          placeholder="Summary of the whole process — reason for the decision…"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
               })()}
 
-              <div className="space-y-2">
-                <Label>Overall remarks</Label>
-                <Textarea
-                  rows={3}
-                  value={finalRemarks}
-                  onChange={(e) => setFinalRemarks(e.target.value)}
-                  placeholder="Summary of the whole process—"
-                />
-              </div>
-
-              {/* Recommendation choice buttons — each completes the evaluation
-                  with that recommendation (like the Assessor Verdict footer) */}
-              <DialogFooter className="flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+              <DialogFooter className="flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-end">
                 <Button variant="outline" onClick={() => setFinalizing(null)}>
                   Cancel
                 </Button>
                 <Button
-                  variant="outline"
-                  className="border-success/40 text-success hover:bg-success/10 hover:text-success"
+                  disabled={!finalChoice}
                   onClick={() =>
+                    finalChoice &&
                     askConfirm({
                       title: "Complete the final evaluation?",
-                      description: `${finalizing.name} will be evaluated with the recommendation "Recommended for Hire" and the candidate will advance to the job offer stage.`,
+                      description:
+                        finalChoice === "For Another Position"
+                          ? `${finalizing.name} will be evaluated as "For Another Position".`
+                          : `${finalizing.name} will be evaluated with the recommendation "${finalChoice}".`,
                       confirmLabel: "Yes, complete evaluation",
-                      onConfirm: () => saveFinalEvaluation("Recommended for Hire"),
+                      destructive: finalChoice === "Not Recommended",
+                      onConfirm: () => saveFinalEvaluation(finalChoice),
                     })
                   }
                 >
-                  <CheckCircle2 className="mr-1.5 h-4 w-4" /> Recommended for Hire
-                </Button>
-                <Button
-                  variant="outline"
-                  className="border-warning/40 text-warning hover:bg-warning/10 hover:text-warning"
-                  onClick={() =>
-                    askConfirm({
-                      title: "Complete the final evaluation?",
-                      description: `${finalizing.name} will be evaluated with the recommendation "For Another Position". You will pick the best position when verifying the decision.`,
-                      confirmLabel: "Yes, complete evaluation",
-                      onConfirm: () => saveFinalEvaluation("For Another Position"),
-                    })
-                  }
-                >
-                  <Briefcase className="mr-1.5 h-4 w-4" /> For Another Position
-                </Button>
-                <Button
-                  variant="outline"
-                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() =>
-                    askConfirm({
-                      title: "Complete the final evaluation?",
-                      description: `${finalizing.name} will be evaluated with the recommendation "Not Recommended".`,
-                      confirmLabel: "Yes, complete evaluation",
-                      destructive: true,
-                      onConfirm: () => saveFinalEvaluation("Not Recommended"),
-                    })
-                  }
-                >
-                  <XCircle className="mr-1.5 h-4 w-4" /> Not Recommended
+                  <CheckCircle2 className="mr-1.5 h-4 w-4" /> Complete Final Evaluation
                 </Button>
               </DialogFooter>
             </>
@@ -15512,11 +15891,40 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   screeningStatus: viewingFinal.screeningStatus,
                   practicalRequired: viewingFinal.practicalRequired,
                 })}
+                <div className="rounded-md border border-border bg-muted/30 p-3">
+                  <p className="eyebrow">Overall Score — System Calculated (read-only)</p>
+                  <p className="font-display text-xl font-semibold text-primary">
+                    {viewingFinal.overallScoreRounded ?? viewingFinal.overallScore ?? "—"}
+                    {(viewingFinal.overallScoreRounded ?? viewingFinal.overallScore) != null ? "%" : ""}
+                  </p>
+                  {viewingFinal.scoreBreakdown && viewingFinal.scoreBreakdown.length > 0 && (
+                    <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                      {viewingFinal.scoreBreakdown
+                        .filter((b) => b.applied)
+                        .map((b) => (
+                          <div key={b.key} className="flex items-center justify-between gap-3">
+                            <span>
+                              {b.label} — {b.score != null ? `${Math.round(b.score)}%` : "—"} ×{" "}
+                              {b.weight}%
+                            </span>
+                            <span>= {b.contribution != null ? b.contribution.toFixed(2) : "—"}</span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
                 <div className="rounded-md border border-border p-3">
                   <p className="eyebrow">Recommendation</p>
                   <p className="font-display text-xl font-semibold text-primary">
                     {viewingFinal.recommendation}
                   </p>
+                  {viewingFinal.recommendation === "For Another Position" &&
+                    viewingFinal.recommendedPositionTitle && (
+                      <p className="mt-1 text-sm">
+                        Recommended Position:{" "}
+                        <span className="font-medium">{viewingFinal.recommendedPositionTitle}</span>
+                      </p>
+                    )}
                   {viewingFinal.overallRemarks && (
                     <p className="mt-1 text-sm text-muted-foreground">
                       {viewingFinal.overallRemarks}
