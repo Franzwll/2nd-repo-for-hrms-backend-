@@ -1173,6 +1173,8 @@ export interface ApiPosition {
   level: string;
   headcount: number;
   filled_count: number;
+  /** Open slots = headcount - filled_count, resolved by PositionResource. */
+  vacancies?: number;
 }
 
 /** Core HCM lookups — departments & positions live in the database. */
@@ -2734,10 +2736,10 @@ export const chatbotFaqApi = {
   unanswered: () => request<{ data: ApiChatbotUnanswered[] }>("/chatbot/unanswered"),
   dismissUnanswered: (hash: string) =>
     request<{ message: string }>(`/chatbot/unanswered/${hash}`, { method: "DELETE" }),
-  messageFeedback: (messageId: number, value: 1 | -1 | 0) =>
+  messageFeedback: (messageId: number, value: 1 | -1 | 0, sessionId?: string | null) =>
     request<{ message: string }>(`/chatbot/messages/${messageId}/feedback`, {
       method: "POST",
-      body: JSON.stringify({ value }),
+      body: JSON.stringify({ value, session_id: sessionId ?? null }),
     }),
 };
 

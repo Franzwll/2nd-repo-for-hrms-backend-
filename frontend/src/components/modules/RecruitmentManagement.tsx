@@ -43,6 +43,7 @@ import {
   MoreHorizontal,
   PencilRuler,
   Plus,
+  Printer,
   Repeat,
   ScanLine,
   Search,
@@ -59,8 +60,6 @@ import {
   UserPlus,
   Users,
   X,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useBlocker } from "@tanstack/react-router";
@@ -156,11 +155,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   describeExport,
   exportReport,
+  printReport,
   type ReportData,
   type ReportFormat,
 } from "@/lib/report-export";
@@ -1902,6 +1903,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 level: (p.level as Position["level"]) || "Rank & File",
                 headcount: p.headcount,
                 filled: p.filled_count,
+                /* Open slots from Core HCM (headcount - filled). Kept so the
+                   builder can align the posting's vacancies with the request. */
+                vacancies: Math.max(0, (p.vacancies ?? p.headcount - p.filled_count)),
                 salaryBand: band,
                 dbId: p.position_id,
                 departmentId: p.department_id,
@@ -2415,24 +2419,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     return () => URL.revokeObjectURL(url);
   }, [addResumeFile]);
 
-  /** Zoom level for the resume preview (50—300%, reset on file change). */
-  const [addPreviewZoom, setAddPreviewZoom] = useState(100);
-  useEffect(() => setAddPreviewZoom(100), [addResumeFile]);
-
   /** Opens the selected resume in a new tab (images/PDFs render natively). */
   const openResumePreview = () => {
     if (resumePreviewUrl) window.open(resumePreviewUrl, "_blank", "noopener");
   };
-
-  /** True only for natively previewable resumes (images + PDFs). DOCX/DOC
-   *  files have no inline preview — Step 3 hides the preview panel for them
-   *  instead of showing a "not available" placeholder. */
-  const isPreviewableResume = addResumeFile
-    ? /\.(jpe?g|png)$/i.test(addResumeFile.name) ||
-      addResumeFile.type.startsWith("image/") ||
-      /\.pdf$/i.test(addResumeFile.name) ||
-      addResumeFile.type === "application/pdf"
-    : false;
 
   /** Opens any staged local file (resume or verification doc) in a new tab. */
   const openLocalFile = (file: File) => {
@@ -2648,6 +2638,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       const fd = new FormData();
       fd.append("resume", addResumeFile);
       fd.append("job_post_id", String(id));
+      // Staged supporting documents (Step 2) — verified in-memory against the
+      // resume profile so Step 3 shows the real Resume vs Documents breakdown
+      // and blended percentage instead of "No proof papers".
+      verificationDocs.forEach((doc) => {
+        fd.append("documents[]", doc.file);
+        fd.append("doc_types[]", doc.docType);
+      });
       const result = await applicantsApi.screenResume(fd);
       if (!result.success) {
         throw new Error(result.error_message || "The resume could not be processed.");
@@ -3022,6 +3019,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     }
     const payload: Job = {
       id: draftId,
+      /* Keep the database id across optimistic updates — losing it makes the
+         next save of the same card take the create branch and the backend
+         rejects it as DUPLICATE_JOB_POST. */
+      ...(existing?.dbId !== undefined ? { dbId: existing.dbId } : {}),
       title,
       department: draft.department,
       employmentType: draft.employmentType as Job["employmentType"],
@@ -3063,11 +3064,30 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         departmentId = created.department_id;
       }
       if (!positionId) {
+        // Positions require a salary grade (StorePositionRequest marks it
+        // required) — reuse the publish handler's resolution: the draft's
+        // grade, else the band whose range fits, else the lowest grade.
+        const gradesRes = await coreHcmApi.salaryGrades.list({ per_page: 200 });
+        const grades = gradesRes?.data ?? [];
+        const draftMin = Number(draft.salaryMin) || 0;
+        const byMin = [...grades].sort((a, b) => Number(a.min_salary) - Number(b.min_salary));
+        const inRange = byMin.find((g) => {
+          const lo = Number(g.min_salary) || 0;
+          const hi =
+            g.max_salary === null || g.max_salary === undefined ? Infinity : Number(g.max_salary);
+          return draftMin >= lo && draftMin <= hi;
+        });
+        const gradePick =
+          grades.find((g) => String(g.salary_grade_id) === draft.salaryGradeId) ?? inRange ?? byMin[0];
+        if (!gradePick) {
+          throw new Error("No salary grade exists — create one in Core HCM → Salary Grades first.");
+        }
         const created = await coreHcmApi.createPosition({
           title,
           department_id: departmentId,
+          salary_grade_id: gradePick.salary_grade_id,
           level: "Rank & File",
-          headcount: 1,
+          headcount: Number(draft.vacancies) || 1,
         });
         positionId = created.position_id;
       }
@@ -3307,12 +3327,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       return;
     }
     const editingFilled = editingJobId ? (jobList.find((j) => j.id === editingJobId)?.filled ?? 0) : 0;
+    const editingDbId = editingJobId ? jobList.find((j) => j.id === editingJobId)?.dbId : undefined;
     const jobPayload: Job = {
       id:
         editingJobId ??
         `${draft.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()
           .toString()
           .slice(-4)}`,
+      /* Keep the database id across optimistic updates — losing it makes the
+         next save of the same card take the create branch and the backend
+         rejects it as DUPLICATE_JOB_POST. */
+      ...(editingDbId !== undefined ? { dbId: editingDbId } : {}),
       title: draft.title,
       department: draft.department,
       employmentType: draft.employmentType as Job["employmentType"],
@@ -3376,6 +3401,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     )?.dbId;
     let departmentId = knownDepartments.find((d) => d.name === draft.department)?.dbId;
 
+    // Hoisted so the DUPLICATE_JOB_POST self-heal in catch can resend it.
+    let payload: Record<string, any> | FormData = {};
     try {
       if (!departmentId) {
         let code = deptCodeFor(draft.department);
@@ -3451,7 +3478,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         platforms: chosen,
       };
       // Uploaded poster picture rides along as multipart/form-data
-      let payload: Record<string, any> | FormData = basePayload;
+      payload = basePayload;
       if (posterFile) {
         const fd = new FormData();
         Object.entries(basePayload).forEach(([k, v]) => {
@@ -3512,7 +3539,32 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       );
     } catch (e) {
       console.warn("Could not persist job post to database API:", e);
-      const err = e as { status?: number; code?: string; message?: string };
+      const err = e as {
+        status?: number;
+        code?: string;
+        message?: string;
+        payload?: { existing_job_post_id?: number };
+      };
+      const dupId = err?.payload?.existing_job_post_id;
+      // Self-heal a mistaken create: we were editing (Edit Template) but the
+      // local entry had no dbId, so the save took the create branch. The
+      // backend names the conflicting post — update it instead of failing.
+      if ((err?.code === "DUPLICATE_JOB_POST" || err?.status === 409) && editingJobId && dupId) {
+        try {
+          await jobPostsApi.update(dupId, payload);
+          setJobList((prev) =>
+            prev.map((j) => (j.id === jobPayload.id ? { ...j, dbId: dupId } : j)),
+          );
+          toast.success(`“${jobPayload.title}” template updated`);
+        } catch (retryErr) {
+          console.warn("Retry-as-update for duplicate job post failed:", retryErr);
+          toast.error(
+            err?.message ||
+              `A job post already exists for “${jobPayload.title}” — edit the existing post instead of creating a duplicate.`,
+          );
+        }
+        return;
+      }
       if (err?.code === "DUPLICATE_JOB_POST" || err?.status === 409) {
         toast.error(
           err?.message ||
@@ -3565,6 +3617,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setEditingJobId(null);
     setSourceReqId(null);
     setLinkedReqId(null);
+    /* Brand-new post: follow Core HCM for salary band and open slots. */
+    setSalaryLocked(false);
+    setVacanciesLocked(false);
     setMode("custom");
     setNewOpen(false);
     setDeptDialogOpen(false);
@@ -3582,6 +3637,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setLinkedReqId(null);
     setMode("template");
     setBuilderStarted(true);
+    /* The saved figures win while editing — don't let the Core HCM auto-fill
+       overwrite what is already published. A grade change re-arms it. */
+    setSalaryLocked(true);
+    setVacanciesLocked(true);
     setSavedSnapshot(snapshotOf(seeded, fullBlocks));
     setTab("builder");
     toast.message(`Editing template for “${job.title}”`);
@@ -3596,6 +3655,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setLinkedReqId(null);
     setMode("template");
     setBuilderStarted(true);
+    /* A copy starts from Core HCM truth: salary band + open slots re-apply. */
+    setSalaryLocked(false);
+    setVacanciesLocked(false);
     setSavedSnapshot(snapshotOf(seeded, fullBlocks));
     setTab("builder");
     toast.message(`Copied “${job.title}” — publish as a new posting`);
@@ -3963,6 +4025,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       department: request.department,
       vacancies: String(request.count),
     }));
+    /* Linking a request after the fact is a new source of truth — re-arm both
+       auto-fills so vacancies and the salary band follow Core HCM again. */
+    setVacanciesLocked(false);
+    setSalaryLocked(false);
   }, [linkedReqId, sourceReqId, requisitions]);
 
   /** Predefined recruitment reports — the only reports this module exports. */
@@ -3991,40 +4057,57 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     return Math.max(0, Math.round((Date.now() - t) / 86_400_000));
   };
 
-  const buildPostingsReport = (): ReportData => ({
-    title: "Recruitment Management Report",
-    subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: Vacancies & Postings`,
-    columns: [
-      { header: "Job title", key: "title" },
-      { header: "Department", key: "department" },
-      { header: "Status", key: "status" },
-      { header: "Vacancies", key: "vacancies" },
-      { header: "Filled", key: "filled" },
-      { header: "Applicants", key: "applicants" },
-      { header: "Posted", key: "posted" },
-    ],
-    rows: [
-      ...jobList.map((job) => ({ ...job })),
-      ...pendingRequisitions.map((request) => ({
-        title: `${request.position} (requisition ${request.id})`,
-        department: request.department,
-        status: request.status,
-        vacancies: request.count,
-        filled: "-",
-        applicants: "-",
-        posted: request.requestedAt,
-      })),
-    ],
-    summary: [
-      { label: "Active postings", value: openCount },
-      { label: "Total vacancies", value: totalVacancies },
-      { label: "Pending requisitions", value: pendingRequisitions.length },
-    ],
-  });
+  const buildPostingsReport = (): ReportData => {
+    // Org-chart arrangement: Position immediately followed by Department,
+    // rows ordered Department → Position (same hierarchy as the org chart).
+    // Department names resolve against the Core HCM master so postings can
+    // never drift from the org chart's Department ↔ Position mapping.
+    const deptOfJob = (title: string, fallback: string) =>
+      knownPositions.find((p) => p.title === title)?.department ?? fallback;
+    const postRows = filteredJobs
+      .map((job) => ({ ...job, department: deptOfJob(job.title, job.department) }))
+      .sort(
+        (a, b) =>
+          a.department.localeCompare(b.department) || a.title.localeCompare(b.title),
+      );
+    const deptCount = new Set(postRows.map((j) => j.department)).size;
+    return {
+      title: "Recruitment Management Report",
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: Vacancies & Postings · Department: ${deptFilter} | Status: ${statusFilter}`,
+      columns: [
+        { header: "Position", key: "title" },
+        { header: "Department", key: "department" },
+        { header: "Status", key: "status" },
+        { header: "Vacancies", key: "vacancies" },
+        { header: "Filled", key: "filled" },
+        { header: "Applicants", key: "applicants" },
+        { header: "Posted", key: "posted" },
+      ],
+      rows: [
+        ...postRows,
+        ...pendingRequisitions.map((request) => ({
+          title: `${request.position} (requisition ${request.id})`,
+          department: request.department,
+          status: request.status,
+          vacancies: request.count,
+          filled: "-",
+          applicants: "-",
+          posted: request.requestedAt,
+        })),
+      ],
+      summary: [
+        { label: "Active postings", value: openCount },
+        { label: "Total vacancies", value: totalVacancies },
+        { label: "Pending requisitions", value: pendingRequisitions.length },
+        { label: "Departments covered", value: deptCount },
+        { label: "Rows in report", value: postRows.length },
+      ],
+    };
+  };
 
   const buildRequisitionsReport = (): ReportData => ({
     title: "Vacancy Requisitions Report",
-    subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: Vacancy Requisitions (pending from Core HCM)`,
+    subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: Vacancy Requisitions (pending from Core HCM) · Department: ${reqDept} | Status: ${reqStatus} | Urgency: ${reqUrgency}`,
     columns: [
       { header: "Reference", key: "id" },
       { header: "Position", key: "position" },
@@ -4034,7 +4117,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       { header: "Status", key: "status" },
       { header: "Requested", key: "requestedAt" },
     ],
-    rows: filteredRequisitions.map((request) => ({ ...request })),
+    rows: [...filteredRequisitions]
+      .map((request) => ({ ...request }))
+      .sort(
+        (a, b) =>
+          String(a.department).localeCompare(String(b.department)) ||
+          String(a.position).localeCompare(String(b.position)),
+      ),
     summary: [
       { label: "Pending requisitions", value: pendingRequisitions.length },
       { label: "High urgency", value: highUrgencyCount },
@@ -4043,35 +4132,47 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   });
 
   const buildFunnelReport = (): ReportData => {
-    const rows = jobList.map((job) => {
-      const daysOpen = daysOpenOf(job.posted);
-      const remaining = Math.max(0, job.vacancies - job.filled);
-      const fillRate = job.vacancies > 0 ? Math.round((job.filled / job.vacancies) * 100) : 0;
-      const perVacancy = job.vacancies > 0 ? (job.applicants / job.vacancies).toFixed(1) : "—";
-      return {
-        title: job.title,
-        department: job.department,
-        status: job.status,
-        posted: job.posted,
-        daysOpen,
-        vacancies: job.vacancies,
-        filled: job.filled,
-        remaining,
-        fillRate: `${fillRate}%`,
-        applicants: job.applicants,
-        perVacancy,
-      };
-    });
+    const deptOfJob = (title: string, fallback: string) =>
+      knownPositions.find((p) => p.title === title)?.department ?? fallback;
+    const scopedJobs = filteredJobs.map((job) => ({
+      ...job,
+      department: deptOfJob(job.title, job.department),
+    }));
+    const rows = scopedJobs
+      .map((job) => {
+        const daysOpen = daysOpenOf(job.posted);
+        const remaining = Math.max(0, job.vacancies - job.filled);
+        const fillRate = job.vacancies > 0 ? Math.round((job.filled / job.vacancies) * 100) : 0;
+        const perVacancy = job.vacancies > 0 ? (job.applicants / job.vacancies).toFixed(1) : "—";
+        return {
+          title: job.title,
+          department: job.department,
+          status: job.status,
+          posted: job.posted,
+          daysOpen,
+          vacancies: job.vacancies,
+          filled: job.filled,
+          remaining,
+          fillRate: `${fillRate}%`,
+          applicants: job.applicants,
+          perVacancy,
+        };
+      })
+      .sort(
+        (a, b) =>
+          String(a.department).localeCompare(String(b.department)) ||
+          String(a.title).localeCompare(String(b.title)),
+      );
     const avgDays = rows.length
       ? Math.round(rows.reduce((t, r) => t + (r.daysOpen as number), 0) / rows.length)
       : 0;
-    const totalFilled = jobList.reduce((t, j) => t + j.filled, 0);
-    const totalApplicants = jobList.reduce((t, j) => t + j.applicants, 0);
+    const totalFilled = scopedJobs.reduce((t, j) => t + j.filled, 0);
+    const totalApplicants = scopedJobs.reduce((t, j) => t + j.applicants, 0);
     return {
       title: "Recruitment Time-to-Fill & Funnel Report",
-      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: Time-to-Fill & Funnel`,
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: Time-to-Fill & Funnel · Department: ${deptFilter} | Status: ${statusFilter}`,
       columns: [
-        { header: "Job title", key: "title" },
+        { header: "Position", key: "title" },
         { header: "Department", key: "department" },
         { header: "Status", key: "status" },
         { header: "Posted", key: "posted" },
@@ -4137,10 +4238,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     report,
     reportId,
     buttonClassName,
+    recordCount,
   }: {
     report: ReportData;
     reportId?: RecruitmentReportId;
     buttonClassName?: string;
+    recordCount?: number;
   }) => {
     const id: RecruitmentReportId =
       reportId ?? (report.title.includes("Requisition") ? "requisitions" : "postings");
@@ -4168,6 +4271,19 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             Every file is sealed in a password-protected ZIP (AES-256). You will be asked for a file
             password.
           </p>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => {
+              const data = buildRecruitmentReport(id);
+              printReport(data);
+              toast.success(
+                `${data.title} sent to printer.` +
+                  (recordCount !== undefined ? ` (${recordCount} records).` : ""),
+              );
+            }}
+          >
+            <Printer className="mr-2 h-4 w-4" /> Print…
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     );
@@ -4215,7 +4331,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     );
   };
 
-  /** The Core HCM position behind the current draft (department + title). */
+  /**
+   * The Core HCM position behind the current draft (department + title).
+   * Read through a ref so the salary/vacancy auto-fill effects do not need it
+   * in their dependency arrays (it is a new object on every position change).
+   */
+  const draftPositionRef = useRef<Position | null>(null);
+
   const draftPosition = useMemo(
     () =>
       positionsForDepartment(draft.department).find((p) => p.title === draft.title) ?? null,
@@ -4235,6 +4357,100 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     }
     return null;
   }, [draft.salaryGradeId, draftPosition, salaryGrades]);
+
+  /** Core HCM band the draft should follow — the selected grade, else the position's. */
+  const draftBand = useMemo(() => {
+    const min = draftGrade?.min_salary ?? draftPosition?.salaryGradeMin ?? null;
+    const max = draftGrade?.max_salary ?? draftPosition?.salaryGradeMax ?? null;
+    if (min === null || min === undefined || max === null || max === undefined) return null;
+    return { min: Number(min), max: Number(max) };
+  }, [draftGrade, draftPosition]);
+
+  /**
+   * Salary fields the recruiter has deliberately typed, so an auto-sync from
+   * Core HCM never overwrites their numbers. Reset whenever the band changes.
+   */
+  const [salaryLocked, setSalaryLocked] = useState(false);
+
+  /**
+   * Auto-fetch salary from Core HCM — no button, no click.
+   *
+   * Runs whenever the draft's band changes (grade picked, position chosen, or
+   * requisition converted). A manual edit wins only until the band changes
+   * again; picking a different band re-arms the sync automatically.
+   */
+  useEffect(() => {
+    if (!draftBand || salaryLocked) return;
+    setDraft((d) => {
+      const min = String(draftBand.min);
+      const max = String(draftBand.max);
+      if (d.salaryMin === min && d.salaryMax === max) return d;
+      return { ...d, salaryMin: min, salaryMax: max };
+    });
+  }, [draftBand, salaryLocked]);
+
+  /* A different grade/position is a new source of truth — re-arm the auto-fill
+     so a stale manual override does not stick. */
+  const bandSourceRef = useRef(
+    draftBand ? `${draftBand.min}-${draftBand.max}` : null,
+  );
+  useEffect(() => {
+    const source = draftBand ? `${draftBand.min}-${draftBand.max}` : null;
+    if (source !== bandSourceRef.current) {
+      bandSourceRef.current = source;
+      setSalaryLocked(false);
+    }
+  }, [draftBand]);
+
+  /** Hires already recorded on the post being edited — vacancies can never drop below it. */
+  const editingFilledRef = useRef(0);
+  editingFilledRef.current = editingJobId
+    ? (jobList.find((j) => j.id === editingJobId)?.filled ?? 0)
+    : 0;
+
+  /**
+   * Vacancies the draft should align to, in priority order:
+   *   1. the requested count of a linked staffing requisition,
+   *   2. the Core HCM position's open slots (headcount - filled).
+   * A post can never advertise fewer slots than the hires it already recorded.
+   */
+  const coreHcmVacancies = useMemo(() => {
+    const req = sourceReqId ? requisitions.find((r) => r.id === sourceReqId) : undefined;
+    if (req) {
+      return { count: Math.max(1, Number(req.count) || 1), source: `requisition ${req.id}` as const };
+    }
+    if (draftPosition) {
+      const open = Math.max(0, draftPosition.vacancies ?? 0);
+      return {
+        count: Math.max(1, open),
+        source: `Core HCM position (${draftPosition.headcount} headcount − ${draftPosition.filled} filled)` as const,
+      };
+    }
+    return null;
+  }, [sourceReqId, requisitions, draftPosition]);
+
+  const [vacanciesLocked, setVacanciesLocked] = useState(false);
+
+  /** Align vacancies with Core HCM whenever the source or position changes. */
+  useEffect(() => {
+    if (!coreHcmVacancies || vacanciesLocked) return;
+    setDraft((d) => {
+      const next = String(Math.max(coreHcmVacancies.count, editingFilledRef.current));
+      if (d.vacancies === next) return d;
+      return { ...d, vacancies: next };
+    });
+  }, [coreHcmVacancies, vacanciesLocked]);
+
+  /* A different requisition/position is a new source of truth — re-arm the
+     auto-fill so the stale manual override does not stick. */
+  const vacancySourceRef = useRef(coreHcmVacancies?.source ?? null);
+  useEffect(() => {
+    const source = coreHcmVacancies?.source ?? null;
+    if (source !== vacancySourceRef.current) {
+      vacancySourceRef.current = source;
+      setVacanciesLocked(false);
+    }
+  }, [coreHcmVacancies]);
 
   /**
    * Applies a Core HCM position's assigned salary grade/band to the Job Info
@@ -4960,6 +5176,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                               }
                               alt={`${j.title} hiring poster`}
                               className="mb-3 aspect-video w-full rounded-md border border-border object-cover"
+                              onError={(e) => {
+                                // A stale picture path 404s — fall back to the
+                                // composed template poster instead of a broken icon.
+                                const el = e.currentTarget;
+                                const fallback = `${API_BASE_URL}/job-posts/template-picture?title=${encodeURIComponent(j.title)}`;
+                                if (el.src !== fallback) el.src = fallback;
+                              }}
                             />
                             <div className="flex items-start justify-between gap-2">
                               <div>
@@ -5829,75 +6052,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                   )}
                                   {id === "info" && (
                                     <div className="space-y-2">
-                                    <div className="grid gap-2 sm:grid-cols-3">
-                                        <div className="space-y-1 sm:col-span-1">
-                                          <Label className="text-[0.7rem]">Salary grade / band</Label>
-                                          <Select
-                                            value={draft.salaryGradeId || (draftPosition?.salaryGradeId ? String(draftPosition.salaryGradeId) : "position")}
-                                            onValueChange={(v) => {
-                                              if (v === "position") {
-                                                const posGrade = draftPosition?.salaryGradeId
-                                                  ? salaryGrades.find((g) => g.salary_grade_id === draftPosition.salaryGradeId)
-                                                  : null;
-                                                setDraft((d) => ({
-                                                  ...d,
-                                                  salaryGradeId: "",
-                                                  salaryMin: posGrade?.min_salary !== null && posGrade?.min_salary !== undefined ? String(posGrade.min_salary) : d.salaryMin,
-                                                  salaryMax: posGrade?.max_salary !== null && posGrade?.max_salary !== undefined ? String(posGrade.max_salary) : d.salaryMax,
-                                                }));
-                                              } else {
-                                                const grade = salaryGrades.find((g) => String(g.salary_grade_id) === v);
-                                                setDraft((d) => ({
-                                                  ...d,
-                                                  salaryGradeId: v,
-                                                  salaryMin: grade?.min_salary !== null && grade?.min_salary !== undefined ? String(grade.min_salary) : d.salaryMin,
-                                                  salaryMax: grade?.max_salary !== null && grade?.max_salary !== undefined ? String(grade.max_salary) : d.salaryMax,
-                                                }));
-                                              }
-                                            }}
-                                          >
-                                            <SelectTrigger className="h-8 text-xs">
-                                              <SelectValue placeholder="From position" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              <SelectItem value="position">
-                                                From position{draftPosition?.salaryBand ? ` — ${draftPosition.salaryBand}` : ""}
-                                              </SelectItem>
-                                              {salaryGrades.map((g) => (
-                                                <SelectItem key={g.salary_grade_id} value={String(g.salary_grade_id)}>
-                                                  {g.code} — {g.title} (₱{Number(g.min_salary ?? 0).toLocaleString()} – ₱{Number(g.max_salary ?? 0).toLocaleString()})
-                                                </SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                        <div className="space-y-1 sm:col-span-2">
-                                          <Label className="text-[0.7rem]">Band range</Label>
-                                          <div className="flex h-8 items-center justify-between gap-2 rounded-md border border-border bg-secondary/30 px-2.5 text-[0.7rem]">
-                                            <span className="truncate font-medium">
-                                              {draftGrade
-                                                ? `${draftGrade.code} · ${peso(Number(draftGrade.min_salary ?? 0))} – ${peso(Number(draftGrade.max_salary ?? 0))}`
-                                                : "No band — pick a grade or position"}
-                                            </span>
-                                            {draftGrade && (
-                                              <button
-                                                type="button"
-                                                className="shrink-0 font-medium text-primary hover:underline"
-                                                onClick={() =>
-                                                  setDraft((d) => ({
-                                                    ...d,
-                                                    salaryMin: draftGrade.min_salary !== null && draftGrade.min_salary !== undefined ? String(draftGrade.min_salary) : d.salaryMin,
-                                                    salaryMax: draftGrade.max_salary !== null && draftGrade.max_salary !== undefined ? String(draftGrade.max_salary) : d.salaryMax,
-                                                  }))
-                                                }
-                                              >
-                                                Apply band
-                                              </button>
-                                            )}
-                                          </div>
-                                        </div>
-                                        <div className="space-y-1">
-                                          <Label className="text-[0.7rem]">Type</Label>
+                                     <div className="grid gap-2 sm:grid-cols-3">
+                                         <div className="space-y-1">
+                                           <Label className="text-[0.7rem]">Type</Label>
                                           <Select
                                             value={draft.employmentType}
                                             onValueChange={(v) =>
@@ -5949,13 +6106,33 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                             className="h-8 text-xs"
                                             value={draft.vacancies}
                                             disabled={role === "admin" && Boolean(sourceReqId)}
-                                            onChange={(e) =>
+                                            onChange={(e) => {
+                                              setVacanciesLocked(true);
                                               setDraft({
                                                 ...draft,
                                                 vacancies: sanitizeDigitsOnly(e.target.value),
-                                              })
-                                            }
+                                              });
+                                            }}
                                           />
+                                          {/* Escape hatch for a custom headcount: hand the
+                                          vacancies back to Core HCM open slots. */}
+                                          {coreHcmVacancies && vacanciesLocked && (
+                                            <button
+                                              type="button"
+                                              className="text-[0.7rem] font-medium text-primary hover:underline"
+                                              onClick={() => {
+                                                setVacanciesLocked(false);
+                                                setDraft((d) => ({
+                                                  ...d,
+                                                  vacancies: String(
+                                                    Math.max(coreHcmVacancies.count, editingFilledRef.current),
+                                                  ),
+                                                }));
+                                              }}
+                                            >
+                                              Reset vacancies
+                                            </button>
+                                          )}
                                         </div>
                                         <div className="space-y-1">
                                           <Label className="text-[0.7rem]">Salary min (₱)</Label>
@@ -5964,12 +6141,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                             min={0}
                                             className="h-8 text-xs"
                                             value={draft.salaryMin}
-                                            onChange={(e) =>
+                                            onChange={(e) => {
+                                              setSalaryLocked(true);
                                               setDraft({
                                                 ...draft,
                                                 salaryMin: sanitizeDecimalString(e.target.value),
-                                              })
-                                            }
+                                              });
+                                            }}
                                           />
                                         </div>
                                         <div className="space-y-1">
@@ -5979,13 +6157,26 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                             min={0}
                                             className="h-8 text-xs"
                                             value={draft.salaryMax}
-                                            onChange={(e) =>
+                                            onChange={(e) => {
+                                              setSalaryLocked(true);
                                               setDraft({
                                                 ...draft,
                                                 salaryMax: sanitizeDecimalString(e.target.value),
-                                              })
-                                            }
+                                              });
+                                            }}
                                           />
+                                          {/* Escape hatch for custom figures: hand the salary back
+                                          to the Core HCM band. Lives inside this cell so it
+                                          never claims a grid row of its own. */}
+                                          {draftBand && salaryLocked && (
+                                            <button
+                                              type="button"
+                                              className="block text-[0.7rem] font-medium text-primary hover:underline"
+                                              onClick={() => setSalaryLocked(false)}
+                                            >
+                                              Reset to band
+                                            </button>
+                                          )}
                                         </div>
                                         {/* Structured screening levels — filled by requirement
                                         templates and scored by the NLP match analysis. */}
@@ -6990,119 +7181,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 )}
               </div>
 
-              <div
-                className={cn(
-                  "grid gap-6 lg:items-start",
-                  isPreviewableResume && "lg:grid-cols-[460px_1fr]",
-                )}
-              >
-                {isPreviewableResume && (
-                  <div className="flex h-full flex-col overflow-hidden rounded-md border border-border bg-card lg:sticky lg:top-0">
-                    <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2">
-                      <span
-                        className="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-medium"
-                        style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                      >
-                        {addMethod === "image" ? (
-                          <ImageIcon className="h-3.5 w-3.5 shrink-0 text-primary" />
-                        ) : (
-                          <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
-                        )}
-                        <span
-                          className="min-w-0 flex-1 break-words whitespace-normal text-primary underline underline-offset-2"
-                          style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                          title={addFileName || `${addForm.name || "applicant"}_Resume`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            openResumePreview();
-                          }}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              openResumePreview();
-                            }
-                          }}
-                        >
-                          {addFileName || `${addForm.name || "applicant"}_Resume`}
-                        </span>
-                      </span>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6"
-                          onClick={() => setAddPreviewZoom((z) => Math.max(50, z - 10))}
-                          disabled={addPreviewZoom <= 50}
-                          aria-label="Zoom out"
-                        >
-                          <ZoomOut className="h-3.5 w-3.5" />
-                        </Button>
-                        <span className="w-8 text-center text-[0.65rem] text-muted-foreground">
-                          {addPreviewZoom}%
-                        </span>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6"
-                          onClick={() => setAddPreviewZoom((z) => Math.min(300, z + 10))}
-                          disabled={addPreviewZoom >= 300}
-                          aria-label="Zoom in"
-                        >
-                          <ZoomIn className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="relative flex-1 min-h-[420px] overflow-auto bg-muted/30 p-3">
-                      {(() => {
-                        if (!resumePreviewUrl || !addResumeFile) return null;
-                        const name = addResumeFile.name;
-                        const isImage =
-                          /\.(jpe?g|png)$/i.test(name) || addResumeFile.type.startsWith("image/");
-                        if (isImage) {
-                          return (
-                            <div className="flex h-full w-full items-center justify-center">
-                              <img
-                                src={resumePreviewUrl}
-                                alt={`Uploaded resume: ${addFileName}`}
-                                className="max-h-full max-w-full rounded-sm border border-border object-contain shadow-sm transition-transform"
-                                style={{
-                                  transform: `scale(${addPreviewZoom / 100})`,
-                                  transformOrigin: "center center",
-                                }}
-                              />
-                            </div>
-                          );
-                        }
-                        return (
-                          <div className="h-full w-full overflow-auto">
-                            <div
-                              style={{
-                                transform: `scale(${addPreviewZoom / 100})`,
-                                transformOrigin: "top center",
-                                height:
-                                  addPreviewZoom !== 100
-                                    ? `${(100 / addPreviewZoom) * 100}%`
-                                    : "100%",
-                              }}
-                              className="h-full w-full"
-                            >
-                              <iframe
-                                src={resumePreviewUrl}
-                                title={`Uploaded resume: ${addFileName}`}
-                                className="h-full w-full rounded-sm border border-border bg-white"
-                              />
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-4 lg:overflow-y-auto lg:pr-2">
+              <div>
+                <div className="space-y-4">
                   {(() => {
                     const detail = screenResult.detail;
                     const breakdown = detail?.score_breakdown;
@@ -7279,8 +7359,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                           />
                           <RequirementMatchPanel rows={rows} experienceMinYears={expMinYears} />
                           <ScreeningResumeDocsMatchDetail
-                            docs={[]}
-                            loading={false}
+                            docs={detail?.preview_documents ?? []}
+                            loading={screeningLoading}
                             resumeName={personalInfo.name ?? addForm.name}
                             resumeEducation={education}
                             resumeCertifications={certifications}
@@ -7303,8 +7383,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                             </Badge>
                           </div>
                           <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
-                            Proofs staged with this application — they will be verified against the
-                            resume after the applicant is saved.
+                            {detail?.preview_documents && detail.preview_documents.length > 0
+                              ? `Checked against the resume in this preview — the ${screenResult.score}% score already includes this evidence. They will be re-verified after the applicant is saved.`
+                              : "Proofs staged with this application — they will be verified against the resume after the applicant is saved."}
                           </p>
                           {verificationDocs.length === 0 ? (
                             <p className="mt-3 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
@@ -7313,7 +7394,31 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                             </p>
                           ) : (
                             <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                              {verificationDocs.map((d, i) => (
+                              {verificationDocs.map((d, i) => {
+                                const preview =
+                                  detail?.preview_documents?.[i] ?? null;
+                                const status = preview?.verification_status
+                                  ? String(preview.verification_status)
+                                  : null;
+                                const badgeLabel =
+                                  status === "VERIFIED"
+                                    ? "Verified"
+                                    : status === "DISCREPANCY_FOUND"
+                                      ? "Discrepancy"
+                                      : status === "PENDING" || status === "PROCESSING"
+                                        ? status === "PENDING"
+                                          ? "Pending"
+                                          : "Checking"
+                                        : status === "UNABLE_TO_VERIFY"
+                                          ? "Unable to verify"
+                                          : "Staged";
+                                const badgeClass =
+                                  status === "VERIFIED"
+                                    ? "border-success/25 bg-success/10 text-success"
+                                    : status === "DISCREPANCY_FOUND"
+                                      ? "border-warning/30 bg-warning/10 text-warning-foreground"
+                                      : "border-border bg-secondary text-muted-foreground";
+                                return (
                                 <div
                                   key={`${d.docType}-${d.file.name}-${i}`}
                                   className="rounded-lg border border-border/70 p-3"
@@ -7324,9 +7429,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                     </span>
                                     <Badge
                                       variant="outline"
-                                      className="border-border bg-secondary text-[0.65rem] text-muted-foreground"
+                                      className={`text-[0.65rem] ${badgeClass}`}
+                                      title={
+                                        preview?.verification_result?.summary ??
+                                        "Staged with this application"
+                                      }
                                     >
-                                      Staged
+                                      {badgeLabel}
                                     </Badge>
                                   </div>
                                   <p
@@ -7357,7 +7466,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                     </Button>
                                   </div>
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>
@@ -7979,6 +8089,16 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
                       Password-protected ZIP — password asked on every export.
                     </p>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => {
+                        const data = buildRecruitmentReport(r.id);
+                        printReport(data);
+                        toast.success(`${data.title} sent to printer.`);
+                      }}
+                    >
+                      <Printer className="mr-2 h-4 w-4" /> Print…
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>

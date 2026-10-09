@@ -12,9 +12,11 @@ import {
   LogOut,
   Megaphone,
   Menu,
+  Moon,
   PanelLeftClose,
   Settings as SettingsIcon,
   ShieldCheck,
+  Sun,
   UserCircle,
 } from "lucide-react";
 
@@ -24,6 +26,7 @@ import { AiConciergeWidget } from "@/components/portal/AiConciergeWidget";
 import { GlobalSearch } from "@/components/portal/GlobalSearch";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { isVisibleTo, usePortalState } from "@/components/portal/portal-state";
+import { AnnouncementsModal } from "@/components/portal/AnnouncementsModal";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,31 +40,85 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { navForRole, roleMeta, type Role } from "@/lib/nav";
 import { authApi, mfaApi } from "@/lib/api";
 import { clearSession, getUser } from "@/lib/auth";
-import { applyInitialTheme } from "@/lib/theme";
+import { applyInitialTheme, applyTheme, type ThemeChoice } from "@/lib/theme";
 import type { Notification } from "@/components/portal/portal-state";
 
 /** Map a notification's target to an in-app route for the current role. */
-function notificationTarget(targetType: string | null | undefined, role: Role): string | null {
-  if (!targetType) return null;
+function notificationTarget(
+  n: Pick<Notification, "targetType" | "targetId" | "title" | "detail">,
+  role: Role,
+): string | null {
+  const rawType = (n.targetType ?? "").toLowerCase();
+  const targetId = n.targetId ?? null;
   const base = roleMeta[role].base;
-  switch (targetType) {
+  const text = `${n.title ?? ""} ${n.detail ?? ""}`.toLowerCase();
+  const hl = targetId ? `?highlight=${encodeURIComponent(targetId)}` : "";
+
+  const applicantRoute = `${base}/applicants${hl ? `${hl}&tab=ranking` : ""}`;
+  const interviewRoute = `${base}/applicants${hl ? `${hl}&tab=scheduling` : "?tab=scheduling"}`;
+
+  // Hiring notifications created via NotificationService (Applicant / Interview /
+  // Assessment / Practical / Final Evaluation). All land on Applicant Management;
+  // interviews also hint the interview tab via query params.
+  if (
+    rawType === "applicant" ||
+    rawType === "applicants" ||
+    rawType === "assessment" ||
+    rawType === "assessment test" ||
+    rawType === "assessment_test" ||
+    rawType === "practical test" ||
+    rawType === "practical_test" ||
+    rawType === "final evaluation" ||
+    rawType === "final_evaluation" ||
+    text.includes("applicant") ||
+    text.includes("interview") ||
+    text.includes("assessment") ||
+    text.includes("final evaluation")
+  ) {
+    if (role === "employee") return null;
+    if (rawType === "interview" || rawType === "interviews" || text.includes("interview")) {
+      return interviewRoute;
+    }
+    return applicantRoute;
+  }
+
+  switch (rawType) {
+    case "interview":
+    case "interviews":
+      return role === "employee" ? null : interviewRoute;
+    case "announcement":
+    case "announcements":
+      // Announcements open in the modal via the detail popup (View announcement).
+      return "announcement-modal";
+    case "employee":
     case "employees":
-      return role === "employee" ? null : `${base}/employees`;
+      return role === "employee" ? null : `${base}/employees${hl}`;
+    case "department":
     case "departments":
+    case "position":
     case "positions":
+    case "salary-grade":
+    case "salary grade":
     case "salary_grades":
-      return role === "employee" ? null : `${base}/dept-pos`;
+      return role === "employee" ? null : `${base}/dept-pos${hl}`;
+    case "user":
     case "system_users":
-      return role === "superadmin" ? `${base}/users` : `${base}/settings`;
+    case "system user":
+      return role === "superadmin" ? `${base}/users` : role === "employee" ? `${base}/profile` : `${base}/settings`;
+    case "role":
     case "system_roles":
       return `${base}/settings`;
-    case "hr3_recommendations":
-      return `${base}/ess`;
+    case "hr3_recommendation":
+    case "hr3 recommendation":
+      return role === "employee" ? `${base}/ess` : `${base}/ess`;
+    case "faq":
     case "chatbot_faqs":
+    case "chatbot faq":
       return role === "employee" ? null : `${base}/chatbot`;
     default:
       return null;
@@ -122,6 +179,9 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
   );
   const [announceOpen, setAnnounceOpen] = useState(false);
   const [mfaRequired, setMfaRequired] = useState(false);
+  const [activeNotification, setActiveNotification] = useState<Notification | null>(null);
+  const [announcementViewId, setAnnouncementViewId] = useState<string | null>(null);
+  const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
   const lastActiveGroupRef = useRef<string | null>(null);
 
   // Soft-mandatory TOTP for Super Admins: nudge until enrolled.
@@ -147,6 +207,33 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
     }
     clearSession();
     navigate({ to: "/login" });
+  };
+
+  // Theme toggle for the Welcome dropdown — mirrors the Settings → Preferences theme.
+  const [isDark, setIsDark] = useState(
+    () =>
+      typeof document !== "undefined" &&
+      document.documentElement.classList.contains("dark"),
+  );
+
+  // Keep the toggle in sync if the theme is changed elsewhere (e.g. Settings page).
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    setIsDark(document.documentElement.classList.contains("dark"));
+    const observer = new MutationObserver(() => {
+      setIsDark(document.documentElement.classList.contains("dark"));
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  const toggleTheme = () => {
+    const next: ThemeChoice = isDark ? "Light" : "Dark";
+    applyTheme(next);
+    setIsDark(next === "Dark");
   };
   const { notifications, unreadCount, markAllRead, markRead, announcements, removeAnnouncement } =
     usePortalState();
@@ -316,7 +403,6 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
               <Logo variant="mark" mark="white" tone="invert" />
             </div>
             <div className="hidden sm:block">
-              <p className="eyebrow">Oxford Suites Makati HRMS</p>
               <p className="text-sm font-medium">{meta.label} Portal</p>
             </div>
           </div>
@@ -380,29 +466,48 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                       </p>
                     )}
                     {visibleAnnouncements.map((a) => (
-                      <div key={a.id} className="px-4 py-3">
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => {
+                          setAnnouncementViewId(String(a.id));
+                          setAnnouncementModalOpen(true);
+                        }}
+                        className="block w-full px-4 py-3 text-left transition-colors hover:bg-muted/60 cursor-pointer group"
+                      >
                         <div className="flex items-start gap-2">
-                          <p className="min-w-0 text-sm font-medium">{a.title}</p>
+                          <p className="min-w-0 text-sm font-medium group-hover:text-primary transition-colors">{a.title}</p>
                           <Badge variant="outline" className="ml-auto shrink-0 text-[0.6rem]">
                             {a.audience}
                           </Badge>
                           {role === "superadmin" && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 shrink-0 text-muted-foreground"
+                            <span
+                              role="button"
+                              tabIndex={0}
                               aria-label={`Remove announcement ${a.title}`}
-                              onClick={() => removeAnnouncement(a.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeAnnouncement(a.id);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  removeAnnouncement(a.id);
+                                }
+                              }}
+                              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            </span>
                           )}
+                          <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                         </div>
-                        <p className="mt-1 text-xs text-muted-foreground">{a.body}</p>
+                        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{a.body}</p>
                         <p className="mt-1 text-[0.7rem] text-muted-foreground">
                           {a.author} · {a.createdAt}
                         </p>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </ScrollArea>
@@ -461,14 +566,14 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                       </p>
                     )}
                     {notifications.map((n) => {
-                      const target = notificationTarget(n.targetType, role);
+                      const target = notificationTarget(n, role);
                       return (
                         <button
                           key={n.id}
                           type="button"
                           onClick={() => {
                             markRead(n.id);
-                            if (target) navigate({ to: target });
+                            setActiveNotification(n);
                           }}
                           className={cn(
                             "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60",
@@ -541,6 +646,29 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                     <SettingsIcon className="mr-2 h-4 w-4" /> Settings
                   </Link>
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    // Keep the menu open so the user sees the theme change instantly.
+                    e.preventDefault();
+                    toggleTheme();
+                  }}
+                  className="flex cursor-pointer items-center gap-2"
+                  title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                >
+                  {isDark ? (
+                    <Moon className="mr-2 h-4 w-4 shrink-0" />
+                  ) : (
+                    <Sun className="mr-2 h-4 w-4 shrink-0" />
+                  )}
+                  <span className="flex-1">{isDark ? "Dark mode" : "Light mode"}</span>
+                  <Switch
+                    aria-label="Toggle dark mode"
+                    checked={isDark}
+                    onCheckedChange={toggleTheme}
+                    onClick={(e) => e.stopPropagation()}
+                    className="ml-auto"
+                  />
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={handleLogout} className="text-primary">
                   <LogOut className="mr-2 h-4 w-4" /> Logout
@@ -592,6 +720,83 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
       </div>
 
       <AnnouncementDialog open={announceOpen} onOpenChange={setAnnounceOpen} author={meta.user} />
+
+      <AnnouncementsModal
+        open={announcementModalOpen}
+        onOpenChange={(isOpen) => {
+          setAnnouncementModalOpen(isOpen);
+          if (!isOpen) setAnnouncementViewId(null);
+        }}
+        initialSelectedId={announcementViewId}
+        role={role}
+      />
+
+      {/* Exact notification detail: reveals the full record context. */}
+      {activeNotification && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setActiveNotification(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-2">
+              <p className="min-w-0 flex-1 font-display text-lg font-semibold">
+                {activeNotification.title}
+              </p>
+              <Badge variant="outline" className="shrink-0 text-[0.65rem]">
+                {activeNotification.tone}
+              </Badge>
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">{activeNotification.detail}</p>
+            <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+              <p>
+                <span className="font-medium text-foreground">When: </span>
+                {activeNotification.time}
+              </p>
+              {activeNotification.targetType && (
+                <p>
+                  <span className="font-medium text-foreground">Record: </span>
+                  {activeNotification.targetType}
+                  {activeNotification.targetId ? ` #${activeNotification.targetId}` : ""}
+                </p>
+              )}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setActiveNotification(null)}>
+                Close
+              </Button>
+              {(() => {
+                const target = notificationTarget(activeNotification, role);
+                if (!target) return null;
+                const isAnnouncement = target === "announcement-modal";
+                const rawId = activeNotification.targetId ?? "";
+                // Announcements store numeric announcement_id; portal list uses string ids.
+                const announcementId = rawId ? String(rawId) : null;
+                return (
+                  <Button
+                    onClick={() => {
+                      if (isAnnouncement) {
+                        setActiveNotification(null);
+                        setAnnouncementViewId(announcementId);
+                        setAnnouncementModalOpen(true);
+                        return;
+                      }
+                      const to = target;
+                      setActiveNotification(null);
+                      navigate({ to });
+                    }}
+                  >
+                    {isAnnouncement ? "View announcement" : "View record"}
+                    <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

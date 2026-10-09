@@ -915,3 +915,104 @@ export function printReport(report: ReportData): void {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  201-File Report Builder                                            */
+/* ------------------------------------------------------------------ */
+
+/** Input shape accepted by `build201FileReport`. */
+export interface Build201FileInput {
+  employeeName: string;
+  employeeCode: string;
+  position: string;
+  department: string;
+  status: string;
+  employmentType: string;
+  dateHired: string;
+  email: string;
+  phone: string;
+  supervisor: string;
+  documents: { name: string; status: string; file?: string }[];
+  history: { type: string; date: string; detail: string }[];
+}
+
+/**
+ * Builds a `ReportData` payload that represents an employee's complete 201 file.
+ *
+ * The resulting object can be passed directly to `exportReport` (PDF / DOCX /
+ * Excel / CSV) or `printReport` to produce a formal, branded document.
+ */
+export function build201FileReport(input: Build201FileInput): ReportData {
+  const {
+    employeeName,
+    employeeCode,
+    position,
+    department,
+    status,
+    employmentType,
+    dateHired,
+    email,
+    phone,
+    supervisor,
+    documents,
+    history,
+  } = input;
+
+  /* ---- rows: one row per document entry ---- */
+  const docRows = documents.map((d, i) => ({
+    "#": i + 1,
+    document: d.name,
+    status: d.status,
+    file: d.file || "—",
+  }));
+
+  /* ---- optional history addendum rows ---- */
+  const historyRows = history.map((h, i) => ({
+    "#": i + 1,
+    type: h.type,
+    date: h.date,
+    detail: h.detail,
+  }));
+
+  /* Combine document rows and history rows so the single report contains
+     everything.  If history is present, append a visual separator row and
+     then history entries. */
+  const rows: Record<string, any>[] = [
+    ...docRows,
+    ...(historyRows.length
+      ? [{ "#": "", document: "— Employment History —", status: "", file: "" }, ...historyRows.map((h) => ({
+          "#": h["#"],
+          document: `[${h.type}] ${h.detail}`,
+          status: h.date,
+          file: "",
+        }))]
+      : []),
+  ];
+
+  return {
+    title: `201 File — ${employeeName}`,
+    subtitle: `Employee Code: ${employeeCode} · ${department} · ${position}`,
+    sensitive: true,
+    columns: [
+      { header: "#", key: "#", width: "40px" },
+      { header: "Document / Entry", key: "document" },
+      { header: "Status / Date", key: "status", width: "120px" },
+      { header: "Attachment", key: "file", width: "100px" },
+    ],
+    rows,
+    summary: [
+      { label: "Employee Name", value: employeeName },
+      { label: "Employee Code", value: employeeCode },
+      { label: "Position", value: position },
+      { label: "Department", value: department },
+      { label: "Status", value: status },
+      { label: "Employment Type", value: employmentType },
+      { label: "Date Hired", value: dateHired },
+      { label: "Email", value: email },
+      { label: "Phone", value: phone },
+      { label: "Supervisor", value: supervisor },
+      { label: "Documents on File", value: documents.length },
+      { label: "History Entries", value: history.length },
+    ],
+  };
+}
+

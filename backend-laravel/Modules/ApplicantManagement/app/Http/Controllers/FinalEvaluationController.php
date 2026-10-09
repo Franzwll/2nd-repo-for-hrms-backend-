@@ -226,7 +226,8 @@ class FinalEvaluationController extends Controller
             module: 'Applicant Management',
             type: 'info',
             targetType: 'Final Evaluation',
-            targetId: (string) $final->final_evaluation_id
+            targetId: (string) $final->final_evaluation_id,
+            onlyRoleNames: ['Admin', 'Super Admin']
         );
 
         return response()->json(new FinalEvaluationResource($final->load(['applicant.jobPost.department', 'recommendedJobPost'])), 201);

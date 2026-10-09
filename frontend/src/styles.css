@@ -121,47 +121,48 @@
 }
 
 .dark {
-  /* Warm "midnight ember" to match the light Crimson & Ivory brand
-   * (light theme lives around hue 30-85; old dark was cold blue ~260). */
-  --background: oklch(0.215 0.022 38);
-  --foreground: oklch(0.95 0.012 72);
-  --card: oklch(0.265 0.028 38);
-  --card-foreground: oklch(0.95 0.012 72);
-  --popover: oklch(0.28 0.03 38);
-  --popover-foreground: oklch(0.95 0.012 72);
+  /* Espresso & Champagne — elegant + professional HRMS dark mode.
+   * 🖤 Espresso structure / 🤍 Warm Ivory text / ❤️ Crimson actions /
+   * ✨ Champagne Gold accents / semantic HR statuses. */
+  --background: oklch(0.18 0.008 55);
+  --foreground: oklch(0.93 0.015 60);
+  --card: oklch(0.25 0.008 55);
+  --card-foreground: oklch(0.93 0.015 60);
+  --popover: oklch(0.28 0.008 55);
+  --popover-foreground: oklch(0.93 0.015 60);
 
-  --primary: oklch(0.66 0.185 22);
-  --primary-foreground: oklch(0.985 0.006 85);
+  --primary: oklch(0.53 0.19 22);
+  --primary-foreground: oklch(0.97 0.01 58);
 
-  --secondary: oklch(0.315 0.032 42);
-  --secondary-foreground: oklch(0.95 0.012 72);
-  --muted: oklch(0.29 0.026 42);
-  --muted-foreground: oklch(0.76 0.022 68);
-  --accent: oklch(0.8 0.12 80);
-  --accent-foreground: oklch(0.23 0.03 40);
+  --secondary: oklch(0.33 0.008 59);
+  --secondary-foreground: oklch(0.88 0.014 61);
+  --muted: oklch(0.33 0.008 59);
+  --muted-foreground: oklch(0.83 0.016 56);
+  --accent: oklch(0.77 0.11 88);
+  --accent-foreground: oklch(0.18 0.008 55);
 
-  --gold: oklch(0.8 0.12 80);
-  --gold-foreground: oklch(0.23 0.03 40);
-  --gold-soft: oklch(0.36 0.05 75);
+  --gold: oklch(0.77 0.11 88);
+  --gold-foreground: oklch(0.18 0.008 55);
+  --gold-soft: oklch(0.35 0.038 93);
 
-  --destructive: oklch(0.66 0.19 26);
-  --destructive-foreground: oklch(0.985 0.006 85);
-  --success: oklch(0.7 0.135 152);
+  --destructive: oklch(0.64 0.18 23);
+  --destructive-foreground: oklch(0.97 0.01 58);
+  --success: oklch(0.65 0.14 152);
   --success-foreground: oklch(0.18 0.02 152);
-  --warning: oklch(0.84 0.145 84);
+  --warning: oklch(0.84 0.13 87);
   --warning-foreground: oklch(0.24 0.03 60);
-  --caution: oklch(0.73 0.16 46);
+  --caution: oklch(0.68 0.15 48);
   --caution-foreground: oklch(0.18 0.02 46);
 
-  --border: oklch(0.95 0.012 72 / 15%);
-  --input: oklch(0.95 0.012 72 / 20%);
-  --ring: oklch(0.66 0.185 22);
+  --border: oklch(0.41 0.01 56);
+  --input: oklch(0.44 0.012 48);
+  --ring: oklch(0.53 0.19 22);
 
-  --chart-1: oklch(0.66 0.185 22);
-  --chart-2: oklch(0.8 0.12 80);
-  --chart-3: oklch(0.7 0.135 152);
-  --chart-4: oklch(0.73 0.16 46);
-  --chart-5: oklch(0.72 0.022 68);
+  --chart-1: oklch(0.53 0.19 22);
+  --chart-2: oklch(0.77 0.11 88);
+  --chart-3: oklch(0.65 0.14 152);
+  --chart-4: oklch(0.68 0.15 48);
+  --chart-5: oklch(0.75 0.018 56);
 
   --sidebar: oklch(0.19 0.038 25);
   --sidebar-foreground: oklch(0.94 0.014 68);
@@ -178,21 +179,21 @@
     /* faint warm ember glow so large empty pages don't look flat black */
     background-image: radial-gradient(
       1200px 500px at 50% -10%,
-      oklch(0.66 0.185 22 / 9%),
+      oklch(0.53 0.19 22 / 9%),
       transparent 70%
     );
   }
 
   .dark :is(.bg-card, [data-slot="card"]) {
     /* lift cards off the page with a warm edge + soft shadow */
-    border-color: oklch(0.95 0.012 72 / 16%);
+    border-color: oklch(0.93 0.015 60 / 16%);
     box-shadow:
       0 1px 0 0 oklch(1 0 0 / 5%) inset,
       0 12px 32px -18px oklch(0 0 0 / 65%);
   }
 
   .dark ::placeholder {
-    color: oklch(0.76 0.022 68 / 70%);
+    color: oklch(0.83 0.016 56 / 70%);
   }
 }
 

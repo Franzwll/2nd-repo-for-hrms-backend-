@@ -162,6 +162,21 @@ def _normalize_letter_spacing(line: str) -> str:
     return line
 
 
+def _match_header(clean_head: str, stripped: str) -> List[str]:
+    """Matches one header line against every known section signal."""
+    if re.match(r"^education\s*(&(amp;)?|and)\s*(certifications?|trainings?|special\s+trainings?)", clean_head, re.I):
+        return ["education", "certifications"]
+    for name, pattern in SECTION_PATTERNS.items():
+        if pattern.match(clean_head):
+            if stripped.endswith(".") and len(stripped) > 30:
+                return []
+            return [name]
+    found = _fuzzy_header_match(clean_head)
+    if found:
+        return found
+    return _caps_keyword_match(clean_head)
+
+
 def detect_sections(text: str) -> Dict[str, str]:
     """Returns a mapping of detected section names to their body text."""
     sections: Dict[str, str] = {}
@@ -191,20 +206,7 @@ def detect_sections(text: str) -> Dict[str, str]:
             clean_head = _normalize_letter_spacing(clean_head)
             # Drop trailing colon/dash decorations before matching.
             clean_head = _HEADER_TRAILING.sub("", clean_head).strip()
-
-            if re.match(r"^education\s*(&(amp;)?|and)\s*(certifications?|trainings?|special\s+trainings?)", clean_head, re.I):
-                matched_targets = ["education", "certifications"]
-            else:
-                for name, pattern in SECTION_PATTERNS.items():
-                    if pattern.match(clean_head):
-                        if stripped.endswith(".") and len(stripped) > 30:
-                            continue
-                        matched_targets = [name]
-                        break
-                if not matched_targets:
-                    matched_targets = _fuzzy_header_match(clean_head)
-                if not matched_targets:
-                    matched_targets = _caps_keyword_match(clean_head)
+            matched_targets = _match_header(clean_head, stripped)
 
         if matched_targets:
             flush()
@@ -214,7 +216,18 @@ def detect_sections(text: str) -> Dict[str, str]:
             first_target = matched_targets[0]
             remainder = SECTION_PATTERNS[first_target].sub("", stripped, count=1).strip(" :–-")
             if remainder and not _HEADER_LEFTOVER_RE.match(remainder) and len(remainder) > 3:
-                buffer.append(remainder)
+                # Two-column OCR/PDF layouts merge two headers onto one row
+                # ("SKILLS & COMPETENCIES PROFESSIONAL EXPERIENCE"). When the
+                # tail is itself a section header, the following body lines
+                # serve both sections — share the buffer instead of losing a
+                # whole section (and with it, all work-history evidence).
+                extra = _match_header(
+                    _HEADER_TRAILING.sub("", remainder).strip(), remainder
+                )
+                if extra and all(e not in current_targets for e in extra):
+                    current_targets = current_targets + extra
+                else:
+                    buffer.append(remainder)
         elif current_targets:
             buffer.append(line)
 

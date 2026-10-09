@@ -16,10 +16,13 @@ use Illuminate\Support\Facades\Auth;
 /**
  * Maps a model lifecycle event to targeted notification recipients.
  *
- * Rules of thumb:
- * - Notify only people who care (admins, the affected user, the role's members).
- * - Never notify the actor about their own routine edit (security events are the
- *   exception and are handled explicitly in the Auth flow).
+ * Helpful-only policy:
+ * - Audit log records EVERYTHING (via ActivityObserver).
+ * - Bell notifies only when someone must act or know.
+ * - Routine edits (Employee updated, org-structure updated, role updated,
+ *   chatbot FAQ created/updated) are audit-only and return null here.
+ * - Never notify the actor about their own routine edit (security events are
+ *   the exception and are handled explicitly in the Auth flow).
  */
 class NotificationRules
 {
@@ -91,13 +94,9 @@ class NotificationRules
                     'New employee added', "{$name} was added to Core HCM."
                 ),
             ],
-            'updated' => [
-                'recipients' => $admins,
-                'notification' => self::attrs(
-                    'Core HCM', 'info', 'employee', $employee->employee_id,
-                    'Employee updated', "{$name}'s record was updated."
-                ),
-            ],
+            // Helpful-only: routine record edits are audit-only (see audit_logs).
+            // Keeps the bell for new hires and removals that need action.
+            'updated' => null,
             'deleted' => [
                 'recipients' => Notifier::superAdminIds(),
                 'notification' => self::attrs(
@@ -111,6 +110,12 @@ class NotificationRules
 
     protected static function forCoreHcm(string $event, Model $model): ?array
     {
+        // Helpful-only: minor org-structure edits are audit-only.
+        // Bell rings only for created / removed which others must know.
+        if ($event === 'updated') {
+            return null;
+        }
+
         $label = match (get_class($model)) {
             Department::class => 'Department',
             Position::class => 'Position',
@@ -210,6 +215,11 @@ class NotificationRules
 
     protected static function forSystemRole(string $event, SystemRole $role): ?array
     {
+        // Helpful-only: role renames/tweaks are audit-only.
+        if ($event === 'updated') {
+            return null;
+        }
+
         $verb = match ($event) {
             'created' => 'created',
             'updated' => 'updated',
@@ -234,6 +244,12 @@ class NotificationRules
 
     protected static function forChatbotFaq(string $event, ChatbotFaq $faq): ?array
     {
+        // Helpful-only: FAQ add/edits are routine content work (audit-only).
+        // Bell rings only for removal which may break applicant answers.
+        if ($event !== 'deleted') {
+            return null;
+        }
+
         $verb = match ($event) {
             'created' => 'created',
             'updated' => 'updated',

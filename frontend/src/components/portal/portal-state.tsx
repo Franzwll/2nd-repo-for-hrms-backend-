@@ -35,6 +35,7 @@ export type Notification = {
   read: boolean;
   tone: "info" | "success" | "warning";
   targetType: string | null;
+  targetId: string | null;
 };
 
 type State = {
@@ -58,6 +59,7 @@ function mapNotification(n: ApiNotification): Notification {
     read: n.read,
     tone: (n.tone as Notification["tone"]) ?? "info",
     targetType: n.target_type ?? null,
+    targetId: n.target_id != null ? String(n.target_id) : null,
   };
 }
 
@@ -99,7 +101,7 @@ async function loadData() {
     const announcements =
       annRes.status === "fulfilled"
         ? (annRes.value.data ?? []).map((a) => ({
-          id: a.id,
+          id: String(a.announcement_id ?? a.id),
           title: a.title,
           body: a.body,
           audience: a.audience as Audience,
@@ -118,6 +120,8 @@ async function loadData() {
           time: n.time || "Just now",
           read: n.read || readFlags.has(String(n.id)),
           tone: (n.tone as any) || "info",
+          targetType: (n as any).target_type ?? null,
+          targetId: (n as any).target_id != null ? String((n as any).target_id) : null,
         }))
         : [];
 
@@ -221,7 +225,8 @@ export function usePortalState() {
             time: "Just now",
             read: false,
             tone: "info",
-            targetType: null,
+            targetType: "announcement",
+            targetId: res.data.id != null ? String(res.data.id) : null,
           },
           ...state.notifications,
         ],

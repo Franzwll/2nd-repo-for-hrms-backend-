@@ -9,6 +9,7 @@ use App\Models\JobPost;
 use App\Models\SystemSetting;
 use App\Services\DuplicateApplicationService;
 use App\Services\NlpService;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -239,6 +240,18 @@ class LandingController extends Controller
                 // keep applicant even if screening fails
             }
         }
+
+        // Notify HR: public landing applies don't pass through the
+        // authenticated observer, so ring HR Admins directly (helpful-only).
+        NotificationService::send(
+            title: "New applicant from Landing: {$applicant->name}",
+            body: "Applied for {$jobPost->title} via Landing Page with screening score " . ($applicant->fit_score ?? 0) . "%.",
+            module: 'Applicant Management',
+            type: 'info',
+            targetType: 'Applicant',
+            targetId: (string) $applicant->applicant_id,
+            onlyRoleNames: ['Admin', 'Super Admin']
+        );
 
         return response()->json([
             'message' => 'Application received. Our recruitment team will reach out soon.',
