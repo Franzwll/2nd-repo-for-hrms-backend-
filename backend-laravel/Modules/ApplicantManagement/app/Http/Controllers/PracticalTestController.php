@@ -102,14 +102,7 @@ class PracticalTestController extends Controller
             details: "Recorded practical assessment \"{$practical->task_title}\" for {$model->name} with score {$practical->total_score}% and result {$practical->result}."
         );
 
-        NotificationService::send(
-            title: "Practical assessment recorded: {$model->name}",
-            body: "Scored {$practical->total_score}% — Result: {$practical->result}.",
-            module: 'Applicant Management',
-            type: 'info',
-            targetType: 'Practical Test',
-            targetId: (string) $practical->practical_test_id
-        );
+        // Helpful-only: practical scores stay in audit log. No bell for intermediate steps.
 
         return response()->json(new PracticalTestResource($practical->load('applicant.jobPost.department')), 201);
     }

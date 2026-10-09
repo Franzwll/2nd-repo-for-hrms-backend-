@@ -288,6 +288,167 @@ class ScreeningService
         return $response['data'];
     }
 
+    /**
+     * Preview screening WITH staged supporting documents (Add Applicant wizard
+     * Step 3). The applicant does not exist yet, so documents cannot be stored
+     * or verified through DocumentVerificationService — instead each staged
+     * file is verified in-memory against the freshly screened resume profile,
+     * then the ranking is reclassified with that evidence so Step 3 shows the
+     * same blended percentage + Resume vs Documents breakdown as the saved
+     * applicant view.
+     *
+     * $documents: list of ['stored_path' => local-disk tmp path,
+     *   'original_name' => string, 'doc_type' => string, 'title' => ?string]
+     */
+    public function screenPreviewWithDocuments(
+        string $storedPath,
+        string $originalName,
+        int $jobPostId,
+        array $documents = []
+    ): array {
+        $jobPost = JobPost::find($jobPostId);
+        if (! $jobPost) {
+            return ['success' => false, 'processing_status' => 'FAILED', 'error' => "Job post {$jobPostId} not found."];
+        }
+
+        $absolutePath = Storage::disk('local')->path($storedPath);
+        $response = $this->nlp->screenResumeStructured(
+            $absolutePath,
+            $originalName,
+            $this->buildRequirements($jobPost),
+            $this->buildOpenJobs($jobPost),
+            referenceData: $this->referenceData(),
+            screeningSettings: self::screeningSettings()
+        );
+
+        if (! $response['ok']) {
+            return ['success' => false, 'processing_status' => 'FAILED', 'error' => $response['error']];
+        }
+
+        $result = $response['data'] ?? null;
+        if (! is_array($result) || ! ($result['success'] ?? false)) {
+            return is_array($result) ? $result : ['success' => false, 'processing_status' => 'FAILED', 'error' => 'Unexpected NLP response.'];
+        }
+
+        if ($documents === []) {
+            return $result;
+        }
+
+        $profile = $result['profile'] ?? null;
+        if (! is_array($profile) || $profile === []) {
+            $result['preview_documents'] = [];
+
+            return $result;
+        }
+
+        $referenceData = $this->referenceData();
+        $previewDocs = [];
+        $docVerifications = [];
+
+        foreach (array_values($documents) as $i => $doc) {
+            $docPath = (string) ($doc['stored_path'] ?? '');
+            $docOriginal = (string) ($doc['original_name'] ?? 'document');
+            $docType = (string) ($doc['doc_type'] ?? 'Others');
+            $title = isset($doc['title']) && $doc['title'] !== '' ? (string) $doc['title'] : $docOriginal;
+            $previewId = -($i + 1);
+
+            $checks = [];
+            $summary = null;
+            $extracted = null;
+            $status = 'UNABLE_TO_VERIFY';
+
+            try {
+                $absoluteDoc = $docPath !== '' ? Storage::disk('local')->path($docPath) : null;
+                if ($absoluteDoc && is_file($absoluteDoc)) {
+                    $verify = $this->nlp->verifySupportingDocument(
+                        $absoluteDoc,
+                        $docOriginal,
+                        $docType,
+                        $profile,
+                        $referenceData
+                    );
+                    $data = $verify['data'] ?? null;
+                    if (is_array($data)) {
+                        $status = (string) ($data['verification_status'] ?? 'UNABLE_TO_VERIFY');
+                        $checks = is_array($data['checks'] ?? null) ? $data['checks'] : [];
+                        $summary = $data['summary'] ?? ($verify['error'] ?? null);
+                        $extracted = $data['extracted_document_profile'] ?? null;
+                    } else {
+                        $summary = $verify['error'] ?? 'Document verification failed.';
+                    }
+                } else {
+                    $summary = 'The staged document file could not be read, so no comparison was possible.';
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Preview document verification failed: ' . $e->getMessage());
+                $summary = 'Automatic verification failed: ' . $e->getMessage();
+            }
+
+            $previewDocs[] = [
+                'applicant_document_id' => $previewId,
+                'applicant_id' => 0,
+                'doc_type' => $docType,
+                'title' => $title,
+                'original_copy' => false,
+                'file_path' => null,
+                'original_name' => $docOriginal,
+                'uploaded_at' => null,
+                'verification_status' => $status,
+                'verification_result' => [
+                    'success' => $status === 'VERIFIED',
+                    'document_type' => $docType,
+                    'verification_status' => $status,
+                    'checks' => $checks,
+                    'summary' => $summary,
+                ],
+                'extracted_profile' => $extracted,
+                'verified_at' => null,
+            ];
+            $docVerifications[] = [
+                'applicant_document_id' => $previewId,
+                'doc_type' => $docType,
+                'verification_status' => $status,
+                'verification_result' => [
+                    'checks' => $checks,
+                    'summary' => $summary,
+                ],
+            ];
+        }
+
+        // Blend the staged evidence into the ranking so the percentage shown
+        // in Step 3 already reflects the supporting documents.
+        try {
+            $re = $this->nlp->reclassifyScreening([
+                'profile' => $profile,
+                'validation' => is_array($result['validation'] ?? null) ? $result['validation'] : [],
+                'requirements' => $this->buildRequirements($jobPost),
+                'open_jobs' => $this->buildOpenJobs($jobPost),
+                'document_verifications' => $docVerifications,
+                'screening_settings' => self::screeningSettings(),
+                'reference_data' => $referenceData,
+            ]);
+            $blended = ($re['ok'] ?? false) ? ($re['data'] ?? null) : null;
+            if (is_array($blended) && ($blended['success'] ?? false)) {
+                $result['resume_match_score'] = $result['match_score'] ?? ($result['resume_match_score'] ?? null);
+                $result['match_score'] = $blended['match_score'] ?? $result['match_score'];
+                $result['screening_status'] = $blended['screening_status'] ?? ($result['screening_status'] ?? null);
+                $result['document_verification'] = $blended['document_verification'] ?? ($result['document_verification'] ?? null);
+                if (array_key_exists('alternative_job', $blended)) {
+                    $result['alternative_job'] = $blended['alternative_job'];
+                }
+                if (array_key_exists('screening_reasons', $blended)) {
+                    $result['screening_reasons'] = $blended['screening_reasons'];
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Preview ranking reclassify failed: ' . $e->getMessage());
+        }
+
+        $result['preview_documents'] = $previewDocs;
+
+        return $result;
+    }
+
     /* ------------------------------------------------------------------ */
     /* Supporting-document evidence                                        */
     /* ------------------------------------------------------------------ */

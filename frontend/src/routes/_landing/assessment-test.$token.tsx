@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   AlertTriangle,
-  ArrowLeft,
   ArrowRight,
   CheckCircle2,
   Loader2,
+  Timer,
   XCircle,
 } from "lucide-react";
 
@@ -17,6 +17,10 @@ import { Card, CardContent } from "@/components/ui/card";
    uses the same base URL as the main client (relative "/api/v1", proxied to
    Laravel in dev) but with plain fetch — no Authorization header. */
 const API_BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string) || "/api/v1";
+
+/* Countdown shown on the applicant test page. The backend accepts partial
+   answers (unanswered = wrong), so expiry safely auto-submits. */
+const ASSESSMENT_TIME_LIMIT_SECONDS = 10 * 60;
 
 interface InviteQuestion {
   title: string;
@@ -104,6 +108,14 @@ function ApplicantAssessmentTest() {
   );
   const allAnswered = totalQ > 0 && answeredCount === totalQ;
 
+  const clearAnswer = (qIdx: number) =>
+    setAnswers((prev) => {
+      if (prev[qIdx] == null) return prev;
+      const next = { ...prev };
+      delete next[qIdx];
+      return next;
+    });
+
   const submit = async () => {
     if (!invite) return;
     setSubmitting(true);
@@ -132,8 +144,8 @@ function ApplicantAssessmentTest() {
   };
 
   return (
-    <PublicShell>
-      <div className="mx-auto max-w-3xl px-4 py-12 md:px-8">
+    <PublicShell bare>
+      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-8 md:px-8 md:py-10">
         {loading ? (
           <Card className="border-border/70">
             <CardContent className="flex items-center justify-center gap-3 p-10 text-muted-foreground">
@@ -187,6 +199,7 @@ function ApplicantAssessmentTest() {
             submitting={submitting}
             submitError={submitError}
             onSelect={(qIdx, optIdx) => setAnswers((prev) => ({ ...prev, [qIdx]: optIdx }))}
+            onClearAnswer={clearAnswer}
             onStep={setStep}
             onSubmit={submit}
           />
@@ -211,6 +224,7 @@ function AssessmentRunner({
   submitting,
   submitError,
   onSelect,
+  onClearAnswer,
   onStep,
   onSubmit,
 }: {
@@ -223,14 +237,71 @@ function AssessmentRunner({
   submitting: boolean;
   submitError: string | null;
   onSelect: (qIdx: number, optIdx: number) => void;
+  onClearAnswer: (qIdx: number) => void;
   onStep: (step: number | ((s: number) => number)) => void;
   onSubmit: () => void;
 }) {
   const isReview = step >= totalQ;
   const question = invite.questions[step];
 
+  /* Countdown timer — auto-submits once when it reaches zero. */
+  const [timeLeft, setTimeLeft] = useState(ASSESSMENT_TIME_LIMIT_SECONDS);
+  const onSubmitRef = useRef(onSubmit);
+  onSubmitRef.current = onSubmit;
+  const autoSubmittedRef = useRef(false);
+
+  useEffect(() => {
+    const timer = setInterval(
+      () => setTimeLeft((s) => (s > 0 ? s - 1 : 0)),
+      1000,
+    );
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (timeLeft === 0 && !submitting && !autoSubmittedRef.current) {
+      autoSubmittedRef.current = true;
+      onSubmitRef.current();
+    }
+  }, [timeLeft, submitting]);
+
+  const minutes = Math.floor(timeLeft / 60);
+  const seconds = String(timeLeft % 60).padStart(2, "0");
+  const progressPct = totalQ > 0 ? ((isReview ? totalQ : step + 1) / totalQ) * 100 : 0;
+
+  const progressTimer = (
+    <div className="flex items-center gap-3">
+      <span className="shrink-0 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
+        {isReview ? totalQ : step + 1}/{totalQ}
+      </span>
+      <div
+        className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-valuenow={isReview ? totalQ : step + 1}
+        aria-valuemin={1}
+        aria-valuemax={totalQ}
+      >
+        <div
+          className="h-full rounded-full bg-success transition-all"
+          style={{ width: `${progressPct}%` }}
+        />
+      </div>
+      <div
+        className={`flex shrink-0 items-center gap-1.5 font-mono text-sm font-semibold tabular-nums ${
+          timeLeft <= 60 ? "text-destructive" : "text-foreground"
+        }`}
+        title="Time remaining"
+      >
+        <Timer className="h-4 w-4" />
+        <span>
+          {String(minutes).padStart(2, "0")}:{seconds}
+        </span>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="space-y-5">
+    <div className="flex flex-1 flex-col space-y-5">
       <div>
         <p className="eyebrow">Assessment Test</p>
         <h1 className="mt-1 font-display text-3xl font-semibold">{invite.test_title}</h1>
@@ -242,8 +313,9 @@ function AssessmentRunner({
       </div>
 
       {isReview ? (
-        <Card className="border-border/70">
-          <CardContent className="space-y-4 p-6">
+        <Card className="flex flex-1 flex-col border-border/70">
+          <CardContent className="flex flex-1 flex-col space-y-4 p-6 md:p-10">
+            {progressTimer}
             <h2 className="font-display text-xl font-semibold">Review your answers</h2>
             <p className="text-sm text-muted-foreground">
               {answeredCount} of {totalQ} question(s) answered. You cannot change your answers
@@ -263,13 +335,6 @@ function AssessmentRunner({
                       {answers[idx] != null ? q.options[answers[idx]] : "Not answered"}
                     </span>
                   </span>
-                  <button
-                    type="button"
-                    className="shrink-0 text-xs font-medium text-primary hover:underline"
-                    onClick={() => onStep(idx)}
-                  >
-                    Change
-                  </button>
                 </div>
               ))}
             </div>
@@ -281,10 +346,7 @@ function AssessmentRunner({
               </div>
             )}
 
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <Button variant="outline" onClick={() => onStep(totalQ - 1)} disabled={submitting}>
-                <ArrowLeft className="mr-1.5 h-4 w-4" /> Back
-              </Button>
+            <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-2">
               <Button variant="destructive" disabled={!allAnswered || submitting} onClick={onSubmit}>
                 {submitting ? (
                   <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
@@ -303,28 +365,29 @@ function AssessmentRunner({
           </CardContent>
         </Card>
       ) : (
-        <Card className="border-border/70">
-          <CardContent className="space-y-4 p-6">
+        <Card className="flex w-full flex-1 flex-col border-border/70">
+          <CardContent className="flex flex-1 flex-col space-y-6 p-6 md:p-10">
+            {progressTimer}
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 Question {step + 1} of {totalQ}
               </p>
-              <span className="text-xs text-muted-foreground">{question?.points ?? 0} points</span>
+              <span className="text-sm text-muted-foreground">{question?.points ?? 0} points</span>
             </div>
             <div>
-              <h2 className="font-display text-xl font-semibold">{question?.title}</h2>
+              <h2 className="font-display text-2xl font-semibold md:text-3xl">{question?.title}</h2>
               {question?.scenario ? (
-                <p className="mt-1 text-sm text-muted-foreground">{question.scenario}</p>
+                <p className="mt-2 text-base text-muted-foreground md:text-lg">{question.scenario}</p>
               ) : null}
             </div>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {question?.options.map((opt, optIdx) => {
                 const selected = answers[step] === optIdx;
                 return (
                   <label
                     key={optIdx}
                     className={
-                      "flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm transition-colors " +
+                      "flex cursor-pointer items-center gap-3 rounded-lg border p-4 text-base transition-colors " +
                       (selected
                         ? "border-primary bg-primary/5"
                         : "border-border hover:border-primary/40")
@@ -333,7 +396,7 @@ function AssessmentRunner({
                     <input
                       type="radio"
                       name={`q-${step}`}
-                      className="accent-primary"
+                      className="h-4 w-4 shrink-0 accent-primary"
                       checked={selected}
                       onChange={() => onSelect(step, optIdx)}
                     />
@@ -343,14 +406,19 @@ function AssessmentRunner({
               })}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <Button
-                variant="outline"
-                disabled={step === 0}
-                onClick={() => onStep((s) => Math.max(0, s - 1))}
-              >
-                <ArrowLeft className="mr-1.5 h-4 w-4" /> Prev
-              </Button>
+            {answers[step] != null && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => onClearAnswer(step)}
+                  className="text-sm text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground"
+                >
+                  Clear answer
+                </button>
+              </div>
+            )}
+
+            <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-2">
               <Button
                 disabled={answers[step] == null}
                 onClick={() => onStep((s) => Math.min(totalQ, s + 1))}

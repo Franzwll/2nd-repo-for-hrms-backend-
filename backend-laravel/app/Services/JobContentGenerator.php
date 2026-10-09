@@ -8,15 +8,14 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
- * Generates job-post draft content with a Google Generative Language model
- * (Gemini), grounded in the HR screening vocabulary.
+ * Generates job-post draft content grounded in the HR screening vocabulary.
  *
  * Resilience chain (first success wins):
- *   1. Google Gemini with GEMINI_API_KEY
- *   2. Google Gemini again with GEMINI_FALLBACK_API_KEY (and optionally
- *      GEMINI_FALLBACK_MODEL) — survives a dead/quota-hit primary key
- *   3. The same Gemini model family through OpenRouter with
- *      OPENROUTER_API_KEY / OPENROUTER_MODEL — survives a Google-side outage
+ *   1. Groq with JOB_GROQ_API_KEY / JOB_GROQ_MODEL (openai/gpt-oss-20b)
+ *   2. OpenRouter with JOB_OPENROUTER_API_KEY / JOB_OPENROUTER_MODEL
+ *      (nvidia/nemotron-3-super-120b-a12b:free) — survives a Groq-side outage
+ *   3. Shared Google Gemini with GEMINI_API_KEY (+ optional
+ *      GEMINI_FALLBACK_API_KEY / GEMINI_FALLBACK_MODEL)
  *
  * The vocabulary (skills / certifications from screening_reference_data) is
  * injected into the prompt so generated "skills" and "qualifications" reuse
@@ -36,6 +35,14 @@ class JobContentGenerator
     /** Failure codes that mean "the AI usage/limit is used up" (UI shows the limit state). */
     public const LIMIT_CODES = ['quota_day', 'rate_minute', 'quota', 'daily_limit'];
 
+    protected ?string $groqKey;
+
+    protected string $groqModel;
+
+    protected ?string $openrouterKey;
+
+    protected string $openrouterModel;
+
     protected ?string $apiKey;
 
     protected string $model;
@@ -43,10 +50,6 @@ class JobContentGenerator
     protected ?string $fallbackModel;
 
     protected ?string $fallbackApiKey;
-
-    protected ?string $openrouterKey;
-
-    protected string $openrouterModel;
 
     protected int $timeout;
 
@@ -77,12 +80,15 @@ class JobContentGenerator
 
     public function __construct()
     {
+        // Job Builder has its own Groq/OpenRouter keys; Gemini is the shared key.
+        $this->groqKey = config('services.job_groq.key') ?: env('JOB_GROQ_API_KEY') ?: config('services.chat_groq.key') ?: null;
+        $this->groqModel = (string) (config('services.job_groq.model') ?: env('JOB_GROQ_MODEL', 'openai/gpt-oss-20b'));
+        $this->openrouterKey = config('services.job_openrouter.key') ?: env('JOB_OPENROUTER_API_KEY') ?: config('services.openrouter.key') ?: env('OPENROUTER_API_KEY') ?: null;
+        $this->openrouterModel = (string) (config('services.job_openrouter.model') ?: env('JOB_OPENROUTER_MODEL', env('OPENROUTER_MODEL', 'nvidia/nemotron-3-super-120b-a12b:free')));
         $this->apiKey = config('services.gemini.key') ?: env('GEMINI_API_KEY') ?: null;
         $this->model = (string) (config('services.gemini.model') ?: env('GEMINI_MODEL', 'gemini-3.5-flash-lite'));
         $this->fallbackModel = config('services.gemini.fallback_model') ?: env('GEMINI_FALLBACK_MODEL') ?: null;
         $this->fallbackApiKey = config('services.gemini.fallback_key') ?: env('GEMINI_FALLBACK_API_KEY') ?: null;
-        $this->openrouterKey = config('services.openrouter.key') ?: env('OPENROUTER_API_KEY') ?: null;
-        $this->openrouterModel = (string) (config('services.openrouter.model') ?: env('OPENROUTER_MODEL', 'openrouter/free'));
         $this->timeout = (int) (config('services.gemini.timeout') ?: env('GEMINI_TIMEOUT', 30));
         $this->dailyLimit = max(0, (int) (config('services.job_ai.daily_limit') ?? env('JOB_AI_DAILY_LIMIT', 0)));
     }
@@ -109,27 +115,32 @@ class JobContentGenerator
             $chain[] = ['kind' => $kind, 'model' => trim($model), 'key' => trim($key), 'label' => $label];
         };
 
+        $add('groq', $this->groqModel, $this->groqKey, 'Groq');
+        $add('openrouter', $this->openrouterModel, $this->openrouterKey, 'OpenRouter');
         $add('gemini', $this->model, $this->apiKey, 'Google Gemini');
         $add('gemini', $this->fallbackModel ?: $this->model, $this->fallbackApiKey ?: $this->apiKey, 'Google Gemini (second key)');
-        $add('openrouter', $this->openrouterModel, $this->openrouterKey, 'OpenRouter');
 
         return $chain;
     }
 
-    /** True when at least one provider key is configured (Gemini or OpenRouter). */
+    /** True when at least one provider key is configured (Groq, OpenRouter or Gemini). */
     public function isConfigured(): bool
     {
         return $this->providers() !== [];
     }
 
     /**
-     * Primary model configured for this server — Gemini's when a Gemini key
-     * exists, otherwise the OpenRouter model. Shown in the API meta and in the
-     * builder's AI usage indicator.
+     * Primary model configured for this server — Groq's when a Groq key
+     * exists, otherwise OpenRouter's, otherwise Gemini's. Shown in the API
+     * meta and in the builder's AI usage indicator.
      */
     public function modelName(): string
     {
-        return $this->apiKey ? $this->model : $this->openrouterModel;
+        if ($this->groqKey) {
+            return $this->groqModel;
+        }
+
+        return $this->openrouterKey ? $this->openrouterModel : $this->model;
     }
 
     /**
@@ -141,7 +152,7 @@ class JobContentGenerator
     {
         if (! $this->isConfigured()) {
             return $this->failure(
-                'The AI generator is not configured. Set GEMINI_API_KEY (or OPENROUTER_API_KEY) on the API server.',
+                'The AI generator is not configured. Set JOB_GROQ_API_KEY (or a fallback key) on the API server.',
                 'not_configured',
             );
         }
@@ -158,13 +169,13 @@ class JobContentGenerator
 
         $prompt = $this->buildPrompt($job, $vocabulary);
 
-        // Walk the provider chain (Gemini key 1 → Gemini key 2 → OpenRouter);
+        // Walk the provider chain (Groq -> OpenRouter -> Gemini);
         // first success wins. Each provider gets several attempts because
-        // Google often answers 503/overloaded on the first try.
+        // providers often answer 503/overloaded on the first try.
         $providers = $this->providers();
         if ($providers === []) {
             return $this->failure(
-                'The AI generator is not configured. Set GEMINI_API_KEY (or OPENROUTER_API_KEY) on the API server.',
+                'The AI generator is not configured. Set JOB_GROQ_API_KEY (or a fallback key) on the API server.',
                 'not_configured',
             );
         }
@@ -194,9 +205,11 @@ class JobContentGenerator
 
             for ($attempt = 1; $attempt <= $this->maxAttempts; $attempt++) {
                 try {
-                    $response = $provider['kind'] === 'openrouter'
-                        ? $this->postOpenRouter($provider, $prompt)
-                        : $this->postGemini($provider, $prompt);
+                    $response = match ($provider['kind']) {
+                        'groq' => $this->postGroq($provider, $prompt),
+                        'openrouter' => $this->postOpenRouter($provider, $prompt),
+                        default => $this->postGemini($provider, $prompt),
+                    };
                 } catch (\Throwable $e) {
                     // Connection/timeout — always retryable.
                     Log::warning('AI draft generation connection error', [
@@ -310,6 +323,24 @@ class JobContentGenerator
             ]);
     }
 
+    /** Single chat-completions call routed through Groq. */
+    protected function postGroq(array $provider, string $prompt): \Illuminate\Http\Client\Response
+    {
+        return Http::timeout($this->timeout)
+            ->acceptJson()
+            ->withHeaders([
+                'Authorization' => 'Bearer ' . $provider['key'],
+            ])
+            ->post('https://api.groq.com/openai/v1/chat/completions', [
+                'model' => $provider['model'],
+                'messages' => [
+                    ['role' => 'user', 'content' => $prompt],
+                ],
+                'max_tokens' => 2048,
+                'response_format' => ['type' => 'json_object'],
+            ]);
+    }
+
     /** Single chat-completions call routed through OpenRouter. */
     protected function postOpenRouter(array $provider, string $prompt): \Illuminate\Http\Client\Response
     {
@@ -330,14 +361,15 @@ class JobContentGenerator
             ]);
     }
 
-    /** Extracts the model text from either provider's success envelope. */
+    /** Extracts the model text from any provider's success envelope. */
     protected function responseText(array $provider, \Illuminate\Http\Client\Response $response): string
     {
-        if ($provider['kind'] === 'openrouter') {
-            return (string) data_get($response->json(), 'choices.0.message.content', '');
+        if ($provider['kind'] === 'gemini') {
+            return (string) data_get($response->json(), 'candidates.0.content.parts.0.text', '');
         }
 
-        return (string) data_get($response->json(), 'candidates.0.content.parts.0.text', '');
+        // Groq + OpenRouter both use the OpenAI chat-completions envelope.
+        return (string) data_get($response->json(), 'choices.0.message.content', '');
     }
 
     /**
@@ -350,9 +382,16 @@ class JobContentGenerator
     protected function classifyFailure(int $status, string $body, array $provider): array
     {
         $via = $provider['label'];
-        $isOpenRouter = $provider['kind'] === 'openrouter';
-        $keyHint = $isOpenRouter ? 'OPENROUTER_API_KEY' : 'GEMINI_API_KEY';
-        $modelHint = $isOpenRouter ? 'OPENROUTER_MODEL' : 'GEMINI_MODEL';
+        $keyHint = match ($provider['kind']) {
+            'groq' => 'JOB_GROQ_API_KEY',
+            'openrouter' => 'JOB_OPENROUTER_API_KEY',
+            default => 'GEMINI_API_KEY',
+        };
+        $modelHint = match ($provider['kind']) {
+            'groq' => 'JOB_GROQ_MODEL',
+            'openrouter' => 'JOB_OPENROUTER_MODEL',
+            default => 'GEMINI_MODEL',
+        };
         $haystack = Str::lower($body);
         $retryAfter = $this->retryDelayFromBody($body);
 

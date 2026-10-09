@@ -1475,14 +1475,14 @@ function EmployeeListManager({
             <div className="flex items-center gap-2">
               <Badge
                 variant="outline"
-                className="border-gold/50 bg-gold/10 text-gold-foreground text-xs"
+                className="border-gold/50 bg-gold/10 text-gold-foreground text-xs dark:text-gold"
               >
                 HR3 Evaluation Sync Active
               </Badge>
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 text-xs border-gold/50 text-gold-foreground hover:bg-gold/10"
+                className="h-7 text-xs border-gold/50 text-gold-foreground hover:bg-gold/10 dark:text-gold"
                 onClick={() => setShowViewAllRecs(true)}
               >
                 View All
@@ -1513,7 +1513,7 @@ function EmployeeListManager({
                       className={
                         rec.recommendationType === "Regularization"
                           ? "border-primary/40 bg-primary/10 text-primary text-[10px]"
-                          : "border-gold/50 bg-gold/10 text-gold-foreground text-[10px]"
+                          : "border-gold/50 bg-gold/10 text-gold-foreground text-[10px] dark:text-gold"
                       }
                     >
                       {rec.recommendationType}
@@ -1538,7 +1538,7 @@ function EmployeeListManager({
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 text-xs border-gold/50 text-gold-foreground hover:bg-gold/10"
+                      className="h-7 text-xs border-gold/50 text-gold-foreground hover:bg-gold/10 dark:text-gold"
                       onClick={async () => {
                         try {
                           await hcmApi.hr3Recommendations.acknowledge(rec.recommendationId);
@@ -1658,7 +1658,7 @@ function EmployeeListManager({
                         className={
                           rec.recommendationType === "Regularization"
                             ? "border-primary/40 bg-primary/10 text-primary text-[10px]"
-                            : "border-gold/50 bg-gold/10 text-gold-foreground text-[10px]"
+                            : "border-gold/50 bg-gold/10 text-gold-foreground text-[10px] dark:text-gold"
                         }
                       >
                         {rec.recommendationType}

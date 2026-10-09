@@ -111,7 +111,7 @@ def canonicalize(value: str, reference: Dict[str, List[str]]) -> Optional[str]:
     # 3. token-set containment for multi-word keys (order-preserving:
     # key tokens must appear in the value as an ordered subsequence, so
     # "safety food protocols" does not falsely complete "safety protocols")
-    value_tokens = normalized.split()
+    value_tokens = re.sub(r"[(),/|&.:;\"'\-_–—\[\]{}]", " ", normalized).split()
     if len(value_tokens) > 1:
         best_key = None
         best_len = 0

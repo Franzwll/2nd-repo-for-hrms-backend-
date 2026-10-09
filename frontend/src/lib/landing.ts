@@ -143,7 +143,9 @@ export function useLandingJobs(): { jobs: LandingJob[]; loading: boolean } {
   useEffect(() => {
     let cancelled = false;
     landingApi
-      .jobs({ per_page: 100 })
+      // Fetch enough rows that the landing count matches the Recruitment
+      // postings count (backend paginates; 100 truncated large vacancy lists).
+      .jobs({ per_page: 500 })
       .then((res) => {
         if (!cancelled) setJobs(res.data.map(mapJob));
       })

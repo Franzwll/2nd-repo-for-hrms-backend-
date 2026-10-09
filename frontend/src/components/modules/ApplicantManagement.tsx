@@ -171,6 +171,7 @@ import {
 import { jobs } from "@/data/jobs";
 import { useNavigate } from "@tanstack/react-router";
 import { cn, downloadTextFile } from "@/lib/utils";
+import { useHighlightId, highlightRowClass } from "@/hooks/useHighlight";
 import { getUser } from "@/lib/auth";
 import { SortHead, useSort } from "@/components/portal/sortable";
 import {
@@ -6828,6 +6829,7 @@ const TOP_FIVE_VISIBLE_CARDS = 3;
 
 export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) {
   const navigate = useNavigate();
+  const { id: highlightId, tab: highlightTab } = useHighlightId();
   const [rows, setRows] = useState<Applicant[]>([]);
 
   /**
@@ -6996,6 +6998,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   } | null>(null);
 
   const [tab, setTab] = useState("ranking");
+  // Notification deep-link: ?highlight=<id>&tab=scheduling opens the right tab.
+  useEffect(() => {
+    if (highlightTab === "scheduling" || highlightTab === "ranking") {
+      setTab(highlightTab);
+    }
+  }, [highlightTab]);
   const [positionFilter, setPositionFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [stageFilter, setStageFilter] = useState<string>("all");
@@ -10720,7 +10728,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </TableHeader>
                         <TableBody>
                           {applicantPage.pageItems.map((a) => (
-                            <TableRow key={a.id}>
+                            <TableRow
+                              key={a.id}
+                              data-highlight-id={a.dbId ?? a.id}
+                              className={highlightRowClass(
+                                !!highlightId &&
+                                  (String(a.dbId ?? "") === highlightId || a.id === highlightId),
+                              )}
+                            >
                               <TableCell className="max-w-0">
                                 <div className="flex min-w-0 items-center gap-2">
                                   <Avatar className="h-7 w-7 shrink-0">
@@ -13498,7 +13513,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 showVerifiedBadge;
                               const hasMore = hasStageActions || hasViews;
                               return (
-                                <TableRow key={a.id} className="hover:bg-muted/30">
+                                <TableRow
+                                  key={a.id}
+                                  data-highlight-id={a.dbId ?? a.id}
+                                  className={`hover:bg-muted/30 ${highlightRowClass(
+                                    !!highlightId &&
+                                      (String(a.dbId ?? "") === highlightId || a.id === highlightId),
+                                  )}`}
+                                >
                                   <TableCell className="max-w-0">
                                     <div className="flex min-w-0 items-start gap-2">
                                       <Avatar className="h-7 w-7 shrink-0">

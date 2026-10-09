@@ -15,6 +15,7 @@ import {
   Lock,
   Pencil,
   Plus,
+  Printer,
   RefreshCw,
   Save,
   Search,
@@ -66,12 +67,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
+<<<<<<< HEAD
+=======
+import { ListSkeleton } from "@/components/ui/loading-skeletons";
+>>>>>>> origin/ferdy
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { usePagination } from "@/hooks/usePagination";
@@ -100,6 +106,7 @@ import {
 import {
   describeExport,
   exportReport,
+  printReport,
   type ReportData,
   type ReportFormat,
 } from "@/lib/report-export";
@@ -151,10 +158,13 @@ function DocumentPreviewModal({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+<<<<<<< HEAD
   // Never render without a document — the panel mounts this modal for every
   // item, including ones with no upload yet (fileUrl would be undefined and
   // crash the extension check below).
   if (!open || !fileUrl) return null;
+=======
+>>>>>>> origin/ferdy
   const ext = (fileName || fileUrl).split(".").pop()?.toLowerCase() ?? "";
   const kind: "image" | "pdf" | "other" = ["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(ext)
     ? "image"
@@ -720,6 +730,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     | { kind: "requested"; id: string; label: string }
     | null
   >(null);
+<<<<<<< HEAD
 
   const confirmDeleteNow = () => {
     if (!confirmDelete) return;
@@ -793,48 +804,29 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
         },
       ],
     };
+=======
+
+  const confirmDeleteNow = () => {
+    if (!confirmDelete) return;
+    if (confirmDelete.kind === "template") {
+      deleteMasterChecklist(confirmDelete.id);
+    } else if (confirmDelete.kind === "item") {
+      setEditChecklistRichItems((prev) => prev.filter((_, i) => i !== confirmDelete.index));
+      toast.success("Checklist item removed");
+    } else {
+      deleteRequestedItem(confirmDelete.id);
+    }
+    setConfirmDelete(null);
+>>>>>>> origin/ferdy
   };
 
-  const buildProgressReport = (): ReportData => {
-    const pool = hires.filter((h) => h.stage !== "Regular");
-    const rowsData = pool.map((h) => ({
-      name: h.name,
-      position: h.position,
-      department: h.department,
-      stage: h.stage,
-      total: h.checklist.length,
-      verified: h.checklist.filter((c) => c.done).length,
-      pending: pendingCountOf(h),
-      progress: `${progress(h)}%`,
-    }));
-    return {
-      title: "Onboarding Checklist Progress Report",
-      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · Predefined report: Checklist Progress`,
-      columns: [
-        { header: "New Hire", key: "name", width: "18%" },
-        { header: "Position", key: "position", width: "18%" },
-        { header: "Department", key: "department", width: "16%" },
-        { header: "Stage", key: "stage", width: "14%" },
-        { header: "Total Items", key: "total", width: "9%" },
-        { header: "Verified", key: "verified", width: "9%" },
-        { header: "Pending", key: "pending", width: "9%" },
-        { header: "Progress", key: "progress", width: "9%" },
-      ],
-      rows: rowsData,
-      summary: [
-        { label: "Total Hires", value: pool.length },
-        {
-          label: "Fully Verified",
-          value: pool.filter((h) => progress(h) === 100).length,
-        },
-        {
-          label: "In Progress",
-          value: pool.filter((h) => progress(h) < 100).length,
-        },
-      ],
-    };
-  };
+  /** Password-protected export flow — same security logic as Applicant,
+   *  Recruitment and Core HCM: every file is sealed in an AES-256 ZIP. */
+  const [onbCsvOpen, setOnbCsvOpen] = useState(false);
+  const [onbCsvBusy, setOnbCsvBusy] = useState(false);
+  const [onbCsvPending, setOnbCsvPending] = useState<ReportFormat | null>(null);
 
+<<<<<<< HEAD
   const buildOverdueReport = (): ReportData => {
     const pool = hires.filter((h) => h.stage !== "Regular");
     const flagged = pool
@@ -900,6 +892,40 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     if (id === "progress") return buildProgressReport();
     if (id === "overdue") return buildOverdueReport();
     return buildSummaryReport();
+=======
+  const handleExportOnboardingReport = (format: ReportFormat) => {
+    if (buildOnboardingReportData().rows.length === 0) {
+      toast.error("No hires to export for the current filters.");
+      return;
+    }
+    setOnbCsvPending(format);
+    setOnbCsvOpen(true);
+  };
+
+  const confirmOnboardingExport = async (password: string) => {
+    if (!onbCsvPending) return;
+    const format = onbCsvPending;
+    const data = buildOnboardingReportData();
+    if (data.rows.length === 0) {
+      toast.error("No hires to export for the current filters.");
+      return;
+    }
+    setOnbCsvBusy(true);
+    try {
+      await exportReport(data, format, { password });
+      const { zipName } = describeExport(data, format);
+      toast.success(
+        `${data.title} exported as password-protected ${format.toUpperCase()} (${zipName}).`,
+      );
+      setOnbCsvOpen(false);
+      setOnbCsvPending(null);
+    } catch (e) {
+      console.error("Protected export failed:", e);
+      toast.error(e instanceof Error ? e.message : "Protected export failed.");
+    } finally {
+      setOnbCsvBusy(false);
+    }
+>>>>>>> origin/ferdy
   };
 
   /**
@@ -983,6 +1009,71 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const hirePage = usePagination(visible);
   const reqPage = usePagination(requestedItems, 6);
   const checklistPage = usePagination(masterChecklists, 3);
+
+  /**
+   * Org-chart–aligned report payload: Position immediately followed by
+   * Department, rows ordered Department → Position → Name (same hierarchy
+   * as the Organizational Chart), departments resolved against the Core HCM
+   * master. Exports the currently filtered pipeline view (department filter
+   * + search + stage), not the unfiltered store.
+   */
+  const buildOnboardingReportData = (): ReportData => {
+    const deptOfHire = (h: NewHire) =>
+      knownPositions.find((p) => p.title === h.position)?.department ?? h.department;
+    const rowsData = [...filtered]
+      .map((h) => ({
+        name: h.name,
+        position: h.position,
+        department: deptOfHire(h),
+        stage: h.stage,
+        daysOfWork: daysOfWork(h.startDate),
+        progress: `${progress(h)}%`,
+        startDate: h.startDate,
+      }))
+      .sort(
+        (a, b) =>
+          a.department.localeCompare(b.department) ||
+          a.position.localeCompare(b.position) ||
+          a.name.localeCompare(b.name),
+      );
+    const scope = awaitingOnly
+      ? "Awaiting evaluation"
+      : showAllStages
+        ? "All stages"
+        : stage;
+    return {
+      title: "New Hire Onboarding Report",
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · Department: ${deptFilter} | Stage: ${scope}`,
+      columns: [
+        { header: "New Hire", key: "name", width: "17%" },
+        { header: "Position", key: "position", width: "17%" },
+        { header: "Department", key: "department", width: "15%" },
+        { header: "Stage", key: "stage", width: "13%" },
+        { header: "Days of Work", key: "daysOfWork", width: "11%" },
+        { header: "Progress", key: "progress", width: "11%" },
+        { header: "Start Date", key: "startDate", width: "16%" },
+      ],
+      rows: rowsData,
+      // Same security logic as every other module: hire rows carry PII.
+      sensitive: true,
+      summary: [
+        { label: "Total Hires", value: hires.length },
+        {
+          label: "Pre-onboarding",
+          value: hires.filter((h) => h.stage === "Pre-onboarding").length,
+        },
+        {
+          label: "Probationary",
+          value: hires.filter((h) => h.stage === "Probationary").length,
+        },
+        {
+          label: "Departments Covered",
+          value: new Set(rowsData.map((r) => r.department)).size,
+        },
+        { label: "Rows in Report", value: rowsData.length },
+      ],
+    };
+  };
 
   const selectStage = (s: Stage) => {
     setStage(s);
@@ -1107,8 +1198,10 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   return (
     <div>
       <PageHeader
+        eyebrow={role === "superadmin" ? "Super Admin · Recruitment" : "Admin · Recruitment"}
         title="New Hire Onboarding"
         actions={
+<<<<<<< HEAD
           <ReportMenu
             recordCount={hires.length}
             report={() => buildSummaryReport()}
@@ -1118,6 +1211,83 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
 
       {/* Header exports the current Onboarding Pipeline view (same flat Export org chart menu). */}
 
+=======
+          <>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Download className="h-4 w-4" /> Generate Report
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuItem onClick={() => handleExportOnboardingReport("pdf")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportOnboardingReport("docx")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportOnboardingReport("excel")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportOnboardingReport("csv")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                </DropdownMenuItem>
+                <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+                  Every file is sealed in a password-protected ZIP (AES-256). You will be asked for
+                  a file password.
+                </p>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => {
+                    const data = buildOnboardingReportData();
+                    printReport(data);
+                    toast.success(`${data.title} sent to printer.`);
+                  }}
+                >
+                  <Printer className="mr-2 h-4 w-4" /> Print…
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <SecureExportDialog
+              open={onbCsvOpen}
+              onOpenChange={(o) => {
+                if (!onbCsvBusy) {
+                  setOnbCsvOpen(o);
+                  if (!o) setOnbCsvPending(null);
+                }
+              }}
+              reportTitle="New Hire Onboarding Report"
+              formatLabel={
+                !onbCsvPending
+                  ? ""
+                  : onbCsvPending === "pdf"
+                    ? "PDF"
+                    : onbCsvPending === "docx"
+                      ? "DOCX"
+                      : onbCsvPending === "excel"
+                        ? "Excel"
+                        : "CSV"
+              }
+              busy={onbCsvBusy}
+              onConfirm={confirmOnboardingExport}
+            />
+          </>
+        }
+      />
+
+>>>>>>> origin/ferdy
       <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Total New Hires"
@@ -1155,11 +1325,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
-        <TabsList className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
-          <TabsTrigger className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="pipeline">
+        <TabsList className="flex h-auto flex-wrap justify-start">
+          <TabsTrigger className="flex items-center gap-1.5" value="pipeline">
             <ClipboardList className="h-3.5 w-3.5" /> Onboarding Pipeline
           </TabsTrigger>
-          <TabsTrigger className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="checklists">
+          <TabsTrigger className="flex items-center gap-1.5" value="checklists">
             <Send className="h-3.5 w-3.5" /> Requested Checklists
           </TabsTrigger>
         </TabsList>
@@ -1218,6 +1388,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                         <span className="mt-1 max-w-[220px] text-[0.7rem] text-muted-foreground">
                           {stageBlurb[s]}
                         </span>
+                        <Badge variant="secondary" className="mt-2">
+                          {onboardingHires.filter((h) => h.stage === s).length} hires
+                        </Badge>
                       </div>
                     );
                   })}
@@ -1356,7 +1529,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                       className={cn(
                                         "text-xs",
                                         awaiting
-                                          ? "bg-gold/15 text-gold-foreground"
+                                          ? "bg-gold/15 text-gold-foreground dark:text-gold"
                                           : complete
                                             ? "bg-success/15 text-success"
                                             : "bg-primary/10 text-primary",
@@ -1387,7 +1560,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                           "font-medium",
                                           isProbationary &&
                                             remaining <= 0 &&
-                                            "text-gold-foreground",
+                                            "text-gold-foreground dark:text-gold",
                                         )}
                                       >
                                         {worked} {worked === 1 ? "day" : "days"}
@@ -1399,7 +1572,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                         </span>
                                       )}
                                       {isProbationary && remaining <= 0 && (
-                                        <span className="block text-[0.65rem] font-medium text-gold-foreground">
+                                        <span className="block text-[0.65rem] font-medium text-gold-foreground dark:text-gold">
                                           Probation cap reached — regularization due
                                         </span>
                                       )}
@@ -1417,7 +1590,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   )}
                                 />
                                 {awaiting ? (
-                                  <p className="mt-1 flex items-center gap-1.5 text-[0.7rem] text-gold-foreground">
+                                  <p className="mt-1 flex items-center gap-1.5 text-[0.7rem] text-gold-foreground dark:text-gold">
                                     <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
                                     Waiting for evaluation
                                   </p>
@@ -1438,7 +1611,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   variant="outline"
                                   className={cn(
                                     awaiting
-                                      ? "border-gold/40 bg-gold/15 text-gold-foreground"
+                                      ? "border-gold/40 bg-gold/15 text-gold-foreground dark:text-gold"
                                       : complete && "border-success/30 bg-success/15 text-success",
                                   )}
                                 >
@@ -1504,6 +1677,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                       <ClipboardCheck className="h-5 w-5 text-primary" /> Checklist Builder
                     </h2>
                   </div>
+                  <Badge variant="secondary">
+                    {hireStore.combinedProbationaryItems().length} combined items
+                  </Badge>
                 </div>
 
                 <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4">
@@ -1741,6 +1917,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <p className="font-medium">{c.title}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {c.items.length} item{c.items.length === 1 ? "" : "s"}
+                                </p>
                                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                                   <Badge variant="outline" className="text-[0.65rem]">
                                     {c.phase ?? "Probationary"}
@@ -2028,6 +2207,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                       <Send className="h-5 w-5 text-primary" /> Requested Checklists
                     </h2>
                   </div>
+                  <Badge variant="secondary">{requestedItems.length} requested</Badge>
                 </div>
 
                 <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_13rem_auto]">
@@ -2137,7 +2317,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   className={cn(
                                     "text-xs",
                                     r.position === "all" &&
-                                      "border-gold/40 bg-gold/10 text-gold-foreground",
+                                      "border-gold/40 bg-gold/10 text-gold-foreground dark:text-gold",
                                   )}
                                 >
                                   {r.position === "all" ? "All positions" : r.position}
@@ -2989,10 +3169,83 @@ export function EmployeeOnboarding() {
             <Button variant="outline" className="gap-2" onClick={() => loadOnboarding()} disabled={loading}>
               <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /> Refresh
             </Button>
+<<<<<<< HEAD
             <ReportMenu
               label="Generate Report"
               recordCount={items.length}
               report={() => buildEmployeeReportData() ?? { title: "My Onboarding Checklist", columns: [], rows: [] }}
+=======
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Download className="h-4 w-4" /> Generate Report
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuItem onClick={() => handleExportEmployeeReport("pdf")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportEmployeeReport("docx")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportEmployeeReport("excel")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportEmployeeReport("csv")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                </DropdownMenuItem>
+                <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+                  Every file is sealed in a password-protected ZIP (AES-256). You will be asked for
+                  a file password.
+                </p>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => {
+                    const data = buildEmployeeReportData();
+                    if (!data) return;
+                    printReport(data);
+                    toast.success(`${data.title} sent to printer.`);
+                  }}
+                >
+                  <Printer className="mr-2 h-4 w-4" /> Print…
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <SecureExportDialog
+              open={empCsvOpen}
+              onOpenChange={(o) => {
+                if (!empCsvBusy) {
+                  setEmpCsvOpen(o);
+                  if (!o) setEmpCsvPending(null);
+                }
+              }}
+              reportTitle="My Onboarding Checklist"
+              formatLabel={
+                !empCsvPending
+                  ? ""
+                  : empCsvPending === "pdf"
+                    ? "PDF"
+                    : empCsvPending === "docx"
+                      ? "DOCX"
+                      : empCsvPending === "excel"
+                        ? "Excel"
+                        : "CSV"
+              }
+              busy={empCsvBusy}
+              onConfirm={confirmEmployeeCsv}
+>>>>>>> origin/ferdy
             />
           </div>
         }

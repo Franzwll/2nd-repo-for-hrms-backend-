@@ -258,6 +258,72 @@ class TestSupportingDocumentVerification(unittest.TestCase):
         self.assertTrue(entity_extraction.is_date_only_fragment("Conducted on March 2019"))
         self.assertFalse(entity_extraction.is_date_only_fragment("TESDA Cookery NC II"))
 
+    # 15. A paper claim without degree vocabulary ("TESDA") carries nothing
+    #     comparable — it must report UNABLE, never a false "Different".
+    def test_degree_claim_without_degree_vocab_is_unable(self):
+        self.assertFalse(dv._has_degree_vocab("TESDA"))
+        self.assertFalse(dv._has_degree_vocab("Technical Education and Skills Development Authority"))
+        self.assertTrue(dv._has_degree_vocab("Bachelor of Science in Hospitality Management"))
+        check = dv._best_degree_check(
+            ["Bachelor of Science in Hospitality Management"], "TESDA", None
+        )
+        self.assertEqual(check["result"], "UNABLE_TO_EXTRACT")
+        self.assertEqual(check["document_value"], "TESDA")
+
+    # 16. A resume entry naming only an institution is not a degree claim.
+    def test_institution_only_resume_entry_is_unable(self):
+        check = dv._best_degree_check(
+            ["Centro Escolar University (CEU) - Mendiola, Manila"],
+            "Bachelor of Science in Hospitality Management",
+            None,
+        )
+        self.assertEqual(check["result"], "UNABLE_TO_EXTRACT")
+
+    # 17. A generic service phrase is extraction noise, never an employer.
+    def test_generic_company_claim_is_unable(self):
+        self.assertTrue(dv._is_generic_company("beverage service"))
+        self.assertTrue(dv._is_generic_company("Food Safety Codes"))
+        self.assertFalse(dv._is_generic_company("The Peninsula Manila"))
+        text = (
+            "This is to certify that Juan Dela Cruz was employed by "
+            "Beverage Service as Bartender from January 2021 to December 2022."
+        )
+        result = dv.verify_supporting_document(text, "COE", RESUME_PROFILE)
+        self.assertEqual(result["checks"]["company"]["result"], "UNABLE_TO_EXTRACT")
+
+    # 18. Each COE comparison records WHICH resume entry was measured, so a
+    #     "Different" verdict traces back to the exact compared stint.
+    def test_coe_reports_compared_resume_entry(self):
+        profile = {
+            **RESUME_PROFILE,
+            "work_experience": [
+                {
+                    "job_title": "Lead Bartender & Mixologist",
+                    "company": "The Peninsula Manila",
+                    "location": "Makati",
+                    "period": "September 2022 - Present",
+                    "recognized_role": True,
+                },
+                {
+                    "job_title": "Front Desk Receptionist",
+                    "company": "ABC Hotel",
+                    "location": "Manila",
+                    "period": "Jan 2021 - Dec 2022",
+                    "recognized_role": True,
+                },
+            ],
+        }
+        result = dv.verify_supporting_document(COE_MATCH_TEXT, "COE", profile)
+        self.assertEqual(result["verification_status"], "VERIFIED")
+        compared = result["checks"]["company"].get("compared_resume_entry")
+        self.assertIsNotNone(compared)
+        self.assertEqual(compared["total_entries"], 2)
+        # The ABC Hotel paper must compare against the ABC Hotel stint (index 1).
+        self.assertEqual(compared["entry_index"], 1)
+        self.assertEqual(compared["company"], "ABC Hotel")
+        self.assertIn("compared_resume_entry", result["checks"]["position"])
+        self.assertIn("compared_resume_entry", result["checks"]["start_date"])
+
 
 if __name__ == "__main__":
     unittest.main()

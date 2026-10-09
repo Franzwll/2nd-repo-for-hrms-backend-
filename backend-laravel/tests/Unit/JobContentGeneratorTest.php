@@ -15,7 +15,7 @@ use Tests\TestCase;
 class JobContentGeneratorTest extends TestCase
 {
     /** AI env vars read by env() in the service, saved so tearDown can restore them. */
-    private const AI_ENV_KEYS = ['GEMINI_API_KEY', 'GEMINI_FALLBACK_API_KEY', 'OPENROUTER_API_KEY'];
+    private const AI_ENV_KEYS = ['JOB_GROQ_API_KEY', 'JOB_GROQ_MODEL', 'JOB_OPENROUTER_API_KEY', 'JOB_OPENROUTER_MODEL', 'GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_FALLBACK_API_KEY', 'GEMINI_FALLBACK_MODEL', 'OPENROUTER_API_KEY', 'OPENROUTER_MODEL'];
 
     /** @var array<string, array{0:?string,1:?string}> */
     private array $savedAiEnv = [];
@@ -35,11 +35,17 @@ class JobContentGeneratorTest extends TestCase
         }
 
         config([
+            'services.job_groq.key' => 'test-job-groq-key',
+            'services.job_groq.model' => 'openai/gpt-oss-20b',
+            'services.job_openrouter.key' => null,
+            'services.job_openrouter.model' => 'nvidia/nemotron-3-super-120b-a12b:free',
             'services.gemini.key' => 'test-gemini-key',
-            'services.gemini.model' => 'gemini-3.6-flash',
+            'services.gemini.model' => 'gemini-3.5-flash-lite',
             'services.gemini.fallback_key' => null,
             'services.gemini.fallback_model' => null,
             'services.openrouter.key' => null,
+            'services.openrouter.model' => 'nvidia/nemotron-3-super-120b-a12b:free',
+            'services.chat_groq.key' => null,
             'services.job_ai.daily_limit' => 0,
         ]);
     }
@@ -68,21 +74,50 @@ class JobContentGeneratorTest extends TestCase
         $generator = new JobContentGenerator();
 
         $this->assertTrue($generator->isConfigured());
-        $this->assertSame('gemini-3.6-flash', $generator->modelName());
+        $this->assertSame('openai/gpt-oss-20b', $generator->modelName());
         $this->assertTrue(method_exists($generator, 'usageSnapshot'));
     }
 
     public function test_it_reports_not_configured_without_any_key(): void
     {
         config([
+            'services.job_groq.key' => null,
+            'services.job_openrouter.key' => null,
             'services.gemini.key' => null,
+            'services.gemini.fallback_key' => null,
             'services.openrouter.key' => null,
+            'services.chat_groq.key' => null,
         ]);
+
+        // env() fallback must also be blank (the constructor reads env directly).
+        foreach (['JOB_GROQ_API_KEY', 'JOB_OPENROUTER_API_KEY', 'GEMINI_API_KEY', 'GEMINI_FALLBACK_API_KEY', 'OPENROUTER_API_KEY'] as $k) {
+            $_ENV[$k] = '';
+            $_SERVER[$k] = '';
+            putenv($k . '=');
+        }
 
         $generator = new JobContentGenerator();
 
         $this->assertFalse($generator->isConfigured());
         $this->assertFalse($generator->usageSnapshot()['configured']);
+    }
+
+    public function test_it_orders_groq_before_openrouter_before_gemini(): void
+    {
+        config([
+            'services.job_groq.key' => 'job-groq-key',
+            'services.job_groq.model' => 'openai/gpt-oss-20b',
+            'services.job_openrouter.key' => 'job-openrouter-key',
+            'services.job_openrouter.model' => 'nvidia/nemotron-3-super-120b-a12b:free',
+            'services.gemini.key' => 'shared-gemini-key',
+            'services.gemini.model' => 'gemini-3.5-flash-lite',
+        ]);
+
+        $generator = new JobContentGenerator();
+        $kinds = array_column((new \ReflectionMethod($generator, 'providers'))->invoke($generator), 'kind');
+
+        $this->assertSame(['groq', 'openrouter', 'gemini'], array_slice($kinds, 0, 3));
+        $this->assertSame('openai/gpt-oss-20b', $generator->modelName());
     }
 
     public function test_it_classifies_a_free_tier_daily_quota_429(): void
@@ -120,7 +155,8 @@ class JobContentGeneratorTest extends TestCase
         $failure = $this->classify(401, '{"error":{"code":401,"message":"API key not valid. Please pass a valid API key."}}');
 
         $this->assertSame('auth', $failure['code']);
-        $this->assertStringContainsString('GEMINI_API_KEY', $failure['message']);
+        // First provider is Groq, so its key hint is reported.
+        $this->assertStringContainsString('JOB_GROQ_API_KEY', $failure['message']);
         $this->assertNotContains($failure['code'], JobContentGenerator::LIMIT_CODES);
     }
 
@@ -128,12 +164,19 @@ class JobContentGeneratorTest extends TestCase
     {
         $generator = new JobContentGenerator();
 
-        $this->block($generator, [
-            'message' => 'Google Gemini free-tier usage is used up for today.',
+        $failure = [
+            'message' => 'Groq free-tier usage is used up for today.',
             'code' => 'quota_day',
             'retry_after_seconds' => 600,
             'resets_at' => null,
-        ]);
+        ];
+
+        // Block every provider so the snapshot reports a hard block
+        // (blocked_* is only set when NO fallback provider is open).
+        foreach ((new \ReflectionMethod($generator, 'providers'))->invoke($generator) as $provider) {
+            $block = new \ReflectionMethod($generator, 'blockProvider');
+            $block->invoke($generator, $provider, $failure);
+        }
 
         $snapshot = $generator->usageSnapshot();
 
