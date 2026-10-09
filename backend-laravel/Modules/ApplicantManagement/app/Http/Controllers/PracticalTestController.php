@@ -47,6 +47,12 @@ class PracticalTestController extends Controller
     /* require a practical exam (job_posts.requires_practical).          */
     public function store(Request $request, int $applicant): JsonResponse
     {
+        if (! \Modules\ApplicantManagement\Services\AssessmentConfig::practicalTestEnabled()) {
+            return response()->json([
+                'message' => 'Practical tests are disabled in Core HCM settings. Enable them in Core HCM to record practical assessments.',
+            ], 422);
+        }
+
         $model = Applicant::with('jobPost')->findOrFail($applicant);
 
         // Practical applies when the job post is flagged, or when the position is

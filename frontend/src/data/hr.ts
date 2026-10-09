@@ -80,6 +80,9 @@ export type Position = {
   salaryGradeId?: number | null;
   salaryGradeMin?: number | null;
   salaryGradeMax?: number | null;
+  /** Core HCM flags driving Applicant Management assessment gates. */
+  requires_assessment?: boolean;
+  requires_practical?: boolean;
 };
 
 export const positions: Position[] = [

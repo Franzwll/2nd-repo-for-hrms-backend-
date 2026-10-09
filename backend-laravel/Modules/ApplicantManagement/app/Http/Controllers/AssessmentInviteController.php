@@ -37,7 +37,21 @@ class AssessmentInviteController extends Controller
      * interview assessment must be recorded and marked Passed first. */
     public function store(Request $request, int $applicant): JsonResponse
     {
+        if (! \Modules\ApplicantManagement\Services\AssessmentConfig::assessmentTestEnabled()) {
+            return response()->json([
+                'message' => 'Assessment tests are disabled in Core HCM settings. Enable them in Core HCM to generate test links.',
+            ], 422);
+        }
+
         $model = Applicant::with('jobPost')->findOrFail($applicant);
+
+        // Position gate: only candidates for positions requiring assessment test
+        // may take the assessment test.
+        if (! \Modules\ApplicantManagement\Services\AssessmentRequirement::required($model->jobPost, null, $model->jobPost?->position)) {
+            return response()->json([
+                'message' => 'This position does not require an assessment test. Enable "Requires Assessment" in the job post, position, or configure the position in AssessmentRequirement.',
+            ], 422);
+        }
 
         $assessment = $model->assessment()->first();
         if (! $assessment || $assessment->result !== 'Passed') {

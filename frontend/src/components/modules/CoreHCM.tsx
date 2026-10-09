@@ -5,9 +5,11 @@ import {
   Briefcase,
   Building2,
   CheckCircle2,
+  ClipboardList,
   DollarSign,
   Eye,
   GitBranch,
+  Hammer,
   History,
   Info,
   Pencil,
@@ -72,6 +74,7 @@ import { TablePagination } from "@/components/ui/table-pagination";
 import { SortHead, useSort } from "@/components/portal/sortable";
 import { usePagination } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   type Department,
   type OrgNode,
@@ -483,6 +486,8 @@ function toUiPosition(p: ApiPosition, sGrades: ApiSalaryGrade[]): Position {
     salaryBand: sg
       ? `${sg.code} (${formatMoney(Number(sg.min_salary))} – ${formatMoney(Number(sg.max_salary))})`
       : p.salary_grade || "",
+    requires_assessment: (p as any).requires_assessment ?? false,
+    requires_practical: (p as any).requires_practical ?? false,
   };
 }
 
@@ -3658,6 +3663,8 @@ function DepartmentAndPositionManager({
   const [posTarget, setPosTarget] = useState("5");
   const [posFilled, setPosFilled] = useState("3");
   const [posSGrade, setPosSGrade] = useState("SG-05");
+  const [posRequiresAssessment, setPosRequiresAssessment] = useState(false);
+  const [posRequiresPractical, setPosRequiresPractical] = useState(false);
 
   const [pendingConfirmSave, setPendingConfirmSave] = useState<{ type: "dept" | "pos" } | null>(
     null,
@@ -3769,6 +3776,8 @@ function DepartmentAndPositionManager({
   const [origPosLevel, setOrigPosLevel] = useState<Position["level"]>("Rank & File");
   const [origPosTarget, setOrigPosTarget] = useState("");
   const [origPosSGrade, setOrigPosSGrade] = useState("");
+  const [origPosRequiresAssessment, setOrigPosRequiresAssessment] = useState(false);
+  const [origPosRequiresPractical, setOrigPosRequiresPractical] = useState(false);
 
   const deptHasChanges =
     deptCode !== origDeptCode || deptName !== origDeptName || deptHead !== origDeptHead;
@@ -3777,7 +3786,9 @@ function DepartmentAndPositionManager({
     posDept !== origPosDept ||
     posLevel !== origPosLevel ||
     posTarget !== origPosTarget ||
-    posSGrade !== origPosSGrade;
+    posSGrade !== origPosSGrade ||
+    posRequiresAssessment !== origPosRequiresAssessment ||
+    posRequiresPractical !== origPosRequiresPractical;
 
   const getDerivedStaffCount = (deptName: string) => {
     return posList
@@ -3872,6 +3883,8 @@ function DepartmentAndPositionManager({
           salary_grade_id: sgDbId,
           level: posLevel,
           headcount: Number(posTarget) || 1,
+          requires_assessment: posRequiresAssessment,
+          requires_practical: posRequiresPractical,
         });
         toast.success(`Position ${posTitle} added to ${posDept}.`);
       } else if (editingPos) {
@@ -3889,6 +3902,8 @@ function DepartmentAndPositionManager({
           salary_grade_id: sgDbId,
           level: posLevel,
           headcount: Number(posTarget),
+          requires_assessment: posRequiresAssessment,
+          requires_practical: posRequiresPractical,
         });
         toast.success(`Position ${posTitle} updated.`);
       }
@@ -4145,6 +4160,8 @@ function DepartmentAndPositionManager({
                     setPosTarget("5");
                     setPosFilled("3");
                     setPosSGrade("SG-05");
+                    setPosRequiresAssessment(false);
+                    setPosRequiresPractical(false);
                     setIsNewPos(true);
                     setEditingPos({
                       id: "",
@@ -4229,11 +4246,15 @@ function DepartmentAndPositionManager({
                               setPosTarget(String(p.headcount));
                               setPosFilled(String(p.filled));
                               setPosSGrade(p.salaryBand.split(" ")[0] || "SG-05");
+                              setPosRequiresAssessment(p.requires_assessment ?? false);
+                              setPosRequiresPractical(p.requires_practical ?? false);
                               setOrigPosTitle(p.title);
                               setOrigPosDept(p.department);
                               setOrigPosLevel(p.level);
                               setOrigPosTarget(String(p.headcount));
                               setOrigPosSGrade(p.salaryBand.split(" ")[0] || "SG-05");
+                              setOrigPosRequiresAssessment(p.requires_assessment ?? false);
+                              setOrigPosRequiresPractical(p.requires_practical ?? false);
                               setIsNewPos(false);
                             }}
                           >
@@ -4506,6 +4527,36 @@ function DepartmentAndPositionManager({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Assessment Test & Practical Test toggles */}
+            <div className="space-y-3 pt-2 border-t border-border/50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4 text-primary" />
+                  <div>
+                    <p className="text-xs font-medium">Assessment Test</p>
+                    <p className="text-[10px] text-muted-foreground">Written test + applicant self-service links in Applicant Management.</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={posRequiresAssessment}
+                  onCheckedChange={(v) => setPosRequiresAssessment(v)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Hammer className="h-4 w-4 text-primary" />
+                  <div>
+                    <p className="text-xs font-medium">Practical Test</p>
+                    <p className="text-[10px] text-muted-foreground">Hands-on exam for designated positions. Per-job flags still apply when enabled.</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={posRequiresPractical}
+                  onCheckedChange={(v) => setPosRequiresPractical(v)}
+                />
+              </div>
             </div>
           </div>
 

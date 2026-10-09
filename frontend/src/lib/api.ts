@@ -587,6 +587,11 @@ export const applicantsApi = {
 };
 
 export const assessmentsApi = {
+  /** Global Assessment Test / Practical Test switches owned by Core HCM. */
+  getConfig: () =>
+    request<{ data: { assessment_test_enabled: boolean; practical_test_enabled: boolean } }>(
+      `/assessments/config`,
+    ),
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
     return request<{ data: ApiAssessment[]; meta: any }>(`/assessments${qs ? `?${qs}` : ""}`);
@@ -1173,6 +1178,8 @@ export interface ApiPosition {
   level: string;
   headcount: number;
   filled_count: number;
+  requires_assessment?: boolean;
+  requires_practical?: boolean;
 }
 
 /** Core HCM lookups — departments & positions live in the database. */
@@ -1781,6 +1788,8 @@ export interface ApiPosition {
   headcount: number;
   filled_count: number;
   vacancies?: number;
+  requires_assessment?: boolean;
+  requires_practical?: boolean;
 }
 
 export interface ApiSalaryGrade {
