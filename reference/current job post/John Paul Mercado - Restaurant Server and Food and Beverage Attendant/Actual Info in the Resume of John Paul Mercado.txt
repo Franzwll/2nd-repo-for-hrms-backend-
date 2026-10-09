@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of John Paul Mercado.txt
+TARGET CANDIDATE: John Paul Mercado
+TARGET ROLE: Restaurant Server / Food & Beverage Attendant
+EXTRACTION MODE: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-10-05
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             John Paul Mercado
+Target Position:       Restaurant Server / Food & Beverage Attendant
+Contact Phone Number:  +63 919 283 5519
+Email Address:         johnpaul.mercado.server@outlook.ph
+Residential Address:   93 Evangelista St., Bangkal, 1233 Makati City, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/johnpaul-mercado-server
+
+[PROFESSIONAL SUMMARY]
+"Courteous, energetic, and detail-oriented Restaurant Server and Food & Beverage Attendant with 3+ years of front-of-house dining experience in renowned Makati hotel restaurants. Proven capability in table greeting, order precision, tray service, POS billing, and handling guest feedback with warm Filipino hospitality. Known for impeccable grooming, fast table turnover, and proactive beverage recommendations."
+
+[CORE COMPETENCIES & SKILLS]
+1. Sequence of Table Service (American, English & French Dining Styles)
+2. Guest Greeting, Seating Etiquette & Warm Filipino Hospitality Delivery
+3. Point of Sale (POS) Order Entry, Bill Settlement & Split-Payment Handling
+4. Menu Knowledge, Daily Special Upselling & Dietary Allergy Awareness
+5. Dining Room Table Grooming, Crumbing & Rapid Table Turnovers
+6. Food & Beverage Tray Carrying Technique & Spillage Prevention
+7. Guest Complaint De-Escalation & Timely Service Recovery Relay
+8. TESDA Food and Beverage Services NC II Standards Compliance
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Holiday Inn & Suites Makati
+   Location:     Makati City, Metro Manila
+   Job Title:    Restaurant Server / Dining Attendant
+   Duration:     July 2022 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Provide sequence of service to 70+ seated guests per shift in an all-day dining restaurant and terrace lounge.
+   • Memorized 45+ food and beverage menu items, including allergen warnings and chef specials, boosting average check size by 12%.
+   • Enter food orders swiftly into Micros POS and relay special dietary requests directly to kitchen station chefs.
+   • Coordinate table clearing and resetting within 90 seconds to minimize lobby guest waiting queues.
+
+2. Employer:     The Mini Suites Eton Tower Makati
+   Location:     Makati City, Metro Manila
+   Job Title:    Food & Beverage Attendant
+   Duration:     November 2020 – June 2022
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Greeted guests warmly, seated patrons, and provided prompt water and bread basket service.
+   • Conducted daily pre-shift silver polishing, napkin folding, and dining station condiment replenishment.
+   • Processed guest billing via credit card terminals and cash registers with zero cashier discrepancies.
+
+3. Employer:     Conti's Bakeshop & Restaurant Makati
+   Location:     Makati City, Metro Manila
+   Job Title:    Dining Server Assistant
+   Duration:     August 2019 – October 2020
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Assisted senior waitstaff with food running, table clearing, and water glass refilling.
+   • Maintained dining room floor cleanliness and sanitized tables between customer seatings.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Associate in Hospitality and Food Service Management
+Institution:    Pamantasan ng Lungsod ng Maynila (PLM) — Intramuros, Manila
+Graduation:     2019
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   TESDA National Certificate II in Food and Beverage Services (NC II)
+   Issuer:  Technical Education and Skills Development Authority (TESDA)
+   Date:    March 2021
+
+2. Title:   Food Handler Health & Sanitation Certificate
+   Issuer:  Philippine Food Safety & Hygiene Council
+   Date:    May 2022
+
+3. Title:   Hospitality Dining Etiquette and Five-Star Guest Service
+   Issuer:  Philippine Hospitality Development Center
+   Date:    September 2020
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. John_Paul_Mercado_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. John_Paul_Mercado_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. John_Paul_Mercado_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. John_Paul_Mercado_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. John_Paul_Mercado_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. John_Paul_Mercado_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. John_Paul_Mercado_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Holiday Inn & Suites Makati
+   - Recipient / Employee: John Paul Mercado
+   - Certified Position: Restaurant Server / Dining Attendant
+   - Certified Period: July 2022 – Present
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+2. John_Paul_Mercado_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: The Mini Suites Eton Tower Makati
+   - Recipient / Employee: John Paul Mercado
+   - Certified Position: Food & Beverage Attendant
+   - Certified Period: February 1, 2021 – June 15, 2022 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+3. John_Paul_Mercado_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: Pamantasan ng Lungsod ng Maynila (PLM) — Intramuros, Manila
+   - Conferred Graduate: John Paul Mercado
+   - Degree Conferred: Associate in Hospitality and Food Service Management
+   - Graduation Year: 2019
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+4. John_Paul_Mercado_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: Technical Education and Skills Development Authority (TESDA)
+   - Recipient Name: John Paul Mercado
+   - Training Title: TESDA National Certificate II in Food and Beverage Services (NC II)
+   - Award Date: March 2021
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+5. John_Paul_Mercado_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Philippine Hospitality Development Center
+   - Recipient Name: John Paul Mercado
+   - Certified Course: Basic Barista Skills and Espresso Machine Maintenance (CONTROLLED DISCREPANCY)
+   - Training Date: September 2020
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+6. John_Paul_Mercado_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Philippine Food Safety & Hygiene Council
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Food Handler Health & Sanitation Certificate
+   - Issuance Date: May 2022
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Holiday Inn & Suites Makati | Restaurant Server / Dining Attendant | July 2022 – Present
+• Evidence: John_Paul_Mercado_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: The Mini Suites Eton Tower Makati | Food & Beverage Attendant | November 2020 – June 2022
+• Evidence: John_Paul_Mercado_COE_Previous_Employer.pdf (February 1, 2021 – June 15, 2022)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from February 2021 to June 2022, whereas resume claims start date of November 2020 (3-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Associate in Hospitality and Food Service Management | Pamantasan ng Lungsod ng Maynila (PLM) — Intramuros, Manila | 2019
+• Evidence: John_Paul_Mercado_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: TESDA National Certificate II in Food and Beverage Services (NC II) | Technical Education and Skills Development Authority (TESDA) | March 2021
+• Evidence: John_Paul_Mercado_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Hospitality Dining Etiquette and Five-Star Guest Service | Philippine Hospitality Development Center | September 2020
+• Evidence: John_Paul_Mercado_Training_Certificate_Service.pdf (Basic Barista Skills and Espresso Machine Maintenance)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'Hospitality Dining Etiquette and Five-Star Guest Service', but certificate certifies 'Basic Barista Skills and Espresso Machine Maintenance'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: Food Handler Health & Sanitation Certificate | Philippine Food Safety & Hygiene Council | May 2022
+• Evidence: John_Paul_Mercado_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is severed/torn off in the uploaded scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: Conti's Bakeshop & Restaurant Makati | Dining Server Assistant | August 2019 – October 2020
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

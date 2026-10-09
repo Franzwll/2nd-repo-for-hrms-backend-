@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Eduardo Jose Montemayor.txt
+TARGET CANDIDATE: Eduardo Jose Montemayor
+TARGET ROLE: General Manager / Hotel General Manager
+EXTRACTION MODE: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-10-05
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Eduardo Jose Montemayor
+Target Position:       General Manager / Hotel General Manager
+Contact Phone Number:  +63 917 119 4820
+Email Address:         eduardo.montemayor.gm@outlook.ph
+Residential Address:   52 Ayala Avenue, Urdaneta Village, 1225 Makati City, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/eduardo-montemayor-gm
+
+[PROFESSIONAL SUMMARY]
+"Visionary, high-impact Hotel General Manager with 12+ years of comprehensive executive leadership across rooms division, food & beverage, and hotel finance in premier business hotels. Proven success in driving RevPAR growth, executing multi-million peso operational budgets, enforcing strict regulatory and Food Handler compliance, and mentoring executive committees. Renowned for championing genuine Filipino hospitality while optimizing bottom-line GOP margins."
+
+[CORE COMPETENCIES & SKILLS]
+1. Full-Scope Hotel General Management & Executive Committee Leadership
+2. Profit & Loss (P&L) Oversight, Annual CapEx/OpEx Budgeting & GOP Optimization
+3. Hotel Revenue Management, RevPAR Growth Strategy & Yield Maximization
+4. Regulatory Safety Compliance, Fire Safety Codes & Food Safety Sanitation
+5. Cross-Department Operational Alignment (Rooms, F&B, Engineering, HR)
+6. Executive Guest Escalation Resolution & VIP Stakeholder Relations
+7. Workforce Talent Development, Succession Planning & Service Culture
+8. Hotel Property Management Systems & Advanced Hospitality Analytics
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Somerset Millennium Makati
+   Location:     Makati City, Metro Manila
+   Job Title:    General Manager
+   Duration:     January 2021 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Direct full-property operations for a 147-room premier serviced residence and business hotel with 110 employees.
+   • Increased annual Gross Operating Profit (GOP) by 14.2% while achieving a 93.8% guest satisfaction rating across major OTAs.
+   • Championed hotel-wide sustainability and regulatory compliance, achieving 100% pass rates in city safety audits.
+   • Spearheaded strategic direct booking campaigns, boosting direct web bookings by 22% year-over-year.
+
+2. Employer:     City Garden Hotel Makati
+   Location:     Makati City, Metro Manila
+   Job Title:    Resident Manager / Operations Manager
+   Duration:     March 2017 – December 2020
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Managed daily operations across Front Office, Housekeeping, Engineering, and Food & Beverage divisions.
+   • Led hotel pandemic response and health certification protocols with zero safety violations.
+   • Re-engineered F&B banquet and room service offerings, reducing operational food waste by 11%.
+
+3. Employer:     The Picasso Boutique Serviced Residences
+   Location:     Makati City, Metro Manila
+   Job Title:    Director of Rooms
+   Duration:     August 2013 – February 2017
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Supervised Front Office, Concierge, Housekeeping, and Guest Relations teams across 136 designer suites.
+   • Maintained room occupancy above 84% through dynamic corporate rate negotiations with multinational embassies.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Business Administration major in Hospitality Management
+Institution:    De La Salle University (DLSU) — Taft Avenue, Manila
+Graduation:     2011
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   Certified Hotel Administrator (CHA)
+   Issuer:  American Hotel & Lodging Educational Institute (AHLEI)
+   Date:    November 2020
+
+2. Title:   Food Handler Safety Oversight & Compliance Certification
+   Issuer:  Philippine Food Safety & Hygiene Council
+   Date:    June 2021
+
+3. Title:   Advanced Hospitality Financial Management & Revenue Optimization
+   Issuer:  Asian Institute of Management / PHDC
+   Date:    April 2018
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Eduardo_Jose_Montemayor_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Eduardo_Jose_Montemayor_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Eduardo_Jose_Montemayor_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Eduardo_Jose_Montemayor_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Eduardo_Jose_Montemayor_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Eduardo_Jose_Montemayor_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Eduardo_Jose_Montemayor_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Somerset Millennium Makati
+   - Recipient / Employee: Eduardo Jose Montemayor
+   - Certified Position: General Manager
+   - Certified Period: January 2021 – Present
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+2. Eduardo_Jose_Montemayor_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: City Garden Hotel Makati
+   - Recipient / Employee: Eduardo Jose Montemayor
+   - Certified Position: Resident Manager / Operations Manager
+   - Certified Period: June 1, 2017 – December 15, 2020 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+3. Eduardo_Jose_Montemayor_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: De La Salle University (DLSU) — Taft Avenue, Manila
+   - Conferred Graduate: Eduardo Jose Montemayor
+   - Degree Conferred: Bachelor of Science in Business Administration major in Hospitality Management
+   - Graduation Year: 2011
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+4. Eduardo_Jose_Montemayor_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: American Hotel & Lodging Educational Institute (AHLEI)
+   - Recipient Name: Eduardo Jose Montemayor
+   - Training Title: Certified Hotel Administrator (CHA)
+   - Award Date: November 2020
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+5. Eduardo_Jose_Montemayor_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Asian Institute of Management / PHDC
+   - Recipient Name: Eduardo Jose Montemayor
+   - Certified Course: Executive Essentials of Hotel Purchasing and Vendor Negotiations (CONTROLLED DISCREPANCY)
+   - Training Date: April 2018
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+6. Eduardo_Jose_Montemayor_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Philippine Food Safety & Hygiene Council
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Food Handler Safety Oversight & Compliance Certification
+   - Issuance Date: June 2021
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Somerset Millennium Makati | General Manager | January 2021 – Present
+• Evidence: Eduardo_Jose_Montemayor_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: City Garden Hotel Makati | Resident Manager / Operations Manager | March 2017 – December 2020
+• Evidence: Eduardo_Jose_Montemayor_COE_Previous_Employer.pdf (June 1, 2017 – December 15, 2020)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from June 2017 to December 2020, whereas resume claims start date of March 2017 (3-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Bachelor of Science in Business Administration major in Hospitality Management | De La Salle University (DLSU) — Taft Avenue, Manila | 2011
+• Evidence: Eduardo_Jose_Montemayor_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: Certified Hotel Administrator (CHA) | American Hotel & Lodging Educational Institute (AHLEI) | November 2020
+• Evidence: Eduardo_Jose_Montemayor_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Advanced Hospitality Financial Management & Revenue Optimization | Asian Institute of Management / PHDC | April 2018
+• Evidence: Eduardo_Jose_Montemayor_Training_Certificate_Service.pdf (Executive Essentials of Hotel Purchasing and Vendor Negotiations)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'Advanced Hospitality Financial Management & Revenue Optimization', but certificate certifies 'Executive Essentials of Hotel Purchasing and Vendor Negotiations'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: Food Handler Safety Oversight & Compliance Certification | Philippine Food Safety & Hygiene Council | June 2021
+• Evidence: Eduardo_Jose_Montemayor_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is severed/torn off in the uploaded scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: The Picasso Boutique Serviced Residences | Director of Rooms | August 2013 – February 2017
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================
