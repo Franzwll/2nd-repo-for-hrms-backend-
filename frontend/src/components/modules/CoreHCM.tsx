@@ -74,6 +74,7 @@ import { TablePagination } from "@/components/ui/table-pagination";
 import { SortHead, useSort } from "@/components/portal/sortable";
 import { usePagination } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   type Department,
   type OrgNode,
@@ -319,23 +320,38 @@ function setHcmFetching(v: boolean) {
   emitHcm();
 }
 
-async function fetchHcmData() {
+async function fetchHcmData(options: { includeEmployees?: boolean } = {}) {
   setHcmFetching(true);
   try {
+    // Dept-pos only needs departments/positions/salaryGrades/orgChart.
+    // Employees (per_page=500) is the heaviest slice and is only used for
+    // the department-head dropdown — skip it on the initial mount so the
+    // page paints fast, then lazy-load it in the background / on demand.
+    const includeEmployees = options.includeEmployees ?? hcmData.employees.length > 0;
     const [emp, dep, pos, sg, org] = await Promise.all([
-      hcmApi.employees.list({ per_page: 500 }),
+      includeEmployees ? hcmApi.employees.list({ per_page: 500 }) : Promise.resolve(null),
       hcmApi.departments.list({ per_page: 500 }),
       hcmApi.positions.list({ per_page: 500 }),
       hcmApi.salaryGrades.list({ per_page: 500 }),
       hcmApi.orgChart.list(),
     ]);
     hcmData = {
-      employees: emp.data ?? [],
+      employees: emp?.data ?? hcmData.employees,
       departments: dep.data ?? [],
       positions: pos.data ?? [],
       salaryGrades: sg.data ?? [],
       orgChart: org.data ?? [],
     };
+    // Backfill employees without blocking first paint.
+    if (!includeEmployees) {
+      hcmApi.employees
+        .list({ per_page: 500 })
+        .then((res) => {
+          hcmData = { ...hcmData, employees: res.data ?? [] };
+          emitHcm();
+        })
+        .catch((err) => console.warn('Could not backfill Core HCM employees.', err));
+    }
   } catch (err) {
     console.warn("Could not load Core HCM data.", err);
   } finally {

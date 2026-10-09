@@ -16,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Modules\CoreHCM\Http\Controllers\Concerns\AppliesTableQuery;
+use Modules\CoreHCM\Http\Controllers\Concerns\HcmCache;
 use Modules\CoreHCM\Http\Requests\EmployeeLifecycleRequest;
 use Modules\CoreHCM\Http\Requests\StoreEmployeeRequest;
 use Modules\CoreHCM\Http\Requests\UpdateEmployeeRequest;
@@ -27,64 +28,71 @@ class EmployeeController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Employee::query()->with(['department', 'position']);
+        // Dept-pos mounts this with per_page=500 for headcounts. Cache the
+        // default listing 60s — filtered/search/sorted pages bypass the
+        // cache via rememberHcmIndex so they stay correct.
+        $payload = $this->rememberHcmIndex($request, 'hcm:employees', function () use ($request) {
+            $query = Employee::query()->with(['department', 'position']);
 
-        if ($request->filled('q')) {
-            $search = $request->string('q');
+            if ($request->filled('q')) {
+                $search = $request->string('q');
 
-            $query->where(function ($q) use ($search) {
-                $q->where('first_name', 'like', "%{$search}%")
-                    ->orWhere('last_name', 'like', "%{$search}%")
-                    ->orWhere('employee_code', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%");
-            });
-        }
+                $query->where(function ($q) use ($search) {
+                    $q->where('first_name', 'like', "%{$search}%")
+                        ->orWhere('last_name', 'like', "%{$search}%")
+                        ->orWhere('employee_code', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
+                });
+            }
 
-        if ($request->filled('department_id')) {
-            $query->where('department_id', $request->integer('department_id'));
-        }
+            if ($request->filled('department_id')) {
+                $query->where('department_id', $request->integer('department_id'));
+            }
 
-        if ($request->filled('position_id')) {
-            $query->where('position_id', $request->integer('position_id'));
-        }
+            if ($request->filled('position_id')) {
+                $query->where('position_id', $request->integer('position_id'));
+            }
 
-        if ($request->filled('status')) {
-            $query->where('status', $request->string('status'));
-        }
+            if ($request->filled('status')) {
+                $query->where('status', $request->string('status'));
+            }
 
-        if ($request->filled('employment_type')) {
-            $query->where('employment_type', $request->string('employment_type'));
-        }
+            if ($request->filled('employment_type')) {
+                $query->where('employment_type', $request->string('employment_type'));
+            }
 
-        $this->applyFilters($request, $query, [
-            'department_id' => 'department_id',
-            'position_id' => 'position_id',
-            'status' => 'status',
-            'employment_type' => 'employment_type',
-        ]);
+            $this->applyFilters($request, $query, [
+                'department_id' => 'department_id',
+                'position_id' => 'position_id',
+                'status' => 'status',
+                'employment_type' => 'employment_type',
+            ]);
 
-        $this->applySort($request, $query, [
-            'employee_code' => 'employee_code',
-            'first_name' => 'first_name',
-            'last_name' => 'last_name',
-            'email' => 'email',
-            'status' => 'status',
-            'employment_type' => 'employment_type',
-            'date_hired' => 'date_hired',
-            'created_at' => 'created_at',
-        ], ['employee_code', 'asc']);
+            $this->applySort($request, $query, [
+                'employee_code' => 'employee_code',
+                'first_name' => 'first_name',
+                'last_name' => 'last_name',
+                'email' => 'email',
+                'status' => 'status',
+                'employment_type' => 'employment_type',
+                'date_hired' => 'date_hired',
+                'created_at' => 'created_at',
+            ], ['employee_code', 'asc']);
 
-        $employees = $query->paginate($request->integer('per_page', 25));
+            $employees = $query->paginate($request->integer('per_page', 25));
 
-        return response()->json([
-            'data' => EmployeeResource::collection($employees),
-            'meta' => [
-                'current_page' => $employees->currentPage(),
-                'last_page' => $employees->lastPage(),
-                'per_page' => $employees->perPage(),
-                'total' => $employees->total(),
-            ],
-        ]);
+            return [
+                'data' => EmployeeResource::collection($employees)->resolve(),
+                'meta' => [
+                    'current_page' => $employees->currentPage(),
+                    'last_page' => $employees->lastPage(),
+                    'per_page' => $employees->perPage(),
+                    'total' => $employees->total(),
+                ],
+            ];
+        });
+
+        return response()->json($payload);
     }
 
     public function store(StoreEmployeeRequest $request): JsonResponse
@@ -112,6 +120,7 @@ class EmployeeController extends Controller
 
             return $employee;
         });
+        HcmCache::flush();
 
         return response()->json([
             'message' => 'Employee created successfully.',
@@ -151,6 +160,8 @@ class EmployeeController extends Controller
             }
         });
 
+        HcmCache::flush();
+
         return response()->json([
             'message' => 'Employee updated successfully.',
             'data' => new EmployeeResource($employee->load('department', 'position', 'emergencyContacts')),
@@ -170,6 +181,8 @@ class EmployeeController extends Controller
             $employee->emergencyContacts()->delete();
             $employee->delete();
         });
+
+        HcmCache::flush();
 
         return response()->json(['message' => 'Employee deleted successfully.']);
     }
@@ -197,6 +210,8 @@ class EmployeeController extends Controller
             'new_position_id' => $employee->position_id,
             'notes' => $request->string('notes') ?: ('Regularized via performance evaluation (' . $recommendation->evaluation_score . '%).'),
         ]);
+
+        HcmCache::flush();
 
         AuditLogger::log(
             'Employee regularized',
@@ -265,6 +280,8 @@ class EmployeeController extends Controller
                 'review_note' => 'Promotion officially approved and processed via Core HCM & HR3 Performance Evaluation.',
             ]);
 
+        HcmCache::flush();
+
         AuditLogger::log(
             'Employee promoted',
             'Core HCM',
@@ -314,6 +331,8 @@ class EmployeeController extends Controller
                 'supervisor_employee_id' => null,
             ])->save());
         });
+
+        HcmCache::flush();
 
         AuditLogger::log(
             'Employee exited',
