@@ -236,6 +236,32 @@
   letter-spacing: -0.01em;
 }
 
+@utility glass {
+  border-color: var(--color-border);
+  background-color: color-mix(in oklch, var(--color-card) 70%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+@utility glass-strong {
+  border-color: color-mix(in oklch, white 20%, transparent);
+  background-color: color-mix(in oklch, var(--color-card) 85%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+@utility perspective-1000 {
+  perspective: 1000px;
+}
+
+@utility preserve-3d {
+  transform-style: preserve-3d;
+}
+
+@utility parallax-will-change {
+  will-change: transform;
+}
+
 @layer base {
   * {
     border-color: var(--color-border);

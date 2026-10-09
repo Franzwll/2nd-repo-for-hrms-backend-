@@ -27,6 +27,7 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
+import { AssessmentSettingsCard } from "@/components/portal/AssessmentSettingsCard";
 import { Logo } from "@/components/brand/Logo";
 import {
   AlertDialog,
@@ -593,6 +594,7 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
 
         <TabsContent value="org" className="space-y-6">
           <OrgChartVisualizer onViewEmployee={viewEmployeeInList} />
+          <AssessmentSettingsCard />
         </TabsContent>
 
         <TabsContent value="employees" className="space-y-6">

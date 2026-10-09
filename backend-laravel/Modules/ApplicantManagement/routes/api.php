@@ -13,6 +13,7 @@ use Modules\ApplicantManagement\Http\Controllers\ScreeningEvaluationController;
 use Modules\ApplicantManagement\Http\Controllers\ScreeningReferenceController;
 use Modules\ApplicantManagement\Http\Controllers\ScreeningRequirementTemplateController;
 use Modules\ApplicantManagement\Http\Controllers\InterviewController;
+use Modules\ApplicantManagement\Http\Controllers\AssessmentConfigController;
 
 /*
  * Resume file preview (token auth, no auth:sanctum header required).
@@ -148,6 +149,12 @@ Route::prefix('v1')
           /* ------------------------------------------------------------------ */
           Route::get('facilities', [FacilityController::class, 'index'])
                ->name('facilities.index');
+
+          /* ------------------------------------------------------------------ */
+          /* Global assessment switches (owned by Core HCM, read here)          */
+          /* ------------------------------------------------------------------ */
+          Route::get('assessments/config', [AssessmentConfigController::class, 'show'])
+               ->name('assessments.config');
 
           /* ------------------------------------------------------------------ */
           /* Interview assessments (criteria comments + Passed/Failed verdict)    */

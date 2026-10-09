@@ -45,6 +45,12 @@ class AssessmentTestController extends Controller
     /* Workflow gate: the interview assessment must be "Passed" first.  */
     public function store(Request $request, int $applicant): JsonResponse
     {
+        if (! \Modules\ApplicantManagement\Services\AssessmentConfig::assessmentTestEnabled()) {
+            return response()->json([
+                'message' => 'Assessment tests are disabled in Core HCM settings. Enable them in Core HCM to record assessment tests.',
+            ], 422);
+        }
+
         $model = Applicant::with('jobPost')->findOrFail($applicant);
 
         // Workflow gate: only candidates who passed the interview assessment
