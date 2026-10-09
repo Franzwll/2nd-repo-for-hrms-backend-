@@ -53,6 +53,14 @@ class AssessmentTestController extends Controller
 
         $model = Applicant::with('jobPost')->findOrFail($applicant);
 
+        // Position gate: only candidates for positions requiring assessment test
+        // may take the assessment test.
+        if (! \Modules\ApplicantManagement\Services\AssessmentRequirement::required($model->jobPost, null, $model->jobPost?->position)) {
+            return response()->json([
+                'message' => 'This position does not require an assessment test. Enable "Requires Assessment" in the job post, position, or configure the position in AssessmentRequirement.',
+            ], 422);
+        }
+
         // Workflow gate: only candidates who passed the interview assessment
         // may take the assessment test.
         $assessment = $model->assessment()->first();

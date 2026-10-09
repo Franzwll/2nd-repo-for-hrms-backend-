@@ -80,6 +80,10 @@ export type Position = {
   salaryGradeId?: number | null;
   salaryGradeMin?: number | null;
   salaryGradeMax?: number | null;
+  /** Whether this position requires an assessment test. */
+  requires_assessment?: boolean;
+  /** Whether this position requires a practical test. */
+  requires_practical?: boolean;
 };
 
 export const positions: Position[] = [

@@ -27,6 +27,8 @@ class PositionResource extends JsonResource
             'headcount' => $this->headcount,
             'filled_count' => $this->filled_count,
             'vacancies' => max(0, (int) $this->headcount - (int) $this->filled_count),
+            'requires_assessment' => (bool) ($this->requires_assessment ?? false),
+            'requires_practical' => (bool) ($this->requires_practical ?? false),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

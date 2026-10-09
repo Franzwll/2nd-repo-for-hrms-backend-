@@ -33,6 +33,11 @@ class JobPostResource extends JsonResource
                 $this->resource instanceof JobPost ? $this->resource : null,
                 $this->title,
             ),
+            /* Assessment test requirement — same logic, uses AssessmentRequirement. */
+            'requires_assessment'   => \Modules\ApplicantManagement\Services\AssessmentRequirement::required(
+                $this->resource instanceof JobPost ? $this->resource : null,
+                $this->title,
+            ),
             'experience_level'      => $this->experience_level,
             'education_level'       => $this->education_level,
             'summary'               => $this->summary,

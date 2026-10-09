@@ -1104,6 +1104,10 @@ type Draft = {
   /** Structured screening levels — the exact fields the NLP match scoring reads. */
   educationLevel: Job["education"];
   experienceLevel: Job["experience"];
+  /** Assessment test requirement for this position. */
+  requiresAssessment: boolean;
+  /** Practical assessment requirement for this position. */
+  requiresPractical: boolean;
 };
 
 const blankDraft: Draft = {
@@ -1123,6 +1127,8 @@ const blankDraft: Draft = {
   about: "",
   educationLevel: "High School Graduate",
   experienceLevel: "1-2 Years",
+  requiresAssessment: false,
+  requiresPractical: false,
 };
 
 const defaultAbout =
@@ -1151,6 +1157,8 @@ function jobToDraft(j: Job): Draft {
     about: defaultAbout,
     educationLevel: j.education,
     experienceLevel: j.experience,
+    requiresAssessment: j.requires_assessment ?? false,
+    requiresPractical: j.requires_practical ?? false,
   };
 }
 
@@ -3089,6 +3097,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         qualifications: payload.qualifications,
         skills: payload.skills,
         platforms: [],
+        requires_assessment: draft.requiresAssessment,
+        requires_practical: draft.requiresPractical,
       };
 
       if (existing?.dbId) {
@@ -3449,6 +3459,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         qualifications: jobPayload.qualifications,
         skills: jobPayload.skills,
         platforms: chosen,
+        requires_assessment: draft.requiresAssessment,
+        requires_practical: draft.requiresPractical,
       };
       // Uploaded poster picture rides along as multipart/form-data
       let payload: Record<string, any> | FormData = basePayload;
@@ -6036,9 +6048,33 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                           </Select>
                                         </div>
                                       </div>
+
+                                      {/* Assessment / Practical toggles */}
+                                      <div className="space-y-2 pt-2 border-t border-border/50">
+                                        <div className="flex items-center gap-2">
+                                          <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                            <Switch
+                                              checked={draft.requiresAssessment}
+                                              onCheckedChange={(v) => setDraft({ ...draft, requiresAssessment: v })}
+                                            />
+                                            <span className="font-medium">Requires Assessment Test</span>
+                                          </label>
+                                          <span className="text-[0.65rem] text-muted-foreground">Enables the post-interview assessment test for this position</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                            <Switch
+                                              checked={draft.requiresPractical}
+                                              onCheckedChange={(v) => setDraft({ ...draft, requiresPractical: v })}
+                                            />
+                                            <span className="font-medium">Requires Practical Test</span>
+                                          </label>
+                                          <span className="text-[0.65rem] text-muted-foreground">Enables the hands-on practical assessment for designated positions</span>
+                                        </div>
+                                      </div>
                                     </div>
-                                    )}
-                                  {id === "description" && (
+                                     )}
+                                   {id === "description" && (
                                     <Textarea
                                       autoFocus
                                       rows={2}
