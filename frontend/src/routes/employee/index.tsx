@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Clock,
+  ClipboardList,
   FileText,
   TrendingUp,
   FileCheck,
@@ -11,6 +12,8 @@ import {
   CheckCircle2,
   Award,
   Bot,
+  HeartHandshake,
+  Shield,
   Share2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -39,11 +42,18 @@ export const Route = createFileRoute("/employee/")({
 });
 
 function EmployeeDashboard() {
-  const user = getUser();
+  // getUser() reads browser storage, which is absent during server render —
+  // resolving it after mount keeps server and client HTML identical.
+  const [authUser, setAuthUser] = useState<ReturnType<typeof getUser>>(null);
+  useEffect(() => {
+    setAuthUser(getUser());
+  }, []);
+  const user = authUser;
   const [overview, setOverview] = useState<ApiEssOverview | null>(null);
   const [recognitions, setRecognitions] = useState<ApiRecognitionItem[]>([]);
   const [pendingTasks, setPendingTasks] = useState<string[]>([]);
   const [loadingOnboarding, setLoadingOnboarding] = useState(true);
+  const [wasInOnboarding, setWasInOnboarding] = useState(false);
   const [loadingRecognitions, setLoadingRecognitions] = useState(true);
   /** True while the ESS overview request is in flight. */
   const loadingOverview = overview === null;
@@ -80,7 +90,7 @@ function EmployeeDashboard() {
       .catch(() => { })
       .finally(() => setLoadingRecognitions(false));
 
-    // 3. Fetch Onboarding Tasks
+    // 3. Fetch Onboarding Tasks (only shows the authenticated employee's own tasks)
     newHiresApi
       .list({ per_page: 100 })
       .then((res) => {
@@ -90,22 +100,21 @@ function EmployeeDashboard() {
               (user?.employee_id && h.employee_id === user.employee_id) ||
               h.name.toLowerCase() === employeeName.toLowerCase() ||
               h.email === user?.email
-          ) ??
-          res.data[0] ??
-          null;
+          ) ?? null;
 
         if (!mine) {
-          setPendingTasks(["Acknowledge Company Policies", "Accept Employment Agreement"]);
+          setPendingTasks([]);
           return;
         }
 
+        setWasInOnboarding(true);
         return onboardingItemsApi.listForNewHire(mine.new_hire_id).then((items) => {
           const uncompleted = items.filter((i) => !i.done).map((i) => i.item_text);
           setPendingTasks(uncompleted);
         });
       })
       .catch(() => {
-        setPendingTasks(["Acknowledge Company Policies", "Accept Employment Agreement"]);
+        setPendingTasks([]);
       })
       .finally(() => setLoadingOnboarding(false));
   }, [employeeName, user?.employee_id, user?.email]);
@@ -200,8 +209,32 @@ function EmployeeDashboard() {
             </div>
 
             <Button asChild size="sm" variant="outline" className="border-amber-500/40 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 shrink-0 text-xs h-8">
-              <Link to="/employee/ess" search={{ category: "Documents" }}>
+              <Link to="/employee/onboarding">
                 Complete Onboarding <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Onboarding Complete — ESS transition banner */}
+      {!loadingOnboarding && wasInOnboarding && pendingTasks.length === 0 && (
+        <div className="mb-6 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-600">
+                <CheckCircle2 className="h-5 w-5" />
+              </span>
+              <div>
+                <h3 className="font-semibold text-sm text-foreground">Onboarding Complete! 🎉</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  All requirements submitted and verified. Welcome to the Oxford Suites Makati team!
+                </p>
+              </div>
+            </div>
+            <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 text-xs h-8">
+              <Link to="/employee/ess">
+                Explore ESS Portal <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
               </Link>
             </Button>
           </div>
@@ -218,6 +251,7 @@ function EmployeeDashboard() {
           hint="Available paid leave credits"
           icon={Clock}
           tone="primary"
+          to="/employee/ess?category=Attendance"
         />
         <StatCard
           label="Take-Home Pay"
@@ -225,6 +259,7 @@ function EmployeeDashboard() {
           hint={`Next payout ${nextPayoutDate}`}
           icon={FileText}
           tone="success"
+          to="/employee/ess?category=Payroll"
         />
         <StatCard
           label="LMS Training"
@@ -232,8 +267,9 @@ function EmployeeDashboard() {
           hint={`${overview?.performance_summary?.competency_level ?? "Proficient"} competency`}
           icon={TrendingUp}
           tone="primary"
+          to="/employee/ess?category=Performance"
         />
-        <StatCard label="Position" value={position} hint={employmentType} icon={ClipboardCheck} tone="gold" />
+        <StatCard label="Position" value={position} hint={employmentType} icon={ClipboardCheck} tone="gold" to="/employee/ess" />
         </div>
       )}
 
@@ -314,6 +350,7 @@ function EmployeeDashboard() {
                   Recognition
                 </span>
               </Link>
+
 
               {/* 6: HR AI Concierge */}
               <Link

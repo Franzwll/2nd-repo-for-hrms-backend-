@@ -16,6 +16,7 @@ import {
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
+import { ReportMenu } from "@/components/ui/report-menu";
 import { myEmployeeDocuments } from "@/data/ess";
 import { DocumentRequestModal } from "@/components/modules/ess/modals/DocumentRequestModal";
 import { DocumentUploadModal } from "@/components/modules/ess/modals/DocumentUploadModal";
@@ -144,7 +145,7 @@ export function EssDocumentsTab() {
     <div className="space-y-6">
       {/* 3 Metric Cards */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
+        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Submitted &amp; Verified</p>
@@ -159,7 +160,7 @@ export function EssDocumentsTab() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
+        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Missing Action Item</p>
@@ -174,7 +175,7 @@ export function EssDocumentsTab() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
+        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Available for Download</p>
@@ -190,8 +191,50 @@ export function EssDocumentsTab() {
         </Card>
       </div>
 
+      {/* Toolbar row above the cards — Export sits outside, like Export payroll */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="text-xs text-muted-foreground">
+          {documents.length} document(s) · {filteredDocRequests.length} request(s)
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <ReportMenu
+            size="sm"
+            label="Export documents"
+            recordCount={documents.length + filteredDocRequests.length}
+            report={() => ({
+              title: "My Employment Documents Report",
+              subtitle: `Employee Self-Service · Company Documents · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })}`,
+              columns: [
+                { header: "Document / Request", key: "title" },
+                { header: "Category / Type", key: "category" },
+                { header: "Status", key: "status" },
+                { header: "Date Filed / Verified", key: "date" },
+              ],
+              rows: [
+                ...documents.map((d) => ({
+                  title: d.title,
+                  category: d.category,
+                  status: d.status,
+                  date: d.date,
+                })),
+                ...filteredDocRequests.map((r) => ({
+                  title: `${r.id} — ${r.type}`,
+                  category: "Document Request",
+                  status: r.status,
+                  date: r.date,
+                })),
+              ],
+              summary: [
+                { label: "Documents", value: documents.length },
+                { label: "Document Requests", value: filteredDocRequests.length },
+              ],
+            })}
+          />
+        </div>
+      </div>
+
       {/* Employment Documents Table */}
-      <Card className="border-border/70 shadow-xs">
+      <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3">
           <div>
             <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
@@ -268,7 +311,7 @@ export function EssDocumentsTab() {
       </Card>
 
       {/* Document Requests History */}
-      <Card className="border-border/70 shadow-xs">
+      <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
           <div>
             <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">

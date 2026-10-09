@@ -2321,6 +2321,8 @@ export interface ApiRecognitionItem {
     fire: number;
     star: number;
   };
+  shares?: number;
+  userReactions?: string[];
   timeAgo: string;
   createdAt: string;
 }
@@ -2334,6 +2336,8 @@ export interface ApiPayrollData {
   gross: number;
   net: number;
   nextPayout: string;
+  hero_source?: string;
+  hero_period?: string | null;
   deductions: {
     sss: number;
     philhealth: number;
@@ -2349,6 +2353,8 @@ export interface ApiPayrollData {
     net: number;
     payoutDate: string;
     status: string;
+    earnings?: { label: string; amount: number; ytd: number }[];
+    deductions_breakdown?: { label: string; amount: number; ytd: number }[];
   }[];
 }
 
@@ -2380,8 +2386,8 @@ export interface ApiEssOverview {
   performance_summary?: {
     lms_completed: number;
     lms_total: number;
-    competency_level: string;
-    average_score: number;
+    competency_level: string | null;
+    average_score: number | null;
   };
   leave_balances: ApiLeaveBalance[];
   pending_requests_count: number;
@@ -2488,26 +2494,67 @@ export const essApi = {
         name: string;
         role: string;
         department: string;
-        overall_rating: number;
-        competency_level: string;
+        overall_rating: number | null;
+        competency_level: string | null;
       };
       stats: {
         completed_courses: number;
         in_progress_courses: number;
-        average_score: number;
-        total_training_hours: number;
+        average_score: number | null;
+        total_training_hours: number | null;
       };
       courses: {
         id: string;
         title: string;
         category: string;
-        progress: number;
+        progress: number | null;
         status: string;
         score: number | null;
-        duration: string;
+        duration: string | null;
         completedDate: string | null;
       }[];
     }>("/ess/my-performance"),
+  updateLearningProgress: (data: { course_code: string }) =>
+    request<{ message: string; learning: any }>(`/ess/my-learning/progress`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  learningCertificate: (courseCode: string) =>
+    request<{
+      eligible: boolean;
+      verification_code: string | null;
+      course?: {
+        code: string;
+        title: string;
+        category: string;
+        score: number | null;
+        completed_date: string | null;
+      };
+    }>(`/ess/my-learning/certificate/${encodeURIComponent(courseCode)}`),
+  adminLearning: () =>
+    request<{
+      records: {
+        id: number;
+        employee_id: number;
+        employee_name: string;
+        email: string;
+        department: string;
+        course_id: number;
+        course_code: string;
+        course_title: string;
+        course_category: string;
+        status: string;
+        score: number | null;
+        assigned_date: string | null;
+        completed_date: string | null;
+      }[];
+      summary: { total: number; assigned: number; in_progress: number; completed: number };
+    }>(`/ess/admin/learning`),
+  verifyLearning: (id: number | string, data: { status: string; score?: number }) =>
+    request<{ message: string; record: any }>(`/ess/admin/learning/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
   getCategories: () =>
     request<{
       categories: {
@@ -2539,6 +2586,10 @@ export const essApi = {
         body: JSON.stringify({ reaction }),
       },
     ),
+  shareKudos: (id: string) =>
+    request<{ message: string; shares: number }>(`/ess/recognitions/${id}/share`, {
+      method: "POST",
+    }),
   myRequests: (params?: Record<string, any>) => {
     const qs = params ? new URLSearchParams(params).toString() : "";
     return request<{ requests: ApiEssRequestItem[] }>(`/ess/my-requests${qs ? `?${qs}` : ""}`);

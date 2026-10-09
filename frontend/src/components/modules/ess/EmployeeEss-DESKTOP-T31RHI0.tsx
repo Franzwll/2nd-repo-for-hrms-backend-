@@ -14,7 +14,6 @@ import { PageHeader } from "@/components/portal/PageHeader";
 import { Button } from "@/components/ui/button";
 import { EssAttendanceTab } from "@/components/modules/ess/tabs/EssAttendanceTab";
 import { EssPayrollTab } from "@/components/modules/ess/tabs/EssPayrollTab";
-import { EssLatestPayslipTab } from "@/components/modules/ess/tabs/EssLatestPayslipTab";
 import { EssDocumentsTab } from "@/components/modules/ess/tabs/EssDocumentsTab";
 import { EssAllRequestsTab } from "@/components/modules/ess/tabs/EssAllRequestsTab";
 import { EssPromotionTab } from "@/components/modules/ess/tabs/EssPromotionTab";

@@ -12,8 +12,12 @@ import {
   Calendar,
   Layers,
   Sparkles,
+  ClipboardCheck,
+  CheckCircle2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -37,7 +41,8 @@ import {
   wireframeActivity,
 } from "@/data/ess";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
-import { essApi, type ApiEssOverview, type ApiEssRequestItem } from "@/lib/api";
+import { essApi, newHiresApi, onboardingItemsApi, type ApiEssOverview, type ApiEssRequestItem } from "@/lib/api";
+import { getUser } from "@/lib/auth";
 import { toast } from "sonner";
 
 interface EssOverviewTabProps {
@@ -57,6 +62,14 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
   const [raSort, setRaSort] = useState("date-desc");
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
+
+  // Employee's own onboarding progress (shared backend with Admin New Hire Onboarding).
+  // Hidden when no onboarding record matches the logged-in user.
+  const [onboarding, setOnboarding] = useState<{
+    done: number;
+    total: number;
+    pending: string[];
+  } | null>(null);
 
   // Dynamic Social Recognition Stats
   const [recStats, setRecStats] = useState({ received: 4, given: 2, topPillar: "Guest Delight" });
@@ -127,6 +140,38 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
     loadOverviewData();
   }, []);
 
+  useEffect(() => {
+    // Load the logged-in employee's onboarding progress from the same
+    // new-hires / onboarding-items endpoints Admin HR verifies against.
+    const user = getUser();
+    newHiresApi
+      .list({ per_page: 100 })
+      .then((res) => {
+        const mine =
+          res.data.find(
+            (h) =>
+              (user?.employee_id && h.employee_id === user.employee_id) ||
+              (user?.full_name && h.name.toLowerCase() === user.full_name.toLowerCase()) ||
+              (user?.email && h.email === user.email)
+          ) ?? null;
+        if (!mine) {
+          setOnboarding(null);
+          return;
+        }
+        return onboardingItemsApi.listForNewHire(mine.new_hire_id).then((items) => {
+          const done = items.filter((i) => i.done).length;
+          setOnboarding({
+            done,
+            total: items.length,
+            pending: items.filter((i) => !i.done).map((i) => i.item_text),
+          });
+        });
+      })
+      .catch(() => {
+        setOnboarding(null);
+      });
+  }, []);
+
   const filteredActivities = useMemo(() => {
     return activities
       .filter((item) => {
@@ -170,10 +215,92 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
 
   return (
     <div className="space-y-6">
+      {/* My Onboarding progress — same checklist Admin HR verifies (deep-links to /employee/onboarding) */}
+      {onboarding && onboarding.total > 0 && (
+        <Card
+          className={
+            onboarding.pending.length === 0
+              ? "border-emerald-500/30 bg-emerald-500/5 shadow-xs"
+              : "border-amber-500/30 bg-amber-500/5 shadow-xs"
+          }
+        >
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <span
+                  className={
+                    onboarding.pending.length === 0
+                      ? "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600"
+                      : "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-600"
+                  }
+                >
+                  {onboarding.pending.length === 0 ? (
+                    <CheckCircle2 className="h-5 w-5" />
+                  ) : (
+                    <ClipboardCheck className="h-5 w-5" />
+                  )}
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-semibold text-sm text-foreground">My Onboarding</h3>
+                    <Badge
+                      variant="outline"
+                      className={
+                        onboarding.pending.length === 0
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/40 text-[10px]"
+                          : "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/40 text-[10px]"
+                      }
+                    >
+                      {onboarding.pending.length === 0
+                        ? "Complete"
+                        : `${onboarding.done}/${onboarding.total} verified · ${onboarding.pending.length} left`}
+                    </Badge>
+                  </div>
+                  {onboarding.pending.length > 0 ? (
+                    <>
+                      <div className="mt-2 w-full sm:max-w-md">
+                        <Progress value={onboarding.total ? (onboarding.done / onboarding.total) * 100 : 0} />
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {onboarding.pending.slice(0, 3).map((task, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center gap-1 text-[11px] rounded-md bg-background/80 px-2 py-0.5 border border-border text-foreground"
+                          >
+                            <ClipboardCheck className="h-3 w-3 text-amber-600 shrink-0" />
+                            {task}
+                          </span>
+                        ))}
+                        {onboarding.pending.length > 3 && (
+                          <span className="text-[11px] text-muted-foreground self-center">
+                            +{onboarding.pending.length - 3} more
+                          </span>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      All onboarding requirements verified by HR.
+                    </p>
+                  )}
+                </div>
+              </div>
+              {onboarding.pending.length > 0 && (
+                <Button asChild size="sm" variant="outline" className="shrink-0 text-xs h-8">
+                  <Link to="/employee/onboarding">
+                    Continue Onboarding <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  </Link>
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* 5 Feature Stat Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {/* Attendance Card */}
-        <Card className="border-border/70 flex flex-col justify-between hover:border-primary/50 transition-all shadow-xs">
+        <Card className="border-border/70 h-full flex flex-col justify-between transition-all shadow-xs group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Attendance</span>
@@ -204,7 +331,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
         </Card>
 
         {/* Payroll Card */}
-        <Card className="border-border/70 flex flex-col justify-between hover:border-primary/50 transition-all shadow-xs">
+        <Card className="border-border/70 h-full flex flex-col justify-between transition-all shadow-xs group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Payroll</span>
@@ -233,7 +360,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
         </Card>
 
         {/* Performance Card */}
-        <Card className="border-border/70 flex flex-col justify-between hover:border-primary/50 transition-all shadow-xs">
+        <Card className="border-border/70 h-full flex flex-col justify-between transition-all shadow-xs group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Performance</span>
@@ -264,7 +391,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
         </Card>
 
         {/* Documents Card */}
-        <Card className="border-border/70 flex flex-col justify-between hover:border-primary/50 transition-all shadow-xs">
+        <Card className="border-border/70 h-full flex flex-col justify-between transition-all shadow-xs group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Documents</span>
@@ -295,7 +422,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
         </Card>
 
         {/* Recognition Card (5th Card from Spec) */}
-        <Card className="border-border/70 flex flex-col justify-between hover:border-primary/50 transition-all shadow-xs bg-gradient-to-br from-amber-500/5 via-card to-card">
+        <Card className="border-border/70 h-full flex flex-col justify-between transition-all shadow-xs group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md bg-gradient-to-br from-amber-500/5 via-card to-card">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Recognition</span>

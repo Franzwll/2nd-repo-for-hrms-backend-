@@ -16,12 +16,25 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Laravel\Sanctum\PersonalAccessToken;
+use App\Models\SystemUser;
 use Modules\EmployeeSelfService\Models\RecognitionReaction;
 use Modules\EmployeeSelfService\Models\SocialRecognition;
 use Modules\Settings\Models\SystemSetting;
 
 class EssPortalController extends Controller
 {
+    /**
+     * Entry base pay per HR policy: the linked salary grade's band MINIMUM.
+     * 28500 only when no grade is linked at all (never a silent grade value).
+     */
+    private function resolveBaseSalary(?Employee $employee): float
+    {
+        $min = $employee?->position?->salaryGrade?->min_salary;
+        return $min !== null ? (float) $min : 28500.00;
+    }
+
     /**
      * Resolve the current authenticated employee.
      * Returns null when the authenticated user has no linked employee record
@@ -286,16 +299,27 @@ class EssPortalController extends Controller
         $totalAvailableLeave = (float) $leaveBalances->sum('available');
 
         // Payroll Overview
-        $baseSalary = (float) ($employee->position?->salaryGrade?->base_salary ?? 28500);
+        $baseSalary = $this->resolveBaseSalary($employee);
         $netPayEstimate = round($baseSalary * 0.88 + 3000, 2);
         $nextPayout = $today->day <= 15 ? $today->format('F 15, Y') : $today->endOfMonth()->format('F d, Y');
 
-        // Performance / LMS Overview
+        // Performance / LMS Overview (real counts; nulls when nothing recorded —
+        // the ESS tabs fall back to their placeholders in that case).
         $learningRecords = DB::table('employee_learning')
             ->where('employee_id', $employee->employee_id)
             ->get();
         $lmsCompleted = $learningRecords->where('status', 'Completed')->count();
-        $lmsTotal = max($learningRecords->count(), 4);
+        $lmsTotal = $learningRecords->count();
+        $lmsScores = $learningRecords->where('status', 'Completed')
+            ->map(fn ($r) => $r->score)
+            ->filter(fn ($s) => $s !== null)
+            ->values();
+        $lmsAverage = $lmsScores->count() ? round((float) $lmsScores->avg(), 1) : null;
+        $latestReview = DB::table('performance_reviews')
+            ->where('employee_id', $employee->employee_id)
+            ->orderByDesc('review_date')
+            ->orderByDesc('performance_review_id')
+            ->first();
 
         return response()->json([
             'employee' => [
@@ -335,10 +359,10 @@ class EssPortalController extends Controller
                 'next_payout' => $nextPayout,
             ],
             'performance_summary' => [
-                'lms_completed' => $lmsCompleted > 0 ? $lmsCompleted : 4,
+                'lms_completed' => $lmsCompleted,
                 'lms_total' => $lmsTotal,
-                'competency_level' => 'Proficient',
-                'average_score' => 92,
+                'competency_level' => $latestReview?->competency_level,
+                'average_score' => $lmsAverage,
             ],
             'leave_balances' => $leaveBalances,
             'pending_requests_count' => $pendingCount,
@@ -694,7 +718,7 @@ class EssPortalController extends Controller
         $employee = $this->resolveEmployee($request);
         $user = $request->user();
 
-        $baseSalary = (float) ($employee?->position?->salaryGrade?->base_salary ?? 28500);
+        $baseSalary = $this->resolveBaseSalary($employee);
         $sss = round($baseSalary * 0.045, 2);
         $philhealth = round($baseSalary * 0.025, 2);
         $pagibig = 200.00;
@@ -708,6 +732,8 @@ class EssPortalController extends Controller
         $nextPayout = $today->day <= 15 ? $today->format('F 15, Y') : $today->endOfMonth()->format('F d, Y');
 
         $payslips = [];
+        $heroSource = 'estimate';
+        $heroPeriod = null;
         if ($employee) {
             $dbPayslips = DB::table('payroll_records')
                 ->where('employee_id', $employee->employee_id)
@@ -715,15 +741,63 @@ class EssPortalController extends Controller
                 ->get();
 
             if ($dbPayslips->isNotEmpty()) {
-                $payslips = $dbPayslips->map(fn ($pr) => [
-                    'id' => 'PS-' . $pr->payroll_record_id,
-                    'period' => Carbon::parse($pr->pay_period_start)->format('M d') . ' - ' . Carbon::parse($pr->pay_period_end)->format('M d, Y'),
-                    'gross' => (float) $pr->gross_pay,
-                    'deductions' => (float) ($pr->gross_pay - $pr->net_pay),
-                    'net' => (float) $pr->net_pay,
-                    'payoutDate' => $pr->payout_date ? Carbon::parse($pr->payout_date)->format('F d, Y') : Carbon::parse($pr->pay_period_end)->format('F d, Y'),
-                    'status' => $pr->status,
-                ])->all();
+                // All item lines in one query, grouped per record.
+                $recordIds = $dbPayslips->pluck('payroll_record_id')->all();
+                $itemsByRecord = $recordIds
+                    ? DB::table('payroll_items')->whereIn('payroll_record_id', $recordIds)->get()->groupBy('payroll_record_id')
+                    : collect();
+                $endById = $dbPayslips->mapWithKeys(fn ($pr) => [
+                    $pr->payroll_record_id => Carbon::parse($pr->pay_period_end),
+                ]);
+
+                $payslips = $dbPayslips->map(function ($pr) use ($itemsByRecord, $endById) {
+                    $items = $itemsByRecord->get($pr->payroll_record_id, collect());
+                    $end = $endById->get($pr->payroll_record_id);
+                    // Calendar-year YTD per label: same employee, same year,
+                    // period ending on/before this record.
+                    $ytdIds = $endById
+                        ->filter(fn ($d) => $d->format('Y') === $end->format('Y') && $d->lte($end))
+                        ->keys()->all();
+                    $ytdItems = collect();
+                    foreach ($ytdIds as $id) {
+                        foreach ($itemsByRecord->get($id, collect()) as $it) {
+                            $ytdItems->push($it);
+                        }
+                    }
+                    $build = function ($type) use ($items, $ytdItems) {
+                        return $items->where('item_type', $type)->map(function ($it) use ($ytdItems, $type) {
+                            return [
+                                'label' => $it->label,
+                                'amount' => (float) $it->amount,
+                                'ytd' => (float) $ytdItems
+                                    ->where('item_type', $type)
+                                    ->where('label', $it->label)
+                                    ->sum('amount'),
+                            ];
+                        })->values()->all();
+                    };
+                    return [
+                        'id' => 'PS-' . $pr->payroll_record_id,
+                        'period' => Carbon::parse($pr->pay_period_start)->format('M d') . ' - ' . Carbon::parse($pr->pay_period_end)->format('M d, Y'),
+                        'gross' => (float) $pr->gross_pay,
+                        'deductions' => (float) ($pr->gross_pay - $pr->net_pay),
+                        'net' => (float) $pr->net_pay,
+                        'payoutDate' => $pr->payout_date ? Carbon::parse($pr->payout_date)->format('F d, Y') : Carbon::parse($pr->pay_period_end)->format('F d, Y'),
+                        'status' => $pr->status,
+                        'earnings' => $build('Earning'),
+                        'deductions_breakdown' => $build('Deduction'),
+                    ];
+                })->all();
+
+                // Hero figures = latest Released record (never Draft estimates).
+                $latestReleased = $dbPayslips->firstWhere('status', 'Released');
+                if ($latestReleased) {
+                    $gross = (float) $latestReleased->gross_pay;
+                    $net = (float) $latestReleased->net_pay;
+                    $totalDeductions = $gross - $net;
+                    $heroSource = 'released';
+                    $heroPeriod = Carbon::parse($latestReleased->pay_period_start)->format('M d') . ' - ' . Carbon::parse($latestReleased->pay_period_end)->format('M d, Y');
+                }
             }
         }
 
@@ -768,6 +842,8 @@ class EssPortalController extends Controller
             'gross' => $gross,
             'net' => $net,
             'nextPayout' => $nextPayout,
+            'hero_source' => $heroSource,
+            'hero_period' => $heroPeriod,
             'deductions' => [
                 'sss' => $sss,
                 'philhealth' => $philhealth,
@@ -891,24 +967,35 @@ class EssPortalController extends Controller
         }
 
         return response()->json([
-            'documents' => $documents->map(fn ($doc) => [
-                'id' => $doc->document_id,
-                'code' => $doc->document_code,
-                'title' => $doc->title,
-                'category' => $doc->category,
-                'status' => $doc->document_status === 'Verified' ? 'Verified & Active' : ($doc->document_status ?: 'Active'),
-                'verified' => $doc->document_status === 'Verified',
-                'issuedDate' => $doc->document_date ? Carbon::parse($doc->document_date)->format('M d, Y') : 'Active',
-                'expiryDate' => $doc->expiry_date ? Carbon::parse($doc->expiry_date)->format('M d, Y') : 'No Expiry',
-                'fileSize' => $doc->file_size_bytes ? round($doc->file_size_bytes / 1048576, 1) . ' MB' : '1.2 MB',
-                'fileType' => 'PDF Document',
-                'downloadUrl' => $doc->file_path,
-            ]),
+            'documents' => $documents->map(function ($doc) {
+                $relative = ltrim((string) $doc->file_path, '/');
+                if (str_starts_with($relative, 'storage/')) {
+                    $relative = substr($relative, strlen('storage/'));
+                }
+                return [
+                    'id' => $doc->document_id,
+                    'code' => $doc->document_code,
+                    'title' => $doc->title,
+                    'category' => $doc->category,
+                    'status' => $doc->document_status === 'Verified' ? 'Verified & Active' : ($doc->document_status ?: 'Active'),
+                    'verified' => $doc->document_status === 'Verified',
+                    'issuedDate' => $doc->document_date ? Carbon::parse($doc->document_date)->format('M d, Y') : 'Active',
+                    'expiryDate' => $doc->expiry_date ? Carbon::parse($doc->expiry_date)->format('M d, Y') : 'No Expiry',
+                    'fileSize' => $doc->file_size_bytes ? round($doc->file_size_bytes / 1048576, 1) . ' MB' : '1.2 MB',
+                    'fileType' => 'PDF Document',
+                    'downloadUrl' => $doc->file_path,
+                    // True only when real bytes exist on disk (new uploads).
+                    'has_file' => $relative !== '' && Storage::disk('public')->exists($relative),
+                ];
+            }),
         ]);
     }
 
     /**
      * POST /api/v1/ess/my-documents/upload
+     * Real multipart upload: bytes go to the public disk, the row stores the
+     * actual path/mime/size. Legacy pure-JSON callers (title/category only)
+     * still work and keep the old placeholder behavior.
      */
     public function uploadDocument(Request $request): JsonResponse
     {
@@ -921,8 +1008,20 @@ class EssPortalController extends Controller
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'category' => 'required|string|max:100',
+            'file' => 'nullable|file|max:10240|mimes:pdf,png,jpg,jpeg',
             'file_path' => 'nullable|string',
+            'expiry_date' => 'nullable|date',
         ]);
+
+        $storedPath = null;
+        $mimeType = 'application/pdf';
+        $fileSize = 1258291;
+        if ($request->hasFile('file')) {
+            $file = $request->file('file');
+            $storedPath = $file->store('employee-documents', 'public');
+            $mimeType = $file->getClientMimeType() ?: 'application/octet-stream';
+            $fileSize = $file->getSize() ?: 0;
+        }
 
         $nextNum = (EmployeeDocument::max('document_id') ?? 0) + 1;
         $code = 'DOC-UPL-' . str_pad((string) $nextNum, 4, '0', STR_PAD_LEFT);
@@ -932,17 +1031,121 @@ class EssPortalController extends Controller
             'document_code' => $code,
             'title' => $validated['title'],
             'category' => $validated['category'],
-            'file_path' => $validated['file_path'] ?? '/storage/documents/uploaded_doc.pdf',
-            'mime_type' => 'application/pdf',
-            'file_size_bytes' => 1258291,
+            'file_path' => $storedPath ?? $validated['file_path'] ?? '/storage/documents/uploaded_doc.pdf',
+            'mime_type' => $mimeType,
+            'file_size_bytes' => $fileSize,
             'document_status' => 'Pending Verification',
             'document_date' => Carbon::today(),
+            'expiry_date' => $validated['expiry_date'] ?? null,
         ]);
 
         return response()->json([
             'message' => 'Document uploaded successfully and queued for HR verification.',
             'document' => $doc,
         ]);
+    }
+
+    /**
+     * GET /api/v1/ess/my-documents/{id}/file
+     * Stream the employee's own file inline (PDF/image in iframe/img).
+     * Token auth (?token=) so plain browser opens work without headers.
+     * 404 when the row has no real file (legacy placeholder paths).
+     */
+    public function documentFile(Request $request, string $id): object
+    {
+        $user = $this->resolveTokenUser($request) ?? $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        $employee = null;
+        if ($user->employee_id) {
+            $employee = Employee::find($user->employee_id);
+        }
+        if (! $employee && $user->email) {
+            $employee = Employee::where('email', $user->email)->first();
+        }
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found.'], 404);
+        }
+
+        $doc = EmployeeDocument::where('document_id', (int) $id)
+            ->where('employee_id', $employee->employee_id)
+            ->first();
+        if (! $doc) {
+            return response()->json(['message' => 'Document not found.'], 404);
+        }
+
+        $relative = ltrim((string) $doc->file_path, '/');
+        if (str_starts_with($relative, 'storage/')) {
+            $relative = substr($relative, strlen('storage/'));
+        }
+        if (! $relative || ! Storage::disk('public')->exists($relative)) {
+            return response()->json(['message' => 'No file on record for this document.'], 404);
+        }
+
+        $path = Storage::disk('public')->path($relative);
+        $name = $doc->title . '.' . pathinfo($relative, PATHINFO_EXTENSION);
+
+        return response()->file($path, [
+            'Content-Type' => $doc->mime_type ?: 'application/octet-stream',
+            'Content-Disposition' => 'inline; filename="' . $name . '"',
+        ]);
+    }
+
+    /**
+     * Token-based authentication for direct browser opens (?token=).
+     */
+    private function resolveTokenUser(Request $request): ?SystemUser
+    {
+        $token = $request->query('token') ?? $request->bearerToken();
+        if (! $token) {
+            return null;
+        }
+        $pat = PersonalAccessToken::findToken($token);
+        if (! $pat || ! $pat->tokenable instanceof SystemUser) {
+            return null;
+        }
+        return $pat->tokenable;
+    }
+
+    /**
+     * DELETE /api/v1/ess/requests/{id}
+     * Employee withdraws their own request while still Pending/Under Review.
+     */
+    public function cancelRequest(Request $request, string $id): JsonResponse
+    {
+        $employee = $this->resolveEmployee($request);
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found.'], 404);
+        }
+
+        $row = EssRequest::where('employee_id', $employee->employee_id)
+            ->where(function ($q) use ($id) {
+                $q->where('request_code', $id)->orWhere('ess_request_id', $id);
+            })
+            ->first();
+        if (! $row) {
+            return response()->json(['message' => 'Request not found.'], 404);
+        }
+        if (! in_array($row->status, ['Pending', 'Under Review'], true)) {
+            return response()->json(['message' => 'Only pending requests can be withdrawn.'], 422);
+        }
+
+        $code = $row->request_code;
+        $row->delete();
+
+        AuditLogger::log(
+            action: 'ESS Request Withdrawn',
+            module: 'Employee Self-Service',
+            severity: 'Info',
+            targetType: 'EssRequest',
+            targetId: (string) $code,
+            details: "Employee withdrew request {$code} ({$row->request_type})",
+            request: $request
+        );
+
+        return response()->json(['message' => "Request {$code} withdrawn."]);
     }
 
     /**
@@ -961,63 +1164,57 @@ class EssPortalController extends Controller
             ->where('employee_id', $employee->employee_id)
             ->get();
 
-        // If no course records in DB yet, return structured hotel curriculum
-        $courseList = [
-            [
-                'id' => 'lms-1',
-                'title' => 'Oxford Suites 5-Star Guest Service Standards & Etiquette',
-                'category' => 'Hospitality Excellence',
-                'progress' => 100,
-                'status' => 'Completed',
-                'score' => 96,
-                'duration' => '3 hours',
-                'completedDate' => 'August 10, 2026',
-            ],
-            [
-                'id' => 'lms-2',
-                'title' => 'Hotel Health, Food Hygiene & Kitchen Sanitation (HACCP)',
-                'category' => 'Safety & Compliance',
-                'progress' => 100,
-                'status' => 'Completed',
-                'score' => 98,
-                'duration' => '4 hours',
-                'completedDate' => 'August 02, 2026',
-            ],
-            [
-                'id' => 'lms-3',
-                'title' => 'Emergency Response, Fire Safety & Guest Evacuation Protocol',
-                'category' => 'Hotel Safety',
-                'progress' => 75,
-                'status' => 'In Progress',
-                'score' => null,
-                'duration' => '2.5 hours',
-                'completedDate' => null,
-            ],
-            [
-                'id' => 'lms-4',
-                'title' => 'Workplace Harassment Prevention & Oxford Code of Conduct',
-                'category' => 'Compliance',
-                'progress' => 100,
-                'status' => 'Completed',
-                'score' => 92,
-                'duration' => '2 hours',
-                'completedDate' => 'July 20, 2026',
-            ],
-        ];
+        // Real curriculum: every catalog course with this employee's progress
+        // joined in (Assigned when no row exists yet).
+        $byCourse = $userLearning->keyBy('course_id');
+        $courseList = $courses->map(function ($c) use ($byCourse) {
+            $row = $byCourse->get($c->course_id);
+            $status = $row?->status ?? 'Assigned';
+            return [
+                'id' => $c->course_code,
+                'course_id' => $c->course_id,
+                'title' => $c->title,
+                'category' => $c->category ?? 'General',
+                'progress' => $status === 'Completed' ? 100 : ($status === 'In Progress' ? 50 : 0),
+                'status' => $status,
+                'score' => $row?->score !== null ? (float) $row->score : null,
+                'duration' => null,
+                'completedDate' => $row?->completed_date
+                    ? Carbon::parse($row->completed_date)->format('M d, Y')
+                    : null,
+            ];
+        })->values()->all();
+
+        $completedRows = $userLearning->where('status', 'Completed');
+        $completedScores = $completedRows
+            ->map(fn ($r) => $r->score)
+            ->filter(fn ($s) => $s !== null)
+            ->values();
+        $averageScore = $completedScores->count() ? round((float) $completedScores->avg(), 1) : null;
+
+        // Rating / competency come from the latest real performance review —
+        // null when never reviewed (frontend falls back to its placeholder).
+        $latestReview = DB::table('performance_reviews')
+            ->where('employee_id', $employee->employee_id)
+            ->orderByDesc('review_date')
+            ->orderByDesc('performance_review_id')
+            ->first();
 
         return response()->json([
             'employee' => [
                 'name' => $employee->full_name,
                 'role' => $employee->position?->title ?? 'Staff',
                 'department' => $employee->department?->name ?? 'Front Office',
-                'overall_rating' => 4.8,
-                'competency_level' => 'Proficient (Exceeding Expectations)',
+                'overall_rating' => $latestReview?->overall_rating !== null
+                    ? (float) $latestReview->overall_rating
+                    : null,
+                'competency_level' => $latestReview?->competency_level,
             ],
             'stats' => [
-                'completed_courses' => 3,
-                'in_progress_courses' => 1,
-                'average_score' => 95,
-                'total_training_hours' => 11.5,
+                'completed_courses' => $completedRows->count(),
+                'in_progress_courses' => $userLearning->where('status', 'In Progress')->count(),
+                'average_score' => $averageScore,
+                'total_training_hours' => null,
             ],
             'courses' => $courseList,
         ]);
@@ -1103,6 +1300,7 @@ class EssPortalController extends Controller
                     'star' => (int) $p->star_count,
                     'fire' => (int) $p->fire_count,
                 ],
+                'shares' => (int) ($p->shares_count ?? 0),
                 'userReactions' => $userReactions[$p->recognition_id] ?? [],
                 'timeAgo' => $p->created_at ? $p->created_at->diffForHumans() : 'Recently',
                 'createdAt' => $p->created_at ? $p->created_at->toIso8601String() : Carbon::now()->toIso8601String(),
@@ -1223,6 +1421,141 @@ class EssPortalController extends Controller
                 'heart' => $rec->heart_count,
                 'star' => $rec->star_count,
                 'fire' => $rec->fire_count,
+            ],
+        ]);
+    }
+
+    /**
+     * POST /api/v1/ess/recognitions/{id}/share
+     * Record a Wall of Fame share (any authenticated portal user).
+     */
+    public function shareKudos(Request $request, string $id): JsonResponse
+    {
+        $rec = SocialRecognition::findOrFail((int) $id);
+        $rec->increment('shares_count');
+        $rec->refresh();
+
+        return response()->json([
+            'message' => 'Recognition shared.',
+            'shares' => (int) $rec->shares_count,
+        ]);
+    }
+
+    /**
+     * POST /api/v1/ess/my-learning/progress
+     * Employee starts (or resumes) a catalog course: Assigned -> In Progress.
+     * Completion itself is HR-verified (PATCH /ess/admin/learning/{id}/status).
+     */
+    public function updateLearningProgress(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'course_code' => 'required|string|max:40',
+        ]);
+
+        $employee = $this->resolveEmployee($request);
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found.'], 404);
+        }
+
+        $course = DB::table('learning_courses')
+            ->where('course_code', $validated['course_code'])
+            ->first();
+        if (! $course) {
+            return response()->json(['message' => 'Course not found.'], 404);
+        }
+
+        $existing = DB::table('employee_learning')
+            ->where('employee_id', $employee->employee_id)
+            ->where('course_id', $course->course_id)
+            ->first();
+
+        if ($existing) {
+            if ($existing->status === 'Completed') {
+                return response()->json([
+                    'message' => 'Course already completed — only HR can modify a completed record.',
+                ], 422);
+            }
+            DB::table('employee_learning')
+                ->where('employee_learning_id', $existing->employee_learning_id)
+                ->update(['status' => 'In Progress']);
+            $learningId = $existing->employee_learning_id;
+        } else {
+            $learningId = DB::table('employee_learning')->insertGetId([
+                'employee_id' => $employee->employee_id,
+                'course_id' => $course->course_id,
+                'status' => 'In Progress',
+                'assigned_date' => Carbon::today()->toDateString(),
+            ]);
+        }
+
+        $record = DB::table('employee_learning')->where('employee_learning_id', $learningId)->first();
+
+        AuditLogger::log(
+            action: 'LMS Course Started',
+            module: 'Learning Management',
+            severity: 'Info',
+            targetType: 'EmployeeLearning',
+            targetId: (string) $learningId,
+            details: "{$employee->full_name} started {$course->course_code} — {$course->title}",
+            request: $request
+        );
+
+        return response()->json([
+            'message' => 'Course marked as in progress.',
+            'learning' => $record,
+        ]);
+    }
+
+    /**
+     * Deterministic, verifiable certificate code — no storage needed, the same
+     * inputs always reproduce the same code (HR can recompute it to verify).
+     */
+    private function learningVerificationCode(int $employeeId, int $courseId, ?string $completedDate): string
+    {
+        $hash = strtoupper(substr(hash('sha256', $employeeId.'|'.$courseId.'|'.$completedDate.'|'.config('app.key')), 0, 8));
+        return "LMS-{$employeeId}-{$courseId}-{$hash}";
+    }
+
+    /**
+     * GET /api/v1/ess/my-learning/certificate/{courseCode}
+     * Eligibility + verification code for a COMPLETED course only.
+     */
+    public function learningCertificate(Request $request, string $courseCode): JsonResponse
+    {
+        $employee = $this->resolveEmployee($request);
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found.'], 404);
+        }
+
+        $row = DB::table('employee_learning as el')
+            ->join('learning_courses as lc', 'lc.course_id', '=', 'el.course_id')
+            ->where('el.employee_id', $employee->employee_id)
+            ->where('lc.course_code', $courseCode)
+            ->select('el.*', 'lc.title', 'lc.category', 'lc.course_code')
+            ->first();
+
+        if (! $row || $row->status !== 'Completed') {
+            return response()->json([
+                'eligible' => false,
+                'message' => 'Certificate available only for completed courses.',
+            ], 404);
+        }
+
+        return response()->json([
+            'eligible' => true,
+            'verification_code' => $this->learningVerificationCode(
+                (int) $employee->employee_id,
+                (int) $row->course_id,
+                $row->completed_date
+            ),
+            'course' => [
+                'code' => $row->course_code,
+                'title' => $row->title,
+                'category' => $row->category ?? 'General',
+                'score' => $row->score !== null ? (float) $row->score : null,
+                'completed_date' => $row->completed_date
+                    ? Carbon::parse($row->completed_date)->format('M d, Y')
+                    : null,
             ],
         ]);
     }

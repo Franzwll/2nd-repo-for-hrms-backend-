@@ -214,6 +214,7 @@ import {
   type ReportFormat,
 } from "@/lib/report-export";
 import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
+import { ReportMenu } from "@/components/ui/report-menu";
 import {
   isValidEmail,
   isValidName,
@@ -7234,16 +7235,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
-  const [reportsOpen, setReportsOpen] = useState(false);
   const [screeningOpen, setScreeningOpen] = useState(false);
-  /** Password-protected export flow — predefined report + format awaiting a file password. */
+  /** Password-protected export flow — History & Audit report awaiting a file password. */
   const [csvOpen, setCsvOpen] = useState(false);
   const [csvBusy, setCsvBusy] = useState(false);
-  const [csvPending, setCsvPending] = useState<
-    | { kind: "applicant"; optionId: string; format: ReportFormat }
-    | { kind: "audit"; format: ReportFormat }
-    | null
-  >(null);
+  const [csvPending, setCsvPending] = useState<{ kind: "audit"; format: ReportFormat } | null>(
+    null,
+  );
   /* --- Pipeline Overview filters (one row per applicant) --- */
   const [pipelineSearch, setPipelineSearch] = useState("");
   const [pipelinePosition, setPipelinePosition] = useState<string>("all");
@@ -7590,7 +7588,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     };
   };
 
-  /** Every format is password-protected: picking one opens the password gate. */
+  /** Every format is password-protected: picking one opens the password gate.
+   *  Predefined applicant reports now export directly from the header
+   *  MultiReportMenu — only the History tab's audit export still uses this gate. */
   const handleExportAuditReport = (format: ReportFormat) => {
     if (buildAuditReportData().rows.length === 0) {
       toast.error("No audit entries to export for current filters.");
@@ -7699,26 +7699,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     };
   };
 
-  /** Every format is password-protected: picking one opens the password gate. */
-  const handleExportApplicantReport = (r: (typeof reportOptions)[number], format: ReportFormat) => {
-    if (buildApplicantReportData(r).rows.length === 0) {
-      toast.error(`No records to export for ${r.title}.`);
-      return;
-    }
-    setCsvPending({ kind: "applicant", optionId: r.id, format });
-    setCsvOpen(true);
-  };
-
   const confirmCsvExport = async (password: string) => {
     if (!csvPending) return;
     setCsvBusy(true);
     try {
-      const data =
-        csvPending.kind === "audit"
-          ? buildAuditReportData()
-          : buildApplicantReportData(
-              reportOptions.find((o) => o.id === csvPending.optionId) ?? reportOptions[0]!,
-            );
+      const data = buildAuditReportData();
       await exportReport(data, csvPending.format, { password });
       const { zipName } = describeExport(data, csvPending.format);
       toast.success(
@@ -10159,9 +10144,26 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         title="Applicant Management"
         actions={
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => setReportsOpen(true)}>
-              <Download className="mr-2 h-4 w-4" /> Generate Report
-            </Button>
+            <ReportMenu
+              size="sm"
+              recordCount={
+                tab === "history"
+                  ? auditSort.sorted.length || auditFiltered.length
+                  : tab === "scheduling"
+                    ? pipelineSort.sorted.length || pipelineRows.length
+                    : applicantSort.sorted.length || filtered.length
+              }
+              report={() => {
+                if (tab === "history") return buildAuditReportData();
+                if (tab === "scheduling")
+                  return buildApplicantReportData(
+                    reportOptions.find((o) => o.id === "interview") ?? reportOptions[0]!,
+                  );
+                return buildApplicantReportData(
+                  reportOptions.find((o) => o.id === "all") ?? reportOptions[0]!,
+                );
+              }}
+            />
           </div>
         }
       />
@@ -14354,87 +14356,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         </>
       )}
 
-      {/* REPORTS DIALOG — predefined reports */}
-      <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Generate Report</DialogTitle>
-            <DialogDescription>
-              Predefined reports — every format is password-protected (sealed in an AES-256 ZIP; you
-              will be asked for a file password on every export).
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-2">
-            {reportOptions.map((r) => (
-              <div
-                key={r.id}
-                className="flex items-center justify-between gap-3 rounded-md border border-border p-3"
-              >
-                <div>
-                  <p className="text-sm font-medium">{r.title}</p>
-                  <p className="text-xs text-muted-foreground">{r.description}</p>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline">
-                      <Download className="mr-2 h-4 w-4" /> Generate
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-60">
-                    <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "pdf")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "docx")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "excel")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "csv")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-                      Password-protected ZIP — password asked on every export.
-                    </p>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => {
-                        const data = buildApplicantReportData(r);
-                        printReport(data);
-                        toast.success(`${data.title} sent to printer.`);
-                      }}
-                    >
-                      <Printer className="mr-2 h-4 w-4" /> Print…
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            ))}
-            <div className="flex items-center justify-between gap-3 rounded-md border border-dashed border-border p-3">
-              <div>
-                <p className="text-sm font-medium">History &amp; Audit</p>
-                <p className="text-xs text-muted-foreground">
-                  Who did what, when — available from the History tab&apos;s Generate Report menu
-                  (same formats, every file is password-protected).
-                </p>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* REPORTS DIALOG — predefined reports now export directly from the header
+          MultiReportMenu dropdown (same secure function as Export org chart). The
+          History tab's audit export below keeps its own password gate. */}
 
       <SecureExportDialog
         open={csvOpen}
@@ -14444,11 +14368,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             if (!o) setCsvPending(null);
           }
         }}
-        reportTitle={
-          !csvPending || csvPending.kind === "audit"
-            ? "History & Audit Report — Applicant Management"
-            : `Applicant Management — ${reportOptions.find((o) => o.id === csvPending.optionId)?.title ?? ""}`
-        }
+        reportTitle="History & Audit Report — Applicant Management"
         formatLabel={
           !csvPending
             ? ""

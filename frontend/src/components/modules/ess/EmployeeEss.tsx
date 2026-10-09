@@ -1,32 +1,89 @@
-import { useState } from "react";
-import { useRouterState, Link } from "@tanstack/react-router";
-import {
-  Clock,
-  FileText,
-  FileCheck,
-  Calendar,
-  Layers,
-  ArrowLeft,
-  HeartHandshake,
-  Send,
-} from "lucide-react";
+import { useState, Suspense, lazy } from "react";
+import { useRouterState } from "@tanstack/react-router";
 import { PageHeader } from "@/components/portal/PageHeader";
-import { Button } from "@/components/ui/button";
-import { EssAttendanceTab } from "@/components/modules/ess/tabs/EssAttendanceTab";
-import { EssPayrollTab } from "@/components/modules/ess/tabs/EssPayrollTab";
-import { EssLatestPayslipTab } from "@/components/modules/ess/tabs/EssLatestPayslipTab";
-import { EssDocumentsTab } from "@/components/modules/ess/tabs/EssDocumentsTab";
-import { EssAllRequestsTab } from "@/components/modules/ess/tabs/EssAllRequestsTab";
-import { EssPromotionTab } from "@/components/modules/ess/tabs/EssPromotionTab";
-import { EssPerformanceTab } from "@/components/modules/ess/tabs/EssPerformanceTab";
-import { EssRecognitionTab } from "@/components/modules/ess/tabs/EssRecognitionTab";
-import { EssBenefitsTab } from "@/components/modules/ess/tabs/EssBenefitsTab";
+import { Skeleton } from "@/components/ui/skeleton";
 import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
 import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
 import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewerModal";
 import { DocumentRequestModal } from "@/components/modules/ess/modals/DocumentRequestModal";
 import { EssAiAssistantModal } from "@/components/modules/ess/modals/EssAiAssistantModal";
 import { myPayroll } from "@/data/ess";
+
+// Lazy-loaded tab components — shows skeleton while loading
+const EssOverviewTab = lazy(() =>
+  import("@/components/modules/ess/tabs/EssOverviewTab").then((m) => ({ default: m.EssOverviewTab }))
+);
+const EssAttendanceTab = lazy(() =>
+  import("@/components/modules/ess/tabs/EssAttendanceTab").then((m) => ({ default: m.EssAttendanceTab }))
+);
+const EssPayrollTab = lazy(() =>
+  import("@/components/modules/ess/tabs/EssPayrollTab").then((m) => ({ default: m.EssPayrollTab }))
+);
+const EssDocumentsTab = lazy(() =>
+  import("@/components/modules/ess/tabs/EssDocumentsTab").then((m) => ({ default: m.EssDocumentsTab }))
+);
+const EssAllRequestsTab = lazy(() =>
+  import("@/components/modules/ess/tabs/EssAllRequestsTab").then((m) => ({ default: m.EssAllRequestsTab }))
+);
+const EssPromotionTab = lazy(() =>
+  import("@/components/modules/ess/tabs/EssPromotionTab").then((m) => ({ default: m.EssPromotionTab }))
+);
+const EssPerformanceTab = lazy(() =>
+  import("@/components/modules/ess/tabs/EssPerformanceTab").then((m) => ({ default: m.EssPerformanceTab }))
+);
+const EssRecognitionTab = lazy(() =>
+  import("@/components/modules/ess/tabs/EssRecognitionTab").then((m) => ({ default: m.EssRecognitionTab }))
+);
+const EssBenefitsTab = lazy(() =>
+  import("@/components/modules/ess/tabs/EssBenefitsTab").then((m) => ({ default: m.EssBenefitsTab }))
+);
+
+/** Full-page skeleton shown while any ESS tab module is loading. */
+function EssPageSkeleton() {
+  return (
+    <div className="space-y-6 animate-in fade-in duration-200" aria-busy="true" aria-label="Loading ESS module">
+      {/* Stat cards skeleton */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="rounded-lg border border-border/60 p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-8 w-8 rounded-md" />
+            </div>
+            <Skeleton className="h-6 w-2/3" />
+            <Skeleton className="h-3 w-1/2" />
+            <Skeleton className="h-3 w-full mt-2" />
+          </div>
+        ))}
+      </div>
+
+      {/* Table skeleton */}
+      <div className="rounded-lg border border-border/60 p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1.5">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-3 w-72" />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-9 w-[160px] rounded-md" />
+            <Skeleton className="h-9 w-[140px] rounded-md" />
+            <Skeleton className="h-9 w-[130px] rounded-md" />
+          </div>
+        </div>
+        <Skeleton className="h-10 w-full" />
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex gap-3">
+            <Skeleton className="h-8 flex-[2]" style={{ opacity: 1 - i * 0.15 }} />
+            <Skeleton className="h-8 flex-1" style={{ opacity: 1 - i * 0.15 }} />
+            <Skeleton className="h-8 flex-1" style={{ opacity: 1 - i * 0.15 }} />
+            <Skeleton className="h-8 w-20" style={{ opacity: 1 - i * 0.15 }} />
+            <Skeleton className="h-8 w-24" style={{ opacity: 1 - i * 0.15 }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function EmployeeEss() {
   // Global Quick Action Modals
@@ -40,14 +97,6 @@ export function EmployeeEss() {
   const searchStr = useRouterState({ select: (s) => s.location.searchStr });
   const params = new URLSearchParams(searchStr || "");
   const categoryParam = params.get("category");
-
-  const isSubCategory = Boolean(
-    categoryParam &&
-    categoryParam !== "Attendance" &&
-    categoryParam !== "Clocking" &&
-    categoryParam !== "Schedule" &&
-    categoryParam !== "Leave"
-  );
 
   const getPageTitle = () => {
     switch (categoryParam) {
@@ -76,15 +125,16 @@ export function EmployeeEss() {
       case "Promotion":
         return "Employee Self-Service · Request Promotion";
       case "Attendance":
-      default:
         return "Employee Self-Service · Attendance, Schedule & Balances";
+      default:
+        return "Employee Self-Service · Overview";
     }
   };
 
   const getPageDescription = () => {
     switch (categoryParam) {
       case "Schedule":
-        return "7-day weekly shift assignments, station stations, and shift swap requests.";
+        return "7-day weekly shift assignments, station assignments, and shift swap requests.";
       case "Clocking":
         return "Live web clocking terminal, real-time punch records, and station geolocation verification.";
       case "Leave":
@@ -108,15 +158,13 @@ export function EmployeeEss() {
       case "Promotion":
         return "Request a promotion review and track your HR decision.";
       case "Attendance":
-      default:
         return "Live web clocking terminal, weekly shift roster, biometric time records, and leave applications.";
+      default:
+        return "Your personal HR hub — attendance, payroll, documents, requests, and career tools at a glance.";
     }
   };
 
-  const attendanceInitialTab =
-    categoryParam === "Schedule"
-      ? "roster"
-      : "clocking";
+  const attendanceInitialTab = categoryParam === "Schedule" ? "roster" : "clocking";
 
   return (
     <div className="space-y-6">
@@ -124,26 +172,15 @@ export function EmployeeEss() {
         eyebrow="Employee Portal"
         title={getPageTitle()}
         description={getPageDescription()}
-        actions={
-          isSubCategory ? (
-            <Button variant="outline" size="sm" asChild className="gap-1.5 text-xs">
-              <Link to="/employee/ess" search={{ category: "Attendance" }}>
-                <ArrowLeft className="h-3.5 w-3.5" /> Attendance &amp; Schedule
-              </Link>
-            </Button>
-          ) : undefined
-        }
       />
 
-      {/* MODULE CONTENT */}
-      <div className="mt-6">
-        {(!categoryParam ||
-          categoryParam === "Attendance" ||
+      {/* ── Module Content with Skeleton Loading ── */}
+      <Suspense fallback={<EssPageSkeleton />}>
+        {!categoryParam && <EssOverviewTab />}
+        {(categoryParam === "Attendance" ||
           categoryParam === "Clocking" ||
           categoryParam === "Schedule" ||
-          categoryParam === "Leave") && (
-          <EssAttendanceTab initialTab={attendanceInitialTab} />
-        )}
+          categoryParam === "Leave") && <EssAttendanceTab initialTab={attendanceInitialTab} />}
         {(categoryParam === "Payroll" || categoryParam === "Payslip") && <EssPayrollTab />}
         {categoryParam === "Performance" && <EssPerformanceTab />}
         {(categoryParam === "Documents" || categoryParam === "RequestDoc") && <EssDocumentsTab />}
@@ -151,9 +188,9 @@ export function EmployeeEss() {
         {categoryParam === "Recognition" && <EssRecognitionTab />}
         {(categoryParam === "Benefits" || categoryParam === "Statutory") && <EssBenefitsTab />}
         {categoryParam === "Promotion" && <EssPromotionTab />}
-      </div>
+      </Suspense>
 
-      {/* Global Modals */}
+      {/* ── Global Modals ── */}
       <QuickClockModal open={clockModalOpen} onOpenChange={setClockModalOpen} />
       <LeaveApplicationModal open={leaveModalOpen} onOpenChange={setLeaveModalOpen} />
       <PayslipViewerModal
@@ -162,10 +199,7 @@ export function EmployeeEss() {
         period="2026-07-01 – 07-15"
         netPay={myPayroll.net}
       />
-      <DocumentRequestModal
-        open={docRequestModalOpen}
-        onOpenChange={setDocRequestModalOpen}
-      />
+      <DocumentRequestModal open={docRequestModalOpen} onOpenChange={setDocRequestModalOpen} />
       <EssAiAssistantModal
         open={aiModalOpen}
         onOpenChange={setAiModalOpen}

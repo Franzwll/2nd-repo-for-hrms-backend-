@@ -127,8 +127,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  // suppressHydrationWarning: the blocking theme script above intentionally
+  // toggles the "dark" class pre-hydration (server has no localStorage), so
+  // React must not compare <html> attributes. Behavior is unchanged — React
+  // already leaves the DOM as-is ("won't be patched up").
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
         <script

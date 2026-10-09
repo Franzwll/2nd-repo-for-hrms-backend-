@@ -20,6 +20,13 @@ interface PayslipViewerModalProps {
   onOpenChange: (open: boolean) => void;
   period?: string;
   netPay?: number;
+  /** Full record from GET /ess/my-payroll — carries itemized lines when present. */
+  payslip?: {
+    earnings?: { label: string; amount: number; ytd: number }[];
+    deductions_breakdown?: { label: string; amount: number; ytd: number }[];
+    payoutDate?: string;
+    status?: string;
+  } | null;
   onInquiryClick?: (period: string) => void;
 }
 
@@ -28,6 +35,7 @@ export function PayslipViewerModal({
   onOpenChange,
   period = "2026-07-01 – 07-15",
   netPay = 9120,
+  payslip,
   onInquiryClick,
 }: PayslipViewerModalProps) {
   const handlePrint = () => {
@@ -53,21 +61,32 @@ export function PayslipViewerModal({
     }
   };
 
-  const earningsWithYtd = [
-    { label: "Basic Pay", amount: 16000, ytd: 112000 },
-    { label: "Overtime Pay", amount: 2100, ytd: 14700 },
-    { label: "Night Differential", amount: 900, ytd: 6300 },
-    { label: "Meal Allowance", amount: 1500, ytd: 10500 },
-    { label: "Service Charge Share", amount: 1000, ytd: 7000 },
-  ];
+  // Itemized lines from the payroll record when the backend provides them;
+  // otherwise the long-standing placeholder breakdown (clearly an estimate).
+  const earningsWithYtd =
+    payslip?.earnings?.length
+      ? payslip.earnings
+      : [
+          { label: "Basic Pay", amount: 16000, ytd: 112000 },
+          { label: "Overtime Pay", amount: 2100, ytd: 14700 },
+          { label: "Night Differential", amount: 900, ytd: 6300 },
+          { label: "Meal Allowance", amount: 1500, ytd: 10500 },
+          { label: "Service Charge Share", amount: 1000, ytd: 7000 },
+        ];
 
-  const deductionsWithYtd = [
-    { label: "SSS Contribution", amount: 900, ytd: 6300 },
-    { label: "PhilHealth Premium", amount: 550, ytd: 3850 },
-    { label: "Pag-IBIG HDMF", amount: 200, ytd: 1400 },
-    { label: "Withholding Tax (BIR)", amount: 1160, ytd: 8120 },
-    { label: "Company Salary Loan", amount: 450, ytd: 3150 },
-  ];
+  const deductionsWithYtd =
+    payslip?.deductions_breakdown?.length
+      ? payslip.deductions_breakdown
+      : [
+          { label: "SSS Contribution", amount: 900, ytd: 6300 },
+          { label: "PhilHealth Premium", amount: 550, ytd: 3850 },
+          { label: "Pag-IBIG HDMF", amount: 200, ytd: 1400 },
+          { label: "Withholding Tax (BIR)", amount: 1160, ytd: 8120 },
+          { label: "Company Salary Loan", amount: 450, ytd: 3150 },
+        ];
+
+  const payDate = payslip?.payoutDate ?? "05/08/2026";
+  const stubStatus = payslip?.status ?? "Released";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -87,7 +106,7 @@ export function PayslipViewerModal({
               variant="outline"
               className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-xs"
             >
-              Released
+              {stubStatus}
             </Badge>
           </div>
         </DialogHeader>
@@ -102,7 +121,7 @@ export function PayslipViewerModal({
           department={myProfile.department || "Kitchen / Culinary"}
           dateOfJoining={myProfile.dateHired ? new Date(myProfile.dateHired).toLocaleDateString("en-GB") : "15/04/2026"}
           payPeriod={period}
-          payDate="05/08/2026"
+          payDate={payDate}
           paidDays={15}
           lopDays={0}
           bankAccount="BDO *****412"

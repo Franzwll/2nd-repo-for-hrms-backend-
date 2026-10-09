@@ -25,6 +25,7 @@ class SocialRecognition extends Model
         'heart_count',
         'star_count',
         'fire_count',
+        'shares_count',
     ];
 
     protected $casts = [
@@ -32,6 +33,7 @@ class SocialRecognition extends Model
         'heart_count' => 'integer',
         'star_count' => 'integer',
         'fire_count' => 'integer',
+        'shares_count' => 'integer',
     ];
 
     public function sender(): BelongsTo

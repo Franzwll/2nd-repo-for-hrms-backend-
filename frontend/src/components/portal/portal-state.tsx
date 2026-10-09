@@ -35,6 +35,7 @@ export type Notification = {
   read: boolean;
   tone: "info" | "success" | "warning";
   targetType: string | null;
+  targetId: string | null;
 };
 
 type State = {
@@ -58,6 +59,7 @@ function mapNotification(n: ApiNotification): Notification {
     read: n.read,
     tone: (n.tone as Notification["tone"]) ?? "info",
     targetType: n.target_type ?? null,
+    targetId: n.target_id != null ? String(n.target_id) : null,
   };
 }
 
@@ -118,6 +120,8 @@ async function loadData() {
           time: n.time || "Just now",
           read: n.read || readFlags.has(String(n.id)),
           tone: (n.tone as any) || "info",
+          targetType: n.target_type ?? null,
+          targetId: n.target_id != null ? String(n.target_id) : null,
         }))
         : [];
 
@@ -222,6 +226,7 @@ export function usePortalState() {
             read: false,
             tone: "info",
             targetType: null,
+            targetId: null,
           },
           ...state.notifications,
         ],

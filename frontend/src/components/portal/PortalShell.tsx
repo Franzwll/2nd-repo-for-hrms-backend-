@@ -36,6 +36,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
@@ -49,24 +56,55 @@ import type { Notification } from "@/components/portal/portal-state";
 function notificationTarget(targetType: string | null | undefined, role: Role): string | null {
   if (!targetType) return null;
   const base = roleMeta[role].base;
-  switch (targetType) {
+  // Backend sends mixed casing ("Applicant", "Final Evaluation", ...) — normalize.
+  switch (targetType.toLowerCase()) {
+    case "applicant":
+    case "applicants":
+    case "application":
+    case "assessment":
+    case "assessment test":
+    case "final evaluation":
+    case "interview":
+      return role === "employee" ? null : `${base}/applicants`;
+    case "employee":
     case "employees":
       return role === "employee" ? null : `${base}/employees`;
+    case "department":
     case "departments":
+    case "position":
     case "positions":
+    case "salary-grade":
     case "salary_grades":
       return role === "employee" ? null : `${base}/dept-pos`;
+    case "user":
     case "system_users":
       return role === "superadmin" ? `${base}/users` : `${base}/settings`;
+    case "role":
     case "system_roles":
       return `${base}/settings`;
+    case "hr3_recommendation":
     case "hr3_recommendations":
       return `${base}/ess`;
+    case "faq":
     case "chatbot_faqs":
       return role === "employee" ? null : `${base}/chatbot`;
+    case "announcement":
+    case "announcements":
+      return base;
     default:
       return null;
   }
+}
+
+/** Human-readable record line for the detail modal, e.g. "Applicant #89". */
+function notificationRecordLabel(n: Notification): string | null {
+  if (!n.targetId) return null;
+  const key = (n.targetType ?? "").toLowerCase();
+  if (key === "applicant" || key === "applicants" || key === "application") {
+    return `Applicant #${n.targetId}`;
+  }
+  if (!n.targetType) return `#${n.targetId}`;
+  return `${n.targetType} #${n.targetId}`;
 }
 
 function getInitials(name: string) {
@@ -122,6 +160,8 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
     nav.filter((i) => i.children?.length).map((i) => i.label),
   );
   const [announceOpen, setAnnounceOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [mfaRequired, setMfaRequired] = useState(false);
   const lastActiveGroupRef = useRef<string | null>(null);
 
@@ -474,7 +514,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
               </PopoverContent>
             </Popover>
 
-            <Popover>
+            <Popover open={notifOpen} onOpenChange={setNotifOpen}>
               <PopoverTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="Notifications" className="relative">
                   <Bell className="h-5 w-5" />
@@ -533,7 +573,8 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                           type="button"
                           onClick={() => {
                             markRead(n.id);
-                            if (target) navigate({ to: target });
+                            setNotifOpen(false);
+                            setSelectedNotification(n);
                           }}
                           className={cn(
                             "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60",
@@ -657,6 +698,60 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
       </div>
 
       <AnnouncementDialog open={announceOpen} onOpenChange={setAnnounceOpen} author={meta.user} />
+
+      {/* Notification detail modal — title, tone badge, When / Record, View record. */}
+      <Dialog
+        open={selectedNotification !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedNotification(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-start justify-between gap-3 pr-6">
+              <DialogTitle className="text-left leading-snug">{selectedNotification?.title}</DialogTitle>
+              {selectedNotification && (
+                <Badge variant="outline" className="mt-0.5 shrink-0 text-[0.65rem] capitalize">
+                  {selectedNotification.tone}
+                </Badge>
+              )}
+            </div>
+          </DialogHeader>
+          <p className="text-sm leading-relaxed text-foreground/90">{selectedNotification?.detail}</p>
+          <div className="space-y-1 text-sm">
+            <p>
+              <span className="font-medium">When: </span>
+              <span className="text-muted-foreground">{selectedNotification?.time}</span>
+            </p>
+            {selectedNotification?.targetId && (
+              <p>
+                <span className="font-medium">Record: </span>
+                <span className="text-muted-foreground">
+                  {selectedNotification ? notificationRecordLabel(selectedNotification) : null}
+                </span>
+              </p>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setSelectedNotification(null)}>
+              Close
+            </Button>
+            {selectedNotification && notificationTarget(selectedNotification.targetType, role) && (
+              <Button
+                onClick={() => {
+                  const target = selectedNotification
+                    ? notificationTarget(selectedNotification.targetType, role)
+                    : null;
+                  if (target) navigate({ to: target });
+                  setSelectedNotification(null);
+                }}
+              >
+                View record <ChevronRight className="h-4 w-4" />
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

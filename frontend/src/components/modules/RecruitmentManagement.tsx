@@ -165,6 +165,7 @@ import {
   type ReportFormat,
 } from "@/lib/report-export";
 import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
+import { ReportMenu } from "@/components/ui/report-menu";
 import {
   RequirementMatchPanel,
   ResumeInfoPanel,
@@ -1929,14 +1930,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
   const [tab, setTab] = useState("postings");
   const [mode, setMode] = useState<"template" | "custom">("custom");
-  /** Predefined reports dialog + password-protected export flow (asked on every export). */
-  const [reportsOpen, setReportsOpen] = useState(false);
-  const [csvOpen, setCsvOpen] = useState(false);
-  const [csvBusy, setCsvBusy] = useState(false);
-  const [csvPending, setCsvPending] = useState<{
-    id: RecruitmentReportId;
-    format: ReportFormat;
-  } | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [blocks, setBlocks] = useState<BlockId[]>([]);
   const [dragging, setDragging] = useState<BlockId | null>(null);
@@ -4103,75 +4096,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const recruitmentReport = buildPostingsReport();
   const requisitionReport = buildRequisitionsReport();
 
-  /** Every format is password-protected: picking one opens the password gate. */
-  const handleExportRecruitmentReport = (id: RecruitmentReportId, format: ReportFormat) => {
-    if (buildRecruitmentReport(id).rows.length === 0) {
-      toast.error("No records to export for the current filters.");
-      return;
-    }
-    setCsvPending({ id, format });
-    setCsvOpen(true);
-  };
-
-  const confirmRecruitmentCsv = async (password: string) => {
-    if (!csvPending) return;
-    setCsvBusy(true);
-    try {
-      const data = buildRecruitmentReport(csvPending.id);
-      await exportReport(data, csvPending.format, { password });
-      const { zipName } = describeExport(data, csvPending.format);
-      toast.success(
-        `${data.title} exported as password-protected ${csvPending.format.toUpperCase()} (${zipName}).`,
-      );
-      setCsvOpen(false);
-      setCsvPending(null);
-    } catch (e) {
-      console.error("Protected export failed:", e);
-      toast.error(e instanceof Error ? e.message : "Protected export failed.");
-    } finally {
-      setCsvBusy(false);
-    }
-  };
-
-  const ReportMenu = ({
-    report,
-    reportId,
-    buttonClassName,
-  }: {
-    report: ReportData;
-    reportId?: RecruitmentReportId;
-    buttonClassName?: string;
-  }) => {
-    const id: RecruitmentReportId =
-      reportId ?? (report.title.includes("Requisition") ? "requisitions" : "postings");
-    return (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" className={cn("gap-2", buttonClassName)}>
-            <Download className="h-4 w-4" /> Generate report
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64">
-          {(["pdf", "docx", "excel", "csv"] as ReportFormat[]).map((format) => (
-            <DropdownMenuItem
-              key={format}
-              onClick={() => handleExportRecruitmentReport(id, format)}
-            >
-              <FileText className="mr-2 h-4 w-4" />
-              <span className="flex items-center gap-1.5">
-                Export as {format.toUpperCase()}
-                <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-              </span>
-            </DropdownMenuItem>
-          ))}
-          <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-            Every file is sealed in a password-protected ZIP (AES-256). You will be asked for a file
-            password.
-          </p>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    );
-  };
+  /** Inner Vacancy Requisitions toolbar — same secure function as Export org chart. */
 
   const salaryLine =
     draft.salaryMin || draft.salaryMax
@@ -4623,9 +4548,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         title="Recruitment Management"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" className="gap-2" onClick={() => setReportsOpen(true)}>
-              <Download className="h-4 w-4" /> Generate Report
-            </Button>
+            <ReportMenu
+              recordCount={tab === "requisitions" ? filteredRequisitions.length : filteredJobs.length}
+              report={() =>
+                tab === "requisitions" ? buildRequisitionsReport() : buildPostingsReport()
+              }
+            />
             <Button
               size="icon"
               variant="outline"
@@ -5153,8 +5081,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     </SelectContent>
                   </Select>
                   <ReportMenu
-                    report={requisitionReport}
-                    reportId="requisitions"
+                    report={() => buildRequisitionsReport()}
+                    recordCount={filteredRequisitions.length}
+                    label="Generate report"
                     buttonClassName="h-10 whitespace-nowrap"
                   />
                 </div>
@@ -7925,96 +7854,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         </DialogContent>
       </Dialog>
 
-      {/* PREDEFINED REPORTS DIALOG */}
-      <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Generate Report</DialogTitle>
-            <DialogDescription>
-              Predefined reports — every format is password-protected (sealed in an AES-256 ZIP; you
-              will be asked for a file password on every export).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            {recruitmentReportOptions.map((r) => (
-              <div
-                key={r.id}
-                className="flex items-center justify-between gap-3 rounded-md border border-border p-3"
-              >
-                <div>
-                  <p className="text-sm font-medium">{r.title}</p>
-                  <p className="text-xs text-muted-foreground">{r.description}</p>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline">
-                      <Download className="mr-2 h-4 w-4" /> Generate
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-60">
-                    <DropdownMenuItem onClick={() => handleExportRecruitmentReport(r.id, "pdf")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExportRecruitmentReport(r.id, "docx")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExportRecruitmentReport(r.id, "excel")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExportRecruitmentReport(r.id, "csv")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-                      Password-protected ZIP — password asked on every export.
-                    </p>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Predefined reports now export directly from the header MultiReportMenu
+          dropdown (same secure function as Export org chart). */}
 
-      <SecureExportDialog
-        open={csvOpen}
-        onOpenChange={(o) => {
-          if (!csvBusy) {
-            setCsvOpen(o);
-            if (!o) setCsvPending(null);
-          }
-        }}
-        reportTitle={
-          csvPending
-            ? (recruitmentReportOptions.find((o) => o.id === csvPending.id)?.title ??
-              "Recruitment report")
-            : "Recruitment report"
-        }
-        formatLabel={
-          !csvPending
-            ? ""
-            : csvPending.format === "pdf"
-              ? "PDF"
-              : csvPending.format === "docx"
-                ? "DOCX"
-                : csvPending.format === "excel"
-                  ? "Excel"
-                  : "CSV"
-        }
-        busy={csvBusy}
-        onConfirm={confirmRecruitmentCsv}
-      />
     </div>
   );
 }

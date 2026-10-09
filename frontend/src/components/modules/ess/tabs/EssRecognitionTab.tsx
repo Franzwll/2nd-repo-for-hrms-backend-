@@ -20,7 +20,6 @@ import {
   Check,
   Trophy,
   ExternalLink,
-  Plus,
   Globe,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,7 +41,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { getUser } from "@/lib/auth";
 import { myProfile } from "@/data/ess";
-import { essApi } from "@/lib/api";
+import { essApi, type ApiRecognitionItem } from "@/lib/api";
 
 export interface RecognitionPost {
   id: string;
@@ -207,30 +206,65 @@ const INITIAL_POSTS: RecognitionPost[] = [
 
 const STORAGE_KEY = "oxford_social_recognitions";
 
+/** Backend numeric ids (e.g. "12") persist server-side; anything else
+ *  (seed "rec-1", local "share-…") is local-only until posted. */
+const isPersistedPost = (id: string) => /^\d+$/.test(id);
+
+/** Canonical backend → UI mapping, shared by the initial fetch and refetches. */
+function mapApiPost(r: ApiRecognitionItem): RecognitionPost {
+  return {
+    id: r.id,
+    senderName: r.sender,
+    senderRole: r.senderRole || "Oxford Staff",
+    senderInitials: r.senderAvatar || r.sender.slice(0, 2).toUpperCase(),
+    recipientName: r.recipient,
+    recipientRole: r.recipientRole || "Oxford Staff",
+    recipientInitials: r.recipientAvatar || r.recipient.slice(0, 2).toUpperCase(),
+    coreValue: (r.badge as RecognitionPost["coreValue"]) || "Guest Delight",
+    message: r.message,
+    timestamp: r.timeAgo || "Today",
+    isoDate: r.createdAt || new Date().toISOString(),
+    reactions: r.reactions || { clap: 1, heart: 0, star: 0, fire: 0 },
+    userReactions: r.userReactions || [],
+    shares: r.shares ?? 0,
+  };
+}
+
 export function EssRecognitionTab() {
-  const user = getUser();
-  const currentUserName = user?.full_name || myProfile.name;
-  const currentUserRole = (user as any)?.position || myProfile.position || "Oxford Staff";
+  // getUser() reads browser storage (absent during server render) — resolve
+  // identity after mount so server and client HTML match on first paint.
+  const [authName, setAuthName] = useState<string | null>(null);
+  const [authPosition, setAuthPosition] = useState<string | null>(null);
+  useEffect(() => {
+    const u = getUser();
+    setAuthName(u?.full_name ?? null);
+    setAuthPosition(((u as any)?.position as string | undefined) ?? null);
+  }, []);
+  const currentUserName = authName || myProfile.name;
+  const currentUserRole = authPosition || myProfile.position || "Oxford Staff";
 
   const currentUserInitials = useMemo(() => {
-    const parts = currentUserName.trim().split(" ");
-    if (parts.length >= 2) {
-      return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-    }
-    return currentUserName.slice(0, 2).toUpperCase() || "KD";
+    const parts = currentUserName.trim().split(" ").filter(Boolean);
+    const first = parts[0]?.charAt(0) ?? "";
+    const last = parts.length >= 2 ? (parts[parts.length - 1]?.charAt(0) ?? "") : "";
+    return `${first}${last}`.toUpperCase() || currentUserName.slice(0, 2).toUpperCase() || "KD";
   }, [currentUserName]);
 
-  const [posts, setPosts] = useState<RecognitionPost[]>(() => {
+  // Server and client must render identically on first paint: start from the
+  // static seeds, hydrate browser-saved posts after mount, and only persist
+  // back to storage once hydrated (otherwise mount would clobber saved data).
+  const [posts, setPosts] = useState<RecognitionPost[]>(INITIAL_POSTS);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
+      if (saved) setPosts(JSON.parse(saved));
     } catch {
       // ignore
     }
-    return INITIAL_POSTS;
-  });
+    setHydrated(true);
+  }, []);
 
   const [activeFilter, setActiveFilter] = useState<"all" | "received">("all");
   const [selectedValueFilter, setSelectedValueFilter] = useState<string>("all");
@@ -242,7 +276,9 @@ export function EssRecognitionTab() {
 
   // Facebook-Style Create Post Modal State
   const [createPostOpen, setCreatePostOpen] = useState(false);
-  const [selectedRecipient, setSelectedRecipient] = useState(COLLEAGUES[0].name);
+  const [selectedRecipient, setSelectedRecipient] = useState(
+    COLLEAGUES[0]?.name ?? ""
+  );
   const [selectedCoreValue, setSelectedCoreValue] = useState<RecognitionPost["coreValue"]>("Guest Delight");
   const [praiseMessage, setPraiseMessage] = useState("");
   const [isSubmittingPost, setIsSubmittingPost] = useState(false);
@@ -260,43 +296,29 @@ export function EssRecognitionTab() {
     setCurrentPage(1);
   }, [activeFilter, selectedValueFilter, searchTerm]);
 
-  // Fetch from backend
+  // Fetch from backend (canonical source — replaces local state when present)
   useEffect(() => {
     essApi
       .recognitions()
       .then((res) => {
         if (res.recognitions && res.recognitions.length > 0) {
-          const apiMapped: RecognitionPost[] = res.recognitions.map((r) => ({
-            id: r.id,
-            senderName: r.sender,
-            senderRole: r.senderRole || "Oxford Staff",
-            senderInitials: r.senderAvatar || r.sender.slice(0, 2).toUpperCase(),
-            recipientName: r.recipient,
-            recipientRole: r.recipientRole || "Oxford Staff",
-            recipientInitials: r.recipientAvatar || r.recipient.slice(0, 2).toUpperCase(),
-            coreValue: (r.badge as RecognitionPost["coreValue"]) || "Guest Delight",
-            message: r.message,
-            timestamp: r.timeAgo || "Today",
-            isoDate: r.createdAt || new Date().toISOString(),
-            reactions: r.reactions || { clap: 1, heart: 0, star: 0, fire: 0 },
-            userReactions: (r as any).userReactions || [],
-            shares: 4,
-          }));
-          setPosts(apiMapped);
+          setPosts(res.recognitions.map(mapApiPost));
         }
       })
       .catch(() => {});
   }, []);
 
-  // Save to localStorage and notify other components
+  // Save to localStorage and notify other components (only after hydration,
+  // so the initial mount never overwrites browser-saved posts with seeds)
   useEffect(() => {
+    if (!hydrated) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
       window.dispatchEvent(new Event("recognition_updated"));
     } catch {
       // ignore
     }
-  }, [posts]);
+  }, [posts, hydrated]);
 
   const filteredPosts = useMemo(() => {
     return posts.filter((p) => {
@@ -334,7 +356,44 @@ export function EssRecognitionTab() {
     p.recipientName.toLowerCase().includes(currentUserName.toLowerCase())
   ).length;
 
+  // Most-used core value across the visible wall (was a hardcoded label).
+  const topCoreValue = useMemo(() => {
+    const counts = new Map<string, number>();
+    posts.forEach((p) => counts.set(p.coreValue, (counts.get(p.coreValue) ?? 0) + 1));
+    let top = "Guest Delight";
+    let best = -1;
+    counts.forEach((n, v) => {
+      if (n > best) {
+        best = n;
+        top = v;
+      }
+    });
+    return top;
+  }, [posts]);
+
+  // Keep the recipient picker valid: never offer yourself (dropdown is a
+  // static list that may contain the logged-in user).
+  const availableColleagues = useMemo(
+    () => COLLEAGUES.filter((c) => c.name.toLowerCase() !== currentUserName.toLowerCase()),
+    [currentUserName]
+  );
+
+  // If the default recipient turns out to be yourself (static list), switch to
+  // the first available colleague.
+  useEffect(() => {
+    const firstAvailable = availableColleagues[0];
+    if (
+      selectedRecipient.toLowerCase() === currentUserName.toLowerCase() &&
+      firstAvailable
+    ) {
+      setSelectedRecipient(firstAvailable.name);
+    }
+  }, [currentUserName, availableColleagues, selectedRecipient]);
+
   const handleToggleReaction = async (postId: string, reactionType: "clap" | "heart" | "star" | "fire") => {
+    const previous = posts.find((p) => p.id === postId);
+
+    // Optimistic update for instant feedback.
     setPosts((prev) =>
       prev.map((post) => {
         if (post.id !== postId) return post;
@@ -356,49 +415,86 @@ export function EssRecognitionTab() {
       })
     );
 
+    // Local-only posts (demo seeds / shares) have no backend row — keep them local.
+    if (!isPersistedPost(postId)) return;
+
     try {
-      await essApi.reactKudos(postId, reactionType);
-    } catch {
-      // ignore
+      const res = await essApi.reactKudos(postId, reactionType);
+      // Reconcile with canonical server counts.
+      const server = res?.reactions;
+      if (server) {
+        setPosts((prev) =>
+          prev.map((post) => {
+            if (post.id !== postId) return post;
+            return {
+              ...post,
+              reactions: {
+                clap: Math.max(0, Number(server["clap"] ?? post.reactions.clap)),
+                heart: Math.max(0, Number(server["heart"] ?? post.reactions.heart)),
+                star: Math.max(0, Number(server["star"] ?? post.reactions.star)),
+                fire: Math.max(0, Number(server["fire"] ?? post.reactions.fire)),
+              },
+            };
+          })
+        );
+      }
+    } catch (err: any) {
+      // Roll back the optimistic update so counts never lie.
+      if (previous) {
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === postId
+              ? { ...p, reactions: previous.reactions, userReactions: previous.userReactions }
+              : p
+          )
+        );
+      }
+      toast.error(err?.message || "Could not save your reaction — please retry.");
     }
   };
 
-  // Facebook-Style Create Post Handler
-  const handleCreatePost = (e?: React.FormEvent) => {
+  // Create post — persisted via POST /ess/recognitions, then refetched so the
+  // feed always reflects canonical server state (visible to all employees).
+  const handleCreatePost = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!praiseMessage.trim()) {
+    const message = praiseMessage.trim();
+    if (!message) {
       toast.error("Please enter a praise message!");
       return;
     }
-    setIsSubmittingPost(true);
+    if (message.length > 200) {
+      toast.error("Keep your message to 200 characters so it stays readable.");
+      return;
+    }
+    if (selectedRecipient.trim().toLowerCase() === currentUserName.trim().toLowerCase()) {
+      toast.error("You can't recognize yourself — pick a colleague!");
+      return;
+    }
     const recipient = COLLEAGUES.find((c) => c.name === selectedRecipient) || {
       name: selectedRecipient,
       role: "Oxford Suites Staff",
       initials: selectedRecipient.slice(0, 2).toUpperCase(),
     };
 
-    const newPost: RecognitionPost = {
-      id: `rec-${Date.now()}`,
-      senderName: currentUserName,
-      senderRole: currentUserRole,
-      senderInitials: currentUserInitials,
-      recipientName: recipient.name,
-      recipientRole: recipient.role,
-      recipientInitials: recipient.initials,
-      coreValue: selectedCoreValue,
-      message: praiseMessage.trim(),
-      timestamp: "Just now",
-      isoDate: new Date().toISOString(),
-      reactions: { clap: 1, heart: 0, star: 0, fire: 0 },
-      userReactions: ["clap"],
-      shares: 0,
-    };
-
-    setPosts((prev) => [newPost, ...prev]);
-    setPraiseMessage("");
-    setIsSubmittingPost(false);
-    setCreatePostOpen(false);
-    toast.success(`Recognition posted for ${recipient.name}! 🎉`);
+    setIsSubmittingPost(true);
+    try {
+      const res = await essApi.sendKudos({
+        recipient: recipient.name,
+        badge: selectedCoreValue,
+        message,
+      });
+      const list = await essApi.recognitions();
+      if (list?.recognitions?.length) {
+        setPosts(list.recognitions.map(mapApiPost));
+      }
+      setPraiseMessage("");
+      setCreatePostOpen(false);
+      toast.success(res?.message || `Recognition posted for ${recipient.name}! 🎉`);
+    } catch (err: any) {
+      toast.error(err?.message || "Could not post recognition — please retry.");
+    } finally {
+      setIsSubmittingPost(false);
+    }
   };
 
   // Facebook-Style Share Modal Handlers
@@ -462,9 +558,22 @@ export function EssRecognitionTab() {
     }
   };
 
-  const handleShareToFeed = () => {
+  const handleShareToFeed = async () => {
     if (!selectedSharePost) return;
     setIsSharing(true);
+
+    const targetId = selectedSharePost.id;
+    let sharedCount = (selectedSharePost.shares ?? 0) + 1;
+    try {
+      // Persist the share count server-side for backend posts; local-only
+      // posts (seeds / shares) just bump their local counter.
+      if (isPersistedPost(targetId)) {
+        const res = await essApi.shareKudos(targetId);
+        if (typeof res?.shares === "number") sharedCount = res.shares;
+      }
+    } catch {
+      toast.error("Could not record the share on the server — kept locally.");
+    }
 
     const sharedPost: RecognitionPost = {
       id: `share-${Date.now()}`,
@@ -503,7 +612,7 @@ export function EssRecognitionTab() {
     setPosts((prev) => [
       sharedPost,
       ...prev.map((p) =>
-        p.id === selectedSharePost.id ? { ...p, shares: (p.shares || 0) + 1 } : p
+        p.id === selectedSharePost.id ? { ...p, shares: sharedCount } : p
       ),
     ]);
 
@@ -517,14 +626,14 @@ export function EssRecognitionTab() {
     <div className="space-y-6">
       {/* Top Banner & Stats Overview */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-border/70 shadow-xs bg-card hover:border-primary/50 transition-all">
+        <Card className="border-border/70 shadow-xs bg-card transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Kudos Received</p>
               <p className="mt-1 text-3xl font-bold font-display text-primary">
                 {myReceivedCount} <span className="text-xs font-normal text-muted-foreground">shout-outs</span>
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">Top: ⭐ Guest Delight</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Top: ⭐ {topCoreValue}</p>
             </div>
             <div className="rounded-xl bg-primary/10 p-3 text-primary border border-primary/20">
               <Award className="h-6 w-6" />
@@ -532,7 +641,7 @@ export function EssRecognitionTab() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs bg-card hover:border-primary/50 transition-all">
+        <Card className="border-border/70 shadow-xs bg-card transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">HR3 Commendations</p>
@@ -547,7 +656,7 @@ export function EssRecognitionTab() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs bg-card hover:border-primary/50 transition-all">
+        <Card className="border-border/70 shadow-xs bg-card transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Oxford Service Values</p>
@@ -651,15 +760,6 @@ export function EssRecognitionTab() {
                     My Received ({myReceivedCount})
                   </button>
                 </div>
-
-                <Button
-                  size="sm"
-                  onClick={() => setCreatePostOpen(true)}
-                  className="h-8 px-3 text-xs bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 font-semibold shadow-2xs cursor-pointer"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>Recognize</span>
-                </Button>
               </div>
             </div>
 
@@ -1017,7 +1117,7 @@ export function EssRecognitionTab() {
                   <SelectValue placeholder="Select a colleague..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {COLLEAGUES.map((c) => (
+                  {availableColleagues.map((c) => (
                     <SelectItem key={c.name} value={c.name} className="text-xs">
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{c.name}</span>
@@ -1049,12 +1149,22 @@ export function EssRecognitionTab() {
               </Select>
             </div>
 
-            {/* Praise message */}
+            {/* Praise message (spec: 150–200 characters so it stays readable) */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-foreground">Recognition Message</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-foreground">Recognition Message</Label>
+                <span
+                  className={`text-[11px] tabular-nums ${
+                    praiseMessage.length > 200 ? "text-destructive font-semibold" : "text-muted-foreground"
+                  }`}
+                >
+                  {praiseMessage.length}/200
+                </span>
+              </div>
               <Textarea
                 rows={4}
                 required
+                maxLength={200}
                 placeholder="Describe what your colleague did and why it embodies Oxford Suites hospitality standards..."
                 value={praiseMessage}
                 onChange={(e) => setPraiseMessage(e.target.value)}

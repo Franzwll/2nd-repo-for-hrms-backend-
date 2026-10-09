@@ -97,6 +97,7 @@ import { useSort, SortHead } from "@/components/portal/sortable";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { EmployeeEss } from "./EmployeeEss";
+import { AdminLearningTab } from "./tabs/AdminLearningTab";
 import { essApi, type ApiEssRequestItem } from "@/lib/api";
 
 type Status = ESSRequest["status"] | "Returned for Clarification";
@@ -601,6 +602,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
           <TabsTrigger className="flex items-center gap-1.5" value="requests">
             <ListChecks className="h-3.5 w-3.5" /> Request Queue
           </TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5" value="learning">
+            <BookOpen className="h-3.5 w-3.5" /> Learning
+          </TabsTrigger>
           {role === "superadmin" && (
             <TabsTrigger className="flex items-center gap-1.5" value="config">
               <Settings2 className="h-3.5 w-3.5" /> ESS Administration
@@ -925,6 +929,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+        <TabsContent value="learning" className="mt-4">
+          <AdminLearningTab />
         </TabsContent>
         {role === "superadmin" && (
           <TabsContent value="config" className="mt-4">

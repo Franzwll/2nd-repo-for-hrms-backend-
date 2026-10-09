@@ -35,6 +35,7 @@ import {
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
+import { ReportMenu } from "@/components/ui/report-menu";
 import { myPayroll } from "@/data/ess";
 import { essApi, type ApiPayrollData } from "@/lib/api";
 import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewerModal";
@@ -57,7 +58,9 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
   const [payrollData, setPayrollData] = useState<ApiPayrollData | null>(null);
   const [selectedPayslipPeriod, setSelectedPayslipPeriod] = useState<string>("Aug 01 - Aug 15, 2026");
   const [selectedPayslipNet, setSelectedPayslipNet] = useState<number>(28080);
+  const [selectedPayslip, setSelectedPayslip] = useState<ApiPayrollData["payslips"][number] | null>(null);
   const [payslipModalOpen, setPayslipModalOpen] = useState(false);
+  const [loanSubmitting, setLoanSubmitting] = useState(false);
 
   useEffect(() => {
     essApi
@@ -193,10 +196,45 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
     }
   };
 
-  const openPayslip = (period: string, net: number) => {
-    setSelectedPayslipPeriod(period);
-    setSelectedPayslipNet(net);
+  const openPayslip = (ps: { period: string; net: number }) => {
+    setSelectedPayslipPeriod(ps.period);
+    setSelectedPayslipNet(ps.net);
+    setSelectedPayslip(ps as ApiPayrollData["payslips"][number]);
     setPayslipModalOpen(true);
+  };
+
+  // Salary loan application — files a real ESS payroll request (was a dead toast).
+  const handleSalaryLoanApply = async () => {
+    if (loanSubmitting) return;
+    setLoanSubmitting(true);
+    try {
+      const res = await essApi.createRequest({
+        category_code: "payroll",
+        category_name: "Payroll",
+        request_type: "Salary Loan Application",
+        details:
+          "Employee requests a company salary loan application with an amortization schedule. Requested via ESS Statutory Benefits & Active Loans.",
+      });
+      const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      const isoStr = new Date().toISOString().slice(0, 10);
+      setPayRequests((prev) => [
+        {
+          id: res?.request?.request_code || `REQ-${Date.now().toString().slice(-4)}`,
+          date: todayStr,
+          isoDate: isoStr,
+          type: "Salary Loan Application",
+          status: "Pending",
+          statusRank: 0,
+          details: "Company salary loan application with amortization schedule.",
+        },
+        ...prev,
+      ]);
+      toast.success("Salary loan application filed — Payroll will follow up.");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to file salary loan application.");
+    } finally {
+      setLoanSubmitting(false);
+    }
   };
 
   const handleRowClick = (req: any) => {
@@ -241,7 +279,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
         {/* Hero Metrics Strip (The 3 Numbers Prominently Featured as Headers) */}
         <div className="grid gap-4 p-6 sm:grid-cols-3">
           {/* Net Take-Home Pay */}
-          <div className="rounded-xl border border-emerald-500/30 bg-background/60 p-5 backdrop-blur-xs shadow-2xs hover:border-emerald-500/50 transition-all">
+          <div className="rounded-xl border border-emerald-500/30 bg-background/60 p-5 backdrop-blur-xs shadow-2xs transition-all cursor-pointer hover:-translate-y-0.5 hover:border-emerald-500/50 hover:shadow-md">
             <p className="text-[11px] uppercase font-bold tracking-wider text-emerald-700 dark:text-emerald-400">
               Net Take-Home Pay
             </p>
@@ -249,12 +287,14 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
               ₱{currentNet.toLocaleString()}
             </p>
             <p className="text-xs text-muted-foreground mt-2">
-              Latest cut-off disbursement · Direct deposit
+              {payrollData?.hero_source === "released" && payrollData?.hero_period
+                ? `Released ${payrollData.hero_period} · Direct deposit`
+                : "Latest estimate · Direct deposit"}
             </p>
           </div>
 
           {/* Total Gross Earnings */}
-          <div className="rounded-xl border border-border/70 bg-background/60 p-5 backdrop-blur-xs shadow-2xs hover:border-primary/40 transition-all">
+          <div className="rounded-xl border border-border/70 bg-background/60 p-5 backdrop-blur-xs shadow-2xs transition-all cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
             <p className="text-[11px] uppercase font-bold tracking-wider text-muted-foreground">
               Total Gross Earnings
             </p>
@@ -267,7 +307,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
           </div>
 
           {/* Statutory & Tax Deductions */}
-          <div className="rounded-xl border border-border/70 bg-background/60 p-5 backdrop-blur-xs shadow-2xs hover:border-rose-500/30 transition-all">
+          <div className="rounded-xl border border-border/70 bg-background/60 p-5 backdrop-blur-xs shadow-2xs transition-all cursor-pointer hover:-translate-y-0.5 hover:border-rose-500/50 hover:shadow-md">
             <p className="text-[11px] uppercase font-bold tracking-wider text-muted-foreground">
               Statutory &amp; Tax Deductions
             </p>
@@ -281,7 +321,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
         </div>
       </div>
 
-      {/* Sub-navigation Tabs */}
+      {/* Sub-navigation Tabs + module Export (same flat Export org chart menu) */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-1.5 p-1 bg-muted/60 rounded-xl border border-border/70 shadow-2xs overflow-x-auto max-w-full">
           <button
@@ -341,11 +381,95 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
             <span>Statutory Benefits &amp; Active Loans</span>
           </button>
         </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <ReportMenu
+            size="sm"
+            label="Export payroll"
+            recordCount={
+              activeTab === "requests"
+                ? filteredPayRequests.length
+                : activeTab === "benefits"
+                  ? 5
+                  : payslipsList.length
+            }
+            report={() => {
+              if (activeTab === "requests") {
+                return {
+                  title: "Payroll Requests & Inquiries Report",
+                  subtitle: `Employee Self-Service · Payroll · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })}`,
+                  columns: [
+                    { header: "Request ID", key: "id" },
+                    { header: "Date Filed", key: "date" },
+                    { header: "Request Type", key: "type" },
+                    { header: "Details / Period", key: "details" },
+                    { header: "Status", key: "status" },
+                  ],
+                  rows: filteredPayRequests.map((r) => ({
+                    id: r.id,
+                    date: r.date,
+                    type: r.type,
+                    details: r.details,
+                    status: r.status,
+                  })),
+                  summary: [
+                    { label: "Net Take-Home Pay", value: `₱${currentNet.toLocaleString()}` },
+                    { label: "Gross Earnings", value: `₱${currentGross.toLocaleString()}` },
+                    { label: "Deductions", value: `₱${currentDeductions.toLocaleString()}` },
+                    { label: "Rows in Report", value: filteredPayRequests.length },
+                  ],
+                };
+              }
+              if (activeTab === "benefits") {
+                return {
+                  title: "Statutory Benefits & Loans Report",
+                  subtitle: `Employee Self-Service · Payroll · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · Next payout: ${nextPayout}`,
+                  columns: [
+                    { header: "Benefit / Loan", key: "name" },
+                    { header: "Detail", key: "detail" },
+                    { header: "Status", key: "status" },
+                  ],
+                  rows: [
+                    { name: "SSS Number", detail: "Monthly Contribution: ₱950.00", status: "Active" },
+                    { name: "PhilHealth", detail: "Monthly Premium: ₱450.00", status: "Active" },
+                    { name: "Pag-IBIG (HDMF)", detail: "Monthly Savings: ₱200.00", status: "Active" },
+                    { name: "HMO Healthcare (Maxicare)", detail: "MBL Coverage: ₱150,000 / yr", status: "Active" },
+                    { name: "Active Company / SSS Salary Loan", detail: "Outstanding ₱5,400.00 · -₱450.00 / cut-off (12 of 24 terms, 50%)", status: "Active" },
+                  ],
+                  summary: [
+                    { label: "Net Take-Home Pay", value: `₱${currentNet.toLocaleString()}` },
+                    { label: "Next Payout", value: nextPayout },
+                    { label: "Benefits / Loans", value: 5 },
+                  ],
+                };
+              }
+              return {
+                title: "Released Payslips Report",
+                subtitle: `Employee Self-Service · Payroll · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })}`,
+                columns: [
+                  { header: "Pay Period", key: "period" },
+                  { header: "Status", key: "status" },
+                  { header: "Net Pay", key: "net" },
+                ],
+                rows: payslipsList.map((p) => ({
+                  period: p.period,
+                  status: p.status,
+                  net: `₱${p.net.toLocaleString()}`,
+                })),
+                summary: [
+                  { label: "Net Take-Home Pay", value: `₱${currentNet.toLocaleString()}` },
+                  { label: "Gross Earnings", value: `₱${currentGross.toLocaleString()}` },
+                  { label: "Deductions", value: `₱${currentDeductions.toLocaleString()}` },
+                  { label: "Payslips", value: payslipsList.length },
+                ],
+              };
+            }}
+          />
+        </div>
       </div>
 
       {/* Released Payslips Card */}
       {activeTab === "payslips" && (
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-border/60">
           <div>
             <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
@@ -387,7 +511,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
                       size="sm"
                       variant="ghost"
                       className="h-6 px-2 text-xs font-medium text-primary hover:bg-primary/10 gap-1 cursor-pointer"
-                      onClick={() => openPayslip(ps.period, ps.net)}
+                      onClick={() => openPayslip(ps)}
                     >
                       <Eye className="h-3.5 w-3.5" /> View Payslip
                     </Button>
@@ -411,7 +535,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
 
       {/* Statutory Benefits & Company Loans Section */}
       {activeTab === "benefits" && (
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3">
           <div>
             <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
@@ -426,9 +550,11 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
             size="sm"
             variant="outline"
             className="text-xs shadow-xs gap-1.5"
-            onClick={() => toast.info("Quarterly company salary loan application window opens next month.")}
+            disabled={loanSubmitting}
+            onClick={handleSalaryLoanApply}
           >
-            <Landmark className="h-3.5 w-3.5 text-emerald-600" /> Apply for Salary Loan
+            <Landmark className="h-3.5 w-3.5 text-emerald-600" />
+            {loanSubmitting ? "Filing…" : "Apply for Salary Loan"}
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -513,7 +639,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
 
       {/* Submit Payroll & My Payroll Requests - Unified Single Card */}
       {activeTab === "requests" && (
-        <Card className="border-border/70 shadow-xs">
+        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
         <CardHeader className="border-b border-border/60 pb-3">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
@@ -779,6 +905,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
         onOpenChange={setPayslipModalOpen}
         period={selectedPayslipPeriod}
         netPay={selectedPayslipNet}
+        payslip={selectedPayslip}
         onInquiryClick={(period) => {
           setPayDetails(`Inquiry regarding payslip period: ${period}`);
           setPayType("Payroll Clarification");

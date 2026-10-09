@@ -31,8 +31,8 @@ interface PromotionRequestModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmitSuccess?: (requestData: any) => void;
-  competencyScore?: string;
-  lmsCompletedCount?: number;
+  competencyScore?: string | undefined;
+  lmsCompletedCount?: number | undefined;
 }
 
 interface PositionOption {
@@ -68,6 +68,8 @@ export function PromotionRequestModal({
   open,
   onOpenChange,
   onSubmitSuccess,
+  competencyScore,
+  lmsCompletedCount,
 }: PromotionRequestModalProps) {
   const [targetPosition, setTargetPosition] = useState("");
   const [justification, setJustification] = useState("");
@@ -81,10 +83,23 @@ export function PromotionRequestModal({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // 1. Filter fallback positions exclusively to employee's department and exclude current role
+    // 1. Filter fallback positions exclusively to employee's department and exclude current role.
+    // Pastry Chef 2/3/4 are hidden from the promotion dropdown (hotel uses the
+    // hot-kitchen ladder + Pastry Chef 1 / Lead / CDP Pastry instead).
+    const HIDDEN_PROMOTION_TITLES = new Set([
+      "pastry chef 2",
+      "pastry chef 3",
+      "pastry chef 4",
+    ]);
+    const isPromotionVisible = (title: string) =>
+      !HIDDEN_PROMOTION_TITLES.has(title.toLowerCase().trim());
+
     const fallbackDeptPositions: PositionOption[] = fallbackPositions
       .filter(
-        (p) => matchesDepartment(p.department, myProfile.department) && p.title !== myProfile.position
+        (p) =>
+          matchesDepartment(p.department, myProfile.department) &&
+          p.title !== myProfile.position &&
+          isPromotionVisible(p.title)
       )
       .map((p) => ({
         id: p.id,
@@ -107,7 +122,8 @@ export function PromotionRequestModal({
                   : (p.department as string || "");
               return (
                 matchesDepartment(deptName, myProfile.department) &&
-                p.title !== myProfile.position
+                p.title !== myProfile.position &&
+                isPromotionVisible(p.title)
               );
             })
             .map((p) => ({
@@ -224,6 +240,8 @@ export function PromotionRequestModal({
         `Department Career Track: ${myProfile.department}`,
         `Current Role: ${myProfile.position} (${myProfile.department})`,
         `Current Salary Grade: ${myPerformance.salaryGrade}`,
+        competencyScore ? `Competency Score: ${competencyScore}` : "",
+        lmsCompletedCount != null ? `LMS Training Completed: ${lmsCompletedCount} module(s)` : "",
         `Justification: ${justification.trim()}`,
         keyAchievements.trim() ? `Key Achievements: ${keyAchievements.trim()}` : "",
         attachedFiles.length > 0

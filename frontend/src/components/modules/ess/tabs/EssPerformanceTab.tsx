@@ -21,10 +21,16 @@ import { toast } from "sonner";
 
 export function EssPerformanceTab() {
   const [courses, setCourses] = useState(myLearningCourses);
-  const [perfData, setPerfData] = useState({
+  const [perfData, setPerfData] = useState<{
+    rating: number | null;
+    competencyLevel: string | null;
+    averageScore: number | null;
+    completedCount: number;
+    totalCount: number;
+  }>({
     rating: 4.8,
     competencyLevel: "Proficient (Exceeding Expectations)",
-    averageScore: "95 / 100",
+    averageScore: 95,
     completedCount: 3,
     totalCount: 4,
   });
@@ -32,6 +38,7 @@ export function EssPerformanceTab() {
   const [certModalOpen, setCertModalOpen] = useState(false);
   const [promotionModalOpen, setPromotionModalOpen] = useState(false);
   const [activePromotionRequest, setActivePromotionRequest] = useState<any | null>(null);
+  const [startingCourseId, setStartingCourseId] = useState<string | null>(null);
 
   useEffect(() => {
     // Check if there are active promotion requests on file
@@ -51,36 +58,57 @@ export function EssPerformanceTab() {
       .catch(() => {});
   }, []);
 
+  // Canonical backend mapping, reused by the initial load and refetches.
+  // Nulls mean "no record yet" (never reviewed / never scored) — the UI
+  // renders placeholders instead of mock figures in that case.
+  const applyPerformance = (res: any) => {
+    if (!res) return;
+    setCourses(
+      (res.courses ?? []).map((c: any) => ({
+        id: c.id,
+        title: c.title,
+        category: c.category,
+        progress: c.progress,
+        status: c.status as any,
+        score: c.score != null ? `${c.score} / 100` : "—",
+        duration: c.duration,
+        completedDate: c.completedDate || "In progress",
+      }))
+    );
+    if (res.stats && res.employee) {
+      setPerfData({
+        rating: res.employee.overall_rating ?? null,
+        competencyLevel: res.employee.competency_level ?? null,
+        averageScore: res.stats.average_score ?? null,
+        completedCount: res.stats.completed_courses ?? 0,
+        totalCount: (res.courses ?? []).length,
+      });
+    }
+  };
+
   useEffect(() => {
     essApi
       .myPerformance()
-      .then((res) => {
-        if (res?.courses?.length) {
-          setCourses(
-            res.courses.map((c) => ({
-              id: c.id,
-              title: c.title,
-              category: c.category,
-              progress: c.progress,
-              status: c.status as any,
-              score: c.score ? `${c.score} / 100` : "—",
-              duration: c.duration,
-              completedDate: c.completedDate || "In progress",
-            }))
-          );
-        }
-        if (res?.stats && res?.employee) {
-          setPerfData({
-            rating: res.employee.overall_rating || 4.8,
-            competencyLevel: res.employee.competency_level || "Proficient",
-            averageScore: `${res.stats.average_score} / 100`,
-            completedCount: res.stats.completed_courses,
-            totalCount: res.stats.completed_courses + res.stats.in_progress_courses,
-          });
-        }
-      })
+      .then(applyPerformance)
       .catch(() => {});
   }, []);
+
+  // Start / resume a course — real write (Assigned -> In Progress), then refetch.
+  // Completion itself is HR-verified on the Admin side.
+  const handleStartCourse = async (course: any) => {
+    if (!course?.id || startingCourseId) return;
+    setStartingCourseId(course.id);
+    try {
+      await essApi.updateLearningProgress({ course_code: course.id });
+      const res = await essApi.myPerformance().catch(() => null);
+      applyPerformance(res);
+      toast.success(`"${course.title}" marked as in progress.`);
+    } catch (err: any) {
+      toast.error(err?.message || "Could not update course status — please retry.");
+    } finally {
+      setStartingCourseId(null);
+    }
+  };
 
   const handleOpenCert = (course: any) => {
     setSelectedCourse(course);
@@ -91,7 +119,7 @@ export function EssPerformanceTab() {
     <div className="space-y-6">
       {/* 4 Performance Metric Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
+        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-4">
             <div className="text-xs uppercase font-semibold text-muted-foreground tracking-wider flex items-center gap-1.5">
               <TrendingUp className="h-3.5 w-3.5 text-primary" /> Last Performance Review
@@ -101,17 +129,17 @@ export function EssPerformanceTab() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
+        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-4">
             <div className="text-xs uppercase font-semibold text-muted-foreground tracking-wider flex items-center gap-1.5">
               <Award className="h-3.5 w-3.5 text-primary" /> Competency Rating
             </div>
-            <p className="mt-1 text-sm font-bold text-foreground">{perfData.competencyLevel}</p>
-            <p className="text-xs text-muted-foreground mt-1">Average Evaluation Score: <strong className="text-emerald-600 dark:text-emerald-400">{perfData.averageScore}</strong></p>
+            <p className="mt-1 text-sm font-bold text-foreground">{perfData.competencyLevel ?? "Not yet rated"}</p>
+            <p className="text-xs text-muted-foreground mt-1">Average Evaluation Score: <strong className="text-emerald-600 dark:text-emerald-400">{perfData.averageScore != null ? `${perfData.averageScore} / 100` : "—"}</strong></p>
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
+        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-4">
             <div className="text-xs uppercase font-semibold text-muted-foreground tracking-wider flex items-center gap-1.5">
               <BookOpen className="h-3.5 w-3.5 text-primary" /> LMS Training Progress
@@ -123,7 +151,7 @@ export function EssPerformanceTab() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
+        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-4">
             <div className="text-xs uppercase font-semibold text-muted-foreground tracking-wider flex items-center gap-1.5">
               <Building className="h-3.5 w-3.5 text-primary" /> Salary Grade &amp; Step
@@ -135,7 +163,7 @@ export function EssPerformanceTab() {
       </div>
 
       {/* Career Advancement & Promotion Application Card */}
-      <Card className="border-primary/30 bg-gradient-to-r from-primary/5 via-primary/[0.02] to-transparent shadow-xs">
+      <Card className="border-primary/30 bg-gradient-to-r from-primary/5 via-primary/[0.02] to-transparent shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
         <CardHeader className="pb-3">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
@@ -162,7 +190,13 @@ export function EssPerformanceTab() {
               <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <div>
                 <span className="text-muted-foreground">Appraisal Eligibility:</span>{" "}
-                <strong className="text-foreground">Qualified (Score &ge; 85%)</strong>
+                <strong className="text-foreground">
+                  {perfData.averageScore == null
+                    ? "Awaiting assessment data"
+                    : perfData.averageScore >= 85
+                      ? "Qualified (Score ≥ 85%)"
+                      : `Developing (Score ${perfData.averageScore}%)`}
+                </strong>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -190,7 +224,7 @@ export function EssPerformanceTab() {
       </Card>
 
       {/* Learning Modules Table */}
-      <Card className="border-border/70 shadow-xs">
+      <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
         <CardHeader className="pb-3">
           <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
             <BookOpen className="h-5 w-5 text-primary" />
@@ -211,7 +245,14 @@ export function EssPerformanceTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {courses.map((c) => (
+              {courses.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground text-xs">
+                    No training courses assigned yet — HR will assign your learning plan.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                courses.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="font-semibold text-xs text-foreground">{c.title}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{c.category}</TableCell>
@@ -234,15 +275,21 @@ export function EssPerformanceTab() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-6 px-2 text-xs text-primary hover:bg-primary/10 gap-1 font-medium"
-                        onClick={() => toast.info(`Resuming ${c.title}...`)}
+                        disabled={startingCourseId === c.id}
+                        className="h-6 px-2 text-xs text-primary hover:bg-primary/10 gap-1 font-medium disabled:opacity-50"
+                        onClick={() => handleStartCourse(c)}
                       >
-                        Continue →
+                        {startingCourseId === c.id
+                          ? "Saving…"
+                          : c.status === "Assigned"
+                            ? "Start →"
+                            : "Continue →"}
                       </Button>
                     )}
                   </TableCell>
                 </TableRow>
-              ))}
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -253,6 +300,7 @@ export function EssPerformanceTab() {
         <LmsCertificateModal
           open={certModalOpen}
           onOpenChange={setCertModalOpen}
+          courseId={selectedCourse.id}
           courseTitle={selectedCourse.title}
           category={selectedCourse.category}
           completedDate={selectedCourse.completedDate}
@@ -264,7 +312,9 @@ export function EssPerformanceTab() {
       <PromotionRequestModal
         open={promotionModalOpen}
         onOpenChange={setPromotionModalOpen}
-        competencyScore={perfData.averageScore}
+        competencyScore={
+          perfData.averageScore != null ? `${perfData.averageScore} / 100` : undefined
+        }
         lmsCompletedCount={perfData.completedCount}
         onSubmitSuccess={(req) => {
           if (req) setActivePromotionRequest(req);

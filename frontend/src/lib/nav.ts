@@ -67,7 +67,7 @@ export function navForRole(role: Role): NavItem[] {
   if (role === "employee") {
     return [
       { label: "Dashboard", to: base, icon: LayoutDashboard },
-      { label: "ESS", to: `${base}/ess`, icon: Headset, children: essChildren(base) },
+      { label: "Employee Self-Service", to: `${base}/ess`, icon: Headset, children: essChildren(base) },
       { label: "Onboarding", to: `${base}/onboarding`, icon: ClipboardCheck },
       { label: "Settings", to: `${base}/settings`, icon: Settings },
     ];

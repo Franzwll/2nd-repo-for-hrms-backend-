@@ -104,6 +104,7 @@ import {
   type ReportFormat,
 } from "@/lib/report-export";
 import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
+import { ReportMenu } from "@/components/ui/report-menu";
 import { getUser } from "@/lib/auth";
 import {
   isValidEmail,
@@ -150,6 +151,10 @@ function DocumentPreviewModal({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  // Never render without a document — the panel mounts this modal for every
+  // item, including ones with no upload yet (fileUrl would be undefined and
+  // crash the extension check below).
+  if (!open || !fileUrl) return null;
   const ext = (fileName || fileUrl).split(".").pop()?.toLowerCase() ?? "";
   const kind: "image" | "pdf" | "other" = ["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(ext)
     ? "image"
@@ -750,15 +755,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   ];
   type OnboardingReportId = (typeof onboardingReportOptions)[number]["id"];
 
-  /** Password-protected export flow — predefined report + format awaiting a file password. */
-  const [reportsOpen, setReportsOpen] = useState(false);
-  const [csvOpen, setCsvOpen] = useState(false);
-  const [csvBusy, setCsvBusy] = useState(false);
-  const [csvPending, setCsvPending] = useState<{
-    id: OnboardingReportId;
-    format: ReportFormat;
-  } | null>(null);
-
   const pendingCountOf = (h: NewHire) => h.checklist.filter((c) => !c.done).length;
 
   const buildSummaryReport = (): ReportData => {
@@ -904,36 +900,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     if (id === "progress") return buildProgressReport();
     if (id === "overdue") return buildOverdueReport();
     return buildSummaryReport();
-  };
-
-  /** Every format is password-protected: picking one opens the password gate. */
-  const handleExportOnboardingReportById = (id: OnboardingReportId, format: ReportFormat) => {
-    if (buildOnboardingReport(id).rows.length === 0) {
-      toast.error("No onboarding records to export.");
-      return;
-    }
-    setCsvPending({ id, format });
-    setCsvOpen(true);
-  };
-
-  const confirmOnboardingCsv = async (password: string) => {
-    if (!csvPending) return;
-    setCsvBusy(true);
-    try {
-      const data = buildOnboardingReport(csvPending.id);
-      await exportReport(data, csvPending.format, { password });
-      const { zipName } = describeExport(data, csvPending.format);
-      toast.success(
-        `${data.title} exported as password-protected ${csvPending.format.toUpperCase()} (${zipName}).`,
-      );
-      setCsvOpen(false);
-      setCsvPending(null);
-    } catch (e) {
-      console.error("Protected export failed:", e);
-      toast.error(e instanceof Error ? e.message : "Protected export failed.");
-    } finally {
-      setCsvBusy(false);
-    }
   };
 
   /**
@@ -1143,106 +1109,14 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       <PageHeader
         title="New Hire Onboarding"
         actions={
-          <Button variant="outline" className="gap-2" onClick={() => setReportsOpen(true)}>
-            <Download className="h-4 w-4" /> Generate Report
-          </Button>
+          <ReportMenu
+            recordCount={hires.length}
+            report={() => buildSummaryReport()}
+          />
         }
       />
 
-      {/* PREDEFINED REPORTS DIALOG */}
-      <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Generate Report</DialogTitle>
-            <DialogDescription>
-              Predefined reports — every format is password-protected (sealed in an AES-256 ZIP; you
-              will be asked for a file password on every export).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            {onboardingReportOptions.map((r) => (
-              <div
-                key={r.id}
-                className="flex items-center justify-between gap-3 rounded-md border border-border p-3"
-              >
-                <div>
-                  <p className="text-sm font-medium">{r.title}</p>
-                  <p className="text-xs text-muted-foreground">{r.description}</p>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline">
-                      <Download className="mr-2 h-4 w-4" /> Generate
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-60">
-                    <DropdownMenuItem onClick={() => handleExportOnboardingReportById(r.id, "pdf")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => handleExportOnboardingReportById(r.id, "docx")}
-                    >
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => handleExportOnboardingReportById(r.id, "excel")}
-                    >
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExportOnboardingReportById(r.id, "csv")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-                      Password-protected ZIP — password asked on every export.
-                    </p>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <SecureExportDialog
-        open={csvOpen}
-        onOpenChange={(o) => {
-          if (!csvBusy) {
-            setCsvOpen(o);
-            if (!o) setCsvPending(null);
-          }
-        }}
-        reportTitle={
-          csvPending
-            ? (onboardingReportOptions.find((o) => o.id === csvPending.id)?.title ??
-              "Onboarding report")
-            : "Onboarding report"
-        }
-        formatLabel={
-          !csvPending
-            ? ""
-            : csvPending.format === "pdf"
-              ? "PDF"
-              : csvPending.format === "docx"
-                ? "DOCX"
-                : csvPending.format === "excel"
-                  ? "Excel"
-                  : "CSV"
-        }
-        busy={csvBusy}
-        onConfirm={confirmOnboardingCsv}
-      />
+      {/* Header exports the current Onboarding Pipeline view (same flat Export org chart menu). */}
 
       <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -2695,7 +2569,7 @@ function EmployeeChecklistRow({
         {item.done ? (
           <CheckCircle2 className="h-4 w-4 shrink-0 text-success mt-0.5" />
         ) : submitted ? (
-          <Hourglass className="h-4 w-4 shrink-0 text-destructive mt-0.5" />
+          <Hourglass className="h-4 w-4 shrink-0 text-caution mt-0.5" />
         ) : (
           <Circle className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
         )}
@@ -2704,7 +2578,7 @@ function EmployeeChecklistRow({
             <p
               className={cn(
                 "text-sm font-semibold",
-                !item.done && submitted ? "text-destructive" : "text-foreground",
+                !item.done && submitted ? "text-caution" : "text-foreground",
               )}
             >
               {item.title}
@@ -2715,7 +2589,7 @@ function EmployeeChecklistRow({
                 item.done
                   ? "bg-success/10 text-success border-success/30 text-[10px]"
                   : submitted
-                    ? "bg-destructive/10 text-destructive border-destructive/30 text-[10px]"
+                    ? "bg-caution/10 text-caution border-caution/30 text-[10px]"
                     : "bg-caution/10 text-caution border-caution/30 text-[10px]"
               }
             >
@@ -2759,8 +2633,12 @@ export function EmployeeOnboarding() {
   const [dragActive, setDragActive] = useState(false);
   const [docOpen, setDocOpen] = useState(false);
 
-  const loadOnboarding = useCallback(() => {
-    setLoading(true);
+  // Track verified count across background syncs so the employee gets a toast
+  // the moment Admin HR verifies a submission.
+  const verifiedCountRef = useRef<number | null>(null);
+
+  const loadOnboarding = useCallback((quiet = false) => {
+    if (!quiet) setLoading(true);
     // Resolve the signed-in portal user from the auth session (NOT the mock
     // profile) so the checklist always reflects the logged-in employee's own
     // new-hire record from the database.
@@ -2792,8 +2670,7 @@ export function EmployeeOnboarding() {
           const probationaryOnly = apiItems.filter(
             (i) => (i.phase ?? "Probationary") === "Probationary",
           );
-          setItems(
-            probationaryOnly.map((i) => ({
+          const mapped: EmployeeChecklistItem[] = probationaryOnly.map((i) => ({
               id: i.employee_onboarding_item_id
                 ? `chk-${i.employee_onboarding_item_id}`
                 : `virt-${i.template_item_id}`,
@@ -2825,15 +2702,38 @@ export function EmployeeOnboarding() {
               done: Boolean(i.done),
               rank: i.done ? 0 : i.submitted_at ? 1 : 2,
               phase: "Probationary" as Phase,
-            })),
-          );
+            }));
+          setItems(mapped);
+          const freshVerified = mapped.filter((m) => m.done).length;
+          if (
+            quiet &&
+            verifiedCountRef.current != null &&
+            freshVerified > verifiedCountRef.current
+          ) {
+            const newly = freshVerified - verifiedCountRef.current;
+            toast.success(
+              `HR verified ${newly} requirement${newly > 1 ? "s" : ""} — your progress is updated.`,
+            );
+          }
+          verifiedCountRef.current = freshVerified;
+          // Keep an open detail panel in sync with HR verification while the
+          // employee has it open (preserves any file/note they are drafting).
+          setViewingItem((prev) => {
+            if (!prev) return prev;
+            const fresh = mapped.find(
+              (m) => m.id === prev.id || (m.dbId != null && m.dbId === prev.dbId),
+            );
+            return fresh ?? prev;
+          });
         });
       })
       .catch((err) => {
         console.warn("Could not load onboarding checklist from API:", err);
         toast.error("Could not load your onboarding checklist");
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!quiet) setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -2853,8 +2753,32 @@ export function EmployeeOnboarding() {
     };
   }, [loadOnboarding]);
 
+  // Background sync with Admin HR verification — quiet refresh every 30s
+  // (skipped while a submission is in flight to protect optimistic state).
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!submitting) loadOnboarding(true);
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [loadOnboarding, submitting]);
+
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("recent");
+
+  // Regularization countdown — same DOLE-based day threshold Admin HR uses
+  // (system_settings onboarding.auto_regularize_days, default 180 = 6 months).
+  const [regularizeDays, setRegularizeDays] = useState(180);
+  useEffect(() => {
+    settingsApi
+      .get("onboarding.auto_regularize_days")
+      .then((res) => {
+        const days = Number(res?.setting_value);
+        if (Number.isFinite(days) && days >= 1) setRegularizeDays(days);
+      })
+      .catch(() => {
+        // setting not created yet — keep the 6-month default
+      });
+  }, []);
 
   const completedCount = items.filter((i) => i.done).length;
   const totalCount = items.length;
@@ -2965,7 +2889,10 @@ export function EmployeeOnboarding() {
       .filter((i) => {
         if (search && !i.title.toLowerCase().includes(search.toLowerCase())) return false;
         if (filter === "completed") return i.done;
-        if (filter === "pending") return !i.done;
+        if (filter === "submitted")
+          return !i.done && Boolean(i.submittedAt || i.fileName || i.notes);
+        if (filter === "pending")
+          return !i.done && !(i.submittedAt || i.fileName || i.notes);
         return true;
       })
       .sort((a, b) => {
@@ -2973,6 +2900,7 @@ export function EmployeeOnboarding() {
         const byStatus = statusPriority(a) - statusPriority(b);
         if (byStatus !== 0) return byStatus;
         if (filter === "recent") return b.isoDate.localeCompare(a.isoDate);
+        if (filter === "submitted") return b.isoDate.localeCompare(a.isoDate);
         if (filter === "pending") return a.rank - b.rank;
         return 0;
       });
@@ -3023,18 +2951,6 @@ export function EmployeeOnboarding() {
     };
   }, [syncListHeight, filteredItems, viewingItem]);
 
-  /** Every format is password-protected: picking one opens the password gate. */
-  const handleExportEmployeeReport = (format: ReportFormat) => {
-    const data = buildEmployeeReportData();
-    if (!data) return;
-    if (data.rows.length === 0) {
-      toast.error("No checklist items to export.");
-      return;
-    }
-    setEmpCsvPending(format);
-    setEmpCsvOpen(true);
-  };
-
   const buildEmployeeReportData = (): ReportData | null => {
     if (!newHire) {
       toast.error("Your onboarding record is still loading.");
@@ -3062,31 +2978,6 @@ export function EmployeeOnboarding() {
     };
   };
 
-  const [empCsvOpen, setEmpCsvOpen] = useState(false);
-  const [empCsvBusy, setEmpCsvBusy] = useState(false);
-  const [empCsvPending, setEmpCsvPending] = useState<ReportFormat | null>(null);
-
-  const confirmEmployeeCsv = async (password: string) => {
-    if (!empCsvPending) return;
-    const format = empCsvPending;
-    const data = buildEmployeeReportData();
-    if (!data) return;
-    setEmpCsvBusy(true);
-    try {
-      await exportReport(data, format, { password });
-      const { zipName } = describeExport(data, format);
-      toast.success(
-        `Onboarding checklist exported as password-protected ${format.toUpperCase()} (${zipName}).`,
-      );
-      setEmpCsvOpen(false);
-      setEmpCsvPending(null);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Protected export failed.");
-    } finally {
-      setEmpCsvBusy(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -3095,68 +2986,13 @@ export function EmployeeOnboarding() {
         description="Complete these probationary requirements to finish your onboarding. This menu disappears once HR marks onboarding as complete."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" className="gap-2" onClick={loadOnboarding} disabled={loading}>
+            <Button variant="outline" className="gap-2" onClick={() => loadOnboarding()} disabled={loading}>
               <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /> Refresh
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <Download className="h-4 w-4" /> Generate Report
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
-                <DropdownMenuItem onClick={() => handleExportEmployeeReport("pdf")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportEmployeeReport("docx")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportEmployeeReport("excel")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportEmployeeReport("csv")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-                  Every file is sealed in a password-protected ZIP (AES-256). You will be asked for
-                  a file password.
-                </p>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <SecureExportDialog
-              open={empCsvOpen}
-              onOpenChange={(o) => {
-                if (!empCsvBusy) {
-                  setEmpCsvOpen(o);
-                  if (!o) setEmpCsvPending(null);
-                }
-              }}
-              reportTitle="My Onboarding Checklist"
-              formatLabel={
-                !empCsvPending
-                  ? ""
-                  : empCsvPending === "pdf"
-                    ? "PDF"
-                    : empCsvPending === "docx"
-                      ? "DOCX"
-                      : empCsvPending === "excel"
-                        ? "Excel"
-                        : "CSV"
-              }
-              busy={empCsvBusy}
-              onConfirm={confirmEmployeeCsv}
+            <ReportMenu
+              label="Generate Report"
+              recordCount={items.length}
+              report={() => buildEmployeeReportData() ?? { title: "My Onboarding Checklist", columns: [], rows: [] }}
             />
           </div>
         }
@@ -3171,14 +3007,28 @@ export function EmployeeOnboarding() {
         </p>
       </div>
 
+      {/* Final-review banner — lights up when Admin HR requests the evaluation */}
+      {newHire?.evaluation_requested_at && (newHire.stage ?? "Probationary") !== "Regular" && (
+        <div className="flex items-start gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 p-4 text-blue-700 dark:text-blue-400">
+          <Hourglass className="h-5 w-5 shrink-0 mt-0.5" />
+          <p className="text-sm">
+            <strong>Final review in progress</strong> — HR has requested your employment
+            evaluation. Your checklist stays visible until regularization is approved.
+          </p>
+        </div>
+      )}
+
       {/* NEW HIRE ONBOARDING Header & Progress Card */}
       <Card className="border-border/70 overflow-hidden">
         <CardContent className="p-6 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <p className="eyebrow">NEW HIRE ONBOARDING</p>
+              {/* newHire comes from the client-side API fetch (identical post-hydration);
+                  myProfile.name is a static import (identical server/client) — never read
+                  browser storage (getUser()) here or hydration mismatches. */}
               <h2 className="text-2xl font-semibold font-display text-foreground mt-1">
-                {newHire?.name ?? getUser()?.full_name ?? myProfile.name}
+                {newHire?.name ?? myProfile.name}
               </h2>
               <p className="text-sm font-medium text-muted-foreground mt-0.5">
                 Employee ID:{" "}
@@ -3190,13 +3040,20 @@ export function EmployeeOnboarding() {
               </p>
             </div>
 
-            {/* Prominent Employment Status — PROBATIONARY */}
+            {/* Prominent Employment Status — live stage from the same record Admin HR manages */}
             <div className="flex flex-col sm:items-end gap-1.5">
               <Badge
                 variant="outline"
-                className="border-gold/40 bg-gold/10 text-gold text-xs px-3 py-1 font-semibold uppercase tracking-wider self-start sm:self-auto"
+                className={cn(
+                  "text-xs px-3 py-1 font-semibold uppercase tracking-wider self-start sm:self-auto",
+                  (newHire?.stage ?? "Probationary") === "Regular"
+                    ? "border-success/40 bg-success/10 text-success"
+                    : (newHire?.stage ?? "Probationary") === "Pre-onboarding"
+                      ? "border-caution/40 bg-caution/10 text-caution"
+                      : "border-gold/40 bg-gold/10 text-gold",
+                )}
               >
-                PROBATIONARY
+                {(newHire?.stage ?? "Probationary").toUpperCase()}
               </Badge>
               <span className="text-xs text-muted-foreground font-medium">Employment Status</span>
             </div>
@@ -3214,6 +3071,14 @@ export function EmployeeOnboarding() {
               <span className="text-primary font-bold">{pct}% Complete</span>
             </div>
             <Progress value={pct} className="h-3" />
+            {(newHire?.stage ?? "Probationary") !== "Regular" && newHire?.start_date && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Day {daysOfWork(newHire.start_date)} of ~{regularizeDays}-day probationary period
+                {regularizeDays - daysOfWork(newHire.start_date) > 0
+                  ? ` · ~${regularizeDays - daysOfWork(newHire.start_date)} days to regularization review`
+                  : " · eligible for regularization review"}
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -3245,13 +3110,14 @@ export function EmployeeOnboarding() {
                   />
                 </div>
                 <Select value={filter} onValueChange={setFilter}>
-                  <SelectTrigger className="h-9 w-[120px]">
+                  <SelectTrigger className="h-9 w-[150px]">
                     <ArrowUpDown className="mr-2 h-3.5 w-3.5" />
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="recent">Recent</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="submitted">Awaiting HR review</SelectItem>
                     <SelectItem value="pending">Pending</SelectItem>
                   </SelectContent>
                 </Select>
@@ -3303,7 +3169,11 @@ export function EmployeeOnboarding() {
                           : "bg-caution/10 text-caution border-caution/30 font-semibold"
                       }
                     >
-                      {viewingItem.done ? "Completed" : "Pending Action"}
+                      {viewingItem.done
+                        ? "Verified by HR"
+                        : viewingItem.submittedAt || viewingItem.fileName || viewingItem.notes
+                          ? "Submitted · pending review"
+                          : "Pending Action"}
                     </Badge>
                     <Badge variant="outline" className="text-xs">
                       Probationary
@@ -3360,17 +3230,20 @@ export function EmployeeOnboarding() {
                   </div>
                 )}
 
-                <DocumentPreviewModal
-                  open={docOpen}
-                  onOpenChange={setDocOpen}
-                  fileUrl={viewingItem.fileUrl as string}
-                  fileName={viewingItem.fileName}
-                />
+                {viewingItem.fileUrl && (
+                  <DocumentPreviewModal
+                    open={docOpen}
+                    onOpenChange={setDocOpen}
+                    fileUrl={viewingItem.fileUrl}
+                    fileName={viewingItem.fileName}
+                  />
+                )}
 
-                {/* Upload Dropzone / Placeholder — only when the checklist
-                    item requires an upload; stretches to fill leftover
-                    vertical space in the card */}
-                {viewingItem.requiresUpload !== false && (
+                {/* Upload Dropzone / Placeholder — only for unverified items that
+                    require an upload; verified items are read-only (HR owns
+                    completion state). Stretches to fill leftover vertical
+                    space in the card */}
+                {!viewingItem.done && viewingItem.requiresUpload !== false && (
                   <div className="flex flex-1 flex-col gap-2">
                     <Label className="text-xs font-semibold">
                       {viewingItem.fileName
@@ -3440,52 +3313,70 @@ export function EmployeeOnboarding() {
                   </div>
                 )}
 
-                {/* Optional Notes */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">
-                    Notes / Details{" "}
-                    <span className="font-normal text-muted-foreground">(Optional)</span>
-                  </Label>
-                  <Textarea
-                    value={uploadNotes}
-                    onChange={(e) => setUploadNotes(e.target.value)}
-                    placeholder="Provide any additional reference number or notes for HR..."
-                    rows={3}
-                    className="text-xs"
-                  />
-                </div>
+                {viewingItem.done ? (
+                  /* Verified items are read-only — only Admin / Super Admin can reopen them */
+                  <div className="flex items-start gap-2.5 rounded-lg border border-success/30 bg-success/5 p-3">
+                    <CheckCircle2 className="h-5 w-5 text-success shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-semibold text-foreground">
+                        Verified by HR — no further action needed
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {viewingItem.date}. If this needs a correction, please contact HR —
+                        only Admin / Super Admin can reopen a verified requirement.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Optional Notes */}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">
+                        Notes / Details{" "}
+                        <span className="font-normal text-muted-foreground">(Optional)</span>
+                      </Label>
+                      <Textarea
+                        value={uploadNotes}
+                        onChange={(e) => setUploadNotes(e.target.value)}
+                        placeholder="Provide any additional reference number or notes for HR..."
+                        rows={3}
+                        className="text-xs"
+                      />
+                    </div>
 
-                {/* Action Buttons — pinned to the bottom of the card */}
-                <div className="mt-auto flex items-center justify-end gap-2 border-t border-border pt-3">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="cursor-pointer text-xs h-9"
-                    onClick={() => {
-                      setViewingItem(null);
-                      setUploadFile(null);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleTaskSubmit}
-                    disabled={submitting}
-                    className="cursor-pointer text-xs h-9"
-                  >
-                    {submitting ? (
-                      <>
-                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="mr-1.5 h-3.5 w-3.5" />{" "}
-                        {uploadFile ? "Upload & Submit" : "Submit to HR"}
-                      </>
-                    )}
-                  </Button>
-                </div>
+                    {/* Action Buttons — pinned to the bottom of the card */}
+                    <div className="mt-auto flex items-center justify-end gap-2 border-t border-border pt-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="cursor-pointer text-xs h-9"
+                        onClick={() => {
+                          setViewingItem(null);
+                          setUploadFile(null);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={handleTaskSubmit}
+                        disabled={submitting}
+                        className="cursor-pointer text-xs h-9"
+                      >
+                        {submitting ? (
+                          <>
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="mr-1.5 h-3.5 w-3.5" />{" "}
+                            {uploadFile ? "Upload & Submit" : "Submit to HR"}
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>

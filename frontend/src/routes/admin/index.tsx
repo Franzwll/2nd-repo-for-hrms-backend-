@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { CalendarCheck, FileCheck2, UserPlus, Users } from "lucide-react";
+import { CalendarCheck, FileCheck2, Headset, Send, UserPlus, Users } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { applicantsApi, dashboardApi, jobPostsApi } from "@/lib/api";
+import { applicantsApi, dashboardApi, essApi, jobPostsApi } from "@/lib/api";
 import type { ApiApplicant, ApiDashboardStats, ApiJobPost } from "@/lib/api";
 import { ListSkeleton, StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 const Skeleton = (p: any) => <div className={"animate-pulse rounded-md bg-primary/10 " + (p.className ?? "")} />;
@@ -73,6 +73,7 @@ function AdminDashboard() {
   const [stats, setStats] = useState<ApiDashboardStats | null>(null);
   const [applicants, setApplicants] = useState<ApiApplicant[]>([]);
   const [openJobs, setOpenJobs] = useState<ApiJobPost[]>([]);
+  const [essCounts, setEssCounts] = useState({ pending: 0, under_review: 0 });
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +89,17 @@ function AdminDashboard() {
         setOpenJobs((j.data ?? []).filter((p) => p.active));
       })
       .catch(() => {});
+
+    // Fetch ESS request queue counts for the admin
+    essApi
+      .adminRequests()
+      .then((res) => {
+        if (!cancelled && res.counts) {
+          setEssCounts({ pending: res.counts.pending, under_review: res.counts.under_review });
+        }
+      })
+      .catch(() => {});
+
     return () => {
       cancelled = true;
     };
@@ -124,8 +136,8 @@ function AdminDashboard() {
     <div>
       <PageHeader
         eyebrow="HR Admin"
-        title="Recruitment Dashboard"
-        description="Applicant pipeline, interview schedule, and onboarding progress for Oxford Suites Makati."
+        title="HR Admin Dashboard"
+        description="Recruitment pipeline, ESS approval queue, and onboarding progress for Oxford Suites Makati."
         actions={
           <Button asChild>
             <Link to="/admin/recruitment">Post a Job</Link>
@@ -136,7 +148,7 @@ function AdminDashboard() {
       {loading ? (
         <StatCardsSkeleton count={4} />
       ) : (
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <StatCard
           label="Total Applicants"
           value={stats?.applicants.total ?? 0}
@@ -167,6 +179,22 @@ function AdminDashboard() {
           hint="New hires in progress"
           icon={UserPlus}
           to="/admin/onboarding"
+        />
+        <StatCard
+          label="ESS Pending"
+          value={essCounts.pending}
+          hint="Awaiting review"
+          icon={Send}
+          tone="caution"
+          to="/admin/ess"
+        />
+        <StatCard
+          label="ESS Under Review"
+          value={essCounts.under_review}
+          hint="In approval queue"
+          icon={Headset}
+          tone="gold"
+          to="/admin/ess"
         />
         </div>
       )}

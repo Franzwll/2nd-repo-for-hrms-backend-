@@ -483,7 +483,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
               </Button>
             </div>
           </div>
-          <Card className="border-border/70 shadow-xs">
+          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-end gap-2 pb-4">
                 <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary text-xs font-medium px-2.5 py-1">
@@ -622,7 +622,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
             </div>
             </CardContent>
           </Card>
-          <Card className="border-border/70 shadow-xs">
+          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
             <CardContent className="p-6">
               {scheduleLoading ? (
                 <StatCardsSkeleton count={4} />
@@ -714,7 +714,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
             </div>
           </div>
 
-          <Card className="border-border/70 shadow-xs">
+          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
@@ -783,7 +783,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
             </CardContent>
           </Card>
 
-          <Card className="border-border/70 shadow-xs">
+          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
@@ -870,7 +870,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         </TabsContent>
 
         <TabsContent value="leave" className="mt-4 space-y-4">
-          <Card className="border-border/70 shadow-xs">
+          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
