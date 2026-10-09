@@ -31,6 +31,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as EmployeeIndexRouteImport } from './routes/employee/index'
 import { Route as EmployeeAiRouteImport } from './routes/employee/ai'
 import { Route as SuperadminIndexRouteImport } from './routes/superadmin/index'
+import { Route as LandingAssessmentTestTokenRouteImport } from './routes/_landing/assessment-test.$token'
 import { Route as LandingJobsIndexRouteImport } from './routes/_landing/jobs.index'
 import { Route as LandingJobsJobIdRouteImport } from './routes/_landing/jobs.$jobId'
 import { Route as AdminApplicantManagementApplicantsRouteImport } from './routes/admin/_applicant-management/applicants'
@@ -174,6 +175,12 @@ const SuperadminIndexRoute = SuperadminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SuperadminRoute,
 } as any)
+const LandingAssessmentTestTokenRoute =
+  LandingAssessmentTestTokenRouteImport.update({
+    id: '/_landing/assessment-test/$token',
+    path: '/assessment-test/$token',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const LandingJobsIndexRoute = LandingJobsIndexRouteImport.update({
   id: '/_landing/jobs/',
   path: '/jobs/',
@@ -368,6 +375,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/employee/': typeof EmployeeIndexRoute
   '/superadmin/': typeof SuperadminIndexRoute
+  '/assessment-test/$token': typeof LandingAssessmentTestTokenRoute
   '/jobs/$jobId': typeof LandingJobsJobIdRoute
   '/admin/applicants': typeof AdminApplicantManagementApplicantsRoute
   '/admin/dept-pos': typeof AdminCorehcmDeptPosRoute
@@ -419,6 +427,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/employee': typeof EmployeeIndexRoute
   '/superadmin': typeof SuperadminIndexRoute
+  '/assessment-test/$token': typeof LandingAssessmentTestTokenRoute
   '/jobs/$jobId': typeof LandingJobsJobIdRoute
   '/admin/applicants': typeof AdminApplicantManagementApplicantsRoute
   '/admin/dept-pos': typeof AdminCorehcmDeptPosRoute
@@ -474,6 +483,7 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/employee/': typeof EmployeeIndexRoute
   '/superadmin/': typeof SuperadminIndexRoute
+  '/_landing/assessment-test/$token': typeof LandingAssessmentTestTokenRoute
   '/_landing/jobs/$jobId': typeof LandingJobsJobIdRoute
   '/admin/_applicant-management/applicants': typeof AdminApplicantManagementApplicantsRoute
   '/admin/_corehcm/dept-pos': typeof AdminCorehcmDeptPosRoute
@@ -530,6 +540,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/employee/'
     | '/superadmin/'
+    | '/assessment-test/$token'
     | '/jobs/$jobId'
     | '/admin/applicants'
     | '/admin/dept-pos'
@@ -581,6 +592,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/employee'
     | '/superadmin'
+    | '/assessment-test/$token'
     | '/jobs/$jobId'
     | '/admin/applicants'
     | '/admin/dept-pos'
@@ -635,6 +647,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/employee/'
     | '/superadmin/'
+    | '/_landing/assessment-test/$token'
     | '/_landing/jobs/$jobId'
     | '/admin/_applicant-management/applicants'
     | '/admin/_corehcm/dept-pos'
@@ -686,6 +699,7 @@ export interface RootRouteChildren {
   LoginOtpDESKTOPT31RHI0Route: typeof LoginOtpDESKTOPT31RHI0Route
   LoginResetPasswordRoute: typeof LoginResetPasswordRoute
   LandingIndexRoute: typeof LandingIndexRoute
+  LandingAssessmentTestTokenRoute: typeof LandingAssessmentTestTokenRoute
   LandingJobsJobIdRoute: typeof LandingJobsJobIdRoute
   LandingJobsIndexRoute: typeof LandingJobsIndexRoute
 }
@@ -845,6 +859,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/superadmin/'
       preLoaderRoute: typeof SuperadminIndexRouteImport
       parentRoute: typeof SuperadminRoute
+    }
+    '/_landing/assessment-test/$token': {
+      id: '/_landing/assessment-test/$token'
+      path: '/assessment-test/$token'
+      fullPath: '/assessment-test/$token'
+      preLoaderRoute: typeof LandingAssessmentTestTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_landing/jobs/': {
       id: '/_landing/jobs/'
@@ -1178,6 +1199,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginOtpDESKTOPT31RHI0Route: LoginOtpDESKTOPT31RHI0Route,
   LoginResetPasswordRoute: LoginResetPasswordRoute,
   LandingIndexRoute: LandingIndexRoute,
+  LandingAssessmentTestTokenRoute: LandingAssessmentTestTokenRoute,
   LandingJobsJobIdRoute: LandingJobsJobIdRoute,
   LandingJobsIndexRoute: LandingJobsIndexRoute,
 }

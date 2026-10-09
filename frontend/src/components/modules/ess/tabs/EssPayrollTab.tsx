@@ -9,19 +9,17 @@ import {
   HelpCircle,
   Building2,
   CheckCircle2,
-  Wallet,
-  TrendingUp,
-  Receipt,
-  FileSpreadsheet,
   ShieldCheck,
   HeartHandshake,
   Building,
   Stethoscope,
   Landmark,
   MessageSquareText,
+  Calendar,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -43,7 +41,19 @@ import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewe
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
 import { toast } from "sonner";
 
-export function EssPayrollTab() {
+interface EssPayrollTabProps {
+  initialTab?: "payslips" | "requests" | "benefits";
+}
+
+export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = {}) {
+  const [activeTab, setActiveTab] = useState<"payslips" | "requests" | "benefits">(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
   const [payrollData, setPayrollData] = useState<ApiPayrollData | null>(null);
   const [selectedPayslipPeriod, setSelectedPayslipPeriod] = useState<string>("Aug 01 - Aug 15, 2026");
   const [selectedPayslipNet, setSelectedPayslipNet] = useState<number>(28080);
@@ -85,7 +95,11 @@ export function EssPayrollTab() {
   const currentGross = payrollData?.gross ?? 32500;
   const currentDeductions = payrollData?.deductions?.total ?? 4420;
   const nextPayout = payrollData?.nextPayout ?? "August 31, 2026";
-  const payslipsList = payrollData?.payslips?.length ? payrollData.payslips : [];
+  const payslipsList = useMemo(() => {
+    return payrollData?.payslips?.length ? payrollData.payslips : myPayroll.payslips;
+  }, [payrollData]);
+
+  const payslipPage = usePagination(payslipsList, 4);
 
   const [payRequests, setPayRequests] = useState<any[]>([]);
 
@@ -93,9 +107,28 @@ export function EssPayrollTab() {
   const [payFilterType, setPayFilterType] = useState("all");
   const [paySort, setPaySort] = useState("date-desc");
   const [payType, setPayType] = useState("Payroll Clarification");
-  const [payPeriod, setPayPeriod] = useState("");
+  const [payPeriodStart, setPayPeriodStart] = useState("");
+  const [payPeriodEnd, setPayPeriodEnd] = useState("");
   const [payDetails, setPayDetails] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const formatPeriodDisplay = (startStr: string, endStr: string) => {
+    if (!startStr && !endStr) return "";
+    try {
+      const s = startStr ? new Date(startStr + "T00:00:00") : null;
+      const e = endStr ? new Date(endStr + "T00:00:00") : null;
+      if (s && e) {
+        const sFmt = s.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        const eFmt = e.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        return `${sFmt} – ${eFmt}`;
+      } else if (s) {
+        return `From ${s.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+      }
+    } catch {
+      // fallback
+    }
+    return `${startStr} – ${endStr}`;
+  };
 
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -123,13 +156,19 @@ export function EssPayrollTab() {
       toast.error("Please enter inquiry details or claimed hours.");
       return;
     }
+    const coveredPeriodText = payPeriodStart && payPeriodEnd
+      ? formatPeriodDisplay(payPeriodStart, payPeriodEnd)
+      : payPeriodStart || payPeriodEnd || "";
+
     try {
       setSubmitting(true);
       const res = await essApi.createRequest({
         category_code: "payroll",
         category_name: "Payroll",
         request_type: payType,
-        details: `${payPeriod ? `Period: ${payPeriod}. ` : ""}${payDetails.trim()}`,
+        date_from: payPeriodStart || undefined,
+        date_to: payPeriodEnd || undefined,
+        details: `${coveredPeriodText ? `Covered Period: ${coveredPeriodText}. ` : ""}${payDetails.trim()}`,
       });
       const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
       const isoStr = new Date().toISOString().slice(0, 10);
@@ -140,11 +179,12 @@ export function EssPayrollTab() {
         type: payType,
         status: "Pending",
         statusRank: 0,
-        details: `${payPeriod ? `Period: ${payPeriod}. ` : ""}${payDetails}`,
+        details: `${coveredPeriodText ? `Period: ${coveredPeriodText}. ` : ""}${payDetails.trim()}`,
       };
       setPayRequests([newReq, ...payRequests]);
       toast.success(`${payType} submitted to Payroll Administration.`);
-      setPayPeriod("");
+      setPayPeriodStart("");
+      setPayPeriodEnd("");
       setPayDetails("");
     } catch (err: any) {
       toast.error(err.message || "Failed to submit payroll inquiry.");
@@ -174,139 +214,204 @@ export function EssPayrollTab() {
 
   return (
     <div className="space-y-6">
-      {/* 3 Main Payroll Cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Net Pay (Latest Cut-off)</p>
-              <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600 dark:text-emerald-400">
-                <Wallet className="h-4 w-4" />
-              </div>
-            </div>
-            <p className="mt-1 text-3xl font-bold font-display text-emerald-600 dark:text-emerald-400">₱{currentNet.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-1">Next payout date: <strong className="text-foreground">{nextPayout}</strong></p>
-          </CardContent>
-        </Card>
+      {/* Executive Payroll Summary Hero Header */}
+      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-card via-card to-primary/[0.04] shadow-sm">
+        {/* Ambient Decorative Lighting */}
+        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary/5 blur-3xl" />
+        <div className="pointer-events-none absolute -left-24 -bottom-24 h-72 w-72 rounded-full bg-emerald-500/5 blur-3xl" />
 
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Gross Earnings</p>
-              <div className="rounded-lg bg-primary/10 p-2 text-primary">
-                <TrendingUp className="h-4 w-4" />
-              </div>
-            </div>
-            <p className="mt-1 text-2xl font-bold font-display text-foreground">₱{currentGross.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-1">Includes basic pay, OT &amp; allowances</p>
-          </CardContent>
-        </Card>
+        {/* Hero Top Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border/60 bg-muted/30 px-6 py-4">
+          <div>
+            <h4 className="text-base font-bold font-display text-foreground tracking-tight">
+              Compensation &amp; Payroll Summary
+            </h4>
+            <p className="text-xs text-muted-foreground">
+              Official salary disbursement, tax withholdings, and statutory benefits
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground font-medium">Next Payout:</span>
+            <span className="inline-flex items-center rounded-full bg-primary/10 border border-primary/20 px-3 py-1 text-xs font-semibold text-primary">
+              {nextPayout}
+            </span>
+          </div>
+        </div>
 
-        <Card className="border-border/70 shadow-xs hover:border-primary/40 transition-all">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Total Deductions</p>
-              <div className="rounded-lg bg-rose-500/10 p-2 text-rose-600 dark:text-rose-400">
-                <Receipt className="h-4 w-4" />
-              </div>
-            </div>
-            <p className="mt-1 text-2xl font-bold font-display text-rose-600 dark:text-rose-400">
+        {/* Hero Metrics Strip (The 3 Numbers Prominently Featured as Headers) */}
+        <div className="grid gap-4 p-6 sm:grid-cols-3">
+          {/* Net Take-Home Pay */}
+          <div className="rounded-xl border border-emerald-500/30 bg-background/60 p-5 backdrop-blur-xs shadow-2xs hover:border-emerald-500/50 transition-all">
+            <p className="text-[11px] uppercase font-bold tracking-wider text-emerald-700 dark:text-emerald-400">
+              Net Take-Home Pay
+            </p>
+            <p className="mt-2 text-3xl sm:text-4xl font-extrabold font-display text-emerald-600 dark:text-emerald-400 tracking-tight">
+              ₱{currentNet.toLocaleString()}
+            </p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Latest cut-off disbursement · Direct deposit
+            </p>
+          </div>
+
+          {/* Total Gross Earnings */}
+          <div className="rounded-xl border border-border/70 bg-background/60 p-5 backdrop-blur-xs shadow-2xs hover:border-primary/40 transition-all">
+            <p className="text-[11px] uppercase font-bold tracking-wider text-muted-foreground">
+              Total Gross Earnings
+            </p>
+            <p className="mt-2 text-3xl sm:text-4xl font-extrabold font-display text-foreground tracking-tight">
+              ₱{currentGross.toLocaleString()}
+            </p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Basic salary, overtime &amp; taxable allowances
+            </p>
+          </div>
+
+          {/* Statutory & Tax Deductions */}
+          <div className="rounded-xl border border-border/70 bg-background/60 p-5 backdrop-blur-xs shadow-2xs hover:border-rose-500/30 transition-all">
+            <p className="text-[11px] uppercase font-bold tracking-wider text-muted-foreground">
+              Statutory &amp; Tax Deductions
+            </p>
+            <p className="mt-2 text-3xl sm:text-4xl font-extrabold font-display text-rose-600 dark:text-rose-400 tracking-tight">
               -₱{currentDeductions.toLocaleString()}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">SSS, PhilHealth, Pag-IBIG &amp; Tax</p>
-          </CardContent>
-        </Card>
+            <p className="text-xs text-muted-foreground mt-2">
+              SSS, PhilHealth, Pag-IBIG &amp; withholding tax
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Payslips & Breakdown Grid */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Released Payslips Table */}
-        <Card className="border-border/70 shadow-xs">
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <div>
-              <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
-                <FileText className="h-5 w-5 text-primary" />
-                Released Payslips
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">View and download official itemized pay stubs.</p>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Pay Period</TableHead>
-                  <TableHead>Net Pay</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(payrollData?.payslips?.length ? payrollData.payslips : myPayroll.payslips).map((ps, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell className="font-medium text-xs text-foreground">{ps.period}</TableCell>
-                    <TableCell className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                      ₱{ps.net.toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <EssStatusBadge status={ps.status} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 text-xs font-medium text-primary hover:bg-primary/10 gap-1"
-                        onClick={() => openPayslip(ps.period, ps.net)}
-                      >
-                        <Eye className="h-3.5 w-3.5" /> View Payslip
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+      {/* Sub-navigation Tabs */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-1.5 p-1 bg-muted/60 rounded-xl border border-border/70 shadow-2xs overflow-x-auto max-w-full">
+          <button
+            type="button"
+            onClick={() => setActiveTab("payslips")}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "payslips"
+                ? "bg-primary text-primary-foreground shadow-xs font-bold"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            <span>Released Payslips</span>
+            <span
+              className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold leading-none ${
+                activeTab === "payslips"
+                  ? "bg-primary-foreground/20 text-primary-foreground"
+                  : "bg-muted text-muted-foreground border border-border/60"
+              }`}
+            >
+              {payslipsList.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("requests")}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "requests"
+                ? "bg-primary text-primary-foreground shadow-xs font-bold"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+          >
+            <HelpCircle className="h-3.5 w-3.5" />
+            <span>Payroll Requests &amp; Inquiries</span>
+            {filteredPayRequests.length > 0 && (
+              <span
+                className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold leading-none ${
+                  activeTab === "requests"
+                    ? "bg-primary-foreground/20 text-primary-foreground"
+                    : "bg-muted text-muted-foreground border border-border/60"
+                }`}
+              >
+                {filteredPayRequests.length}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("benefits")}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "benefits"
+                ? "bg-primary text-primary-foreground shadow-xs font-bold"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+          >
+            <Building2 className="h-3.5 w-3.5" />
+            <span>Statutory Benefits &amp; Active Loans</span>
+          </button>
+        </div>
+      </div>
 
-        {/* Current Period Breakdown */}
+      {/* Released Payslips Card */}
+      {activeTab === "payslips" && (
         <Card className="border-border/70 shadow-xs">
-          <CardHeader className="pb-3">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-border/60">
+          <div>
             <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
-              <FileSpreadsheet className="h-5 w-5 text-primary" />
-              Latest Pay Stub Breakdown
+              <FileText className="h-5 w-5 text-primary" />
+              Released Payslips
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Itemized item distribution for current period.</p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Earnings</h4>
-              <div className="space-y-1.5 border-t border-border pt-2 text-xs">
-                {(payrollData?.breakdown?.length ? payrollData.breakdown : myPayroll.breakdown).map((item, i) => (
-                  <div key={i} className="flex justify-between">
-                    <span className="text-muted-foreground">{item.label}</span>
-                    <span className="font-medium text-foreground">₱{item.amount.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              View and download official itemized pay stubs.
+            </p>
+          </div>
+          <Badge variant="outline" className="text-xs gap-1.5 bg-primary/10 text-primary border-primary/20 font-semibold px-2.5 py-1">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            {payslipsList.length} Payslips Available
+          </Badge>
+        </CardHeader>
 
-            <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Deductions</h4>
-              <div className="space-y-1.5 border-t border-border pt-2 text-xs">
-                {(payrollData?.deductions?.items?.length ? payrollData.deductions.items : myPayroll.deductions).map((item, i) => (
-                  <div key={i} className="flex justify-between text-rose-600 dark:text-rose-400">
-                    <span className="text-muted-foreground">{item.label}</span>
-                    <span className="font-medium">-₱{item.amount.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        <CardContent className="pt-4">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[30%]">Pay Period</TableHead>
+                <TableHead className="w-[22%]">Status</TableHead>
+                <TableHead className="w-[24%] text-right">Net Pay</TableHead>
+                <TableHead className="w-[24%] text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {payslipPage.pageItems.map((ps, idx) => (
+                <TableRow key={idx} className="hover:bg-muted/50 transition-colors">
+                  <TableCell className="font-medium text-xs text-foreground">{ps.period}</TableCell>
+                  <TableCell>
+                    <EssStatusBadge status={ps.status} />
+                  </TableCell>
+                  <TableCell className="text-right text-xs font-semibold font-mono text-emerald-600 dark:text-emerald-400">
+                    ₱{ps.net.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right py-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs font-medium text-primary hover:bg-primary/10 gap-1 cursor-pointer"
+                      onClick={() => openPayslip(ps.period, ps.net)}
+                    >
+                      <Eye className="h-3.5 w-3.5" /> View Payslip
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <TablePagination
+            page={payslipPage.page}
+            pageCount={payslipPage.pageCount}
+            from={payslipPage.from}
+            to={payslipPage.to}
+            total={payslipPage.total}
+            label="payslips"
+            onPageChange={payslipPage.setPage}
+          />
+        </CardContent>
+      </Card>
+      )}
 
       {/* Statutory Benefits & Company Loans Section */}
-      <Card className="border-border/70 shadow-xs">
+      {activeTab === "benefits" && (
+        <Card className="border-border/70 shadow-xs">
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3">
           <div>
             <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
@@ -335,7 +440,7 @@ export function EssPayrollTab() {
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/30">Active</span>
               </div>
-              <p className="text-base font-mono font-bold text-foreground">34-5678901-2</p>
+              <p className="text-base font-mono font-bold text-foreground">**-*****67-8</p>
               <p className="text-xs text-muted-foreground">Monthly Contribution: ₱950.00</p>
             </div>
 
@@ -346,7 +451,7 @@ export function EssPayrollTab() {
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/30">Active</span>
               </div>
-              <p className="text-base font-mono font-bold text-foreground">12-345678901-2</p>
+              <p className="text-base font-mono font-bold text-foreground">**-*******01-2</p>
               <p className="text-xs text-muted-foreground">Monthly Premium: ₱450.00</p>
             </div>
 
@@ -357,7 +462,7 @@ export function EssPayrollTab() {
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-semibold border border-emerald-500/30">Active</span>
               </div>
-              <p className="text-base font-mono font-bold text-foreground">1234-5678-9012</p>
+              <p className="text-base font-mono font-bold text-foreground">****-****-*012</p>
               <p className="text-xs text-muted-foreground">Monthly Savings: ₱200.00</p>
             </div>
 
@@ -368,7 +473,7 @@ export function EssPayrollTab() {
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 font-semibold border border-purple-500/30">Maxicare</span>
               </div>
-              <p className="text-base font-mono font-bold text-foreground">MX-8892014</p>
+              <p className="text-base font-mono font-bold text-foreground">MX-****014</p>
               <p className="text-xs text-muted-foreground">MBL Coverage: ₱150,000 / yr</p>
             </div>
           </div>
@@ -404,132 +509,256 @@ export function EssPayrollTab() {
           </div>
         </CardContent>
       </Card>
+      )}
 
-      {/* Inquiry Form & Requests Table */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* Submit Payroll & My Payroll Requests - Unified Single Card */}
+      {activeTab === "requests" && (
         <Card className="border-border/70 shadow-xs">
-          <CardHeader>
-            <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
-              <HelpCircle className="h-5 w-5 text-primary" />
-              Submit Payroll Inquiry / OT Request
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">Report discrepancy or request certified copy.</p>
-          </CardHeader>
-          <CardContent>
+        <CardHeader className="border-b border-border/60 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
+                <HelpCircle className="h-5 w-5 text-primary" />
+                Payroll Requests &amp; Inquiries
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Submit overtime claims, report salary discrepancies, and track your filed payroll requests in one place.
+              </p>
+            </div>
+            <Badge variant="outline" className="text-xs gap-1.5 bg-primary/10 text-primary border-primary/20 font-semibold px-2.5 py-1 self-start sm:self-auto">
+              <MessageSquareText className="h-3.5 w-3.5" />
+              {filteredPayRequests.length} Filed Requests
+            </Badge>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-6 space-y-8">
+          {/* SECTION 1 (TOP): SUBMIT PAYROLL REQUEST FORM */}
+          <div className="rounded-2xl border border-border/80 bg-muted/20 p-5 space-y-4 shadow-2xs">
+            <div className="flex items-center justify-between pb-1 border-b border-border/50">
+              <div>
+                <h4 className="text-sm font-bold font-display text-foreground flex items-center gap-2">
+                  <Send className="h-4 w-4 text-primary" />
+                  Submit New Payroll Request / Inquiry
+                </h4>
+                <p className="text-[11px] text-muted-foreground">
+                  File an overtime rendered claim, report a deduction discrepancy, or request certified payslip copies.
+                </p>
+              </div>
+              <span className="text-[10px] text-muted-foreground font-mono uppercase bg-background px-2.5 py-0.5 rounded-full border border-border/60 hidden sm:inline-block">
+                Direct HR Routing
+              </span>
+            </div>
+
             <form onSubmit={handlePaySubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Request Type</Label>
-                <Select value={payType} onValueChange={setPayType}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Payroll Clarification">Payroll / Deduction Clarification</SelectItem>
-                    <SelectItem value="Overtime Request">Overtime Rendered Claim</SelectItem>
-                    <SelectItem value="Night Differential Dispute">Night Differential Dispute</SelectItem>
-                    <SelectItem value="Payslip Copy Request">Certified Payslip Copy Request</SelectItem>
-                    <SelectItem value="Bank Account Update">Bank / Payroll Account Update</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {/* 1. Request Type */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Request Type</Label>
+                  <Select value={payType} onValueChange={setPayType}>
+                    <SelectTrigger className="h-9 text-xs focus:border-primary bg-background">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Payroll Clarification" className="text-xs">Payroll / Deduction Clarification</SelectItem>
+                      <SelectItem value="Overtime Request" className="text-xs">Overtime Rendered Claim</SelectItem>
+                      <SelectItem value="Night Differential Dispute" className="text-xs">Night Differential Dispute</SelectItem>
+                      <SelectItem value="Payslip Copy Request" className="text-xs">Certified Payslip Copy Request</SelectItem>
+                      <SelectItem value="Bank Account Update" className="text-xs">Bank / Payroll Account Update</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* 2. Covered Pay Period */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5 text-primary" />
+                      Covered Pay Period
+                    </Label>
+                    {payPeriodStart && payPeriodEnd && (
+                      <span className="text-[10px] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                        {formatPeriodDisplay(payPeriodStart, payPeriodEnd)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      type="date"
+                      value={payPeriodStart}
+                      onChange={(e) => setPayPeriodStart(e.target.value)}
+                      onClick={(e) => (e.currentTarget as any).showPicker?.()}
+                      className="cursor-pointer text-xs h-9 bg-background"
+                      placeholder="Start date"
+                      required
+                    />
+                    <Input
+                      type="date"
+                      value={payPeriodEnd}
+                      min={payPeriodStart || undefined}
+                      onChange={(e) => setPayPeriodEnd(e.target.value)}
+                      onClick={(e) => (e.currentTarget as any).showPicker?.()}
+                      className="cursor-pointer text-xs h-9 bg-background"
+                      placeholder="End date"
+                      required
+                    />
+                  </div>
+                  {/* Presets */}
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    <span className="text-[10px] text-muted-foreground uppercase font-semibold">Presets:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        const y = now.getFullYear();
+                        const m = String(now.getMonth() + 1).padStart(2, "0");
+                        setPayPeriodStart(`${y}-${m}-01`);
+                        setPayPeriodEnd(`${y}-${m}-15`);
+                      }}
+                      className="text-[11px] text-primary hover:underline hover:text-primary/80 transition-colors cursor-pointer"
+                    >
+                      1st–15th Cut-off
+                    </button>
+                    <span className="text-muted-foreground/40 text-[10px]">·</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        const y = now.getFullYear();
+                        const m = String(now.getMonth() + 1).padStart(2, "0");
+                        const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+                        setPayPeriodStart(`${y}-${m}-16`);
+                        setPayPeriodEnd(`${y}-${m}-${lastDay}`);
+                      }}
+                      className="text-[11px] text-primary hover:underline hover:text-primary/80 transition-colors cursor-pointer"
+                    >
+                      16th–End Cut-off
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Covered Pay Period</Label>
-                <Input
-                  placeholder="e.g., July 1–15, 2026"
-                  value={payPeriod}
-                  onChange={(e) => setPayPeriod(e.target.value)}
-                  required
-                />
-              </div>
+
+              {/* 3. Inquiry Details Textarea */}
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Inquiry Details / Hours Claimed</Label>
                 <Textarea
-                  rows={3}
-                  placeholder="Describe your inquiry or specify overtime rendered..."
+                  rows={2}
+                  placeholder="Describe your inquiry, specify overtime rendered with date/hours, or note any discrepancies..."
                   value={payDetails}
                   onChange={(e) => setPayDetails(e.target.value)}
+                  className="text-xs focus:border-primary bg-background resize-none"
                   required
                 />
               </div>
-              <Button type="submit" disabled={submitting} className="w-full gap-1.5">
-                <Send className="h-4 w-4" /> {submitting ? "Submitting..." : "Submit Payroll Inquiry"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
 
-        <Card className="border-border/70 shadow-xs">
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
-            <div>
-              <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
-                <MessageSquareText className="h-5 w-5 text-primary" />
-                My Payroll Requests
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">Click row to track audit status.</p>
+              <div className="flex justify-end">
+                <Button
+                  type="submit"
+                  disabled={submitting}
+                  className="gap-1.5 text-xs h-9 px-5 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold shadow-xs cursor-pointer w-full sm:w-auto"
+                >
+                  <Send className="h-3.5 w-3.5" /> {submitting ? "Submitting..." : "Submit Payroll Request"}
+                </Button>
+              </div>
+            </form>
+          </div>
+
+          {/* SECTION 2 (UNDERNEATH): MY PAYROLL REQUESTS TABLE */}
+          <div className="space-y-3.5 pt-2 border-t border-border/70">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-bold font-display text-foreground flex items-center gap-2">
+                  <MessageSquareText className="h-4 w-4 text-primary" />
+                  My Payroll Requests History
+                </h4>
+                <p className="text-[11px] text-muted-foreground">
+                  Track the audit, verification, and resolution status of your filed payroll inquiries.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[120px] sm:min-w-[150px]">
+                  <Search className="absolute left-2.5 top-2.5 h-3 w-3 text-muted-foreground" />
+                  <Input
+                    placeholder="Search requests..."
+                    value={paySearch}
+                    onChange={(e) => setPaySearch(e.target.value)}
+                    className="h-8 pl-7 text-xs bg-background"
+                  />
+                </div>
+                <Select value={payFilterType} onValueChange={setPayFilterType}>
+                  <SelectTrigger className="h-8 w-[125px] text-xs bg-background">
+                    <SelectValue placeholder="All Types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">All Types</SelectItem>
+                    <SelectItem value="Overtime" className="text-xs">Overtime</SelectItem>
+                    <SelectItem value="Clarification" className="text-xs">Clarification</SelectItem>
+                    <SelectItem value="Dispute" className="text-xs">Dispute</SelectItem>
+                    <SelectItem value="Payslip" className="text-xs">Payslip Copy</SelectItem>
+                    <SelectItem value="Loan" className="text-xs">Loan Request</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={paySort} onValueChange={setPaySort}>
+                  <SelectTrigger className="h-8 w-[125px] text-xs bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="date-desc" className="text-xs">Newest first</SelectItem>
+                    <SelectItem value="date-asc" className="text-xs">Oldest first</SelectItem>
+                    <SelectItem value="status" className="text-xs">Status</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Input
-                placeholder="Search..."
-                value={paySearch}
-                onChange={(e) => setPaySearch(e.target.value)}
-                className="h-8 w-[100px] sm:w-[120px]"
-              />
-              <Select value={payFilterType} onValueChange={setPayFilterType}>
-                <SelectTrigger className="h-8 w-[125px]">
-                  <SelectValue placeholder="All Types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="Overtime">Overtime</SelectItem>
-                  <SelectItem value="Clarification">Clarification</SelectItem>
-                  <SelectItem value="Dispute">Dispute</SelectItem>
-                  <SelectItem value="Payslip">Payslip Copy</SelectItem>
-                  <SelectItem value="Loan">Loan Request</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={paySort} onValueChange={setPaySort}>
-                <SelectTrigger className="h-8 w-[125px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="date-desc">Newest first</SelectItem>
-                  <SelectItem value="date-asc">Oldest first</SelectItem>
-                  <SelectItem value="status">Status</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Request ID</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {payPage.pageItems.map((r, idx) => (
-                  <TableRow
-                    key={idx}
-                    className="cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => handleRowClick(r)}
-                  >
-                    <TableCell className="text-xs font-mono font-medium text-foreground">{r.id}</TableCell>
-                    <TableCell className="text-xs font-semibold">{r.type}</TableCell>
-                    <TableCell>
-                      <EssStatusBadge status={r.status} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" className="h-7 text-xs text-primary">
-                        Timeline →
-                      </Button>
-                    </TableCell>
+
+            <div className="rounded-xl border border-border/70 overflow-hidden">
+              <Table>
+                <TableHeader className="bg-muted/40">
+                  <TableRow>
+                    <TableHead className="w-[18%] text-xs">Request ID</TableHead>
+                    <TableHead className="w-[16%] text-xs">Date Filed</TableHead>
+                    <TableHead className="w-[24%] text-xs">Request Type</TableHead>
+                    <TableHead className="w-[24%] text-xs">Details / Period</TableHead>
+                    <TableHead className="w-[10%] text-xs">Status</TableHead>
+                    <TableHead className="w-[8%] text-right text-xs">Action</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {payPage.pageItems.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-24 text-center text-muted-foreground text-xs">
+                        No payroll requests filed yet.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    payPage.pageItems.map((r, idx) => (
+                      <TableRow
+                        key={idx}
+                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => handleRowClick(r)}
+                      >
+                        <TableCell className="text-xs font-mono font-medium text-foreground">{r.id}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{r.date}</TableCell>
+                        <TableCell className="text-xs font-semibold">{r.type}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-[240px] truncate" title={r.details}>
+                          {r.details}
+                        </TableCell>
+                        <TableCell>
+                          <EssStatusBadge status={r.status} />
+                        </TableCell>
+                        <TableCell className="text-right py-1">
+                          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-primary cursor-pointer">
+                            Timeline →
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
             <TablePagination
               page={payPage.page}
               pageCount={payPage.pageCount}
@@ -539,9 +768,10 @@ export function EssPayrollTab() {
               label="requests"
               onPageChange={payPage.setPage}
             />
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </CardContent>
+      </Card>
+      )}
 
       {/* Modals */}
       <PayslipViewerModal
@@ -550,8 +780,9 @@ export function EssPayrollTab() {
         period={selectedPayslipPeriod}
         netPay={selectedPayslipNet}
         onInquiryClick={(period) => {
-          setPayPeriod(period);
+          setPayDetails(`Inquiry regarding payslip period: ${period}`);
           setPayType("Payroll Clarification");
+          setActiveTab("requests");
         }}
       />
       <RequestTimelineModal

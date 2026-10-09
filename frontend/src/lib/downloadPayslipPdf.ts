@@ -1,5 +1,6 @@
 import { myProfile, myPayroll } from "@/data/ess";
 import { numberToWords } from "@/lib/numberToWords";
+import { maskSensitiveId } from "@/components/modules/ess/shared/OfficialPayslipDocument";
 
 export interface PayslipPdfData {
   companyName?: string;
@@ -40,11 +41,11 @@ function createPayslipPdfBinary(data: PayslipPdfData): Uint8Array {
   const payDate = data.payDate || "05/08/2026";
   const paidDays = data.paidDays ?? 15;
   const lopDays = data.lopDays ?? 0;
-  const bankAcct = data.bankAccount || "BDO ****4412";
-  const tin = data.tin || "123-456-789-000";
-  const sss = data.sss || "34-1234567-8";
-  const philHealth = data.philHealth || "12-345678901-2";
-  const pagIbig = data.pagIbig || "1234-5678-9012";
+  const bankAcct = data.bankAccount || "BDO *****412";
+  const tin = data.tin || "***-***-***-000";
+  const sss = data.sss || "**-*****67-8";
+  const philHealth = data.philHealth || "**-*******01-2";
+  const pagIbig = data.pagIbig || "****-****-*012";
 
   const earnings = data.earnings || [
     { label: "Basic Pay", amount: 16000, ytd: 112000 },
@@ -131,21 +132,21 @@ function createPayslipPdfBinary(data: PayslipPdfData): Uint8Array {
   drawRect(0, 0, W, H, 1, 1, 1);
 
   // Outer border
-  drawRect(margin - 8, margin - 8, contentWidth + 16, H - (margin - 8) * 2, 0.88, 0.9, 0.93, false, true);
+  drawRect(margin - 10, margin - 10, contentWidth + 20, H - (margin - 10) * 2, 0.88, 0.9, 0.93, false, true);
 
   // --- 2. Header ---
-  let cursorY = H - margin - 20;
+  let cursorY = H - margin - 22;
 
-  // Maroon brand indicator
-  drawRect(margin, cursorY - 2, 4, 32, 0.45, 0.05, 0.12);
+  // Maroon brand indicator cleanly aligned with company header text, safely inside the border
+  drawRect(margin, cursorY - 1, 4, 25, 0.45, 0.05, 0.12);
 
   // Company Name & Address
-  drawText(companyName, margin + 12, cursorY + 18, "/F2", 14, 0.35, 0.05, 0.1);
-  drawText(address, margin + 12, cursorY + 4, "/F1", 8, 0.45, 0.45, 0.45);
+  drawText(companyName, margin + 12, cursorY + 14, "/F2", 13.5, 0.35, 0.05, 0.1);
+  drawText(address, margin + 12, cursorY + 2, "/F1", 8, 0.45, 0.45, 0.45);
 
   // Right side: Period
-  drawText("PAYSLIP FOR THE PERIOD", margin + contentWidth - 180, cursorY + 18, "/F2", 8.5, 0.4, 0.4, 0.4, "right", 180);
-  drawText(payPeriod, margin + contentWidth - 180, cursorY + 4, "/F2", 12, 0.1, 0.1, 0.1, "right", 180);
+  drawText("PAYSLIP FOR THE PERIOD", margin + contentWidth - 180, cursorY + 14, "/F2", 8.5, 0.4, 0.4, 0.4, "right", 180);
+  drawText(payPeriod, margin + contentWidth - 180, cursorY + 2, "/F2", 12, 0.1, 0.1, 0.1, "right", 180);
 
   cursorY -= 16;
   drawLine(margin, cursorY, margin + contentWidth, cursorY, 0.88, 0.9, 0.93, 1);
@@ -213,11 +214,11 @@ function createPayslipPdfBinary(data: PayslipPdfData): Uint8Array {
   drawRect(margin, cursorY - statBarH + 10, contentWidth, statBarH, 0.96, 0.97, 0.98, true, true);
 
   const statCols = [
-    { label: "BANK A/C NUMBER", val: bankAcct },
-    { label: "TIN", val: tin },
-    { label: "SSS NUMBER", val: sss },
-    { label: "PHILHEALTH", val: philHealth },
-    { label: "PAG-IBIG (HDMF)", val: pagIbig },
+    { label: "BANK A/C NUMBER", val: maskSensitiveId(bankAcct) },
+    { label: "TIN", val: maskSensitiveId(tin) },
+    { label: "SSS NUMBER", val: maskSensitiveId(sss) },
+    { label: "PHILHEALTH", val: maskSensitiveId(philHealth) },
+    { label: "PAG-IBIG (HDMF)", val: maskSensitiveId(pagIbig) },
   ];
 
   const colW = contentWidth / 5;
@@ -302,28 +303,24 @@ function createPayslipPdfBinary(data: PayslipPdfData): Uint8Array {
 
   // --- 6. Total Net Payable Banner ---
   cursorY = rowY - totalRowH - 16;
-  const netBannerH = 38;
+  const netBannerH = 46;
   drawRect(margin, cursorY - netBannerH, contentWidth, netBannerH, 0.96, 0.97, 0.98, true, true);
 
-  drawText("TOTAL NET PAYABLE", margin + 12, cursorY - 15, "/F2", 9.5, 0.1, 0.1, 0.1);
-  drawText("Gross Earnings - Total Deductions", margin + 12, cursorY - 27, "/F1", 7.5, 0.45, 0.45, 0.45);
+  drawText("TOTAL NET PAYABLE", margin + 12, cursorY - 18, "/F2", 9.5, 0.1, 0.1, 0.1);
+  drawText("Gross Earnings - Total Deductions", margin + 12, cursorY - 30, "/F1", 7.5, 0.45, 0.45, 0.45);
 
-  // Green Net Badge inside banner
-  const badgeW = 125;
-  const badgeH = 24;
+  // Green Net Badge inside banner with amount in words placed under the number
+  const badgeW = 230;
+  const badgeH = 34;
   const badgeX = margin + contentWidth - badgeW - 10;
-  const badgeY = cursorY - netBannerH + 7;
+  const badgeY = cursorY - netBannerH + 6;
 
   drawRect(badgeX, badgeY, badgeW, badgeH, 0.88, 0.96, 0.9, true, true);
-  drawText(`PHP ${formatNum(netPay)}`, badgeX, badgeY + 7, "/F2", 13, 0.04, 0.45, 0.2, "center", badgeW);
+  drawText(`PHP ${formatNum(netPay)}`, badgeX, badgeY + 18, "/F2", 12.5, 0.04, 0.45, 0.2, "center", badgeW);
+  drawText(words, badgeX, badgeY + 6, "/F2", 6.5, 0.05, 0.42, 0.2, "center", badgeW);
 
-  // --- 7. Amount in Words ---
+  // --- 7. Footer Disclaimer ---
   cursorY = cursorY - netBannerH - 14;
-  drawText("Amount In Words : ", margin + contentWidth - 320, cursorY, "/F1", 7.5, 0.45, 0.45, 0.45, "right", 120);
-  drawText(words, margin + contentWidth - 200, cursorY, "/F2", 7.5, 0.15, 0.15, 0.15, "right", 200);
-
-  // --- 8. Footer Disclaimer ---
-  cursorY -= 16;
   drawLine(margin, cursorY, margin + contentWidth, cursorY, 0.88, 0.9, 0.93);
 
   cursorY -= 10;

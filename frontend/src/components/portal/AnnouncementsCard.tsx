@@ -10,8 +10,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { isVisibleTo, usePortalState } from "@/components/portal/portal-state";
 import { getUser } from "@/lib/auth";
 import type { Role } from "@/lib/nav";
+import { cn } from "@/lib/utils";
 
-export function AnnouncementsCard({ role }: { role: Role }) {
+export function AnnouncementsCard({ role, className }: { role: Role; className?: string }) {
   const { announcements, removeAnnouncement } = usePortalState();
   const canManage = role === "superadmin";
   const [publishOpen, setPublishOpen] = useState(false);
@@ -27,7 +28,7 @@ export function AnnouncementsCard({ role }: { role: Role }) {
   };
 
   return (
-    <Card className="border-border/70">
+    <Card className={cn("border-border/70 flex flex-col justify-between shadow-xs", className)}>
       <CardContent className="p-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">

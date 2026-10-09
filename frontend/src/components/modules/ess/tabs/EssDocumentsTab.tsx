@@ -225,26 +225,26 @@ export function EssDocumentsTab() {
                 <TableHead>Category</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Date Filed / Verified</TableHead>
-                <TableHead>Size</TableHead>
+                <TableHead className="text-right">Size</TableHead>
                 <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {documents.map((doc) => (
                 <TableRow key={doc.id}>
-                  <TableCell className="font-semibold text-sm text-foreground">{doc.title}</TableCell>
+                  <TableCell className="font-semibold text-xs text-foreground">{doc.title}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{doc.category}</TableCell>
                   <TableCell>
                     <EssStatusBadge status={doc.status} />
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">{doc.date}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground font-mono">{doc.size}</TableCell>
-                  <TableCell className="text-right space-x-1">
+                  <TableCell className="text-right text-xs text-muted-foreground font-mono">{doc.size}</TableCell>
+                  <TableCell className="text-right py-1 space-x-1">
                     {doc.status === "Missing" ? (
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-8 text-xs border-amber-500/40 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 gap-1"
+                        className="h-6 px-2 text-xs border-amber-500/40 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 gap-1 font-medium"
                         onClick={() => openUploadForDoc(doc.title)}
                       >
                         <Upload className="h-3.5 w-3.5" /> Upload Now
@@ -253,7 +253,7 @@ export function EssDocumentsTab() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-8 text-xs text-primary hover:bg-primary/10 gap-1 font-medium"
+                        className="h-6 px-2 text-xs text-primary hover:bg-primary/10 gap-1 font-medium"
                         onClick={() => handleDownloadDoc(doc)}
                       >
                         <Download className="h-3.5 w-3.5" /> Download
@@ -315,13 +315,13 @@ export function EssDocumentsTab() {
                   onClick={() => handleRowClick(r)}
                 >
                   <TableCell className="text-xs font-mono font-medium text-foreground">{r.id}</TableCell>
-                  <TableCell className="text-sm font-semibold">{r.type}</TableCell>
+                  <TableCell className="text-xs font-semibold">{r.type}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{r.date}</TableCell>
                   <TableCell>
                     <EssStatusBadge status={r.status} />
                   </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" className="h-7 text-xs text-primary">
+                  <TableCell className="text-right py-1">
+                    <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-primary">
                       Timeline →
                     </Button>
                   </TableCell>

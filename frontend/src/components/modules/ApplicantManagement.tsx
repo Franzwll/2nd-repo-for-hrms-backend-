@@ -29,6 +29,8 @@ import {
   FileCheck2,
   FileText,
   Flag,
+  Lock,
+  Link2,
   CalendarPlus,
   History,
   Loader2,
@@ -38,6 +40,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Printer,
   Repeat2,
   RefreshCw,
   Save,
@@ -81,6 +84,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -117,6 +130,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
 import {
   DEFAULT_PRACTICAL_CRITERIA,
+  FINAL_EVALUATION_WEIGHTS,
   PRACTICAL_POSITIONS,
   VERIFICATION_DOC_TYPES,
   computeTopCandidateTier,
@@ -129,6 +143,7 @@ import {
   type FacilityStatus,
   type FinalEvaluationRow,
   type FinalRecommendation,
+  type FinalScoreBreakdownItem,
   type PassFail,
   type PracticalTestRow,
   type VerificationDocType,
@@ -156,10 +171,12 @@ import {
 import { jobs } from "@/data/jobs";
 import { useNavigate } from "@tanstack/react-router";
 import { cn, downloadTextFile } from "@/lib/utils";
+import { getUser } from "@/lib/auth";
 import { SortHead, useSort } from "@/components/portal/sortable";
 import {
   applicantDocumentsApi,
   applicantsApi,
+  assessmentInvitesApi,
   assessmentTestsApi,
   assessmentsApi,
   auditLogApi,
@@ -179,6 +196,7 @@ import {
   type ApiDepartment,
   type ApiFacility,
   type ApiFinalEvaluation,
+  type ApiFinalEvaluationPreview,
   type ApiInterview,
   type ApiJobPost,
   type ApiPosition,
@@ -188,6 +206,14 @@ import {
   type ApiSystemUser,
   type ScreeningReferencePayload,
 } from "@/lib/api";
+import {
+  describeExport,
+  exportReport,
+  printReport,
+  type ReportData,
+  type ReportFormat,
+} from "@/lib/report-export";
+import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
 import {
   isValidEmail,
   isValidName,
@@ -380,11 +406,40 @@ function transformApiFinalEvaluation(f: ApiFinalEvaluation): FinalEvaluationRow 
     practicalRequired: f.practical_required,
     practicalTestScore: f.practical_test_score,
     practicalTestResult: f.practical_test_result,
+    overallScore: f.overall_score ?? null,
+    overallScoreRounded: f.overall_score_rounded ?? (f.overall_score != null ? Math.round(f.overall_score * 10) / 10 : null),
+    scoreBreakdown: (f.score_breakdown as FinalScoreBreakdownItem[] | null) ?? null,
     recommendation: f.recommendation,
+    recommendedJobPostId: f.recommended_job_post_id ?? null,
+    recommendedPositionTitle: f.recommended_position_title ?? null,
     overallRemarks: f.overall_remarks ?? "",
     date: f.evaluation_date,
     evaluatedById: f.evaluated_by_user_id ?? null,
   };
+}
+
+/** Fetches every page of a paginated list endpoint (`{ data, meta }` shape) so
+ *  older records are never cut off by the page size. The interview index orders
+ *  newest-first, so past-date bookings used to fall off page 1 and their
+ *  Reschedule buttons disappeared from the View profile and the pipeline
+ *  Actions menu — this walks all pages instead. */
+async function fetchAllPages<T>(
+  list: (params?: Record<string, any>) => Promise<{ data: T[]; meta: any }>,
+  params?: Record<string, any>,
+  perPage = 500,
+): Promise<T[]> {
+  const all: T[] = [];
+  let page = 1;
+  for (;;) {
+    const res = await list({ ...params, per_page: perPage, page });
+    const items = res?.data ?? [];
+    all.push(...items);
+    const lastPage = (res?.meta as { last_page?: number } | undefined)?.last_page ?? 1;
+    if (page >= lastPage || items.length === 0) break;
+    page += 1;
+    if (page > 50) break; // safety cap: 50 x 500 records
+  }
+  return all;
 }
 
 /** Badge tone per audit action type in the History & Audit log. */
@@ -909,9 +964,9 @@ const screeningToneClass: Record<ScreeningTone, { card: string; value: string; l
     label: "text-primary/80",
   },
   gold: {
-    card: "border-gold/30 bg-gold-soft",
-    value: "text-gold-foreground",
-    label: "text-gold-foreground/70",
+    card: "border-gold/30 bg-gold-soft dark:bg-gold/15",
+    value: "text-gold-foreground dark:text-gold",
+    label: "text-gold-foreground/70 dark:text-gold/70",
   },
 };
 
@@ -1811,17 +1866,11 @@ function ReportUnrecognizedDialog({
             <DialogTitle className="font-display text-2xl">
               Report unrecognized entities
             </DialogTitle>
-            <DialogDescription>
-              Every entity flagged UNRECOGNIZED in this screening result is pre-checked. Uncheck
-              anything that should not be reported, then confirm once — the selection appears in
-              Recruitment Management → Screening Setup → Reported Entities.
-            </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-1">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
               <span>
                 {entries.length} unrecognized entr{entries.length === 1 ? "y" : "ies"}
-                {applicantName ? ` · ${applicantName}` : ""}
               </span>
               <span className="flex items-center gap-2">
                 <button
@@ -2487,7 +2536,7 @@ function ScreeningDocIcon({ docType, label }: { docType: string; label?: string 
       : t === "certificate"
         ? "bg-success/10 text-success"
         : t === "credential"
-          ? "bg-gold-soft text-gold-foreground"
+          ? "bg-gold-soft text-gold-foreground dark:bg-gold/15 dark:text-gold"
           : "bg-destructive/10 text-destructive";
   const caption =
     label ??
@@ -4010,6 +4059,17 @@ function DocVerificationCheckRow({
               : "CAN'T COMPARE"}
         </p>
         {check.note && <p className="text-[0.65rem] italic text-muted-foreground">{check.note}</p>}
+        {check.compared_resume_entry && check.compared_resume_entry.total_entries > 1 && (
+          <p className="text-[0.65rem] italic text-muted-foreground">
+            Compared against work entry{" "}
+            {(check.compared_resume_entry.entry_index ?? 0) + 1} of{" "}
+            {check.compared_resume_entry.total_entries}
+            {check.compared_resume_entry.job_title ||
+            check.compared_resume_entry.company
+              ? ` (${[check.compared_resume_entry.job_title, check.compared_resume_entry.company].filter(Boolean).join(" · ")})`
+              : ""}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -4234,18 +4294,42 @@ function worstStatus(statuses: MatchSectionStatus[]): MatchSectionStatus {
 function pickCheck(
   docs: ApiApplicantDocument[],
   key: string,
+  targetDocTypes?: string[],
 ): { check: ApiDocumentVerificationCheck; doc: ApiApplicantDocument } | null {
+  const filteredDocs =
+    targetDocTypes && targetDocTypes.length > 0
+      ? docs.filter((d) => !d.doc_type || targetDocTypes.includes(d.doc_type))
+      : docs;
   const samples: { check: ApiDocumentVerificationCheck; doc: ApiApplicantDocument }[] = [];
-  docs.forEach((doc) => {
+  (filteredDocs.length > 0 ? filteredDocs : docs).forEach((doc) => {
     const check = doc.verification_result?.checks?.[key];
     if (check) samples.push({ check, doc });
   });
   if (samples.length === 0) return null;
+  // Verification semantics: a genuine discrepancy in ANY paper must surface
+  // for HR review — a match elsewhere must never hide it. (E.g. the current-
+  // employer COE matches while the previous-employer COE exposes a 3-month
+  // start-date gap; showing only the match would certify a false history.)
+  // UNABLE_TO_EXTRACT samples rank last: "can't compare" never overrides a
+  // real verdict in either direction.
   return (
     samples.find((s) => s.check.result === "MISMATCH") ??
     samples.find((s) => s.check.result === "MATCH") ??
     samples[0]!
   );
+}
+
+/** "Compared against work entry 2 of 3" — traces a COE verdict back to the
+ *  exact resume stint the paper was measured against. */
+function comparedEntrySource(check: ApiDocumentVerificationCheck | undefined): string | undefined {
+  const entry = check?.compared_resume_entry;
+  if (!entry || entry.total_entries < 1) return undefined;
+  const position =
+    entry.entry_index !== null && entry.entry_index !== undefined
+      ? `entry ${(entry.entry_index ?? 0) + 1} of ${entry.total_entries}`
+      : `1 of ${entry.total_entries} ${entry.total_entries === 1 ? "entry" : "entries"}`;
+  const what = [entry.job_title, entry.company].filter(Boolean).join(" · ");
+  return `Compared against work ${position}${what ? ` (${what})` : ""}`;
 }
 
 export function ScreeningResumeDocsMatchDetail({
@@ -4308,10 +4392,10 @@ export function ScreeningResumeDocsMatchDetail({
     };
 
     // — Work experience (COE papers): employer + title + dates —
-    const company = pickCheck(docs, "company");
-    const position = pickCheck(docs, "position");
-    const start = pickCheck(docs, "start_date");
-    const end = pickCheck(docs, "end_date");
+    const company = pickCheck(docs, "company", ["COE"]);
+    const position = pickCheck(docs, "position", ["COE"]);
+    const start = pickCheck(docs, "start_date", ["COE"]);
+    const end = pickCheck(docs, "end_date", ["COE"]);
     const dateStatuses = [start, end]
       .filter((x): x is NonNullable<typeof x> => x !== null)
       .map((x) => checkStatus(x.check.result));
@@ -4324,6 +4408,7 @@ export function ScreeningResumeDocsMatchDetail({
         resume: company.check.resume_value,
         papers: company.check.document_value,
         status: checkStatus(company.check.result),
+        source: comparedEntrySource(company.check),
       });
     if (position)
       workFields.push({
@@ -4331,18 +4416,23 @@ export function ScreeningResumeDocsMatchDetail({
         resume: position.check.resume_value,
         papers: position.check.document_value,
         status: checkStatus(position.check.result),
+        source: comparedEntrySource(position.check),
       });
-    if (start || end)
+    if (start || end) {
+      const dateNote = start?.check.note ?? end?.check.note ?? undefined;
+      const entrySource = comparedEntrySource(start?.check ?? end?.check);
       workFields.push({
         label: "Employment dates",
         resume: dateResume,
         papers: datePapers,
         status: worstStatus(dateStatuses),
+        source: [entrySource, dateNote].filter(Boolean).join(" — ") || undefined,
       });
+    }
     const workDocs = new Set(
-      [company, position, start, end]
-        .filter((x): x is NonNullable<typeof x> => x !== null)
-        .map((x) => x.doc.applicant_document_id),
+      docs
+        .filter((d) => d.doc_type === "COE" || d.verification_result?.checks?.company)
+        .map((d) => d.applicant_document_id),
     ).size;
     const work: MatchSection = {
       key: "work",
@@ -4355,8 +4445,8 @@ export function ScreeningResumeDocsMatchDetail({
     };
 
     // — Education (certificate papers): degree + school —
-    const degree = pickCheck(docs, "degree");
-    const institution = pickCheck(docs, "institution");
+    const degree = pickCheck(docs, "degree", ["Certificate", "Credential"]);
+    const institution = pickCheck(docs, "institution", ["Certificate", "Credential"]);
     const eduFields: MatchEvidence[] = [];
     if (degree)
       eduFields.push({
@@ -4373,9 +4463,13 @@ export function ScreeningResumeDocsMatchDetail({
         status: checkStatus(institution.check.result),
       });
     const eduDocs = new Set(
-      [degree, institution]
-        .filter((x): x is NonNullable<typeof x> => x !== null)
-        .map((x) => x.doc.applicant_document_id),
+      docs
+        .filter(
+          (d) =>
+            (d.doc_type === "Certificate" || d.doc_type === "Credential") &&
+            d.verification_result?.checks?.degree,
+        )
+        .map((d) => d.applicant_document_id),
     ).size;
     const education: MatchSection = {
       key: "education",
@@ -4387,8 +4481,8 @@ export function ScreeningResumeDocsMatchDetail({
     };
 
     // — Certifications (credential papers): licence + issuer —
-    const cert = pickCheck(docs, "certification");
-    const issuer = pickCheck(docs, "issuer");
+    const cert = pickCheck(docs, "certification", ["Credential", "Certificate"]);
+    const issuer = pickCheck(docs, "issuer", ["Credential", "Certificate"]);
     const certFields: MatchEvidence[] = [];
     if (cert)
       certFields.push({
@@ -4405,9 +4499,13 @@ export function ScreeningResumeDocsMatchDetail({
         status: checkStatus(issuer.check.result),
       });
     const certDocs = new Set(
-      [cert, issuer]
-        .filter((x): x is NonNullable<typeof x> => x !== null)
-        .map((x) => x.doc.applicant_document_id),
+      docs
+        .filter(
+          (d) =>
+            (d.doc_type === "Credential" || d.doc_type === "Certificate") &&
+            d.verification_result?.checks?.certification,
+        )
+        .map((d) => d.applicant_document_id),
     ).size;
     const certification: MatchSection = {
       key: "certification",
@@ -4585,6 +4683,14 @@ export function ScreeningResumeDocsMatchDetail({
                         >
                           Papers: {field.papers ?? "—"}
                         </p>
+                        {field.source && (
+                          <p
+                            className="truncate text-[0.65rem] italic text-muted-foreground/80"
+                            title={field.source}
+                          >
+                            {field.source}
+                          </p>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -4658,6 +4764,11 @@ type ApplicantViewScreenProps = {
   showRescheduleInterview?: boolean;
   onStartTest: () => void;
   onStartPractical: () => void;
+  /** Generates a no-login link the APPLICANT opens to answer the assessment
+   *  test on their own device (staff runner stays for supervised sessions). */
+  onCopyTestLink?: () => void;
+  /** True while the applicant test link is being generated. */
+  inviteBusy?: boolean;
   onStartFinal: () => void;
   onViewInterview: (r: AssessmentResult) => void;
   onViewTest: (r: AssessmentTestRow) => void;
@@ -5102,10 +5213,10 @@ function RequirementsChecklistCard({
                     <div className="flex items-center gap-3 border-b border-gold/30 bg-gold/10 px-4 py-3">
                       <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
                         <span className="absolute inline-flex h-9 w-9 animate-ping rounded-full bg-gold/20" />
-                        <Loader2 className="relative h-5 w-5 animate-spin text-gold-foreground" />
+                        <Loader2 className="relative h-5 w-5 animate-spin text-gold-foreground dark:text-gold" />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="font-display text-sm font-semibold leading-tight text-gold-foreground">
+                        <p className="font-display text-sm font-semibold leading-tight text-gold-foreground dark:text-gold">
                           Waiting for evaluation
                         </p>
                         <p className="text-[0.7rem] text-muted-foreground">
@@ -5121,7 +5232,7 @@ function RequirementsChecklistCard({
                       </div>
                       <Badge
                         variant="outline"
-                        className="shrink-0 border-gold/40 bg-gold/10 text-[0.65rem] text-gold-foreground"
+                        className="shrink-0 border-gold/40 bg-gold/10 text-[0.65rem] text-gold-foreground dark:text-gold"
                       >
                         In review
                       </Badge>
@@ -5191,6 +5302,8 @@ function ApplicantViewScreen({
   showRescheduleInterview,
   onStartTest,
   onStartPractical,
+  onCopyTestLink,
+  inviteBusy,
   onStartFinal,
   onViewInterview,
   onViewTest,
@@ -5242,21 +5355,6 @@ function ApplicantViewScreen({
    *  the clicked-through checklist is always the section that opens. */
   const showRequirementsChecklist =
     forceChecklist === true || a.stage === "Offer" || a.stage === "Hired";
-
-  /** Ordered sections for the wizard footer — the right-arrow progression:
-   *  Current Stage → Screening (Resume & Documents) → Interview → Assessment
-   *  Test → Practical Assessment → Final Evaluation → Requirements Checklist. */
-  const flowSections: { key: ViewPanel; label: string }[] = [
-    { key: "current", label: "Current Stage" },
-    { key: "resume", label: "Screening" },
-    { key: "interview", label: "Interview" },
-    { key: "test", label: "Assessment Test" },
-    ...(requiresPrac ? [{ key: "practical" as ViewPanel, label: "Practical Assessment" }] : []),
-    { key: "final", label: "Final Evaluation" },
-    ...(showRequirementsChecklist
-      ? [{ key: "onboarding" as ViewPanel, label: "Requirements Checklist" }]
-      : []),
-  ];
 
   /**
    * Per-stage progress behind the stepper, derived from the recorded results
@@ -5609,7 +5707,7 @@ function ApplicantViewScreen({
               {/* Onboarding hand-over — the employee's first day of work. */}
               {linkedHire?.startDate && (
                 <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <CalendarClock className="h-3.5 w-3.5 text-gold-foreground" />
+                  <CalendarClock className="h-3.5 w-3.5 text-gold-foreground dark:text-gold" />
                   Start Date as Employee:{" "}
                   <span className="font-medium text-foreground">{linkedHire.startDate}</span>
                 </p>
@@ -5796,9 +5894,9 @@ function ApplicantViewScreen({
         )}
       >
         {panel !== "onboarding" && (
-          <Card className="border-border/70 h-full self-stretch">
-            <CardContent className="h-full p-3">
-              <div className="lg:sticky lg:top-4">
+          <Card className="border-border/70 h-full self-stretch flex flex-col overflow-hidden lg:h-[80vh]">
+            <CardContent className="h-full p-3 lg:overflow-y-auto">
+              <div>
                 <p className="eyebrow mb-2">Applicant sections</p>
                 <div className="space-y-1">
                   {sectionBtn("current", "Current Stage", <Info className="h-4 w-4" />)}
@@ -5856,12 +5954,12 @@ function ApplicantViewScreen({
           </Card>
         )}
 
-        <div className="min-w-0 h-full space-y-4 [&>*]:h-full">
+        <div className="min-w-0 h-full space-y-4 lg:h-[80vh] lg:overflow-y-auto [&>*]:min-h-full">
           {(() => {
             switch (panel) {
               case "current":
                 return (
-                  <Card className="border-border/70 h-full">
+                  <Card className="border-border/70 min-h-full">
                     <CardContent className="p-6">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
@@ -6034,7 +6132,7 @@ function ApplicantViewScreen({
                 );
               case "details":
                 return (
-                  <Card className="border-border/70 h-full">
+                  <Card className="border-border/70 min-h-full">
                     <CardContent className="p-6">
                       <div>
                         <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
@@ -6070,7 +6168,7 @@ function ApplicantViewScreen({
                 );
               case "resume":
                 return (
-                  <Card className="border-border/70 h-full">
+                  <Card className="border-border/70 min-h-full">
                     <CardContent className="p-6">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
@@ -6308,7 +6406,7 @@ function ApplicantViewScreen({
                 );
               case "interview":
                 return (
-                  <Card className="border-border/70 h-full">
+                  <Card className="border-border/70 min-h-full">
                     <CardContent className="p-6">
                       <div>
                         <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
@@ -6407,7 +6505,7 @@ function ApplicantViewScreen({
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge
                               variant="outline"
-                              className="border-gold/40 bg-gold-soft text-gold-foreground"
+                              className="border-gold/40 bg-gold-soft text-gold-foreground dark:bg-gold/15 dark:text-gold"
                             >
                               {interview.status}
                             </Badge>
@@ -6447,7 +6545,7 @@ function ApplicantViewScreen({
                 );
               case "test":
                 return (
-                  <Card className="border-border/70 h-full">
+                  <Card className="border-border/70 min-h-full">
                     <CardContent className="p-6">
                       <div>
                         <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
@@ -6493,9 +6591,25 @@ function ApplicantViewScreen({
                               {a.position} — the interview assessment was passed.
                             </p>
                           </div>
-                          <Button size="sm" onClick={onStartTest}>
-                            <BookMarked className="mr-1.5 h-3.5 w-3.5" /> Start Assessment Test
-                          </Button>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={inviteBusy}
+                              onClick={() => onCopyTestLink?.()}
+                              title="Generate a no-login link the applicant opens to answer the test themselves"
+                            >
+                              {inviteBusy ? (
+                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Link2 className="mr-1.5 h-3.5 w-3.5" />
+                              )}
+                              Copy applicant test link
+                            </Button>
+                            <Button size="sm" onClick={onStartTest}>
+                              <BookMarked className="mr-1.5 h-3.5 w-3.5" /> Start Assessment Test
+                            </Button>
+                          </div>
                         </div>
                       ) : (
                         <div className="mt-4">
@@ -6509,7 +6623,7 @@ function ApplicantViewScreen({
                 );
               case "practical":
                 return (
-                  <Card className="border-border/70 h-full">
+                  <Card className="border-border/70 min-h-full">
                     <CardContent className="p-6">
                       <div>
                         <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
@@ -6580,7 +6694,7 @@ function ApplicantViewScreen({
                 );
               case "final":
                 return (
-                  <Card className="border-border/70 h-full">
+                  <Card className="border-border/70 min-h-full">
                     <CardContent className="p-6">
                       <div>
                         <h3 className="flex items-center gap-2 font-display text-xl font-semibold">
@@ -6702,42 +6816,6 @@ function ApplicantViewScreen({
         </div>
       </div>
 
-      {/* Section progression — the right arrow moves to the next section.
-          The Requirements Checklist is the final, focused step: it hides this
-          bar entirely so only the checklist is shown. */}
-      {(() => {
-        if (panel === "onboarding") return null;
-        const flowIndex = flowSections.findIndex((s) => s.key === panel);
-        if (flowIndex === -1) return null;
-        const prev = flowIndex > 0 ? flowSections[flowIndex - 1] : undefined;
-        const next = flowIndex < flowSections.length - 1 ? flowSections[flowIndex + 1] : undefined;
-        return (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 bg-card px-4 py-3">
-            {prev ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="cursor-pointer"
-                onClick={() => setPanel(prev.key)}
-              >
-                <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Previous: {prev.label}
-              </Button>
-            ) : (
-              <span className="text-[11px] text-muted-foreground">First step of the process</span>
-            )}
-            {next && (
-              <Button
-                size="sm"
-                className="cursor-pointer"
-                title={`Open the next section — ${next.label}`}
-                onClick={() => setPanel(next.key)}
-              >
-                Next: {next.label} <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-              </Button>
-            )}
-          </div>
-        );
-      })()}
     </div>
   );
 }
@@ -6750,7 +6828,6 @@ const TOP_FIVE_VISIBLE_CARDS = 3;
 export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) {
   const navigate = useNavigate();
   const [rows, setRows] = useState<Applicant[]>([]);
-
 
   /**
    * Loads every pipeline record that drives the applicant progress bar:
@@ -6766,22 +6843,22 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const excludeStages = "Hired";
     try {
       const [appRes, intRes, asmRes, testRes, practRes, finalRes] = await Promise.allSettled([
-        applicantsApi.list({ per_page: 100, exclude_stages: excludeStages }),
-        interviewsApi.list({ per_page: 100 }),
-        assessmentsApi.list({ per_page: 100 }),
-        assessmentTestsApi.list({ per_page: 100 }),
-        practicalTestsApi.list({ per_page: 100 }),
-        finalEvaluationsApi.list({ per_page: 100 }),
+        fetchAllPages(applicantsApi.list, { exclude_stages: excludeStages }),
+        fetchAllPages(interviewsApi.list),
+        fetchAllPages(assessmentsApi.list),
+        fetchAllPages(assessmentTestsApi.list),
+        fetchAllPages(practicalTestsApi.list),
+        fetchAllPages(finalEvaluationsApi.list),
       ]);
       if (appRes.status === "fulfilled") {
-        setRows((appRes.value?.data ?? []).map(transformApiApplicant));
+        setRows((appRes.value ?? []).map(transformApiApplicant));
       }
       if (intRes.status === "fulfilled") {
-        setInterviews((intRes.value?.data ?? []).map(transformApiInterview));
+        setInterviews((intRes.value ?? []).map(transformApiInterview));
       }
       if (asmRes.status === "fulfilled") {
         setAssessments(
-          (asmRes.value?.data ?? []).map((a) => ({
+          (asmRes.value ?? []).map((a) => ({
             applicantId: a.applicant?.applicant_code ?? `APP-${a.applicant_id}`,
             dbId: a.assessment_id,
             name: a.applicant?.name ?? `Applicant #${a.applicant_id}`,
@@ -6802,13 +6879,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         );
       }
       if (testRes.status === "fulfilled") {
-        setAssessmentTests((testRes.value?.data ?? []).map(transformApiAssessmentTest));
+        setAssessmentTests((testRes.value ?? []).map(transformApiAssessmentTest));
       }
       if (practRes.status === "fulfilled") {
-        setPracticalTests((practRes.value?.data ?? []).map(transformApiPracticalTest));
+        setPracticalTests((practRes.value ?? []).map(transformApiPracticalTest));
       }
       if (finalRes.status === "fulfilled") {
-        setFinalEvaluations((finalRes.value?.data ?? []).map(transformApiFinalEvaluation));
+        setFinalEvaluations((finalRes.value ?? []).map(transformApiFinalEvaluation));
       }
     } catch (err) {
       console.warn("Could not fetch applicants/interviews/assessments from API:", err);
@@ -6879,6 +6956,43 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         console.warn("Could not fetch system users for assessor selector.");
       });
   }, []);
+
+  /* --- Logged-in staff member (default Interviewer / Assessor / Evaluated by) --- */
+  /** system_user_id of the signed-in staff member. Every process step that
+   *  records a name (Interviewer, Practical Assessment Assessor, Evaluated by)
+   *  is pre-filled with this person — they are the one processing the step —
+   *  and stays editable so a different interviewer can be recorded. */
+  const [currentUserId, setCurrentUserId] = useState("");
+  useEffect(() => {
+    const user = getUser();
+    if (user?.system_user_id) setCurrentUserId(String(user.system_user_id));
+  }, []);
+  /** The logged-in user's id, but only when they are a selectable system user
+   *  (before the user list loads we trust the session value so the field is
+   *  never left blank). */
+  const loggedInAssessorId = useMemo(() => {
+    if (!currentUserId) return "";
+    if (assessors.length === 0) return currentUserId;
+    return assessors.some((u) => String(u.system_user_id) === currentUserId)
+      ? currentUserId
+      : "";
+  }, [currentUserId, assessors]);
+
+  /** Applicant currently having a secure assessment test link generated. */
+  const [inviteBusyId, setInviteBusyId] = useState<string | null>(null);
+
+  /* --- Shared confirmation prompt for every pass / fail / save decision --- */
+  /** Pending destructive-or-committing action awaiting the user's confirmation.
+   *  Every Passed / Failed / Save / Recommend / Reject button routes through
+   *  this so nothing is committed (or a stage advanced) on a single stray
+   *  click. */
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    description: string;
+    confirmLabel: string;
+    destructive?: boolean;
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
 
   const [tab, setTab] = useState("ranking");
   const [positionFilter, setPositionFilter] = useState<string>("all");
@@ -7020,6 +7134,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [finalAssessor, setFinalAssessor] = useState("");
   const [finalDate, setFinalDate] = useState(() => isoOf(new Date()));
   const [finalRemarks, setFinalRemarks] = useState("");
+  /* System-assisted final evaluation: backend preview (scores + overall),
+     HR-chosen recommendation, single alternative position, breakdown toggle. */
+  const [finalPreview, setFinalPreview] = useState<ApiFinalEvaluationPreview | null>(null);
+  const [finalPreviewLoading, setFinalPreviewLoading] = useState(false);
+  const [finalChoice, setFinalChoice] = useState<FinalRecommendation | null>(null);
+  const [finalAltJobPostId, setFinalAltJobPostId] = useState("");
+  const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
   const [viewingFinal, setViewingFinal] = useState<FinalEvaluationRow | null>(null);
   /** Interview result being viewed (View button in the Interview tab). */
   const [viewingInterview, setViewingInterview] = useState<AssessmentResult | null>(null);
@@ -7083,10 +7204,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       setViewingApplicant(local);
       return;
     }
-    applicantsApi
-      .list({ per_page: 100 })
-      .then((res) => {
-        const match = (res?.data ?? [])
+    fetchAllPages(applicantsApi.list)
+      .then((items) => {
+        const match = items
           .map(transformApiApplicant)
           .find((r) => r.name.trim().toLowerCase() === wanted);
         if (!match) {
@@ -7116,6 +7236,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   });
   const [reportsOpen, setReportsOpen] = useState(false);
   const [screeningOpen, setScreeningOpen] = useState(false);
+  /** Password-protected export flow — predefined report + format awaiting a file password. */
+  const [csvOpen, setCsvOpen] = useState(false);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvPending, setCsvPending] = useState<
+    | { kind: "applicant"; optionId: string; format: ReportFormat }
+    | { kind: "audit"; format: ReportFormat }
+    | null
+  >(null);
   /* --- Pipeline Overview filters (one row per applicant) --- */
   const [pipelineSearch, setPipelineSearch] = useState("");
   const [pipelinePosition, setPipelinePosition] = useState<string>("all");
@@ -7420,12 +7548,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }, 800);
   };
 
-  const handleExportAuditReport = (format: ReportFormat) => {
+  const buildAuditReportData = (): ReportData => {
     const rowsForReport = auditSort.sorted.length ? auditSort.sorted : auditFiltered;
-    if (rowsForReport.length === 0) {
-      toast.error("No audit entries to export for current filters.");
-      return;
-    }
     const columns = [
       { header: "Date & Time", key: "datetime", width: "14%" },
       { header: "Performed By", key: "actor", width: "14%" },
@@ -7453,10 +7577,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       auditActorFilter !== "all"
         ? `Filters — Action: ${auditActionFilter} | Dept: ${auditDeptFilter} | User: ${auditActorFilter}${auditSearch ? ` | Search: "${auditSearch}"` : ""}`
         : "All audit entries (no filters)";
-    const payload = {
+    return {
       title: "History & Audit Report — Applicant Management",
       subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · ${filterSummary}`,
-      sensitive: true,
       columns,
       rows: rowsData,
       summary: [
@@ -7465,18 +7588,36 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         { label: "Generated", value: new Date().toLocaleString() },
       ],
     };
-    gateSensitive(payload, () => {
-      exportReport(payload, format);
-      toast.success(`Audit report exported as ${format.toUpperCase()}`);
-    });
   };
 
-  const handleExportApplicantReport = (r: (typeof reportOptions)[number], format: ReportFormat) => {
+  /** Every format is password-protected: picking one opens the password gate. */
+  const handleExportAuditReport = (format: ReportFormat) => {
+    if (buildAuditReportData().rows.length === 0) {
+      toast.error("No audit entries to export for current filters.");
+      return;
+    }
+    setCsvPending({ kind: "audit", format });
+    setCsvOpen(true);
+  };
+
+  const buildApplicantReportData = (r: (typeof reportOptions)[number]): ReportData => {
+    // Department resolver — Core HCM master first (org-chart source of truth),
+    // then static fallbacks. Mirrors deptForPosition / departmentOf used by the
+    // ranking list, scheduler and review screen so the report can never drift
+    // from the Organizational Chart's Department ↔ Position mapping.
+    const deptOfPosition = (position: string) =>
+      displayPositions.find((p) => p.title === position)?.department ??
+      positions.find((p) => p.title === position)?.department ??
+      jobs.find((j) => j.title === position)?.department ??
+      "—";
+    // Org-chart column arrangement: Position immediately followed by
+    // Department (Employee → Position → Department → Status).
     const cols =
       r.id === "interview"
         ? [
             { header: "Applicant", key: "applicant" },
             { header: "Position", key: "position" },
+            { header: "Department", key: "department" },
             { header: "Date", key: "date" },
             { header: "Time", key: "time" },
             { header: "Mode", key: "mode" },
@@ -7488,6 +7629,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               { header: "ID", key: "id" },
               { header: "Name", key: "name" },
               { header: "Position", key: "position" },
+              { header: "Department", key: "department" },
               { header: "Email", key: "email" },
               { header: "Score", key: "score" },
               { header: "Status", key: "status" },
@@ -7496,29 +7638,54 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           : [
               { header: "ID", key: "id" },
               { header: "Name", key: "name" },
-              { header: "Email", key: "email" },
               { header: "Position", key: "position" },
+              { header: "Department", key: "department" },
+              { header: "Email", key: "email" },
               { header: "Score", key: "score" },
               { header: "Status", key: "status" },
               { header: "Stage", key: "stage" },
               { header: "Applied", key: "appliedAt" },
             ];
-    const data =
-      r.id === "interview"
-        ? interviews
-        : rows.filter((a) =>
-            r.id === "passed"
-              ? a.score >= passing
-              : r.id === "position" || r.id === "status"
-                ? true
-                : true,
-          );
-    const payload = {
+    const byDeptThenPosition = (a: any, b: any) =>
+      String(a.department ?? "").localeCompare(String(b.department ?? "")) ||
+      String(a.position ?? "").localeCompare(String(b.position ?? "")) ||
+      String(a.name ?? a.applicant ?? "").localeCompare(String(b.name ?? b.applicant ?? ""));
+    let reportRows: Record<string, any>[];
+    if (r.id === "interview") {
+      reportRows = (interviews as any[])
+        .map((i: any) => ({ ...i, department: deptOfPosition(i.position) }))
+        .sort(byDeptThenPosition);
+    } else {
+      const data =
+        r.id === "interview"
+          ? interviews
+          : rows.filter((a) =>
+              r.id === "passed"
+                ? a.score >= passing
+                : r.id === "position" || r.id === "status"
+                  ? true
+                  : true,
+            );
+      reportRows = (data as any[])
+        .map((a: any) => ({ ...a, department: deptOfPosition(a.position) }))
+        .sort(byDeptThenPosition);
+    }
+    const scopeParts = [
+      `Position: ${positionFilter}`,
+      `Status: ${statusFilter}`,
+      `Stage: ${stageFilter}`,
+    ];
+    const departmentsCovered = new Set(
+      reportRows.map((x: any) => x.department).filter((d) => d && d !== "—"),
+    ).size;
+    return {
       title: `Applicant Management — ${r.title}`,
-      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()}`,
-      sensitive: true,
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: ${r.title} · ${scopeParts.join(" | ")}`,
       columns: cols,
-      rows: data as any,
+      rows: reportRows as any,
+      // Same security logic as every other module: applicant rows carry PII
+      // (names + emails) so the export must be password-gated like the roster.
+      sensitive: true,
       summary: [
         { label: "Total Applicants", value: rows.length },
         {
@@ -7526,12 +7693,45 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           value: rows.filter((a) => a.score >= passing).length,
         },
         { label: "Interviews Scheduled", value: interviews.length },
+        { label: "Departments Covered", value: departmentsCovered },
+        { label: "Rows in Report", value: reportRows.length },
       ],
     };
-    gateSensitive(payload, () => {
-      exportReport(payload, format);
-      toast.success(`${r.title} report exported as ${format.toUpperCase()}`);
-    });
+  };
+
+  /** Every format is password-protected: picking one opens the password gate. */
+  const handleExportApplicantReport = (r: (typeof reportOptions)[number], format: ReportFormat) => {
+    if (buildApplicantReportData(r).rows.length === 0) {
+      toast.error(`No records to export for ${r.title}.`);
+      return;
+    }
+    setCsvPending({ kind: "applicant", optionId: r.id, format });
+    setCsvOpen(true);
+  };
+
+  const confirmCsvExport = async (password: string) => {
+    if (!csvPending) return;
+    setCsvBusy(true);
+    try {
+      const data =
+        csvPending.kind === "audit"
+          ? buildAuditReportData()
+          : buildApplicantReportData(
+              reportOptions.find((o) => o.id === csvPending.optionId) ?? reportOptions[0]!,
+            );
+      await exportReport(data, csvPending.format, { password });
+      const { zipName } = describeExport(data, csvPending.format);
+      toast.success(
+        `${data.title} exported as password-protected ${csvPending.format.toUpperCase()} (${zipName}).`,
+      );
+      setCsvOpen(false);
+      setCsvPending(null);
+    } catch (e) {
+      console.error("Protected export failed:", e);
+      toast.error(e instanceof Error ? e.message : "Protected export failed.");
+    } finally {
+      setCsvBusy(false);
+    }
   };
 
   /** Load verification documents (with their verification results) whenever
@@ -8192,8 +8392,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
   /** Opens the interview assessment dialog for an applicant — shared by the
    *  Pipeline Overview interview cell and the applicant View screen.
-   *  The Assessor is pre-filled with the interviewer booked in
-   *  "Book an Interview" (required to save the interview). */
+   *  The Interviewer is pre-filled with the logged-in staff member (the person
+   *  processing the interview); when the booking names a different interviewer
+   *  that person is used instead. Required to save the interview. */
   const startInterviewFor = (a: Applicant) => {
     setEvaluating(a);
     setEvalScores(Object.fromEntries(assessmentCriteria.map((c) => [c, 4])));
@@ -8203,7 +8404,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const iv =
       interviews.find((x) => x.applicant === a.name && x.status !== "Cancelled") ??
       interviews.find((x) => x.applicant === a.name);
-    setEvalAssessor(assessorIdForInterviewer(iv?.interviewer));
+    setEvalAssessor(loggedInAssessorId || assessorIdForInterviewer(iv?.interviewer));
     setEvalDateTime(isoOf(new Date()));
   };
 
@@ -8659,14 +8860,25 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     );
   };
 
+  /** Queues a confirmation prompt for a committing action (Passed / Failed /
+   *  Save / Recommend / Reject) so the decision is never applied on a single
+   *  stray click. The action runs only when the user confirms. */
+  const askConfirm = (opts: {
+    title: string;
+    description: string;
+    confirmLabel: string;
+    destructive?: boolean;
+    onConfirm: () => void | Promise<void>;
+  }) => setPendingConfirm(opts);
+
   /** Persists an interview to the database API and advances the applicant.
    *  The assessor verdict (Passed / Failed) comes from the Assessor Verdict
    *  buttons in the Interview dialog footer. */
   const saveAssessment = async (verdict?: PassFail) => {
     if (!evaluating) return;
-    // The booked interviewer is the assessor of this interview — required.
+    // The interviewer who conducts/records this interview — required.
     if (!evalAssessor) {
-      toast.error("Select the interviewer (assessor) before saving the interview.");
+      toast.error("Select the interviewer before saving the interview.");
       return;
     }
     const total = Math.round(
@@ -8701,7 +8913,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           result,
           remarks: evalRemarks || "No overall evaluation recorded.",
         });
-        await applicantsApi.update(evaluating.dbId, { stage: "Assessed" });
+        // Secondary stage sync — the assessment row is already saved and the
+        // backend advances the stage in the same request, so a refusal here
+        // must not make the recorded interview look like it was lost.
+        await applicantsApi
+          .update(evaluating.dbId, { stage: "Assessed" })
+          .catch((e) => console.warn("Stage sync deferred for interview assessment:", e));
         // Persist the verdict time on the interview record as well.
         if (completedInterview?.dbId) {
           await interviewsApi
@@ -8786,6 +9003,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const questionSet = getMockAssessmentQuestions(a.position);
     setTestingTest(a);
     setTestTitle(`${a.position} — Job Knowledge Test`);
+    // Defaults to the logged-in staff member processing the test.
+    setTestAssessor(loggedInAssessorId);
     setTestDate(isoOf(new Date()));
     setTestQuestionSet(questionSet);
     setTestQuestions(
@@ -8833,6 +9052,72 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setTestAnswers({});
     setTestTimeLeft(MOCK_TEST_DURATION_SECONDS);
     testAutoSubmitted.current = false;
+  };
+
+  /** Copies text with a legacy fallback for non-secure contexts where the
+   *  async clipboard API is unavailable. */
+  const copyTextToClipboard = async (text: string): Promise<boolean> => {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return ok;
+      } catch {
+        return false;
+      }
+    }
+  };
+
+  /** Generates a single-use secure test link the APPLICANT opens on their own
+   *  device to answer the assessment test (the staff runner above stays for
+   *  supervised sessions) and copies it to the clipboard. The link needs no
+   *  login and expires in 7 days; scoring happens server-side on submit. */
+  const copyApplicantTestLink = async (a: Applicant) => {
+    if (!a.dbId) {
+      toast.error("Sync the applicant record first — the test link needs a saved applicant.");
+      return;
+    }
+    setInviteBusyId(a.id);
+    try {
+      const bank = getMockAssessmentQuestions(a.position);
+      const invite = await assessmentInvitesApi.create(a.dbId, {
+        test_title: `${a.position} — Job Knowledge Test`,
+        questions_json: bank.map((q) => ({
+          title: q.title,
+          scenario: q.scenario,
+          options: q.options,
+          correctIndex: q.correctIndex,
+          points: q.points,
+        })),
+        passing_score: 75,
+      });
+      const url = `${window.location.origin}/assessment-test/${invite.token}`;
+      const copied = await copyTextToClipboard(url);
+      toast.success(copied ? "Applicant test link copied" : "Applicant test link generated", {
+        description: url,
+      });
+      addAudit({
+        actionType: "Assessment Test Link Generated",
+        target: a.name,
+        module: "Applicant Management",
+        details: `Generated a secure assessment test link for ${a.name} (${a.position}).`,
+      });
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Could not generate the applicant test link.",
+      );
+    } finally {
+      setInviteBusyId(null);
+    }
   };
 
   /** Persists an assessment test (auto-checked score result) and advances the applicant. */
@@ -8884,11 +9169,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           test_date: testDate,
           remarks: autoRemarks,
         });
-        await applicantsApi.update(testingTest.dbId, { stage: "Assessment Test" });
       } catch (e) {
         reportStageSaveFailure("Assessment test", e);
         return;
       }
+      // Secondary stage sync — the test row is already saved and the backend
+      // advances the stage in the same request, so a refusal here must not
+      // make the recorded test look like it was lost.
+      await applicantsApi
+        .update(testingTest.dbId, { stage: "Assessment Test" })
+        .catch((e) => console.warn("Stage sync deferred for assessment test:", e));
     }
 
     setAssessmentTests((prev) => [row, ...prev]);
@@ -8942,6 +9232,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setTestingPractical(a);
     setPracticalTask(`${a.position} — Practical Demonstration`);
     setPracticalDate(isoOf(new Date()));
+    // Defaults to the logged-in staff member conducting the practical exam.
+    setPracticalAssessor(loggedInAssessorId);
     setPracticalCriteria(DEFAULT_PRACTICAL_CRITERIA.map((c) => ({ ...c })));
     // Default each criterion to a 4 / 5 rating — mirrors the Interview dialog.
     setPracticalScores(
@@ -8968,7 +9260,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }
     // The person who conducts the hands-on exam must be recorded — required.
     if (!practicalAssessor) {
-      toast.error("Select the assessor before recording the practical assessment.");
+      toast.error(
+        "Select the Practical Assessment Assessor before recording the practical assessment.",
+      );
       return;
     }
     const maxTotal = practicalCriteria.reduce((t, c) => t + (c.maxPoints || 0), 0);
@@ -9016,11 +9310,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           test_date: practicalDate,
           remarks: practicalRemarks || null,
         });
-        await applicantsApi.update(testingPractical.dbId, { stage: "Practical Test" });
       } catch (e) {
         reportStageSaveFailure("Practical assessment", e);
         return;
       }
+      // Secondary stage sync — the practical row is already saved and the
+      // backend advances the stage in the same request, so a refusal here must
+      // not make the recorded assessment look like it was lost.
+      await applicantsApi
+        .update(testingPractical.dbId, { stage: "Practical Test" })
+        .catch((e) => console.warn("Stage sync deferred for practical assessment:", e));
     }
 
     setPracticalTests((prev) => [row, ...prev]);
@@ -9056,16 +9355,33 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     };
   };
 
-  /** Opens the Final Evaluation dialog for a candidate who completed the pipeline. */
+  /** Opens the Final Evaluation dialog for a candidate who completed the pipeline.
+   *  Fetches the backend preview (system scores + overall) — the dialog
+   *  displays it read-only; HR only picks the recommendation. */
   const openFinalEvaluation = (a: Applicant) => {
     setFinalizing(a);
+    // Defaults to the logged-in staff member signing off the final decision.
+    setFinalAssessor(loggedInAssessorId);
     setFinalDate(isoOf(new Date()));
     setFinalRemarks("");
+    setFinalChoice(null);
+    setFinalAltJobPostId("");
+    setShowScoreBreakdown(false);
+    setFinalPreview(null);
+    if (a.dbId) {
+      setFinalPreviewLoading(true);
+      finalEvaluationsApi
+        .preview(a.dbId)
+        .then((p) => setFinalPreview(p))
+        .catch((e) => console.warn("Could not load final evaluation preview:", e))
+        .finally(() => setFinalPreviewLoading(false));
+    }
   };
 
   /** Persists the final evaluation with the whole-process verdict. The
-   *  recommendation comes from the choice buttons in the dialog footer
-   *  (Recommended for Hire / For Another Position / Not Recommended). */
+   *  recommendation comes from the HR-selected radio choice in the dialog
+   *  (Recommended for Hire / For Another Position / Not Recommended).
+   *  Scores are NEVER sent — the backend recalculates authoritatively. */
   const saveFinalEvaluation = async (recommendation: FinalRecommendation) => {
     if (!finalizing) return;
     // Whoever signs off the final decision must be recorded — required.
@@ -9073,22 +9389,39 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       toast.error("Select who evaluated this candidate before saving the final evaluation.");
       return;
     }
+    if (recommendation === "For Another Position" && !finalAltJobPostId) {
+      toast.error("Select one alternative position for this candidate.");
+      return;
+    }
+    if (recommendation === "Not Recommended" && !finalRemarks.trim()) {
+      toast.error("Evaluator remarks are required when the candidate is Not Recommended.");
+      return;
+    }
     const snap = finalSnapshotFor(finalizing);
+    const previewOverall = finalPreview?.overall_score_rounded ?? finalPreview?.overall_score ?? null;
     const row: FinalEvaluationRow = {
       id: `FIN-${Date.now()}`,
       applicantId: finalizing.id,
       name: finalizing.name,
       position: finalizing.position,
-      screeningScore: snap.screeningScore,
-      screeningStatus: snap.screeningStatus,
-      interviewScore: snap.interviewScore,
-      interviewResult: snap.interviewResult,
-      assessmentTestScore: snap.testScore,
-      assessmentTestResult: snap.testResult,
-      practicalRequired: snap.practicalRequired,
-      practicalTestScore: snap.practicalScore,
-      practicalTestResult: snap.practicalResult,
+      screeningScore: finalPreview?.scores.screening_score ?? snap.screeningScore,
+      screeningStatus: finalPreview?.scores.screening_status ?? snap.screeningStatus,
+      interviewScore: finalPreview?.scores.interview_score ?? snap.interviewScore,
+      interviewResult: (finalPreview?.scores.interview_result as PassFail | null) ?? snap.interviewResult,
+      assessmentTestScore: finalPreview?.scores.assessment_test_score ?? snap.testScore,
+      assessmentTestResult: (finalPreview?.scores.assessment_test_result as PassFail | null) ?? snap.testResult,
+      practicalRequired: finalPreview?.practical_required ?? snap.practicalRequired,
+      practicalTestScore: finalPreview ? finalPreview.scores.practical_test_score : snap.practicalScore,
+      practicalTestResult: finalPreview
+        ? (finalPreview.scores.practical_test_result as PassFail | null)
+        : snap.practicalResult,
+      overallScore: finalPreview?.overall_score ?? previewOverall,
+      overallScoreRounded: previewOverall,
+      scoreBreakdown: (finalPreview?.score_breakdown as FinalScoreBreakdownItem[] | undefined) ?? null,
       recommendation,
+      recommendedJobPostId: finalAltJobPostId ? Number(finalAltJobPostId) : null,
+      recommendedPositionTitle:
+        dbJobPosts.find((j: any) => String(j.job_post_id) === String(finalAltJobPostId))?.title ?? null,
       overallRemarks: finalRemarks,
       date: finalDate,
       evaluatedBy:
@@ -9099,17 +9432,31 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     // Persist FIRST: a refused save must never be reported as saved.
     if (finalizing.dbId) {
       try {
-        await finalEvaluationsApi.create(finalizing.dbId, {
+        const saved = await finalEvaluationsApi.create(finalizing.dbId, {
           evaluated_by_user_id: finalAssessor ? Number(finalAssessor) : null,
           evaluation_date: finalDate,
           recommendation,
           overall_remarks: finalRemarks || null,
+          ...(recommendation === "For Another Position" && finalAltJobPostId
+            ? { recommended_job_post_id: Number(finalAltJobPostId) }
+            : {}),
         });
-        await applicantsApi.update(finalizing.dbId, { stage: "Final Evaluation" });
+        const mapped = transformApiFinalEvaluation(saved);
+        row.overallScore = mapped.overallScore ?? row.overallScore;
+        row.overallScoreRounded = mapped.overallScoreRounded ?? row.overallScoreRounded;
+        row.scoreBreakdown = mapped.scoreBreakdown ?? row.scoreBreakdown;
+        row.recommendedJobPostId = mapped.recommendedJobPostId ?? row.recommendedJobPostId;
+        row.recommendedPositionTitle = mapped.recommendedPositionTitle ?? row.recommendedPositionTitle;
       } catch (e) {
         reportStageSaveFailure("Final evaluation", e);
         return;
       }
+      // Secondary stage sync — the evaluation row is already saved and the
+      // backend advances the stage in the same request, so a refusal here must
+      // not make the recorded evaluation look like it was lost.
+      await applicantsApi
+        .update(finalizing.dbId, { stage: "Final Evaluation" })
+        .catch((e) => console.warn("Stage sync deferred for final evaluation:", e));
     }
 
     setFinalEvaluations((prev) => [row, ...prev]);
@@ -9118,10 +9465,15 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       actionType: "Final Evaluation Completed",
       target: finalizing.name,
       module: "Applicant Management",
-      details: `Final evaluation completed for ${finalizing.name} — recommendation: ${recommendation}.`,
+      details: `Final evaluation completed for ${finalizing.name} — Overall ${
+        row.overallScoreRounded ?? "n/a"
+      }% (system calculated) — recommendation: ${recommendation}.`,
     });
     toast.success(`Final evaluation completed — ${recommendation}`);
     setFinalizing(null);
+    setFinalPreview(null);
+    setFinalChoice(null);
+    setFinalAltJobPostId("");
     // Re-read the saved records — the completed final evaluation turns every
     // applicable stage on the progress bar green.
     syncAfterStageChange();
@@ -9880,6 +10232,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           })()}
           onStartTest={() => openAssessmentTest(viewedApplicant)}
           onStartPractical={() => openPractical(viewedApplicant)}
+          onCopyTestLink={() => copyApplicantTestLink(viewedApplicant)}
+          inviteBusy={inviteBusyId === viewedApplicant.id}
           onStartFinal={() => openFinalEvaluation(viewedApplicant)}
           onViewInterview={(r) => setViewingInterview(r)}
           onViewTest={(t) => setViewingAssessmentTest(t)}
@@ -13580,9 +13934,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                             </DropdownMenuItem>
                                           ) : null}
                                           {showStartTest ? (
-                                            <DropdownMenuItem onClick={() => openAssessmentTest(a)}>
-                                              Start assessment test
-                                            </DropdownMenuItem>
+                                            <>
+                                              <DropdownMenuItem onClick={() => openAssessmentTest(a)}>
+                                                Start assessment test
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem
+                                                disabled={inviteBusyId === a.id}
+                                                onClick={() => void copyApplicantTestLink(a)}
+                                              >
+                                                Copy applicant test link
+                                              </DropdownMenuItem>
+                                            </>
                                           ) : null}
                                           {showStartPractical ? (
                                             <DropdownMenuItem onClick={() => openPractical(a)}>
@@ -13776,15 +14138,48 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             <Download className="h-4 w-4" /> Generate Report
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuContent align="end" className="w-64">
                           <DropdownMenuItem onClick={() => handleExportAuditReport("pdf")}>
-                            <FileText className="mr-2 h-4 w-4" /> Export as PDF
+                            <FileText className="mr-2 h-4 w-4" />
+                            <span className="flex items-center gap-1.5">
+                              Export as PDF
+                              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                            </span>
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleExportAuditReport("docx")}>
-                            <FileText className="mr-2 h-4 w-4" /> Export as DOCX
+                            <FileText className="mr-2 h-4 w-4" />
+                            <span className="flex items-center gap-1.5">
+                              Export as DOCX
+                              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                            </span>
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleExportAuditReport("excel")}>
-                            <Download className="mr-2 h-4 w-4" /> Export as Excel
+                            <FileText className="mr-2 h-4 w-4" />
+                            <span className="flex items-center gap-1.5">
+                              Export as Excel
+                              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                            </span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleExportAuditReport("csv")}>
+                            <FileText className="mr-2 h-4 w-4" />
+                            <span className="flex items-center gap-1.5">
+                              Export as CSV
+                              <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                            </span>
+                          </DropdownMenuItem>
+                          <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+                            Every file is sealed in a password-protected ZIP (AES-256). You will be
+                            asked for a file password.
+                          </p>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => {
+                              const data = buildAuditReportData();
+                              printReport(data);
+                              toast.success(`${data.title} sent to printer.`);
+                            }}
+                          >
+                            <Printer className="mr-2 h-4 w-4" /> Print…
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -13959,13 +14354,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         </>
       )}
 
-      {/* REPORTS DIALOG */}
+      {/* REPORTS DIALOG — predefined reports */}
       <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Generate Report</DialogTitle>
             <DialogDescription>
-              Choose a report type, then use the Generate menu to export as PDF, DOCX, Excel, or CSV.
+              Predefined reports — every format is password-protected (sealed in an AES-256 ZIP; you
+              will be asked for a file password on every export).
             </DialogDescription>
           </DialogHeader>
 
@@ -13985,26 +14381,88 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       <Download className="mr-2 h-4 w-4" /> Generate
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuContent align="end" className="w-60">
                     <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "pdf")}>
-                      <FileText className="mr-2 h-4 w-4" /> Export as PDF
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "docx")}>
-                      <FileText className="mr-2 h-4 w-4" /> Export as DOCX
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "excel")}>
-                      <Download className="mr-2 h-4 w-4" /> Export as Excel
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handleExportApplicantReport(r, "csv")}>
-                      <Download className="mr-2 h-4 w-4" /> Export as CSV
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
+                    </DropdownMenuItem>
+                    <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+                      Password-protected ZIP — password asked on every export.
+                    </p>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => {
+                        const data = buildApplicantReportData(r);
+                        printReport(data);
+                        toast.success(`${data.title} sent to printer.`);
+                      }}
+                    >
+                      <Printer className="mr-2 h-4 w-4" /> Print…
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
             ))}
+            <div className="flex items-center justify-between gap-3 rounded-md border border-dashed border-border p-3">
+              <div>
+                <p className="text-sm font-medium">History &amp; Audit</p>
+                <p className="text-xs text-muted-foreground">
+                  Who did what, when — available from the History tab&apos;s Generate Report menu
+                  (same formats, every file is password-protected).
+                </p>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      <SecureExportDialog
+        open={csvOpen}
+        onOpenChange={(o) => {
+          if (!csvBusy) {
+            setCsvOpen(o);
+            if (!o) setCsvPending(null);
+          }
+        }}
+        reportTitle={
+          !csvPending || csvPending.kind === "audit"
+            ? "History & Audit Report — Applicant Management"
+            : `Applicant Management — ${reportOptions.find((o) => o.id === csvPending.optionId)?.title ?? ""}`
+        }
+        formatLabel={
+          !csvPending
+            ? ""
+            : csvPending.format === "pdf"
+              ? "PDF"
+              : csvPending.format === "docx"
+                ? "DOCX"
+                : csvPending.format === "excel"
+                  ? "Excel"
+                  : "CSV"
+        }
+        busy={csvBusy}
+        onConfirm={confirmCsvExport}
+      />
 
       {/* REVIEW DIALOG — resume screening result */}
 
@@ -14095,11 +14553,29 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <Button
                   variant="outline"
                   className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => confirmVerifyFinal("Not Recommended")}
+                  onClick={() =>
+                    askConfirm({
+                      title: "Reject this candidate?",
+                      description: `${verifyingFinal.name}'s verified decision will be recorded as Rejected — the candidate is not accepted for any position.`,
+                      confirmLabel: "Yes, reject candidate",
+                      destructive: true,
+                      onConfirm: () => confirmVerifyFinal("Not Recommended"),
+                    })
+                  }
                 >
                   <XCircle className="mr-1.5 h-4 w-4" /> Reject
                 </Button>
-                <Button onClick={() => confirmVerifyFinal()} disabled={!verifyChoice}>
+                <Button
+                  disabled={!verifyChoice}
+                  onClick={() =>
+                    askConfirm({
+                      title: "Confirm this candidate decision?",
+                      description: `The recorded recommendation "${verifyChoice}" will be verified and the candidate decision finalized.`,
+                      confirmLabel: "Yes, confirm decision",
+                      onConfirm: () => confirmVerifyFinal(),
+                    })
+                  }
+                >
                   Confirm
                 </Button>
               </DialogFooter>
@@ -14154,8 +14630,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   onClick={() => {
                     const f = positionPick;
                     const chosen = positionPickChoice;
-                    setPositionPick(null);
-                    if (f) acceptFinalEvaluation(f, "For Another Position", chosen);
+                    if (!f) return;
+                    askConfirm({
+                      title: "Accept the candidate for another position?",
+                      description: `${f.name} will be accepted for "${chosen}".`,
+                      confirmLabel: "Yes, accept candidate",
+                      onConfirm: () => {
+                        setPositionPick(null);
+                        acceptFinalEvaluation(f, "For Another Position", chosen);
+                      },
+                    });
                   }}
                 >
                   Accept candidate
@@ -14187,6 +14671,40 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Global confirmation for every pass / fail / save / recommend / reject
+          decision — opened by askConfirm(...) so a committing action can never
+          fire on a single stray click. */}
+      <AlertDialog
+        open={!!pendingConfirm}
+        onOpenChange={(o) => {
+          if (!o) setPendingConfirm(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{pendingConfirm?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{pendingConfirm?.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={cn(
+                pendingConfirm?.destructive
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : undefined,
+              )}
+              onClick={() => {
+                const action = pendingConfirm?.onConfirm;
+                setPendingConfirm(null);
+                void action?.();
+              }}
+            >
+              {pendingConfirm?.confirmLabel ?? "Confirm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={!!review} onOpenChange={(o) => !o && closeReview()}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[95vw] w-[95vw] lg:max-w-[1500px]">
@@ -14561,11 +15079,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label>
-                    Assessor <span className="text-destructive">*</span>
+                    Interviewer <span className="text-destructive">*</span>
                   </Label>
                   <Select value={evalAssessor} onValueChange={setEvalAssessor}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select assessor" />
+                      <SelectValue placeholder="Select interviewer" />
                     </SelectTrigger>
                     <SelectContent>
                       {assessors.length === 0 && (
@@ -14582,7 +15100,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     </SelectContent>
                   </Select>
                   <p className="text-[0.7rem] text-muted-foreground">
-                    Defaults to the interviewer booked in “Book an Interview” — required.
+                    Defaults to you (the logged-in user) — change it if another interviewer
+                    conducted this interview. Required.
                   </p>
                 </div>
                 <div className="space-y-1.5">
@@ -14672,14 +15191,29 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   <Button
                     variant="outline"
                     className="border-success/40 text-success hover:bg-success/10 hover:text-success"
-                    onClick={() => saveAssessment("Passed")}
+                    onClick={() =>
+                      askConfirm({
+                        title: "Mark this interview as Passed?",
+                        description: `${evaluating.name}'s interview will be saved with a Passed verdict and the candidate will advance to the assessment test stage.`,
+                        confirmLabel: "Yes, mark Passed",
+                        onConfirm: () => saveAssessment("Passed"),
+                      })
+                    }
                   >
                     <CheckCircle2 className="mr-1.5 h-4 w-4" /> Passed
                   </Button>
                   <Button
                     variant="outline"
                     className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => saveAssessment("Failed")}
+                    onClick={() =>
+                      askConfirm({
+                        title: "Mark this interview as Failed?",
+                        description: `${evaluating.name}'s interview will be saved with a Failed verdict.`,
+                        confirmLabel: "Yes, mark Failed",
+                        destructive: true,
+                        onConfirm: () => saveAssessment("Failed"),
+                      })
+                    }
                   >
                     <XCircle className="mr-1.5 h-4 w-4" /> Failed
                   </Button>
@@ -14815,7 +15349,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               ? "Auto-check now"
                               : `Answer all questions first (${totalQ - answeredCount} remaining)`
                           }
-                          onClick={() => void saveAssessmentTest()}
+                          onClick={() =>
+                            askConfirm({
+                              title: "Submit the assessment test?",
+                              description: `${testingTest.name}'s answers will be auto-checked and the result recorded. Answers cannot be changed after this.`,
+                              confirmLabel: "Yes, submit test",
+                              onConfirm: () => saveAssessmentTest(),
+                            })
+                          }
                         >
                           Finish — auto-check <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                         </Button>
@@ -14861,7 +15402,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label>
-                      Assessor <span className="text-destructive">*</span>
+                      Practical Assessment Assessor <span className="text-destructive">*</span>
                     </Label>
                     <Select value={practicalAssessor} onValueChange={setPracticalAssessor}>
                       <SelectTrigger>
@@ -14978,14 +15519,29 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 <Button
                   variant="outline"
                   className="border-success/40 text-success hover:bg-success/10 hover:text-success"
-                  onClick={() => savePractical("Passed")}
+                  onClick={() =>
+                    askConfirm({
+                      title: "Mark the practical assessment as Passed?",
+                      description: `${testingPractical.name}'s practical assessment will be saved with a Passed verdict.`,
+                      confirmLabel: "Yes, mark Passed",
+                      onConfirm: () => savePractical("Passed"),
+                    })
+                  }
                 >
                   <CheckCircle2 className="mr-1.5 h-4 w-4" /> Passed
                 </Button>
                 <Button
                   variant="outline"
                   className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => savePractical("Failed")}
+                  onClick={() =>
+                    askConfirm({
+                      title: "Mark the practical assessment as Failed?",
+                      description: `${testingPractical.name}'s practical assessment will be saved with a Failed verdict.`,
+                      confirmLabel: "Yes, mark Failed",
+                      destructive: true,
+                      onConfirm: () => savePractical("Failed"),
+                    })
+                  }
                 >
                   <XCircle className="mr-1.5 h-4 w-4" /> Failed
                 </Button>
@@ -14995,8 +15551,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         </DialogContent>
       </Dialog>
 
-
-      {/* FINAL EVALUATION DIALOG */}
+      {/* FINAL EVALUATION DIALOG — system-assisted: system scores read-only,
+          HR picks the recommendation. */}
       <Dialog open={!!finalizing} onOpenChange={(o) => !o && setFinalizing(null)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto overflow-x-hidden sm:max-w-7xl">
           {finalizing && (
@@ -15004,13 +15560,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <DialogHeader>
                 <DialogTitle className="font-display text-2xl">Final Evaluation</DialogTitle>
                 <DialogDescription>
-                  {finalizing.name} — {finalizing.position}. Preview of every process that
-                  occurred before the final recommendation.
+                  {finalizing.name} — {finalizing.position}. System-calculated scores below
+                  are read-only; HR makes the final recommendation.
                 </DialogDescription>
               </DialogHeader>
 
-              {/* Evaluated by + date first (where the recruitment process
-                  preview used to be) */}
+              {/* Evaluated by + date */}
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label>
@@ -15039,55 +15594,275 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 </div>
               </div>
 
-              {/* Presented result of the resume screening, interview assessment,
-                  assessment test and practical assessment (when required) —
-                  shown together instead of behind View buttons */}
               {(() => {
                 const snap = finalSnapshotFor(finalizing);
-                return stageResultBlocks({
-                  applicantId: finalizing.id,
-                  screeningScore: snap.screeningScore,
-                  screeningStatus: snap.screeningStatus,
-                  practicalRequired: snap.practicalRequired,
-                });
+                const preview = finalPreview;
+                const practicalRequired = preview?.practical_required ?? snap.practicalRequired;
+                const screening = preview?.scores.screening_score ?? snap.screeningScore;
+                const interview = preview?.scores.interview_score ?? snap.interviewScore;
+                const assessment = preview?.scores.assessment_test_score ?? snap.testScore;
+                const practical = preview
+                  ? preview.scores.practical_test_score
+                  : snap.practicalScore;
+                const overall = preview?.overall_score_rounded ?? preview?.overall_score ?? null;
+                const breakdown = (preview?.score_breakdown as FinalScoreBreakdownItem[] | undefined) ?? null;
+                const reqs = preview?.requirements ?? null;
+                const interviewOk = reqs ? reqs.interview_passed : snap.interviewResult === "Passed";
+                const assessmentOk = reqs ? reqs.assessment_passed : snap.testResult === "Passed";
+                const practicalState: "passed" | "missing_or_failed" | "not_required" = reqs
+                  ? reqs.practical
+                  : !practicalRequired
+                    ? "not_required"
+                    : snap.practicalResult === "Passed"
+                      ? "passed"
+                      : "missing_or_failed";
+                const availableAltPosts = dbJobPosts.filter(
+                  (j: any) =>
+                    j.status === "Open" &&
+                    j.active !== false &&
+                    (Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0)) > 0,
+                );
+                return (
+                  <div className="space-y-3">
+                    {/* Detailed stage results first (existing presentation) */}
+                    {stageResultBlocks({
+                      applicantId: finalizing.id,
+                      screeningScore: screening,
+                      screeningStatus: preview?.scores.screening_status ?? snap.screeningStatus,
+                      practicalRequired,
+                    })}
+
+                    {/* SYSTEM-GENERATED evaluation summary (read-only) */}
+                    <div className="rounded-md border border-border bg-muted/30 p-3">
+                      <p className="eyebrow">Evaluation Summary — System Generated (read-only)</p>
+                      {finalPreviewLoading ? (
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Calculating scores from completed evaluations…
+                        </p>
+                      ) : (
+                        <div className="mt-2 space-y-1 text-sm">
+                          <div className="flex items-center justify-between gap-3">
+                            <span>Screening / Role Fit</span>
+                            <span className="font-display font-semibold text-primary">
+                              {screening != null ? `${Math.round(screening)}%` : "—"}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span>Interview Score</span>
+                            <span className="font-display font-semibold text-primary">
+                              {interview != null ? `${Math.round(interview)}%` : "—"}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span>Assessment Test</span>
+                            <span className="font-display font-semibold text-primary">
+                              {assessment != null ? `${Math.round(assessment)}%` : "—"}
+                            </span>
+                          </div>
+                          {practicalRequired && (
+                            <div className="flex items-center justify-between gap-3">
+                              <span>Practical Test</span>
+                              <span className="font-display font-semibold text-primary">
+                                {practical != null ? `${Math.round(practical)}%` : "—"}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between gap-3 border-t border-border pt-2">
+                            <span className="font-medium">
+                              Overall Score{" "}
+                              <Badge variant="outline" className="ml-1 border-primary/40 text-primary">
+                                System Calculated
+                              </Badge>
+                            </span>
+                            <span className="font-display text-xl font-semibold text-primary">
+                              {overall != null ? `${overall}%` : "—"}
+                            </span>
+                          </div>
+                          {preview && !preview.calculation_complete && (
+                            <p className="text-xs text-destructive">
+                              Scores incomplete — the Overall Score cannot be calculated yet.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {/* Transparent score breakdown */}
+                      <button
+                        type="button"
+                        className="mt-2 text-xs font-medium text-primary underline-offset-4 hover:underline"
+                        onClick={() => setShowScoreBreakdown((v) => !v)}
+                      >
+                        {showScoreBreakdown ? "Hide score calculation" : "Show score calculation"}
+                      </button>
+                      {showScoreBreakdown && (
+                        <div className="mt-2 space-y-1 rounded-md border border-border bg-background p-2.5 text-xs">
+                          {(breakdown ?? []).filter((b) => b.applied).map((b) => (
+                            <div key={b.key} className="flex items-center justify-between gap-3">
+                              <span>
+                                {b.label} — {b.score != null ? `${Math.round(b.score)}%` : "—"} ×{" "}
+                                {b.weight}%
+                              </span>
+                              <span className="font-medium">
+                                = {b.contribution != null ? b.contribution.toFixed(2) : "—"}
+                              </span>
+                            </div>
+                          ))}
+                          {!breakdown && (
+                            <p className="text-muted-foreground">
+                              Screening {FINAL_EVALUATION_WEIGHTS.screening}% · Interview{" "}
+                              {FINAL_EVALUATION_WEIGHTS.interview}% · Assessment{" "}
+                              {FINAL_EVALUATION_WEIGHTS.assessment}%
+                              {practicalRequired
+                                ? ` · Practical ${FINAL_EVALUATION_WEIGHTS.practical}%`
+                                : " · Practical not required (weights normalized)"}
+                              .
+                            </p>
+                          )}
+                          <div className="border-t border-border pt-1 font-medium">
+                            Overall Score = {preview?.overall_score != null ? preview.overall_score.toFixed(2) : "—"}%
+                            {overall != null && preview?.overall_score != null && overall !== preview.overall_score
+                              ? ` · Rounded = ${overall}%`
+                              : ""}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* SYSTEM-GENERATED requirement status (read-only) */}
+                    <div className="rounded-md border border-border p-3">
+                      <p className="eyebrow">Requirement Status — System Generated</p>
+                      <div className="mt-2 space-y-1 text-sm">
+                        <p className={interviewOk ? "text-success" : "text-destructive"}>
+                          {interviewOk ? "✓" : "✗"} Interview {interviewOk ? "Passed" : "Not Passed"}
+                        </p>
+                        <p className={assessmentOk ? "text-success" : "text-destructive"}>
+                          {assessmentOk ? "✓" : "✗"} Assessment Test{" "}
+                          {assessmentOk ? "Passed" : "Not Passed"}
+                        </p>
+                        {practicalState === "not_required" ? (
+                          <p className="text-muted-foreground">— Practical Test Not Required</p>
+                        ) : (
+                          <p
+                            className={
+                              practicalState === "passed" ? "text-success" : "text-destructive"
+                            }
+                          >
+                            {practicalState === "passed" ? "✓" : "✗"} Practical Test{" "}
+                            {practicalState === "passed" ? "Passed" : "Not Passed"}
+                          </p>
+                        )}
+                        {preview && preview.blocking_verification_issues > 0 && (
+                          <p className="text-xs text-destructive">
+                            ⚠ {preview.blocking_verification_issues} document verification
+                            discrepanc{preview.blocking_verification_issues === 1 ? "y" : "ies"} must
+                            be resolved before “Recommended for Hire”.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* HR-ENTERED final recommendation */}
+                    <div className="rounded-md border border-primary/30 p-3">
+                      <p className="eyebrow">Final Recommendation — HR Decision</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        The Overall Score supports your decision — it never hires automatically. Only
+                        “Recommended for Hire” can proceed to Offer.
+                      </p>
+                      <div className="mt-2 space-y-2">
+                        {(
+                          [
+                            "Recommended for Hire",
+                            "For Another Position",
+                            "Not Recommended",
+                          ] as FinalRecommendation[]
+                        ).map((r) => (
+                          <label
+                            key={r}
+                            className={cn(
+                              "flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm transition-colors",
+                              finalChoice === r
+                                ? r === "Not Recommended"
+                                  ? "border-destructive bg-destructive/5"
+                                  : "border-success bg-success/5"
+                                : "border-border hover:border-primary/40",
+                            )}
+                          >
+                            <input
+                              type="radio"
+                              name="finalChoice"
+                              className={r === "Not Recommended" ? "accent-destructive" : "accent-primary"}
+                              checked={finalChoice === r}
+                              onChange={() => setFinalChoice(r)}
+                            />
+                            {r}
+                          </label>
+                        ))}
+                      </div>
+                      {finalChoice === "For Another Position" && (
+                        <div className="mt-3 space-y-1.5">
+                          <Label>
+                            Recommended Position <span className="text-destructive">*</span>
+                          </Label>
+                          <Select value={finalAltJobPostId} onValueChange={setFinalAltJobPostId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select one available position" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableAltPosts.map((j: any) => (
+                                <SelectItem key={j.job_post_id} value={String(j.job_post_id)}>
+                                  {j.title} — {j.department ?? ""} (
+                                  {Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0)} slot
+                                  {Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0) === 1 ? "" : "s"})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {!availableAltPosts.length && (
+                            <p className="text-xs text-destructive">
+                              No open positions with vacancies right now.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      <div className="mt-3 space-y-2">
+                        <Label>
+                          Evaluator Remarks{" "}
+                          {finalChoice === "Not Recommended" && (
+                            <span className="text-destructive">*</span>
+                          )}
+                        </Label>
+                        <Textarea
+                          rows={3}
+                          value={finalRemarks}
+                          onChange={(e) => setFinalRemarks(e.target.value)}
+                          placeholder="Summary of the whole process — reason for the decision…"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
               })()}
 
-              <div className="space-y-2">
-                <Label>Overall remarks</Label>
-                <Textarea
-                  rows={3}
-                  value={finalRemarks}
-                  onChange={(e) => setFinalRemarks(e.target.value)}
-                  placeholder="Summary of the whole process—"
-                />
-              </div>
-
-              {/* Recommendation choice buttons — each completes the evaluation
-                  with that recommendation (like the Assessor Verdict footer) */}
-              <DialogFooter className="flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+              <DialogFooter className="flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-end">
                 <Button variant="outline" onClick={() => setFinalizing(null)}>
                   Cancel
                 </Button>
                 <Button
-                  variant="outline"
-                  className="border-success/40 text-success hover:bg-success/10 hover:text-success"
-                  onClick={() => saveFinalEvaluation("Recommended for Hire")}
+                  disabled={!finalChoice}
+                  onClick={() =>
+                    finalChoice &&
+                    askConfirm({
+                      title: "Complete the final evaluation?",
+                      description:
+                        finalChoice === "For Another Position"
+                          ? `${finalizing.name} will be evaluated as "For Another Position".`
+                          : `${finalizing.name} will be evaluated with the recommendation "${finalChoice}".`,
+                      confirmLabel: "Yes, complete evaluation",
+                      destructive: finalChoice === "Not Recommended",
+                      onConfirm: () => saveFinalEvaluation(finalChoice),
+                    })
+                  }
                 >
-                  <CheckCircle2 className="mr-1.5 h-4 w-4" /> Recommended for Hire
-                </Button>
-                <Button
-                  variant="outline"
-                  className="border-warning/40 text-warning hover:bg-warning/10 hover:text-warning"
-                  onClick={() => saveFinalEvaluation("For Another Position")}
-                >
-                  <Briefcase className="mr-1.5 h-4 w-4" /> For Another Position
-                </Button>
-                <Button
-                  variant="outline"
-                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => saveFinalEvaluation("Not Recommended")}
-                >
-                  <XCircle className="mr-1.5 h-4 w-4" /> Not Recommended
+                  <CheckCircle2 className="mr-1.5 h-4 w-4" /> Complete Final Evaluation
                 </Button>
               </DialogFooter>
             </>
@@ -15116,11 +15891,40 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   screeningStatus: viewingFinal.screeningStatus,
                   practicalRequired: viewingFinal.practicalRequired,
                 })}
+                <div className="rounded-md border border-border bg-muted/30 p-3">
+                  <p className="eyebrow">Overall Score — System Calculated (read-only)</p>
+                  <p className="font-display text-xl font-semibold text-primary">
+                    {viewingFinal.overallScoreRounded ?? viewingFinal.overallScore ?? "—"}
+                    {(viewingFinal.overallScoreRounded ?? viewingFinal.overallScore) != null ? "%" : ""}
+                  </p>
+                  {viewingFinal.scoreBreakdown && viewingFinal.scoreBreakdown.length > 0 && (
+                    <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                      {viewingFinal.scoreBreakdown
+                        .filter((b) => b.applied)
+                        .map((b) => (
+                          <div key={b.key} className="flex items-center justify-between gap-3">
+                            <span>
+                              {b.label} — {b.score != null ? `${Math.round(b.score)}%` : "—"} ×{" "}
+                              {b.weight}%
+                            </span>
+                            <span>= {b.contribution != null ? b.contribution.toFixed(2) : "—"}</span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
                 <div className="rounded-md border border-border p-3">
                   <p className="eyebrow">Recommendation</p>
                   <p className="font-display text-xl font-semibold text-primary">
                     {viewingFinal.recommendation}
                   </p>
+                  {viewingFinal.recommendation === "For Another Position" &&
+                    viewingFinal.recommendedPositionTitle && (
+                      <p className="mt-1 text-sm">
+                        Recommended Position:{" "}
+                        <span className="font-medium">{viewingFinal.recommendedPositionTitle}</span>
+                      </p>
+                    )}
                   {viewingFinal.overallRemarks && (
                     <p className="mt-1 text-sm text-muted-foreground">
                       {viewingFinal.overallRemarks}

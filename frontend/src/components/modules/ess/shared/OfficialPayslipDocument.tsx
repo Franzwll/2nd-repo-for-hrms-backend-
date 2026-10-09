@@ -33,6 +33,24 @@ export interface OfficialPayslipDocumentProps {
   showWatermark?: boolean;
 }
 
+/**
+ * Masks an identification or account number so only the final 3 digits are visible,
+ * preserving structural delimiters (e.g. 123-456-789-000 -> ***-***-***-000).
+ */
+export function maskSensitiveId(val?: string, visibleDigits: number = 3): string {
+  if (!val) return "—";
+  if (val.includes("*")) return val;
+  const digits = val.replace(/\D/g, "");
+  if (digits.length <= visibleDigits) return val;
+  const keepFromIndex = digits.length - visibleDigits;
+  let digitIndex = 0;
+  return val.replace(/\d/g, (d) => {
+    const isVisible = digitIndex >= keepFromIndex;
+    digitIndex++;
+    return isVisible ? d : "*";
+  });
+}
+
 export function OfficialPayslipDocument({
   companyName = "Oxford Suites Makati",
   companyAddress = "7840 Makati Avenue, Poblacion, Makati City, Philippines 1210",
@@ -45,11 +63,11 @@ export function OfficialPayslipDocument({
   payDate = "05/08/2026",
   paidDays = 15,
   lopDays = 0,
-  bankAccount = "BDO ****4412",
-  tin = "123-456-789-000",
-  sss = "34-1234567-8",
-  philHealth = "12-345678901-2",
-  pagIbig = "1234-5678-9012",
+  bankAccount = "BDO *****412",
+  tin = "***-***-***-000",
+  sss = "**-*****67-8",
+  philHealth = "**-*******01-2",
+  pagIbig = "****-****-*012",
   earnings = [
     { label: "Basic Pay", amount: 16000, ytd: 112000 },
     { label: "Overtime Pay", amount: 2100, ytd: 14700 },
@@ -228,7 +246,7 @@ export function OfficialPayslipDocument({
               Bank A/C Number
             </span>
             <span className="font-semibold font-mono text-slate-800 dark:text-foreground">
-              {bankAccount}
+              {maskSensitiveId(bankAccount)}
             </span>
           </div>
           <div>
@@ -236,7 +254,7 @@ export function OfficialPayslipDocument({
               TIN
             </span>
             <span className="font-semibold font-mono text-slate-800 dark:text-foreground">
-              {tin}
+              {maskSensitiveId(tin)}
             </span>
           </div>
           <div>
@@ -244,7 +262,7 @@ export function OfficialPayslipDocument({
               SSS Number
             </span>
             <span className="font-semibold font-mono text-slate-800 dark:text-foreground">
-              {sss}
+              {maskSensitiveId(sss)}
             </span>
           </div>
           <div>
@@ -252,7 +270,7 @@ export function OfficialPayslipDocument({
               PhilHealth
             </span>
             <span className="font-semibold font-mono text-slate-800 dark:text-foreground">
-              {philHealth}
+              {maskSensitiveId(philHealth)}
             </span>
           </div>
           <div>
@@ -260,7 +278,7 @@ export function OfficialPayslipDocument({
               Pag-IBIG (HDMF)
             </span>
             <span className="font-semibold font-mono text-slate-800 dark:text-foreground">
-              {pagIbig}
+              {maskSensitiveId(pagIbig)}
             </span>
           </div>
         </div>
@@ -342,19 +360,14 @@ export function OfficialPayslipDocument({
           </p>
         </div>
 
-        <div className="bg-emerald-100/90 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 px-6 py-2 rounded-lg text-right">
+        <div className="bg-emerald-100/90 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 px-5 py-2.5 rounded-lg text-right">
           <p className="text-xl sm:text-2xl font-bold font-mono text-emerald-900 dark:text-emerald-300">
             {formatCurrency(calculatedNetPay)}
           </p>
+          <p className="text-[11px] sm:text-xs font-semibold text-emerald-800 dark:text-emerald-300/90 mt-0.5 tracking-tight">
+            {amountWords}
+          </p>
         </div>
-      </div>
-
-      {/* 6. Amount in Words */}
-      <div className="text-right text-xs py-1">
-        <span className="text-slate-500 dark:text-muted-foreground">Amount In Words : </span>
-        <strong className="font-semibold text-slate-900 dark:text-foreground">
-          {amountWords}
-        </strong>
       </div>
 
       {/* 7. Footer Disclaimer */}

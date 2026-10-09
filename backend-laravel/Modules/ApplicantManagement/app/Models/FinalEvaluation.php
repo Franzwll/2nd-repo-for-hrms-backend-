@@ -23,7 +23,11 @@ class FinalEvaluation extends Model
         'practical_required',
         'practical_test_score',
         'practical_test_result',
+        'overall_score',
+        'score_breakdown_json',
         'recommendation',
+        'recommended_job_post_id',
+        'recommended_position_title',
         'overall_remarks',
     ];
 
@@ -32,6 +36,8 @@ class FinalEvaluation extends Model
         'interview_score'         => 'decimal:2',
         'assessment_test_score'   => 'decimal:2',
         'practical_test_score'    => 'decimal:2',
+        'overall_score'           => 'decimal:2',
+        'score_breakdown_json'    => 'array',
         'practical_required'      => 'boolean',
         'evaluation_date'         => 'date',
     ];
@@ -43,5 +49,14 @@ class FinalEvaluation extends Model
     public function applicant(): BelongsTo
     {
         return $this->belongsTo(Applicant::class, 'applicant_id', 'applicant_id');
+    }
+
+    public function recommendedJobPost(): BelongsTo
+    {
+        return $this->belongsTo(
+            \Modules\RecruitmentManagement\Models\JobPost::class,
+            'recommended_job_post_id',
+            'job_post_id'
+        );
     }
 }

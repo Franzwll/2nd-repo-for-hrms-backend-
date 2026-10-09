@@ -132,7 +132,16 @@ export interface ApiApplicant {
   fit_score: number | null;
   status: "fit" | "other-role" | "credential" | "not-fit";
   stage:
-    "Screened" | "Interview Scheduled" | "Assessed" | "Offer" | "Hired" | "Rejected" | "Accepted";
+    | "Screened"
+    | "Interview Scheduled"
+    | "Assessed"
+    | "Assessment Test"
+    | "Practical Test"
+    | "Final Evaluation"
+    | "Offer"
+    | "Hired"
+    | "Rejected"
+    | "Accepted";
   source: string | null;
   summary: string | null;
   flags_json: string[];
@@ -266,6 +275,9 @@ export interface ApiScreening {
 
 export interface ApiScreeningPreview extends ApiScreening {
   success: boolean;
+  /** Staged supporting documents verified in-memory for the Add Applicant
+   *  preview (Step 3). Negative applicant_document_ids mark unsaved rows. */
+  preview_documents?: ApiApplicantDocument[];
 }
 
 export interface ApiFacility {
@@ -377,6 +389,15 @@ export interface ApiPracticalTest {
   } | null;
 }
 
+export interface ApiScoreBreakdownItem {
+  key: string;
+  label: string;
+  score: number | null;
+  weight: number;
+  applied: boolean;
+  contribution: number | null;
+}
+
 export interface ApiFinalEvaluation {
   final_evaluation_id: number;
   applicant_id: number;
@@ -391,7 +412,13 @@ export interface ApiFinalEvaluation {
   practical_required: boolean;
   practical_test_score: number | null;
   practical_test_result: "Passed" | "Failed" | null;
+  /** System-calculated overall score — backend authoritative, read-only. */
+  overall_score: number | null;
+  overall_score_rounded: number | null;
+  score_breakdown: ApiScoreBreakdownItem[] | null;
   recommendation: "Recommended for Hire" | "For Another Position" | "Not Recommended";
+  recommended_job_post_id: number | null;
+  recommended_position_title: string | null;
   overall_remarks: string | null;
   applicant?: {
     applicant_id: number;
@@ -412,6 +439,15 @@ export type DocumentVerificationStatus =
   | "DISCREPANCY_FOUND"
   | "UNABLE_TO_VERIFY";
 
+export interface ApiComparedResumeEntry {
+  entry_index: number | null;
+  total_entries: number;
+  company?: string | null;
+  job_title?: string | null;
+  period?: string | null;
+  location?: string | null;
+}
+
 export interface ApiDocumentVerificationCheck {
   resume_value: string | null;
   document_value: string | null;
@@ -422,6 +458,9 @@ export interface ApiDocumentVerificationCheck {
   /** Human-readable reason for the verdict (e.g. why two dates within the
    *  tolerance window still count as the same period). */
   note?: string | null;
+  /** Which resume entry the paper was measured against (COE checks). Lets HR
+   *  trace a "Different" verdict back to the exact compared stint. */
+  compared_resume_entry?: ApiComparedResumeEntry | null;
 }
 
 export interface ApiDocumentVerificationResult {
@@ -781,6 +820,40 @@ export const assessmentTestsApi = {
     }),
 };
 
+/**
+ * Assessment test LINKS — the applicant answers the test on their own device.
+ * The staff member generates a single-use link (create); the applicant opens
+ * the public page (show/submit are fetched with a plain, unauthenticated fetch
+ * in the public runner so no staff session is required).
+ */
+export interface ApiAssessmentInvite {
+  assessment_invite_id: number;
+  token: string;
+  applicant_id: number;
+  applicant_name: string | null;
+  position: string | null;
+  test_title: string;
+  passing_score: number;
+  total_score: number | null;
+  result: "Passed" | "Failed" | null;
+  status: "Pending" | "Completed" | "Expired";
+  expires_at: string | null;
+  submitted_at: string | null;
+  created_at: string | null;
+}
+
+export const assessmentInvitesApi = {
+  list: (params?: Record<string, any>) => {
+    const qs = new URLSearchParams(params).toString();
+    return request<{ data: ApiAssessmentInvite[] }>(`/assessment-invites${qs ? `?${qs}` : ""}`);
+  },
+  create: (applicantId: number | string, data: Record<string, any>) =>
+    request<ApiAssessmentInvite>(`/applicants/${applicantId}/assessment-invites`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+};
+
 export const practicalTestsApi = {
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
@@ -798,11 +871,41 @@ export const practicalTestsApi = {
     }),
 };
 
+export interface ApiFinalEvaluationPreview {
+  applicant_id: number;
+  position: string | null;
+  practical_required: boolean;
+  scores: {
+    screening_score: number | null;
+    screening_status: string | null;
+    interview_score: number | null;
+    interview_result: "Passed" | "Failed" | null;
+    assessment_test_score: number | null;
+    assessment_test_result: "Passed" | "Failed" | null;
+    practical_test_score: number | null;
+    practical_test_result: "Passed" | "Failed" | null;
+  };
+  overall_score: number | null;
+  overall_score_rounded: number | null;
+  score_breakdown: ApiScoreBreakdownItem[];
+  weights: { screening: number; interview: number; assessment: number; practical: number };
+  calculation_complete: boolean;
+  requirements: {
+    interview_passed: boolean;
+    assessment_passed: boolean;
+    practical: "passed" | "missing_or_failed" | "not_required";
+    all_passed: boolean;
+  };
+  blocking_verification_issues: number;
+}
+
 export const finalEvaluationsApi = {
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
     return request<{ data: ApiFinalEvaluation[]; meta: any }>(`/final-evaluations${qs ? `?${qs}` : ""}`);
   },
+  preview: (applicantId: number | string) =>
+    request<ApiFinalEvaluationPreview>(`/applicants/${applicantId}/final-evaluations/preview`),
   create: (applicantId: number | string, data: Record<string, any>) =>
     request<ApiFinalEvaluation>(`/applicants/${applicantId}/final-evaluations`, {
       method: "POST",
@@ -1437,11 +1540,6 @@ export const mySettingsApi = {
     request<{ message: string }>("/my/change-password", {
       method: "POST",
       body: JSON.stringify({ user, current_password: currentPassword, new_password: newPassword }),
-    }),
-  toggleOtp: (user: string, enabled: boolean) =>
-    request<{ message: string; otp_enabled: boolean }>("/my/otp", {
-      method: "PUT",
-      body: JSON.stringify({ user, enabled }),
     }),
 };
 

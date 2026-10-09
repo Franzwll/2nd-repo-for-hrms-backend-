@@ -1,36 +1,38 @@
-﻿/**
- * Multi-format Report Exporter (PDF, DOCX, Excel) for HRMS Modules.
+/**
+ * Multi-format Report Exporter (PDF, DOCX, Excel, CSV) for HRMS Modules.
  *
- * Produces formal, corporate-grade documents entirely client-side with zero
- * external dependencies:
- *  - PDF   : a typeset, printable A4 report (Save as PDF) styled after a
- *            formal company report — letterhead, document control block,
- *            ruled tables and a certification block
+ * Every export is password-protected: plain PDF / Word / Excel / CSV files
+ * cannot carry a password natively, so each file is sealed inside an AES-256
+ * encrypted ZIP. The file password is asked on every export and never stored:
+ *  - PDF   : a formal A4 report generated with jsPDF (letterhead, document
+ *            control block, ruled tables, sign-off block, page footers)
  *  - DOCX  : a Microsoft Word–compatible .doc typeset like an official
  *            company report (Times New Roman, ruled tables, sign-off block)
  *  - Excel : a native Excel workbook (.xls / SpreadsheetML 2003)
+ *  - CSV   : a UTF-8 .csv file (BOM-prefixed for Excel) mirroring the formal
+ *            report header + summary + data table
  *
  * Every "Generate Report" button in the app routes through `exportReport`,
  * so improving this module upgrades all of them at once.
  */
 
 import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import oxfordMarkMaroon from "@/assets/oxford-mark-maroon.png";
 import { getUser } from "@/lib/auth";
 
 export type ReportFormat = "pdf" | "docx" | "excel" | "csv";
 
+/** Options accepted by `exportReport`. When `password` is provided, the export is sealed in an AES-256 encrypted ZIP. */
+export interface ReportExportOptions {
+  /** File password for the AES-256 encrypted ZIP. */
+  password?: string;
+}
+
 export interface ReportColumn {
   header: string;
   key: string;
   width?: string;
-}
-
-export interface ReportChart {
-  type: "bar" | "pie";
-  title?: string;
-  labels: string[];
-  values: number[];
 }
 
 export interface ReportData {
@@ -39,16 +41,12 @@ export interface ReportData {
   columns: ReportColumn[];
   rows: Record<string, any>[];
   summary?: { label: string; value: string | number }[];
-  /**
-   * Optional chart rendered above the table in PDF / DOCX / print,
-   * and as a ChartData worksheet in Excel. Ignored by CSV.
-   */
-  chart?: ReportChart;
-  /**
-   * Confidential reports (payroll, 201 files, applicant PII…).
-   * ReportMenu requires a password confirmation before exporting these.
-   */
   sensitive?: boolean;
+  chart?: {
+    title?: string;
+    labels: string[];
+    values: number[];
+  };
 }
 
 /** Brand identity shared by every exported document. */
@@ -59,10 +57,8 @@ const BRAND_COLOR_LIGHT = "#7a1226";
 const ACCENT = "#d4af37";
 const ADDRESS = "518 P. Burgos St., Makati, Metro Manila, Philippines";
 const CONTACT = "Tel: +63 (2) 8888-0000 · hr@oxfordsuitesmakati.com";
-const SERIF = "'Garamond', 'Times New Roman', Georgia, 'Cambria', serif";
-
 /** Preload the company logo as a base64 data URI so it can be embedded
- *  directly into the printed / Word documents (no external file dependency). */
+ *  directly into the Word documents (no external file dependency). */
 let LOGO_DATA_URI: string | null = null;
 if (typeof window !== "undefined" && typeof fetch !== "undefined") {
   fetch(oxfordMarkMaroon)
@@ -78,14 +74,6 @@ if (typeof window !== "undefined" && typeof fetch !== "undefined") {
     .catch(() => {
       LOGO_DATA_URI = null;
     });
-}
-
-function buildFilename(report: ReportData, ext: string): string {
-  const base = report.title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return `${base}_${new Date().toISOString().slice(0, 10)}.${ext}`;
 }
 
 function buildReference(report: ReportData): string {
@@ -114,112 +102,6 @@ function escapeXml(value: any): string {
     .replace(/'/g, "&apos;");
 }
 
-/* ------------------------------------------------------------------ */
-/* Charts — dependency-free canvas renderer → PNG data URI             */
-/* ------------------------------------------------------------------ */
-
-const CHART_COLORS = [
-  "#520c19",
-  "#7a1226",
-  "#d4af37",
-  "#2f6f4f",
-  "#31597f",
-  "#8a5a2b",
-  "#6b7280",
-  "#b45309",
-];
-
-export function renderChartPng(chart: ReportChart, width = 640, height = 300): string | null {
-  try {
-    if (typeof document === "undefined") return null;
-    const labels = chart.labels.slice(0, 8);
-    const values = chart.values.slice(0, 8);
-    if (!labels.length || labels.length !== values.length) return null;
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, width, height);
-    const padL = 46,
-      padR = 16,
-      padT = 30,
-      padB = 44;
-    const max = Math.max(...values, 1);
-
-    ctx.fillStyle = "#520c19";
-    ctx.font = "bold 14px Georgia, serif";
-    ctx.textAlign = "center";
-    if (chart.title) ctx.fillText(chart.title.slice(0, 60), width / 2, 18);
-
-    if (chart.type === "pie") {
-      const total = values.reduce((a, b) => a + b, 0) || 1;
-      const cx = width / 2 - 90,
-        cy = height / 2 + 10,
-        r = Math.min(width, height) / 2 - 50;
-      let angle = -Math.PI / 2;
-      values.forEach((v, i) => {
-        const slice = (v / total) * Math.PI * 2;
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.arc(cx, cy, r, angle, angle + slice);
-        ctx.closePath();
-        ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length] ?? "#520c19";
-        ctx.fill();
-        angle += slice;
-      });
-      // legend
-      ctx.textAlign = "left";
-      ctx.font = "11px system-ui, sans-serif";
-      labels.forEach((lb, i) => {
-        const y = padT + 12 + i * 20;
-        ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length] ?? "#520c19";
-        ctx.fillRect(cx + r + 24, y - 9, 12, 12);
-        ctx.fillStyle = "#374151";
-        ctx.fillText(`${lb.slice(0, 22)} (${values[i] ?? 0})`, cx + r + 42, y);
-      });
-      return canvas.toDataURL("image/png");
-    }
-
-    // bar
-    const plotW = width - padL - padR,
-      plotH = height - padT - padB;
-    const n = values.length,
-      gap = 14;
-    const barW = Math.max(18, (plotW - gap * (n + 1)) / n);
-    ctx.strokeStyle = "#e5e7eb";
-    ctx.fillStyle = "#6b7280";
-    ctx.font = "10px system-ui, sans-serif";
-    ctx.textAlign = "right";
-    for (let g = 0; g <= 4; g++) {
-      const y = padT + (plotH * g) / 4;
-      ctx.beginPath();
-      ctx.moveTo(padL, y);
-      ctx.lineTo(width - padR, y);
-      ctx.stroke();
-      ctx.fillText(String(Math.round((max * (4 - g)) / 4)), padL - 6, y + 3);
-    }
-    ctx.textAlign = "center";
-    values.forEach((v, i) => {
-      const h = (v / max) * plotH;
-      const x = padL + gap + i * (barW + gap);
-      const y = padT + plotH - h;
-      ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length] ?? "#520c19";
-      ctx.fillRect(x, y, barW, h);
-      ctx.fillStyle = "#111827";
-      ctx.font = "bold 11px system-ui, sans-serif";
-      ctx.fillText(String(v), x + barW / 2, y - 5);
-      ctx.fillStyle = "#4b5563";
-      ctx.font = "10px system-ui, sans-serif";
-      ctx.fillText((labels[i] ?? "").slice(0, 14), x + barW / 2, padT + plotH + 14);
-    });
-    return canvas.toDataURL("image/png");
-  } catch {
-    return null;
-  }
-}
-
 /** Long-form date, e.g. "31 August 2026" — formal documents avoid numeric dates. */
 function formalDate(d: Date): string {
   return d.toLocaleDateString("en-GB", {
@@ -234,7 +116,20 @@ function formalTime(d: Date): string {
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 }
 
-export function exportReport(report: ReportData, format: ReportFormat): void {
+/** Inner file extension per format (Word output stays .doc: Word-HTML). */
+const INNER_EXT: Record<ReportFormat, string> = {
+  pdf: "pdf",
+  docx: "doc",
+  excel: "xls",
+  csv: "csv",
+};
+
+export async function exportReport(
+  report: ReportData,
+  format: ReportFormat,
+  opts?: ReportExportOptions,
+): Promise<void> {
+  const password = opts?.password?.trim() ?? "";
   const now = new Date();
   const generatedAt = `${formalDate(now)}, ${formalTime(now)}`;
   const refNo = buildReference(report);
@@ -244,122 +139,69 @@ export function exportReport(report: ReportData, format: ReportFormat): void {
   const preparedByDept =
     (user?.department_name as string | undefined) || "Human Resources Department";
 
-  // EXPORT path — always downloads a file, never opens the print dialog.
+  let fileBlob: Blob;
   if (format === "excel") {
-    exportToExcel(report, generatedAt, refNo, preparedBy);
+    fileBlob = buildExcelBlob(report, generatedAt, refNo, preparedBy);
   } else if (format === "docx") {
-    exportToWord(report, generatedAt, refNo, preparedBy, preparedByTitle, preparedByDept);
-  } else if (format === "csv") {
-    exportToCsv(report);
+    fileBlob = buildWordBlob(
+      report,
+      generatedAt,
+      refNo,
+      preparedBy,
+      preparedByTitle,
+      preparedByDept,
+    );
   } else if (format === "pdf") {
-    exportToPdfDownload(report, generatedAt, refNo, preparedBy, preparedByTitle, preparedByDept);
+    fileBlob = buildPdfBlob(
+      report,
+      generatedAt,
+      refNo,
+      preparedBy,
+      preparedByTitle,
+      preparedByDept,
+    );
+  } else {
+    fileBlob = new Blob(
+      ["\uFEFF" + buildCsvText(report, generatedAt, refNo, preparedBy, preparedByDept)],
+      {
+        type: "text/csv;charset=utf-8;",
+      },
+    );
+  }
+  const { innerName, zipName } = describeExport(report, format);
+  if (password) {
+    await zipSingleFile(innerName, zipName, fileBlob, password);
+  } else {
+    triggerDownload(fileBlob, innerName);
   }
 }
 
-/**
- * Open the branded printable report and raise the system print dialog,
- * so the user can print to paper or to a PDF printer.
- */
-export function printReport(report: ReportData): void {
-  const now = new Date();
-  const generatedAt = `${formalDate(now)}, ${formalTime(now)}`;
-  const refNo = buildReference(report);
-  const user = getUser();
-  const preparedBy = (user?.full_name as string | undefined) || "System Administrator";
-  const preparedByTitle = (user?.role as string | undefined) || "Human Resources";
-  const preparedByDept =
-    (user?.department_name as string | undefined) || "Human Resources Department";
-
-  printHtmlDocument(
-    buildPrintableHtml(report, generatedAt, refNo, preparedBy, preparedByTitle, preparedByDept),
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* CSV — UTF-8 with BOM so Excel opens it cleanly                       */
-/* ------------------------------------------------------------------ */
-function csvCell(value: any): string {
-  if (value === null || value === undefined) return "";
-  const s = String(value).replace(/\r?\n/g, " ");
-  return /[",;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-function exportToCsv(report: ReportData): void {
-  const lines: string[] = [];
-  lines.push(report.columns.map((c) => csvCell(c.header)).join(","));
-  for (const row of report.rows) {
-    lines.push(report.columns.map((c) => csvCell(row[c.key])).join(","));
-  }
-  if (report.summary?.length) {
-    lines.push("");
-    for (const s of report.summary) {
-      lines.push(`${csvCell(s.label)},${csvCell(s.value)}`);
-    }
-  }
-  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
-  triggerDownload(blob, buildFilename(report, "csv"));
-}
-
-/* ------------------------------------------------------------------ */
-/* Shared building blocks                                             */
-/* ------------------------------------------------------------------ */
-
-/** Letterhead (logo + wordmark) used by the HTML-based formats. */
-function letterheadHtml(opts: { inline?: boolean }): string {
-  const logo = LOGO_DATA_URI
-    ? `<img src="${LOGO_DATA_URI}" alt="Oxford Suites Makati" ${
-        opts.inline ? 'style="height:46px;width:auto;display:block;"' : 'class="brand-logo"'
-      } />`
-    : "";
-  const wordmark = opts.inline
-    ? `<div style="line-height:1.1;">
-         <div style="font-size:19px;font-weight:700;color:${BRAND_COLOR};letter-spacing:0.06em;font-family:${SERIF};">OXFORD SUITES MAKATI</div>
-         <div style="font-size:9px;color:${ACCENT};font-weight:700;letter-spacing:0.22em;text-transform:uppercase;margin-top:3px;font-family:${SERIF};">Human Resources Management System</div>
-       </div>`
-    : `<div class="brand-words">
-         <div class="brand-title">OXFORD SUITES MAKATI</div>
-         <div class="brand-sub">Human Resources Management System</div>
-       </div>`;
-
-  if (opts.inline) {
-    return `<div style="display:flex;align-items:center;gap:14px;">${logo}${wordmark}</div>`;
-  }
-  return `<div class="brand">${logo}${wordmark}</div>`;
+/** Seals one file inside an AES-256 encrypted ZIP and downloads it. */
+async function zipSingleFile(
+  innerName: string,
+  zipName: string,
+  fileBlob: Blob,
+  password: string,
+): Promise<void> {
+  const { BlobReader, BlobWriter, ZipWriter } = await import("@zip.js/zip.js");
+  const zipWriter = new ZipWriter(new BlobWriter("application/zip"), {
+    password,
+    encryptionStrength: 3,
+  });
+  await zipWriter.add(innerName, new BlobReader(fileBlob));
+  const zipBlob = await zipWriter.close();
+  triggerDownload(zipBlob, zipName);
 }
 
 /* ------------------------------------------------------------------ */
 /* EXCEL — native workbook via SpreadsheetML 2003 (.xls)               */
 /* ------------------------------------------------------------------ */
-/** Second worksheet backing the chart — select it in Excel and Insert → Chart. */
-function chartSheetXml(report: ReportData): string {
-  if (!report.chart) return "";
-  const rows = report.chart.labels
-    .map(
-      (lb, i) => `
-     <Row>
-       <Cell ss:StyleID="Cell"><Data ss:Type="String">${escapeXml(lb)}</Data></Cell>
-       <Cell ss:StyleID="Cell"><Data ss:Type="Number">${Number(report.chart?.values[i] ?? 0)}</Data></Cell>
-     </Row>`,
-    )
-    .join("");
-  return `
-  <Worksheet ss:Name="ChartData">
-    <Table>
-     <Row>
-       <Cell ss:StyleID="Head"><Data ss:Type="String">${escapeXml(report.chart.title || "Category")}</Data></Cell>
-       <Cell ss:StyleID="Head"><Data ss:Type="String">Value</Data></Cell>
-     </Row>${rows}
-    </Table>
-  </Worksheet>`;
-}
-
-function exportToExcel(
+function buildExcelBlob(
   report: ReportData,
   generatedAt: string,
   refNo: string,
   preparedBy: string,
-): void {
-  const filename = buildFilename(report, "xls");
+): Blob {
   const span = Math.max(report.columns.length - 1, 5);
 
   const metaRows = `
@@ -442,87 +284,36 @@ function exportToExcel(
    <Style ss:ID="SumVal"><Font ss:Bold="1" ss:Size="14" ss:Color="${BRAND_COLOR}"/></Style>
    <Style ss:ID="Cell"><Font ss:Size="10"/></Style>
  </Styles>
-  <Worksheet ss:Name="Report">
-    <Table>
-     ${metaRows}
-     <Row><Cell><Data ss:Type="String"></Data></Cell></Row>
-     ${summaryRows}
-     <Row><Cell><Data ss:Type="String"></Data></Cell></Row>
-     ${headerRow}
-     ${dataRows}
-    </Table>
-  </Worksheet>
-  ${chartSheetXml(report)}
+ <Worksheet ss:Name="Report">
+   <Table>
+    ${metaRows}
+    <Row><Cell><Data ss:Type="String"></Data></Cell></Row>
+    ${summaryRows}
+    <Row><Cell><Data ss:Type="String"></Data></Cell></Row>
+    ${headerRow}
+    ${dataRows}
+   </Table>
+ </Worksheet>
 </Workbook>`;
 
-  const blob = new Blob(["\uFEFF" + xml], {
+  return new Blob(["﻿" + xml], {
     type: "application/vnd.ms-excel;charset=utf-8;",
   });
-  triggerDownload(blob, filename);
-}
-
-/* Shared 201-file report builder: one source of truth for 201 export/print. */
-export function build201FileReport(input: {
-  employeeName: string;
-  employeeCode: string;
-  position: string;
-  department: string;
-  status: string;
-  employmentType: string;
-  dateHired: string;
-  email: string;
-  phone: string;
-  supervisor: string;
-  documents: { name: string; status: string; file?: string }[];
-  history: { type: string; date: string; detail: string }[];
-}): ReportData {
-  const rows = [
-    ...input.documents.map((d) => ({
-      section: "Document",
-      detail: d.name,
-      meta: d.file || d.status,
-    })),
-    ...input.history.map((h) => ({ section: h.type, detail: h.detail, meta: h.date })),
-  ];
-  return {
-    title: `201 File - ${input.employeeName}`,
-    subtitle: `${input.employeeCode} · ${input.position} · ${input.department}`,
-    columns: [
-      { header: "Section", key: "section" },
-      { header: "Detail", key: "detail" },
-      { header: "Meta", key: "meta" },
-    ],
-    rows,
-    summary: [
-      { label: "Employment Status", value: input.status },
-      { label: "Employment Type", value: input.employmentType },
-      { label: "Date Hired", value: input.dateHired || "-" },
-    ],
-    sensitive: true,
-  };
 }
 
 /* ------------------------------------------------------------------ */
 /* DOCX — Microsoft Word–compatible .doc (HTML wordprocessing)        */
 /* ------------------------------------------------------------------ */
-function exportToWord(
+function buildWordBlob(
   report: ReportData,
   generatedAt: string,
   refNo: string,
   preparedBy: string,
   preparedByTitle: string,
   preparedByDept: string,
-): void {
-  const filename = buildFilename(report, "doc");
+): Blob {
   const logo = LOGO_DATA_URI
     ? `<img src="${LOGO_DATA_URI}" width="46" alt="Oxford Suites Makati" style="display:block;" />`
-    : "";
-  const chartPng = report.chart ? renderChartPng(report.chart) : null;
-  const chartHtml = chartPng
-    ? `<div style="text-align:center;margin:16px 0 8px 0;">
-         ${report.chart?.title ? `<p style="font-size:12px;font-weight:bold;color:${BRAND_COLOR};margin:0 0 6px 0;font-family:'Times New Roman',serif;">${escapeHtml(report.chart.title)}</p>` : ""}
-         <img src="${chartPng}" width="560" alt="Report chart" />
-       </div>`
     : "";
 
   const metaBlock = `
@@ -626,7 +417,6 @@ function exportToWord(
     </div>
     ${titleBlock}
     ${summaryHtml}
-    ${chartHtml}
     <table class="data">
       <thead><tr>${tableHeaders}</tr></thead>
       <tbody>${tableRows}${emptyRowNote}</tbody>
@@ -639,161 +429,292 @@ function exportToWord(
   </body>
   </html>`;
 
-  const blob = new Blob(["\uFEFF" + html], { type: "application/msword;charset=utf-8" });
-  triggerDownload(blob, filename);
+  return new Blob(["﻿" + html], { type: "application/msword;charset=utf-8" });
 }
 
 /* ------------------------------------------------------------------ */
-/* PDF — true downloadable PDF via jsPDF (EXPORT path only: no print) */
+/* PDF — formal A4 report generated with jsPDF (real bytes, so it can  */
+/* be sealed inside the password-protected ZIP like every format)      */
 /* ------------------------------------------------------------------ */
-function exportToPdfDownload(
+function buildPdfBlob(
   report: ReportData,
   generatedAt: string,
   refNo: string,
   preparedBy: string,
   preparedByTitle: string,
   preparedByDept: string,
-): void {
+): Blob {
   const landscape = report.columns.length > 6;
   const doc = new jsPDF({
+    orientation: landscape ? "landscape" : "portrait",
     unit: "mm",
     format: "a4",
-    orientation: landscape ? "landscape" : "portrait",
   });
+  const MAROON: [number, number, number] = [82, 12, 25];
+  const GOLD_DARK: [number, number, number] = [133, 77, 14];
+  const GRAY: [number, number, number] = [107, 114, 128];
+  const INK: [number, number, number] = [17, 24, 39];
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const margin = 14;
-  let y = margin;
+  const M = 14;
+  const contentW = pageW - M * 2;
 
-  const ensureSpace = (needed: number) => {
-    if (y + needed > pageH - margin) {
-      doc.addPage();
-      y = margin;
-    }
-  };
-
-  // Letterhead
-  doc.setTextColor(82, 12, 25);
+  /* Letterhead */
   doc.setFont("times", "bold");
-  doc.setFontSize(15);
-  doc.text(BRAND, margin, y + 5);
+  doc.setFontSize(17);
+  doc.setTextColor(...MAROON);
+  doc.text(BRAND, M, 18);
   doc.setFontSize(8);
-  doc.setTextColor(120, 120, 120);
+  doc.setTextColor(...GOLD_DARK);
+  doc.text(BRAND_SUB.toUpperCase(), M, 23);
   doc.setFont("times", "normal");
-  doc.text(BRAND_SUB.toUpperCase(), margin, y + 10);
-  doc.setFontSize(11);
-  doc.setTextColor(82, 12, 25);
-  doc.setFont("times", "bold");
-  doc.text(report.title, pageW - margin, y + 5, { align: "right" });
-  doc.setFontSize(7.5);
-  doc.setTextColor(80, 80, 80);
-  doc.setFont("times", "normal");
-  doc.text(`Control No.: ${refNo}`, pageW - margin, y + 10, { align: "right" });
-  y += 15;
-  doc.setDrawColor(82, 12, 25);
-  doc.setLineWidth(0.6);
-  doc.line(margin, y, pageW - margin, y);
-  y += 5;
+  doc.setTextColor(...GRAY);
+  doc.text(ADDRESS, M, 27);
 
-  doc.setFontSize(8);
-  doc.setTextColor(60, 60, 60);
-  doc.text(`Date of Issue: ${generatedAt}`, margin, y);
-  doc.text(`Prepared by: ${preparedBy} (${preparedByTitle} - ${preparedByDept})`, margin, y + 4);
-  if (report.subtitle) {
-    doc.setFont("times", "italic");
-    doc.text(report.subtitle, margin, y + 8);
-    y += 12;
-  } else {
-    y += 8;
-  }
-
-  // Summary
-  if (report.summary?.length) {
-    ensureSpace(12);
-    doc.setFont("times", "bold");
+  /* Document control block (right aligned, label in maroon bold) */
+  const drawMetaLine = (y: number, label: string, value: string) => {
+    doc.setFont("times", "normal");
     doc.setFontSize(9);
-    doc.setTextColor(82, 12, 25);
+    doc.setTextColor(...INK);
+    doc.text(value, pageW - M, y, { align: "right" });
+    const valueW = doc.getTextWidth(value);
+    doc.setFont("times", "bold");
+    doc.setTextColor(...MAROON);
+    doc.text(label, pageW - M - valueW - 2, y, { align: "right" });
+  };
+  drawMetaLine(15, "Document Control No.:", refNo);
+  drawMetaLine(19.2, "Date of Issue:", generatedAt);
+  drawMetaLine(23.4, "Prepared by:", preparedBy);
+  drawMetaLine(27.6, "Department:", preparedByDept);
+
+  /* Double rule */
+  doc.setDrawColor(...MAROON);
+  doc.setLineWidth(0.7);
+  doc.line(M, 31, pageW - M, 31);
+  doc.setLineWidth(0.25);
+  doc.line(M, 32.2, pageW - M, 32.2);
+
+  /* Heading */
+  let y = 40;
+  doc.setFont("times", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...GRAY);
+  doc.text("MANAGEMENT REPORT", pageW / 2, y, { align: "center" });
+  y += 6;
+  doc.setFont("times", "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(...INK);
+  const titleLines = doc.splitTextToSize(report.title, contentW);
+  doc.text(titleLines, pageW / 2, y, { align: "center" });
+  y += titleLines.length * 6.5;
+  doc.setFont("times", "italic");
+  doc.setFontSize(10);
+  doc.setTextColor(...GRAY);
+  const subLines = doc.splitTextToSize(report.subtitle || `${BRAND} · ${BRAND_SUB}`, contentW);
+  doc.text(subLines, pageW / 2, y, { align: "center" });
+  y += subLines.length * 5 + 2;
+  doc.setDrawColor(...MAROON);
+  doc.setLineWidth(0.5);
+  doc.line(M, y, pageW - M, y);
+  y += 6;
+
+  /* Summary counts */
+  if (report.summary && report.summary.length > 0) {
     for (const s of report.summary) {
-      doc.text(`${s.label}: ${s.value}`, margin, y);
-      y += 5;
+      doc.setFont("times", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(...GOLD_DARK);
+      const label = `${s.label}: `;
+      doc.text(label, M, y);
+      const labelW = doc.getTextWidth(label);
+      doc.setTextColor(...MAROON);
+      doc.setFontSize(11);
+      doc.text(String(s.value), M + labelW, y);
+      y += 5.5;
     }
     y += 2;
   }
 
-  // Chart (PNG rendered from the report.chart definition)
-  if (report.chart) {
-    const png = renderChartPng(report.chart, 640, 300);
-    if (png) {
-      const imgW = pageW - margin * 2;
-      const imgH = (imgW * 300) / 640;
-      ensureSpace(imgH + 6);
-      try {
-        doc.addImage(png, "PNG", margin, y, imgW, imgH);
-        y += imgH + 4;
-      } catch {
-        /* chart is decorative — never block the export */
-      }
-    }
+  /* Data table */
+  const head = [report.columns.map((c) => c.header)];
+  const body: string[][] =
+    report.rows.length > 0
+      ? report.rows.map((row) =>
+          report.columns.map((c) => {
+            const v = row[c.key];
+            return v === null || v === undefined || v === "" ? "—" : String(v);
+          }),
+        )
+      : [
+          [
+            "No records were available for inclusion in this report.",
+            ...Array.from({ length: Math.max(report.columns.length - 1, 0) }, () => ""),
+          ],
+        ];
+  autoTable(doc, {
+    head,
+    body,
+    startY: y,
+    margin: { left: M, right: M },
+    styles: {
+      font: "times",
+      fontSize: 8.5,
+      cellPadding: 2,
+      textColor: INK,
+      lineColor: [184, 178, 168],
+      lineWidth: 0.25,
+    },
+    headStyles: { fillColor: MAROON, textColor: [255, 255, 255], fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [247, 245, 242] },
+  });
+  let afterTable =
+    (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 12;
+
+  /* Sign-off (kept off the page bottom) */
+  if (afterTable + 30 > pageH - 16) {
+    doc.addPage();
+    afterTable = M + 6;
   }
+  doc.setDrawColor(...INK);
+  doc.setLineWidth(0.3);
+  doc.line(M, afterTable, M + 70, afterTable);
+  doc.line(pageW - M - 70, afterTable, pageW - M, afterTable);
+  doc.setFont("times", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...INK);
+  doc.text(preparedBy, M, afterTable + 5);
+  doc.setFont("times", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...GRAY);
+  doc.text(`${preparedByTitle} · ${preparedByDept}`, M, afterTable + 9.5);
+  doc.text("Noted / Received by — signature over printed name, date", pageW - M, afterTable + 5, {
+    align: "right",
+  });
 
-  // Table
-  const colCount = Math.max(report.columns.length, 1);
-  const usable = pageW - margin * 2;
-  const colW = usable / colCount;
-  const rowH = 7;
-
-  const drawHeader = () => {
-    doc.setFillColor(82, 12, 25);
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("times", "bold");
-    doc.setFontSize(8);
-    report.columns.forEach((c, i) => {
-      const x = margin + i * colW;
-      doc.rect(x, y, colW, rowH, "F");
-      doc.text(String(c.header).slice(0, 28), x + 1.5, y + 4.8);
-    });
-    y += rowH;
-    doc.setTextColor(20, 20, 20);
+  /* Footer on every page */
+  doc.setProperties({ title: `${report.title} — ${BRAND}`, creator: `${BRAND} HRMS` });
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    const h = doc.internal.pageSize.getHeight();
+    doc.setDrawColor(216, 211, 200);
+    doc.setLineWidth(0.3);
+    doc.line(M, h - 12, pageW - M, h - 12);
     doc.setFont("times", "normal");
-  };
-
-  ensureSpace(rowH * 2);
-  drawHeader();
-  doc.setFontSize(7.5);
-  if (report.rows.length === 0) {
-    ensureSpace(rowH);
-    doc.text("No records were available for inclusion in this report.", margin + 2, y + 4.8);
-    y += rowH;
-  } else {
-    report.rows.forEach((row, ri) => {
-      ensureSpace(rowH);
-      if (ri % 2 === 1) {
-        doc.setFillColor(247, 245, 242);
-        doc.rect(margin, y, usable, rowH, "F");
-      }
-      report.columns.forEach((c, i) => {
-        const x = margin + i * colW;
-        doc.rect(x, y, colW, rowH);
-        const val = row[c.key] ?? "-";
-        doc.text(String(val).slice(0, 32), x + 1.5, y + 4.8);
-      });
-      y += rowH;
+    doc.setFontSize(7.5);
+    doc.setTextColor(...GRAY);
+    doc.text(`${ADDRESS}  •  ${CONTACT}`, M, h - 8);
+    doc.text(`Strictly confidential  •  Page ${i} of ${pageCount}`, pageW - M, h - 8, {
+      align: "right",
     });
   }
 
-  // Sign-off + footer
-  ensureSpace(30);
-  y += 8;
-  doc.setFontSize(8);
-  doc.text(`Prepared by: ${preparedBy}`, margin, y);
-  doc.text("Noted / Received by: ______________________", pageW - margin - 70, y);
-  y += 4;
-  doc.setFontSize(7);
-  doc.setTextColor(120, 120, 120);
-  doc.text(`${ADDRESS} | ${CONTACT}`, margin, pageH - 10);
-  doc.text("System-generated HRMS record - strictly confidential.", margin, pageH - 6);
+  return doc.output("blob");
+}
 
-  doc.save(buildFilename(report, "pdf"));
+/* ------------------------------------------------------------------ */
+/* CSV — UTF-8 .csv text (BOM-prefixed for Excel) mirroring the formal */
+/* report header + summary + data table. Sealed in the ZIP by the      */
+/* caller, like every format.                                          */
+/* ------------------------------------------------------------------ */
+
+/** RFC 4180 cell escaping — quotes, commas, CR/LF safe; null → empty. */
+function escapeCsvCell(value: any): string {
+  if (value === null || value === undefined) return "";
+  const s = String(value);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function csvRow(cells: any[]): string {
+  return cells.map(escapeCsvCell).join(",");
+}
+
+/** File names for an export: inner file + outer AES-encrypted ZIP. */
+export function describeExport(
+  report: ReportData,
+  format: ReportFormat,
+): {
+  innerName: string;
+  zipName: string;
+} {
+  const base = report.title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const date = new Date().toISOString().slice(0, 10);
+  const stem = `${base || "report"}_${date}`;
+  return { innerName: `${stem}.${INNER_EXT[format]}`, zipName: `${stem}_${format}_protected.zip` };
+}
+
+/**
+ * Builds the CSV text: formal header block (brand, title, document control,
+ * prepared-by, summary counts) + blank line + column headers + data rows.
+ * Mirrors the formal report so the CSV stays auditable outside Excel.
+ */
+export function buildCsvText(
+  report: ReportData,
+  generatedAt: string,
+  refNo: string,
+  preparedBy: string,
+  preparedByDept: string,
+): string {
+  const lines: string[] = [
+    csvRow([BRAND]),
+    csvRow([BRAND_SUB]),
+    csvRow([report.title]),
+    csvRow(["Document Control No.", refNo]),
+    csvRow(["Date of Issue", generatedAt]),
+    csvRow(["Prepared by", preparedBy]),
+    csvRow(["Department", preparedByDept]),
+    csvRow(["Subject", report.subtitle || `${BRAND} · ${BRAND_SUB}`]),
+    "",
+  ];
+  if (report.summary && report.summary.length > 0) {
+    lines.push(csvRow(["Summary", "Value"]));
+    for (const s of report.summary) lines.push(csvRow([s.label, s.value]));
+    lines.push("");
+  }
+  lines.push(csvRow(report.columns.map((c) => c.header)));
+  for (const row of report.rows) {
+    lines.push(csvRow(report.columns.map((c) => row[c.key] ?? "")));
+  }
+  return lines.join("\r\n") + "\r\n";
+}
+
+function triggerDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ------------------------------------------------------------------ */
+/* Print Support                                                      */
+/* ------------------------------------------------------------------ */
+function letterheadHtml(opts: { inline?: boolean }): string {
+  const logo = LOGO_DATA_URI
+    ? `<img src="${LOGO_DATA_URI}" alt="Oxford Suites Makati" ${
+        opts.inline ? 'style="height:46px;width:auto;display:block;"' : 'class="brand-logo"'
+      } />`
+    : "";
+  const wordmark = opts.inline
+    ? `<div style="line-height:1.1;">
+         <div style="font-size:19px;font-weight:700;color:${BRAND_COLOR};letter-spacing:0.06em;font-family:'Times New Roman',serif;">OXFORD SUITES MAKATI</div>
+         <div style="font-size:9px;color:${ACCENT};font-weight:700;letter-spacing:0.22em;text-transform:uppercase;margin-top:3px;font-family:'Times New Roman',serif;">Human Resources Management System</div>
+       </div>`
+    : `<div class="brand-words">
+         <div class="brand-title">OXFORD SUITES MAKATI</div>
+         <div class="brand-sub">Human Resources Management System</div>
+       </div>`;
+
+  if (opts.inline) {
+    return `<div style="display:flex;align-items:center;gap:14px;">${logo}${wordmark}</div>`;
+  }
+  return `<div class="brand">${logo}${wordmark}</div>`;
 }
 
 function buildPrintableHtml(
@@ -817,50 +738,42 @@ function buildPrintableHtml(
   const tableRows = report.rows
     .map(
       (row, idx) => `
-      <tr class="${idx % 2 === 0 ? "even" : "odd"}">
-        ${report.columns.map((c) => `<td>${escapeHtml(row[c.key] ?? "—")}</td>`).join("")}
-      </tr>`,
+    <tr class="${idx % 2 === 0 ? "even" : "odd"}">
+      ${report.columns.map((c) => `<td>${escapeHtml(row[c.key] ?? "—")}</td>`).join("")}
+    </tr>`,
     )
     .join("");
+
+  const summaryHtml =
+    report.summary && report.summary.length > 0
+      ? `<div class="summary-grid">
+          ${report.summary
+            .map(
+              (s) => `
+            <div class="summary-card">
+              <div class="summary-label">${escapeHtml(s.label)}</div>
+              <div class="summary-value">${escapeHtml(s.value)}</div>
+            </div>`,
+            )
+            .join("")}
+        </div>`
+      : "";
 
   const emptyRowNote =
     report.rows.length === 0
       ? `<tr><td colspan="${colCount}" class="empty-note">No records were available for inclusion in this report.</td></tr>`
       : "";
 
-  const summaryHtml = report.summary
-    ? `
-    <div class="summary-grid">
-      ${report.summary
-        .map(
-          (s) => `
-        <div class="summary-card">
-          <div class="summary-label">${escapeHtml(s.label)}</div>
-          <div class="summary-value">${escapeHtml(s.value)}</div>
-        </div>`,
-        )
-        .join("")}
-    </div>`
-    : "";
-
-  const printChartPng = report.chart ? renderChartPng(report.chart) : null;
-  const printChartHtml = printChartPng
-    ? `<div class="chart-block">
-         ${report.chart?.title ? `<div class="chart-title">${escapeHtml(report.chart.title)}</div>` : ""}
-         <img src="${printChartPng}" alt="Report chart" />
-       </div>`
-    : "";
-
-  const html = `<!DOCTYPE html>
-<html>
+  return `<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>${escapeHtml(report.title)} — ${BRAND}</title>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(report.title)} — ${escapeHtml(BRAND)}</title>
   <style>
-    @page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 16mm 15mm 18mm; }
+    @page { size: ${landscape ? "A4 landscape" : "A4 portrait"}; margin: 16mm 14mm; }
     * { box-sizing: border-box; }
-    body { font-family: ${SERIF}; color: #111827; margin: 0; padding: 0; font-size: 12px; line-height: 1.45; }
-    .letterhead { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px double ${BRAND_COLOR}; padding-bottom: 12px; margin-bottom: 16px; }
+    body { font-family: 'Times New Roman', Times, serif; font-size: 11px; line-height: 1.45; color: #111827; margin: 0; padding: 24px; background: #ffffff; }
+    .letterhead { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid #d8d3c8; }
     .brand { display: flex; align-items: center; gap: 14px; }
     .brand-logo { height: 46px; width: auto; display: block; }
     .brand-title { font-size: 20px; font-weight: 700; color: ${BRAND_COLOR}; letter-spacing: 0.05em; line-height: 1; }
@@ -876,9 +789,6 @@ function buildPrintableHtml(
     .summary-card { flex: 1; min-width: 132px; background: #faf7f0; border: 1px solid #e0d5bd; border-top: 2px solid ${BRAND_COLOR}; padding: 9px 12px; text-align: center; }
     .summary-label { font-size: 9px; color: #854d0e; text-transform: uppercase; font-weight: 700; letter-spacing: 0.09em; }
     .summary-value { font-size: 17px; font-weight: 700; color: ${BRAND_COLOR}; margin-top: 3px; }
-    .chart-block { text-align: center; margin: 14px 0 8px; }
-    .chart-title { font-size: 12px; font-weight: 700; color: ${BRAND_COLOR}; margin-bottom: 6px; }
-    .chart-block img { max-width: 100%; height: auto; border: 1px solid #e0d5bd; }
     table.doc-table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 10.5px; }
     table.doc-table th { background: ${BRAND_COLOR}; color: #ffffff; text-align: left; padding: 8px 9px; border: 1px solid ${BRAND_COLOR_LIGHT}; font-weight: 700; letter-spacing: 0.02em; }
     table.doc-table td { padding: 7px 9px; border: 1px solid #b8b2a8; }
@@ -914,7 +824,6 @@ function buildPrintableHtml(
     <p class="doc-subtitle">${escapeHtml(report.subtitle || `${BRAND} · ${BRAND_SUB}`)}</p>
   </div>
   ${summaryHtml}
-  ${printChartHtml}
   <table class="doc-table">
     <thead><tr>${tableHeaders}</tr></thead>
     <tbody>${tableRows}${emptyRowNote}</tbody>
@@ -937,11 +846,8 @@ function buildPrintableHtml(
   </div>
 </body>
 </html>`;
-
-  return html;
 }
 
-/** Render a full HTML document in a hidden iframe and raise the print dialog ONCE. */
 function printHtmlDocument(html: string): void {
   const iframe = document.createElement("iframe");
   iframe.setAttribute("aria-hidden", "true");
@@ -966,13 +872,8 @@ function printHtmlDocument(html: string): void {
     } catch {
       /* ignore */
     }
+    cleanup();
   };
-
-  // Print exactly once, after the iframe finishes loading the document.
-  iframe.onload = () => {
-    setTimeout(doPrint, 350);
-  };
-  iframe.contentWindow?.addEventListener?.("afterprint", cleanup);
 
   const doc = iframe.contentWindow?.document;
   if (!doc) {
@@ -981,12 +882,14 @@ function printHtmlDocument(html: string): void {
       w.document.open();
       w.document.write(html);
       w.document.close();
-      // New-window fallback: print once on load, never download.
-      w.addEventListener("load", () => setTimeout(() => w.print(), 350));
-      setTimeout(cleanup, 5000);
-    } else {
-      cleanup();
-      alert("Unable to open the report. Please allow popups for this site.");
+      setTimeout(() => {
+        try {
+          w.focus();
+          w.print();
+        } catch {
+          /* ignore */
+        }
+      }, 300);
     }
     return;
   }
@@ -994,23 +897,71 @@ function printHtmlDocument(html: string): void {
   doc.open();
   doc.write(html);
   doc.close();
-  // Safety net: if onload already fired synchronously, still print once.
-  setTimeout(() => {
-    if (document.body.contains(iframe)) doPrint();
-  }, 1200);
-  setTimeout(cleanup, 8000);
+  setTimeout(doPrint, 300);
 }
 
-function triggerDownload(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.style.display = "none";
-  document.body.appendChild(a);
-  // Dispatch a real mouse click (more reliable than .click() for blobs).
-  a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
-  document.body.removeChild(a);
-  // Revoke after a delay — revoking synchronously aborts the download in some browsers.
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
+export function printReport(report: ReportData): void {
+  const now = new Date();
+  const generatedAt = `${formalDate(now)}, ${formalTime(now)}`;
+  const refNo = buildReference(report);
+  const user = getUser();
+  const preparedBy = (user?.full_name as string | undefined) || "System Administrator";
+  const preparedByTitle = (user?.role as string | undefined) || "Human Resources";
+  const preparedByDept =
+    (user?.department_name as string | undefined) || "Human Resources Department";
+
+  printHtmlDocument(
+    buildPrintableHtml(report, generatedAt, refNo, preparedBy, preparedByTitle, preparedByDept),
+  );
 }
+
+export function build201FileReport(data: {
+  employeeName: string;
+  employeeCode: string;
+  position: string;
+  department: string;
+  status: string;
+  employmentType: string;
+  dateHired: string;
+  email: string;
+  phone: string;
+  supervisor: string;
+  documents: { name: string; status: string; file?: string }[];
+  history: { type: string; date: string; detail: string }[];
+}): ReportData {
+  return {
+    title: `201 File Dossier: ${data.employeeName}`,
+    subtitle: `${data.employeeCode} · ${data.position} · ${data.department}`,
+    columns: [
+      { header: "Record / Document", key: "item" },
+      { header: "Type / Category", key: "type" },
+      { header: "Status / Date", key: "status" },
+      { header: "Details", key: "detail" },
+    ],
+    rows: [
+      ...data.documents.map((d) => ({
+        item: d.name,
+        type: "Document",
+        status: d.status,
+        detail: d.file ? `Attached: ${d.file}` : "On file",
+      })),
+      ...data.history.map((h) => ({
+        item: h.type,
+        type: "Employment History",
+        status: h.date,
+        detail: h.detail,
+      })),
+    ],
+    summary: [
+      { label: "Employee Name", value: data.employeeName },
+      { label: "ID Code", value: data.employeeCode },
+      { label: "Department", value: data.department },
+      { label: "Position", value: data.position },
+      { label: "Status", value: data.status },
+      { label: "Date Hired", value: data.dateHired },
+      { label: "Supervisor", value: data.supervisor },
+    ],
+    sensitive: true,
+  };
+}
+

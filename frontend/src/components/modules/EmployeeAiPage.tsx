@@ -1,27 +1,19 @@
 import { useState, useRef, useEffect } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import {
-  Sparkles,
   Send,
   Bot,
-  User,
-  RotateCcw,
   Calendar,
   FileText,
-  Clock,
   ShieldCheck,
   Building2,
   ArrowUpRight,
   Plus,
   MessageSquare,
-  BookOpen,
-  ChevronRight,
-  HeartHandshake,
-  CheckCircle2,
-  ThumbsDown,
-  ThumbsUp,
   Trash2,
-  HelpCircle,
+  PanelLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -33,10 +25,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import { getUser } from "@/lib/auth";
 import { renderRichText } from "@/lib/rich-text";
-import { myProfile, myPayroll } from "@/data/ess";
+import { myProfile } from "@/data/ess";
+import { cn } from "@/lib/utils";
 import {
   chatbotApi,
-  chatbotFaqApi,
   essApi,
   type ApiChatbotSource,
   type ApiEssOverview,
@@ -54,13 +46,21 @@ interface Message {
     linkTo?: string;
     category?: string;
   };
-  /** DB id of the stored exchange (bot replies) — used for thumbs feedback. */
   serverId?: number | null;
   sources?: ApiChatbotSource[];
-  feedback?: 1 | -1 | null;
+}
+
+interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: number;
+  messages: Message[];
 }
 
 const STORAGE_KEY = "oxford_ess_ai_fullpage_history";
+const SESSIONS_STORAGE_KEY = "oxford_ess_ai_chat_sessions";
+const ACTIVE_SESSION_KEY = "oxford_ess_ai_active_session_id";
 
 const SUGGESTED_PROMPTS = [
   {
@@ -93,35 +93,59 @@ const SUGGESTED_PROMPTS = [
   },
 ];
 
-const PRESET_TOPICS = [
-  { label: "Leave Entitlements", query: "What is my remaining leave balance?" },
-  { label: "Payroll Schedule", query: "When is the next payday?" },
-  { label: "COE & Certificates", query: "How do I request a Certificate of Employment (COE)?" },
-  { label: "Attendance & Shifts", query: "What are the standard hotel shift hours and DTR rules?" },
-  { label: "HMO & Medical", query: "What does my HMO healthcare cover?" },
-  { label: "Social Recognition", query: "How does Social Recognition and Wall of Fame work?" },
-];
-
 export function EmployeeAiPage() {
   const navigate = useNavigate();
   const [mounted, setMounted] = useState(false);
   const user = mounted ? getUser() : null;
   const userName = user?.full_name || myProfile.name;
   const firstName = userName.split(" ")[0] || "there";
-  const userDept = user?.department_name || myProfile.department;
 
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isThinking, setIsThinking] = useState(false);
   const [overview, setOverview] = useState<ApiEssOverview | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Initialize and migrate sessions
   useEffect(() => {
     setMounted(true);
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        setMessages(JSON.parse(saved));
+      const savedSessions = localStorage.getItem(SESSIONS_STORAGE_KEY);
+      const savedActiveId = localStorage.getItem(ACTIVE_SESSION_KEY);
+      if (savedSessions) {
+        const parsed: ChatSession[] = JSON.parse(savedSessions);
+        setSessions(parsed);
+        if (savedActiveId && parsed.some((s) => s.id === savedActiveId)) {
+          setActiveSessionId(savedActiveId);
+          const activeSess = parsed.find((s) => s.id === savedActiveId);
+          if (activeSess) setMessages(activeSess.messages);
+        } else if (parsed.length > 0) {
+          setActiveSessionId(parsed[0].id);
+          setMessages(parsed[0].messages);
+        }
+      } else {
+        // Fallback migration for legacy single-thread history
+        const legacy = localStorage.getItem(STORAGE_KEY);
+        if (legacy) {
+          const parsedMsgs: Message[] = JSON.parse(legacy);
+          if (parsedMsgs.length > 0) {
+            const firstUser = parsedMsgs.find((m) => m.sender === "user");
+            const newSession: ChatSession = {
+              id: `session-${Date.now()}`,
+              title: firstUser?.text.slice(0, 28) || "HR Inquiry",
+              createdAt: "Earlier today",
+              updatedAt: Date.now(),
+              messages: parsedMsgs,
+            };
+            setSessions([newSession]);
+            setActiveSessionId(newSession.id);
+            setMessages(parsedMsgs);
+            localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify([newSession]));
+          }
+        }
       }
     } catch {
       // ignore
@@ -132,26 +156,13 @@ export function EmployeeAiPage() {
     essApi.overview().then(setOverview).catch(() => {});
   }, []);
 
+  // Auto-scroll on new message or thinking status change
   useEffect(() => {
-    if (!mounted) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-    } catch {
-      // ignore
-    }
-  }, [messages, mounted]);
-
-  useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length > 0 || isThinking) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, isThinking]);
 
-  /**
-   * Live AI answer via backend Gemini proxy (role=employee, HRMS-scoped).
-   * Falls back to a local greeting/leave summary when the server is
-   * unreachable so the concierge never goes blank.
-   */
   const actionCardFor = (
     query: string,
   ): Message["actionCard"] | undefined => {
@@ -231,6 +242,25 @@ export function EmployeeAiPage() {
       timestamp: timeStr,
     };
 
+    let targetSessionId = activeSessionId;
+    let targetSessions = [...sessions];
+
+    // If starting a fresh chat or no active session, create a session
+    if (!targetSessionId || !targetSessions.some((s) => s.id === targetSessionId)) {
+      targetSessionId = `session-${Date.now()}`;
+      const title = messageText.length > 30 ? messageText.slice(0, 30) + "..." : messageText;
+      const newSession: ChatSession = {
+        id: targetSessionId,
+        title,
+        createdAt: "Today",
+        updatedAt: Date.now(),
+        messages: [userMessage],
+      };
+      targetSessions = [newSession, ...targetSessions];
+      setSessions(targetSessions);
+      setActiveSessionId(targetSessionId);
+    }
+
     const next = [...messages, userMessage];
     setMessages(next);
     setInput("");
@@ -254,36 +284,91 @@ export function EmployeeAiPage() {
         timestamp: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
         serverId: res.message_id ?? null,
         sources: res.sources ?? [],
-        feedback: null,
         ...(card ? { actionCard: card } : {}),
       };
-      setMessages((prev) => [...prev, botResponse]);
+
+      const finalMessages = [...next, botResponse];
+      setMessages(finalMessages);
+
+      setSessions((prev) => {
+        const updated = prev.map((s) =>
+          s.id === targetSessionId
+            ? { ...s, messages: finalMessages, updatedAt: Date.now() }
+            : s,
+        );
+        try {
+          localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(updated));
+          if (targetSessionId) localStorage.setItem(ACTIVE_SESSION_KEY, targetSessionId);
+        } catch {}
+        return updated;
+      });
     } catch {
-      setMessages((prev) => [...prev, fallbackAnswer(messageText)]);
+      const fallback = fallbackAnswer(messageText);
+      const finalMessages = [...next, fallback];
+      setMessages(finalMessages);
+      setSessions((prev) => {
+        const updated = prev.map((s) =>
+          s.id === targetSessionId
+            ? { ...s, messages: finalMessages, updatedAt: Date.now() }
+            : s,
+        );
+        try {
+          localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(updated));
+          if (targetSessionId) localStorage.setItem(ACTIVE_SESSION_KEY, targetSessionId);
+        } catch {}
+        return updated;
+      });
     } finally {
       setIsThinking(false);
     }
   };
 
-  const vote = (msg: Message, value: 1 | -1) => {
-    if (msg.serverId == null) return;
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === msg.id
-          ? { ...m, feedback: m.feedback === value ? null : value }
-          : m,
-      ),
-    );
-    // Optimistic — the stored vote is only used for quality analytics.
-    chatbotFaqApi
-      .messageFeedback(msg.serverId, msg.feedback === value ? 0 : value)
-      .catch(() => {});
+  const handleSelectSession = (sess: ChatSession) => {
+    setActiveSessionId(sess.id);
+    setMessages(sess.messages);
+    setInput("");
+    try {
+      localStorage.setItem(ACTIVE_SESSION_KEY, sess.id);
+    } catch {}
   };
 
-  const handleClearHistory = () => {
+  const handleNewConversation = () => {
+    setActiveSessionId(null);
     setMessages([]);
-    localStorage.removeItem(STORAGE_KEY);
-    toast.success("Conversation cleared");
+    setInput("");
+    try {
+      localStorage.removeItem(ACTIVE_SESSION_KEY);
+    } catch {}
+  };
+
+  const handleDeleteSession = (sessionId: string) => {
+    const updated = sessions.filter((s) => s.id !== sessionId);
+    setSessions(updated);
+    try {
+      localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(updated));
+    } catch {}
+
+    if (activeSessionId === sessionId) {
+      if (updated.length > 0) {
+        handleSelectSession(updated[0]);
+      } else {
+        handleNewConversation();
+      }
+    }
+    toast.success("Chat removed from history");
+  };
+
+  const handleClearAllHistory = () => {
+    setSessions([]);
+    setActiveSessionId(null);
+    setMessages([]);
+    setInput("");
+    try {
+      localStorage.removeItem(SESSIONS_STORAGE_KEY);
+      localStorage.removeItem(ACTIVE_SESSION_KEY);
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+    toast.success("All chat history cleared");
   };
 
   return (
@@ -294,80 +379,171 @@ export function EmployeeAiPage() {
         description="Your 24/7 personal HR assistant for policy guidance, leave balances, payroll cut-offs, and request shortcuts."
       />
 
-      {/* Main Workspace Layout */}
-      <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)] items-start">
-        {/* Left Side Navigation & Quick Topics Drawer */}
-        <Card className="border-border/70 overflow-hidden space-y-4">
-          <CardContent className="p-4 space-y-4">
-            {/* New Chat Button */}
+      {/* Main Workspace Layout (Unified Aligned Container) */}
+      <Card className="border-border/70 min-h-[660px] h-[750px] max-h-[85vh] flex flex-col lg:flex-row overflow-hidden shadow-sm">
+        {/* Left Side Navigation & Chat History Drawer */}
+        <div
+          className={cn(
+            "flex flex-col justify-between bg-card shrink-0 h-full overflow-hidden transition-all duration-300 ease-in-out border-border/60",
+            sidebarOpen
+              ? "w-full lg:w-[280px] opacity-100 lg:border-r border-b lg:border-b-0 translate-x-0"
+              : "w-0 max-w-0 opacity-0 -translate-x-full lg:border-r-0 border-b-0 pointer-events-none"
+          )}
+        >
+          {/* Header with Title and Close Tab Button */}
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-muted/10 min-h-[44px] h-[44px] shrink-0">
+            <div className="flex items-center gap-2 font-display text-xs font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+              <MessageSquare className="h-4 w-4 text-primary" />
+              <span>Chat History</span>
+            </div>
             <Button
-              onClick={handleClearHistory}
-              variant="outline"
-              className="w-full justify-start gap-2 h-10 rounded-xl font-semibold border-primary/30 hover:border-primary hover:bg-primary/5 text-foreground shadow-2xs"
+              variant="ghost"
+              size="icon"
+              onClick={() => setSidebarOpen(false)}
+              className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer shrink-0 transition-transform duration-200 active:scale-95 group"
+              title="Close sidebar tab"
+              aria-label="Close sidebar tab"
             >
-              <Plus className="h-4 w-4 text-primary" />
-              <span>New Conversation</span>
+              <PanelLeftClose className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
             </Button>
+          </div>
 
-            {/* Quick Topic Shortcuts */}
-            <div className="space-y-1.5 pt-2 border-t border-border/60">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground px-2">
-                Knowledge Topics
-              </p>
-              <div className="space-y-1">
-                {PRESET_TOPICS.map((topic, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => handleSendMessage(topic.query)}
-                    className="w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg text-left text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors group cursor-pointer"
+            {/* Sidebar Content */}
+            <div className="p-4 space-y-4 flex-1 flex flex-col justify-between overflow-y-auto min-h-0">
+              <div className="space-y-3">
+                {/* New Conversation Button */}
+                <Button
+                  onClick={handleNewConversation}
+                  variant="outline"
+                  className="w-full justify-start gap-2 h-9 rounded-xl font-semibold border-primary/30 hover:border-primary hover:bg-primary/5 text-foreground shadow-2xs cursor-pointer text-xs"
+                >
+                  <Plus className="h-4 w-4 text-primary" />
+                  <span>New Conversation</span>
+                </Button>
+
+                {/* Chat History Sessions List */}
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between px-1">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Previous Chats
+                    </p>
+                    {sessions.length > 0 && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-mono text-muted-foreground">
+                        {sessions.length}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {sessions.length === 0 ? (
+                    <div className="py-6 px-3 text-center rounded-xl border border-dashed border-border/70 bg-muted/20">
+                      <MessageSquare className="h-5 w-5 text-muted-foreground/40 mx-auto mb-1.5" />
+                      <p className="text-xs text-muted-foreground font-medium">No chat history yet</p>
+                      <p className="text-[10px] text-muted-foreground/70 mt-0.5">Send a message to save your conversation.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1 max-h-[300px] overflow-y-auto pr-0.5">
+                      {sessions.map((sess) => {
+                        const isActive = sess.id === activeSessionId;
+                        return (
+                          <div
+                            key={sess.id}
+                            onClick={() => handleSelectSession(sess)}
+                            className={cn(
+                              "w-full flex items-center justify-between px-2.5 py-2 text-xs rounded-lg text-left transition-all cursor-pointer group",
+                              isActive
+                                ? "bg-primary/10 text-primary font-medium border border-primary/20 shadow-2xs"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent"
+                            )}
+                          >
+                            <div className="flex items-center gap-2 min-w-0 flex-1 mr-1">
+                              <MessageSquare className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-primary" : "text-muted-foreground")} />
+                              <span className="truncate group-hover:font-medium">{sess.title}</span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteSession(sess.id);
+                              }}
+                              className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md shrink-0 cursor-pointer transition-opacity"
+                              title="Delete conversation"
+                              aria-label={`Delete ${sess.title}`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* System Info Badge */}
+              <div className="space-y-2 pt-2 border-t border-border/50">
+                <div className="rounded-xl border border-border/70 bg-muted/20 p-2.5 text-xs space-y-1">
+                  <div className="flex items-center gap-1.5 font-semibold text-foreground text-[11px]">
+                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                    Verified HR Knowledge
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    Trained on Oxford Suites Makati HR policies, statutory DOLE labor standards, and benefits.
+                  </p>
+                </div>
+
+                {sessions.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleClearAllHistory}
+                    className="w-full text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 gap-1.5 h-7 cursor-pointer"
                   >
-                    <span className="truncate group-hover:font-medium">{topic.label}</span>
-                    <ChevronRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 text-primary transition-opacity shrink-0" />
-                  </button>
-                ))}
+                    <Trash2 className="h-3.5 w-3.5" /> Clear All History
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+
+        {/* Right Main AI Workspace Canvas */}
+        <div className="flex-1 flex flex-col justify-between bg-card min-w-0 h-full">
+          {/* Canvas Top Bar */}
+          <div className="flex items-center justify-between px-4 sm:px-6 py-2.5 border-b border-border/60 bg-muted/10 min-h-[44px] h-[44px]">
+            <div className="flex items-center gap-2">
+              <div
+                className={cn(
+                  "transition-all duration-300 ease-in-out overflow-hidden flex items-center",
+                  !sidebarOpen
+                    ? "opacity-100 max-w-[160px] translate-x-0"
+                    : "opacity-0 max-w-0 -translate-x-3 pointer-events-none"
+                )}
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSidebarOpen(true)}
+                  className="h-7 px-2.5 text-xs gap-1.5 border-border/80 hover:bg-muted font-medium cursor-pointer shadow-2xs whitespace-nowrap transition-transform duration-200 active:scale-95 group"
+                  title="Open Chat History"
+                >
+                  <PanelLeftOpen className="h-3.5 w-3.5 text-primary transition-transform duration-200 group-hover:translate-x-0.5" />
+                  <span>Chat History</span>
+                </Button>
               </div>
             </div>
 
-            {/* System Info Badge */}
-            <div className="rounded-xl border border-border/70 bg-muted/20 p-3 text-xs space-y-1.5">
-              <div className="flex items-center gap-1.5 font-semibold text-foreground text-[11px]">
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                Verified HR Knowledge
-              </div>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Trained on Oxford Suites Makati HR policies, statutory DOLE labor standards, and benefits.
-              </p>
-            </div>
-
-            {messages.length > 0 && (
+            <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleClearHistory}
-                className="w-full text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 gap-1.5 h-8"
+                onClick={handleNewConversation}
+                className="h-7 px-2.5 text-xs gap-1 text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
+                title="Start a new chat"
               >
-                <Trash2 className="h-3.5 w-3.5" /> Clear History
+                <Plus className="h-3.5 w-3.5" />
+                <span>New Chat</span>
               </Button>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Right Main AI Workspace Canvas */}
-        <Card className="border-border/70 min-h-[640px] flex flex-col justify-between overflow-hidden shadow-sm">
-          {/* Canvas Header */}
-          <div className="flex items-center justify-between px-6 py-3.5 border-b border-border/60 bg-muted/10">
-            <div className="flex items-center gap-2">
-              <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs font-semibold flex items-center gap-1.5 py-0.5">
-                <Bot className="h-3.5 w-3.5" /> Oxford HR AI Concierge
-              </Badge>
-              <span className="text-xs text-muted-foreground hidden sm:inline">· Live Context for {firstName}</span>
             </div>
-
-            <Badge variant="outline" className="text-[11px] bg-muted/60 text-muted-foreground">
-              {userDept}
-            </Badge>
           </div>
 
           {/* Canvas Body: Hero State vs. Chat Stream */}
@@ -406,14 +582,11 @@ export function EmployeeAiPage() {
                     </span>
 
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="hidden sm:inline-flex text-[11px] bg-primary/5 text-primary border-primary/20 py-0.5 font-medium">
-                        Oxford HR v2.4
-                      </Badge>
                       <Button
                         size="sm"
                         onClick={() => handleSendMessage()}
                         disabled={!input.trim()}
-                        className="h-8 px-4 rounded-lg font-semibold gap-1.5 shadow-xs"
+                        className="h-8 px-4 rounded-lg font-semibold gap-1.5 shadow-xs cursor-pointer"
                       >
                         <span>Ask AI</span>
                         <Send className="h-3.5 w-3.5" />
@@ -530,44 +703,41 @@ export function EmployeeAiPage() {
                           </div>
                         )}
 
-                        <p className={`text-[10px] text-muted-foreground ${isUser ? "text-right" : "text-left"} px-1 flex items-center gap-2`}>
+                        {/* Message timestamp (thumbs up/down removed) */}
+                        <p className={`text-[10px] text-muted-foreground ${isUser ? "text-right" : "text-left"} px-1`}>
                           <span>{msg.timestamp}</span>
-                          {!isUser && msg.serverId != null && (
-                            <span className="flex items-center gap-1">
-                              <button
-                                aria-label="Helpful"
-                                onClick={() => vote(msg, 1)}
-                                className={`grid h-5 w-5 place-items-center rounded-full hover:bg-muted ${msg.feedback === 1 ? "text-primary" : "text-muted-foreground"}`}
-                              >
-                                <ThumbsUp className="h-3 w-3" />
-                              </button>
-                              <button
-                                aria-label="Not helpful"
-                                onClick={() => vote(msg, -1)}
-                                className={`grid h-5 w-5 place-items-center rounded-full hover:bg-muted ${msg.feedback === -1 ? "text-destructive" : "text-muted-foreground"}`}
-                              >
-                                <ThumbsDown className="h-3 w-3" />
-                              </button>
-                            </span>
-                          )}
                         </p>
                       </div>
                     </div>
                   );
                 })}
 
-                {/* Bot Thinking Bubble */}
+                {/* Bot Typing / Thinking Animation with Three Dots */}
                 {isThinking && (
-                  <div className="flex items-start gap-3">
-                    <Avatar className="h-8 w-8 shrink-0 bg-muted border border-border">
+                  <div className="flex items-start gap-3.5 animate-in fade-in-50 duration-200">
+                    <Avatar className="h-8 w-8 shrink-0 border bg-muted border-border">
                       <AvatarFallback className="bg-amber-500/15 text-amber-600 font-bold text-xs">
-                        <Bot className="h-4 w-4 animate-spin" />
+                        <Bot className="h-4 w-4 text-primary animate-pulse" />
                       </AvatarFallback>
                     </Avatar>
-                    <div className="rounded-2xl p-3.5 bg-card border border-border/80 shadow-xs flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+                    <div className="rounded-2xl rounded-tl-xs px-4 py-3 bg-card border border-border/80 shadow-xs flex items-center gap-2.5">
+                      <div className="flex items-center gap-1.5 py-0.5">
+                        <span
+                          className="h-2 w-2 rounded-full bg-primary animate-bounce"
+                          style={{ animationDelay: "0ms", animationDuration: "900ms" }}
+                        />
+                        <span
+                          className="h-2 w-2 rounded-full bg-primary animate-bounce"
+                          style={{ animationDelay: "150ms", animationDuration: "900ms" }}
+                        />
+                        <span
+                          className="h-2 w-2 rounded-full bg-primary animate-bounce"
+                          style={{ animationDelay: "300ms", animationDuration: "900ms" }}
+                        />
+                      </div>
+                      <span className="text-[11px] text-muted-foreground font-medium select-none">
+                        AI is thinking...
+                      </span>
                     </div>
                   </div>
                 )}
@@ -607,8 +777,8 @@ export function EmployeeAiPage() {
               </div>
             </div>
           )}
-        </Card>
-      </div>
+        </div>
+      </Card>
     </div>
   );
 }

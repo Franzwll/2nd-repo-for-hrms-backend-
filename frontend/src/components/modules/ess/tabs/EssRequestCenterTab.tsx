@@ -198,15 +198,15 @@ export function EssRequestCenterTab() {
                         onClick={() => handleRowClick(r)}
                       >
                         <TableCell className="text-xs font-mono font-medium text-foreground">{r.id}</TableCell>
-                        <TableCell className="text-sm font-semibold">{r.type}</TableCell>
+                        <TableCell className="text-xs font-semibold">{r.type}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{r.category}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{r.filed}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{r.assignedTo || r.assigned_to || "HR Admin"}</TableCell>
                         <TableCell>
                           <EssStatusBadge status={r.status} />
                         </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" className="h-7 text-xs text-primary">
+                        <TableCell className="text-right py-1">
+                          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-primary">
                             Timeline →
                           </Button>
                         </TableCell>

@@ -36,7 +36,9 @@ class StoreApplicantRequest extends FormRequest
             'summary'      => ['nullable', 'string'],
             'flags_json'   => ['nullable', 'array'],
             'status'       => ['required', 'string', 'in:fit,other-role,credential,not-fit'],
-            'stage'        => ['required', 'string', 'in:Screened,Interview Scheduled,Assessed,Offer,Hired,Rejected,Accepted'],
+            // Mirrors the chk_applicants_stage constraint — keep every pipeline
+            // stage here so create/update validate identically.
+            'stage'        => ['required', 'string', 'in:Screened,Interview Scheduled,Assessed,Assessment Test,Practical Test,Final Evaluation,Offer,Hired,Rejected,Accepted'],
             'fit_score'    => ['nullable', 'numeric', 'min:0', 'max:100'],
             // `extensions` (not `mimes`): validates the uploaded file's own
             // extension instead of the MIME type guessed from its bytes, which

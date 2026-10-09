@@ -13,6 +13,7 @@ import {
   Megaphone,
   Menu,
   PanelLeftClose,
+  PanelLeftOpen,
   Settings as SettingsIcon,
   ShieldCheck,
   UserCircle,
@@ -161,6 +162,9 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
     if (!childQuery) {
       return !searchStr || searchStr === "?" || !searchStr.includes("category=");
     }
+    if (childQuery === "category=Attendance" && (!searchStr || searchStr === "?" || !searchStr.includes("category="))) {
+      return true;
+    }
     return searchStr.includes(childQuery);
   };
 
@@ -187,12 +191,14 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
     <div className="flex min-h-screen w-full bg-background">
       <aside
         className={cn(
-          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 md:flex",
+          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-in-out md:flex overflow-hidden",
           open ? "w-64" : "w-[68px]",
         )}
       >
-        <div className="flex h-16 items-center gap-2 border-b border-sidebar-border px-4">
-          <Logo variant={open ? "full" : "mark"} mark="white" tone="invert" />
+        <div className="flex h-16 items-center border-b border-sidebar-border px-4 overflow-hidden transition-all duration-300">
+          <div className={cn("transition-all duration-300 ease-in-out shrink-0", open ? "w-full" : "w-8")}>
+            <Logo variant={open ? "full" : "mark"} mark="white" tone="invert" />
+          </div>
         </div>
 
         <ScrollArea className="flex-1">
@@ -219,7 +225,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                   {hasChildren ? (
                     <button
                       type="button"
-                      className={baseCls}
+                      className={cn(baseCls, "overflow-hidden relative group cursor-pointer")}
                       title={item.label}
                       aria-expanded={isOpen}
                       onClick={() => {
@@ -231,28 +237,51 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                         );
                       }}
                     >
-                      <item.icon className="h-4 w-4 shrink-0" />
-                      {open && (
-                        <>
-                          <span className="truncate">{item.label}</span>
-                          <ChevronRight
-                            className={cn(
-                              "ml-auto h-4 w-4 shrink-0 transition-transform",
-                              isOpen && "rotate-90",
-                            )}
-                          />
-                        </>
-                      )}
+                      <item.icon className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-105" />
+                      <span
+                        className={cn(
+                          "flex flex-1 items-center justify-between min-w-0 transition-all duration-300 ease-in-out whitespace-nowrap",
+                          open
+                            ? "opacity-100 max-w-[180px] translate-x-0"
+                            : "opacity-0 max-w-0 -translate-x-3 pointer-events-none"
+                        )}
+                      >
+                        <span className="truncate">{item.label}</span>
+                        <ChevronRight
+                          className={cn(
+                            "ml-auto h-4 w-4 shrink-0 transition-transform duration-200",
+                            isOpen && "rotate-90",
+                          )}
+                        />
+                      </span>
                     </button>
                   ) : (
-                    <Link to={item.to} className={baseCls} title={item.label}>
-                      <item.icon className="h-4 w-4 shrink-0" />
-                      {open && <span className="truncate">{item.label}</span>}
+                    <Link
+                      to={item.to}
+                      className={cn(baseCls, "overflow-hidden relative group")}
+                      title={item.label}
+                    >
+                      <item.icon className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-105" />
+                      <span
+                        className={cn(
+                          "flex flex-1 items-center justify-between min-w-0 transition-all duration-300 ease-in-out whitespace-nowrap",
+                          open
+                            ? "opacity-100 max-w-[180px] translate-x-0"
+                            : "opacity-0 max-w-0 -translate-x-3 pointer-events-none"
+                        )}
+                      >
+                        <span className="truncate">{item.label}</span>
+                        {item.badge && (
+                          <Badge className="ml-auto bg-primary text-primary-foreground text-[10px] shrink-0">
+                            {item.badge}
+                          </Badge>
+                        )}
+                      </span>
                     </Link>
                   )}
 
                   {open && hasChildren && isOpen && (
-                    <div className="ml-5 mt-1 space-y-0.5 border-l border-sidebar-border pl-3">
+                    <div className="ml-5 mt-1 space-y-0.5 border-l border-sidebar-border pl-3 animate-in fade-in slide-in-from-top-1 duration-200">
                       {item.children!.map((child) => (
                         <Link
                           key={child.to}
@@ -275,27 +304,46 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
           </nav>
         </ScrollArea>
 
-        <div className="space-y-1 border-t border-sidebar-border p-2">
+        <div className="space-y-1 border-t border-sidebar-border p-2 overflow-hidden">
           <Link
             to={`${meta.base}/profile` as "/admin/profile"}
             className={cn(
-              "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors",
+              "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors overflow-hidden group",
               pathname === `${meta.base}/profile`
                 ? "bg-sidebar-primary text-sidebar-primary-foreground"
                 : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
             )}
             title="My Profile"
           >
-            <UserCircle className="h-4 w-4 shrink-0" />
-            {open && <span>My Profile</span>}
+            <UserCircle className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-105" />
+            <span
+              className={cn(
+                "truncate transition-all duration-300 ease-in-out whitespace-nowrap",
+                open
+                  ? "opacity-100 max-w-[160px] translate-x-0"
+                  : "opacity-0 max-w-0 -translate-x-3 pointer-events-none"
+              )}
+            >
+              My Profile
+            </span>
           </Link>
           <button
             type="button"
             onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground overflow-hidden group cursor-pointer"
+            title="Logout"
           >
-            <LogOut className="h-4 w-4 shrink-0" />
-            {open && <span>Logout</span>}
+            <LogOut className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-105" />
+            <span
+              className={cn(
+                "truncate transition-all duration-300 ease-in-out whitespace-nowrap",
+                open
+                  ? "opacity-100 max-w-[160px] translate-x-0"
+                  : "opacity-0 max-w-0 -translate-x-3 pointer-events-none"
+              )}
+            >
+              Logout
+            </span>
           </button>
         </div>
       </aside>
@@ -306,11 +354,28 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
             <Button
               variant="ghost"
               size="icon"
-              className="hidden md:inline-flex"
+              className="hidden md:inline-flex text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-all duration-200 active:scale-95 cursor-pointer relative"
               onClick={() => setOpen((v) => !v)}
               aria-label="Toggle sidebar"
             >
-              {open ? <PanelLeftClose className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              <div className="relative h-5 w-5 flex items-center justify-center">
+                <PanelLeftClose
+                  className={cn(
+                    "h-5 w-5 transition-all duration-300 ease-in-out absolute",
+                    open
+                      ? "opacity-100 rotate-0 scale-100 text-foreground"
+                      : "opacity-0 -rotate-90 scale-75 pointer-events-none"
+                  )}
+                />
+                <PanelLeftOpen
+                  className={cn(
+                    "h-5 w-5 transition-all duration-300 ease-in-out absolute",
+                    !open
+                      ? "opacity-100 rotate-0 scale-100 text-primary"
+                      : "opacity-0 rotate-90 scale-75 pointer-events-none"
+                  )}
+                />
+              </div>
             </Button>
             <div className="md:hidden">
               <Logo variant="mark" mark="white" tone="invert" />
