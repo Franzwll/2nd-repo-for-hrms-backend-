@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Modules\CoreHCM\Http\Controllers\Concerns\AppliesTableQuery;
+use Modules\CoreHCM\Http\Controllers\Concerns\HcmCache;
 use Modules\CoreHCM\Http\Requests\StorePositionRequest;
 use Modules\CoreHCM\Http\Requests\UpdatePositionRequest;
 use Modules\CoreHCM\Http\Resources\PositionResource;
@@ -18,51 +19,55 @@ class PositionController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Position::query()->with(['department', 'salaryGrade']);
+        $payload = $this->rememberHcmIndex($request, 'hcm:positions', function () use ($request) {
+            $query = Position::query()->with(['department', 'salaryGrade']);
 
-        if ($request->filled('q')) {
-            $search = $request->string('q');
+            if ($request->filled('q')) {
+                $search = $request->string('q');
 
-            $query->where(function ($q) use ($search) {
-                $q->where('title', 'like', "%{$search}%")
-                    ->orWhere('position_code', 'like', "%{$search}%");
-            });
-        }
+                $query->where(function ($q) use ($search) {
+                    $q->where('title', 'like', "%{$search}%")
+                        ->orWhere('position_code', 'like', "%{$search}%");
+                });
+            }
 
-        if ($request->filled('department_id')) {
-            $query->where('department_id', $request->integer('department_id'));
-        }
+            if ($request->filled('department_id')) {
+                $query->where('department_id', $request->integer('department_id'));
+            }
 
-        if ($request->filled('level')) {
-            $query->where('level', $request->string('level'));
-        }
+            if ($request->filled('level')) {
+                $query->where('level', $request->string('level'));
+            }
 
-        $this->applyFilters($request, $query, [
-            'department_id' => 'department_id',
-            'level' => 'level',
-            'salary_grade_id' => 'salary_grade_id',
-        ]);
+            $this->applyFilters($request, $query, [
+                'department_id' => 'department_id',
+                'level' => 'level',
+                'salary_grade_id' => 'salary_grade_id',
+            ]);
 
-        $this->applySort($request, $query, [
-            'position_code' => 'position_code',
-            'title' => 'title',
-            'level' => 'level',
-            'headcount' => 'headcount',
-            'filled_count' => 'filled_count',
-            'created_at' => 'created_at',
-        ], ['title', 'asc']);
+            $this->applySort($request, $query, [
+                'position_code' => 'position_code',
+                'title' => 'title',
+                'level' => 'level',
+                'headcount' => 'headcount',
+                'filled_count' => 'filled_count',
+                'created_at' => 'created_at',
+            ], ['title', 'asc']);
 
-        $positions = $query->paginate($request->integer('per_page', 25));
+            $positions = $query->paginate($request->integer('per_page', 25));
 
-        return response()->json([
-            'data' => PositionResource::collection($positions),
-            'meta' => [
-                'current_page' => $positions->currentPage(),
-                'last_page' => $positions->lastPage(),
-                'per_page' => $positions->perPage(),
-                'total' => $positions->total(),
-            ],
-        ]);
+            return [
+                'data' => PositionResource::collection($positions)->resolve(),
+                'meta' => [
+                    'current_page' => $positions->currentPage(),
+                    'last_page' => $positions->lastPage(),
+                    'per_page' => $positions->perPage(),
+                    'total' => $positions->total(),
+                ],
+            ];
+        });
+
+        return response()->json($payload);
     }
 
     public function store(StorePositionRequest $request): JsonResponse
@@ -75,6 +80,7 @@ class PositionController extends Controller
             'level' => $validated['level'] ?? 'Rank & File',
             'filled_count' => 0,
         ]);
+        HcmCache::flush();
 
         return response()->json([
             'message' => 'Position created successfully.',
@@ -85,6 +91,7 @@ class PositionController extends Controller
     public function update(UpdatePositionRequest $request, Position $position): JsonResponse
     {
         $position->update($request->validated());
+        HcmCache::flush();
 
         return response()->json([
             'message' => 'Position updated successfully.',
@@ -100,6 +107,7 @@ class PositionController extends Controller
 
         $title = $position->title;
         $position->delete();
+        HcmCache::flush();
 
         return response()->json(['message' => 'Position deleted successfully.']);
     }

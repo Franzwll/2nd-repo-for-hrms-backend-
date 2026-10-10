@@ -156,6 +156,12 @@ Route::prefix('v1')
 
 
           /* ------------------------------------------------------------------ */
+          /* Global assessment switches (owned by Core HCM, read here)          */
+          /* ------------------------------------------------------------------ */
+          Route::get('assessments/config', [AssessmentConfigController::class, 'show'])
+               ->name('assessments.config');
+
+          /* ------------------------------------------------------------------ */
           /* Interview assessments (criteria comments + Passed/Failed verdict)    */
           /* ------------------------------------------------------------------ */
           Route::get('assessments', [ApplicantAssessmentController::class, 'index'])

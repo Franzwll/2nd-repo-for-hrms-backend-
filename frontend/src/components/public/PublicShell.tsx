@@ -1,13 +1,14 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Mail, MapPin, Menu, Phone, X } from "lucide-react";
 
 import { Logo } from "@/components/brand/Logo";
 import { Chatbot } from "@/components/public/Chatbot";
+import { ThemeToggle } from "@/components/portal/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { useCompany } from "@/lib/landing";
-import { useLightOnly } from "@/lib/theme";
+import { applyInitialTheme } from "@/lib/theme";
 
 const links = [
   { label: "Home", to: "/" },
@@ -24,9 +25,11 @@ const legalLinks = [
   { label: "Cookie Preferences", to: "/cookies" },
 ];
 
-export function PublicShell({ children, bare }: { children: ReactNode; bare?: boolean }) {
-  useLightOnly();
+export function PublicShell({ children }: { children: ReactNode }) {
   const { company } = useCompany();
+  useEffect(() => {
+    applyInitialTheme();
+  }, []);
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Bare mode: logo + content only (e.g. assessment test link).
@@ -72,6 +75,7 @@ export function PublicShell({ children, bare }: { children: ReactNode; bare?: bo
 
           {/* Desktop CTA */}
           <div className="hidden items-center gap-2 lg:flex">
+            <ThemeToggle compact />
             <Button asChild size="sm">
               <Link to="/login">Login</Link>
             </Button>
@@ -79,6 +83,7 @@ export function PublicShell({ children, bare }: { children: ReactNode; bare?: bo
 
           {/* Mobile: Login + Burger */}
           <div className="flex items-center gap-2 lg:hidden">
+            <ThemeToggle compact />
             <Button asChild size="sm" variant="outline" className="text-xs">
               <Link to="/login">Login</Link>
             </Button>

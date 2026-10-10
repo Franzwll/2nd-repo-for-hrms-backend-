@@ -2,6 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight, Briefcase, Sparkles } from "lucide-react";
 
 import { PublicShell } from "@/components/public/PublicShell";
+import { ParallaxHero } from "@/components/public/ParallaxHero";
+import { Reveal } from "@/components/public/Reveal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,7 +25,11 @@ export const Route = createFileRoute("/_landing/")({
         content:
           "Discover Oxford Suites Makati: elegant suites, distinctive dining, event venues, and hospitality careers with our HRMS recruitment portal.",
       },
+      { property: "og:type", content: "website" },
+      { property: "og:image", content: "/oxford-mark-maroon.png" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
+    links: [{ rel: "canonical", href: "/" }],
   }),
   component: Landing,
 });
@@ -35,20 +41,16 @@ function Landing() {
 
   return (
     <PublicShell>
-      {/* Hero */}
-      <section className="relative overflow-hidden">
-        <img
-          src={heroImage}
-          alt="Oxford Suites Makati lobby with warm lighting and marble finishes"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-        <div className="absolute inset-0 bg-foreground/70" />
-        <div className="relative mx-auto max-w-7xl px-4 py-24 md:px-8 md:py-32">
-          <p className="eyebrow text-gold">{company.tagline}</p>
-          <h1 className="mt-3 max-w-3xl font-display text-5xl font-semibold text-primary-foreground md:text-7xl">
-            A career worth checking into.
-          </h1>
+      {/* Hero — landing-only immersive 3D parallax */}
+      <ParallaxHero
+        image={heroImage}
+        imageAlt="Oxford Suites Makati lobby with warm lighting and marble finishes"
+        eyebrow={<p className="eyebrow text-gold">{company.tagline}</p>}
+        title="A career worth checking into."
+        body={
           <p className="mt-5 max-w-xl text-base text-primary-foreground/80">{company.overview}</p>
+        }
+        actions={
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg">
               <Link to="/jobs">
@@ -64,8 +66,8 @@ function Landing() {
               <Link to="/about">About Oxford Suites</Link>
             </Button>
           </div>
-        </div>
-      </section>
+        }
+      />
 
       {/* Highlights — careers focused */}
       <section className="mx-auto max-w-7xl px-4 py-16 md:px-8">
@@ -86,14 +88,16 @@ function Landing() {
               title: "Apply in Minutes",
               body: "No account required. Submit your resume once and track your application status straight from the careers portal.",
             },
-          ].map((h) => (
-            <Card key={h.title} className="border-border/70">
-              <CardContent className="p-6">
-                <h.icon className="h-6 w-6 text-gold" />
-                <h3 className="mt-4 font-display text-2xl font-semibold">{h.title}</h3>
-                <p className="mt-2 text-sm text-muted-foreground">{h.body}</p>
-              </CardContent>
-            </Card>
+          ].map((h, i) => (
+            <Reveal key={h.title} delay={i * 90}>
+              <Card className="border-border/70 transition-transform duration-300 hover:-translate-y-1">
+                <CardContent className="p-6">
+                  <h.icon className="h-6 w-6 text-gold" />
+                  <h3 className="mt-4 font-display text-2xl font-semibold">{h.title}</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">{h.body}</p>
+                </CardContent>
+              </Card>
+            </Reveal>
           ))}
         </div>
       </section>
@@ -105,11 +109,13 @@ function Landing() {
           <h2 className="mt-1 font-display text-4xl font-semibold">Facilities & Services</h2>
           <div className="gold-rule my-6" />
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {company.facilities.map((f) => (
-              <div key={f.name} className="rounded-md border border-border bg-card p-5">
-                <h3 className="font-display text-xl font-semibold">{f.name}</h3>
-                <p className="mt-2 text-sm text-muted-foreground">{f.body}</p>
-              </div>
+            {company.facilities.map((f, i) => (
+              <Reveal key={f.name} delay={(i % 3) * 80}>
+                <div className="rounded-md border border-border bg-card p-5 transition-transform duration-300 hover:-translate-y-1">
+                  <h3 className="font-display text-xl font-semibold">{f.name}</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">{f.body}</p>
+                </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -129,25 +135,33 @@ function Landing() {
         <div className="gold-rule my-6" />
 
         <div className="grid gap-6 md:grid-cols-3">
-          {featured.map((job) => (
-            <Card key={job.id} className="flex flex-col border-border/70">
-              <CardContent className="flex flex-1 flex-col p-6">
-                <Badge variant="outline" className="w-fit border-gold/50 text-gold">
-                  {job.department}
-                </Badge>
-                <h3 className="mt-3 font-display text-2xl font-semibold">{job.title}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {job.employmentType} · {peso(job.salaryMin)} – {peso(job.salaryMax)} / month
-                </p>
-                <p className="mt-3 flex-1 text-sm text-muted-foreground">{job.summary}</p>
-                <Button asChild className="mt-5 w-full">
-                  <Link to="/jobs/$jobId" params={{ jobId: job.id }}>
-                    Apply Now
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+          {featured.length === 0 ? (
+            <p className="text-sm text-muted-foreground md:col-span-3">
+              No featured openings right now — check back soon or view all vacancies.
+            </p>
+          ) : (
+            featured.map((job, i) => (
+              <Reveal key={job.id} delay={i * 90}>
+                <Card className="flex h-full flex-col border-border/70 transition-transform duration-300 hover:-translate-y-1">
+                  <CardContent className="flex flex-1 flex-col p-6">
+                    <Badge variant="outline" className="w-fit border-gold/50 text-gold">
+                      {job.department}
+                    </Badge>
+                    <h3 className="mt-3 font-display text-2xl font-semibold">{job.title}</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {job.employmentType} · {peso(job.salaryMin)} – {peso(job.salaryMax)} / month
+                    </p>
+                    <p className="mt-3 flex-1 text-sm text-muted-foreground">{job.summary}</p>
+                    <Button asChild className="mt-5 w-full">
+                      <Link to="/jobs/$jobId" params={{ jobId: job.id }}>
+                        Apply Now
+                      </Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              </Reveal>
+            ))
+          )}
         </div>
       </section>
     </PublicShell>

@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useEffect } from "react";
 
 export type ThemeChoice = "Light" | "Dark" | "System";
@@ -62,6 +63,19 @@ export function applyTheme(choice: ThemeChoice): void {
 /** Apply persisted theme ASAP on boot (before first paint where possible). */
 export function applyInitialTheme(): void {
   applyTheme(getStoredTheme());
+}
+
+/** Reactive theme choice for UI bindings (toggle components). */
+export function useThemeChoice(): { choice: ThemeChoice; setChoice: (c: ThemeChoice) => void } {
+  const [choice, setChoiceState] = React.useState<ThemeChoice>(() => getStoredTheme());
+  const setChoice = React.useCallback((c: ThemeChoice) => {
+    applyTheme(c);
+    setChoiceState(c);
+  }, []);
+  React.useEffect(() => {
+    setChoiceState(getStoredTheme());
+  }, []);
+  return { choice, setChoice };
 }
 
 /**
