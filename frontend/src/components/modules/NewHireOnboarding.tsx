@@ -406,10 +406,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       })
       .catch((err) => {
         // 401 (expired token) is handled globally (redirect to /login);
-        // CORS-blocked fetches throw NetworkError — both fall back to mock
-        // data, so only log unexpected failures.
+        // NetworkError (CORS/offline) and SyntaxError (proxy returned HTML,
+        // e.g. stale-Vite/SSR fallback) both fall back to mock data, so only
+        // log unexpected failures.
         const status = (err as { status?: number } | null)?.status;
-        if (status !== 401 && !(err instanceof TypeError)) {
+        if (status !== 401 && !(err instanceof TypeError) && !(err instanceof SyntaxError)) {
           console.warn("Could not fetch applicants from API:", err);
         }
       });
