@@ -30,8 +30,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   essApi,
-  newHiresApi,
-  onboardingItemsApi,
   type ApiEssOverview,
   type ApiRecognitionItem,
 } from "@/lib/api";
@@ -53,7 +51,6 @@ function EmployeeDashboard() {
   const [recognitions, setRecognitions] = useState<ApiRecognitionItem[]>([]);
   const [pendingTasks, setPendingTasks] = useState<string[]>([]);
   const [loadingOnboarding, setLoadingOnboarding] = useState(true);
-  const [wasInOnboarding, setWasInOnboarding] = useState(false);
   const [loadingRecognitions, setLoadingRecognitions] = useState(true);
   /** True while the ESS overview request is in flight. */
   const loadingOverview = overview === null;
@@ -90,34 +87,24 @@ function EmployeeDashboard() {
       .catch(() => { })
       .finally(() => setLoadingRecognitions(false));
 
-    // 3. Fetch Onboarding Tasks (only shows the authenticated employee's own tasks)
-    newHiresApi
-      .list({ per_page: 100 })
+    // 3. Fetch Onboarding Tasks — ESS-safe: the employee's OWN checklist
+    // only. (The staff /new-hires list needs the New Hire Onboarding module
+    // permission, which employees don't have, so it 403s here. my-checklist
+    // resolves the hire server-side from the auth session instead of fragile
+    // name/email matching.)
+    essApi
+      .myChecklist()
       .then((res) => {
-        const mine =
-          res.data.find(
-            (h) =>
-              (user?.employee_id && h.employee_id === user.employee_id) ||
-              h.name.toLowerCase() === employeeName.toLowerCase() ||
-              h.email === user?.email
-          ) ?? null;
-
-        if (!mine) {
-          setPendingTasks([]);
-          return;
-        }
-
-        setWasInOnboarding(true);
-        return onboardingItemsApi.listForNewHire(mine.new_hire_id).then((items) => {
-          const uncompleted = items.filter((i) => !i.done).map((i) => i.item_text);
-          setPendingTasks(uncompleted);
-        });
+        const uncompleted = (res?.data ?? [])
+          .filter((i) => !i.done)
+          .map((i) => i.item_text);
+        setPendingTasks(uncompleted);
       })
       .catch(() => {
         setPendingTasks([]);
       })
       .finally(() => setLoadingOnboarding(false));
-  }, [employeeName, user?.employee_id, user?.email]);
+  }, [user?.employee_id, user?.email]);
 
   const shiftBadgeText = overview?.today_schedule?.is_rest_day
     ? "Rest Day (Off Duty)"
@@ -211,30 +198,6 @@ function EmployeeDashboard() {
             <Button asChild size="sm" variant="outline" className="border-amber-500/40 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 shrink-0 text-xs h-8">
               <Link to="/employee/onboarding">
                 Complete Onboarding <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-              </Link>
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Onboarding Complete — ESS transition banner */}
-      {!loadingOnboarding && wasInOnboarding && pendingTasks.length === 0 && (
-        <div className="mb-6 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-600">
-                <CheckCircle2 className="h-5 w-5" />
-              </span>
-              <div>
-                <h3 className="font-semibold text-sm text-foreground">Onboarding Complete! 🎉</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  All requirements submitted and verified. Welcome to the Oxford Suites Makati team!
-                </p>
-              </div>
-            </div>
-            <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 text-xs h-8">
-              <Link to="/employee/ess">
-                Explore ESS Portal <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
               </Link>
             </Button>
           </div>

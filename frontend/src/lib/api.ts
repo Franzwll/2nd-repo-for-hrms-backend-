@@ -1266,6 +1266,21 @@ export interface ApiNewHire {
   }[];
 }
 
+export interface ApiOnboardingSubmission {
+  employee_onboarding_item_id: number;
+  new_hire_id: number | null;
+  hire_name: string;
+  hire_stage?: string | null;
+  employee_id: number | null;
+  item_text: string;
+  phase?: string | null;
+  file_name?: string | null;
+  notes?: string | null;
+  submitted_at?: string | null;
+  returned_count: number;
+  review_note?: string | null;
+}
+
 export interface ApiChecklistTemplate {
   template_id: number;
   template_code: string;
@@ -1382,11 +1397,31 @@ export const onboardingItemsApi = {
       method: "POST",
       body: JSON.stringify({ template_item_id: templateItemId }),
     }),
-  toggle: (itemId: number | string, body?: { done: boolean }) =>
-    request<{ employee_onboarding_item_id: number; done: boolean; completed_at: string | null }>(
+  toggle: (itemId: number | string, body?: { done: boolean; review_note?: string | null }) =>
+    request<{
+      employee_onboarding_item_id: number;
+      done: boolean;
+      completed_at: string | null;
+      review_note?: string | null;
+      returned_count?: number;
+    }>(
       `/onboarding-items/${itemId}/toggle`,
       { method: "PATCH", ...(body ? { body: JSON.stringify(body) } : {}) },
     ),
+  /** HR sends a submission back for correction with a reason (Edit-gated). */
+  returnItem: (itemId: number | string, body: { note: string }) =>
+    request<{
+      employee_onboarding_item_id: number;
+      done: boolean;
+      review_note: string | null;
+      returned_count: number;
+    }>(`/onboarding-items/${itemId}/return`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** HR review queue: submitted-but-unverified items across hires (Edit-gated). */
+  submissions: () =>
+    request<{ count: number; data: ApiOnboardingSubmission[] }>(`/onboarding-submissions`),
   upload: (itemId: number | string, formData: FormData) =>
     request<{
       employee_onboarding_item_id: number;

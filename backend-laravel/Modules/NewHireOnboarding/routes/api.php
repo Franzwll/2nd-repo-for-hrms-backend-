@@ -96,6 +96,12 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
            Route::patch('onboarding-items/{item}/toggle', [EmployeeOnboardingItemController::class, 'toggle'])
                ->name('onboarding-items.toggle');
 
+          Route::post('onboarding-items/{item}/return', [EmployeeOnboardingItemController::class, 'returnItem'])
+               ->name('onboarding-items.return');
+
+          Route::get('onboarding-submissions', [EmployeeOnboardingItemController::class, 'pendingReview'])
+               ->name('onboarding-items.submissions');
+
           Route::post('checklist-templates', [ChecklistTemplateController::class, 'store'])
                ->name('checklist-template.store');
 

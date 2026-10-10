@@ -10,6 +10,7 @@ import {
   FileCheck2,
   FileText,
   Hourglass,
+  Inbox,
   Info,
   Loader2,
   Lock,
@@ -17,6 +18,7 @@ import {
   Plus,
   Printer,
   RefreshCw,
+  RotateCcw,
   Save,
   Search,
   Send,
@@ -104,6 +106,7 @@ import {
   settingsApi,
   type ApiChecklistRequest,
   type ApiNewHire,
+  type ApiOnboardingSubmission,
 } from "@/lib/api";
 import {
   describeExport,
@@ -434,6 +437,68 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const [newItemUploadPlaceholder, setNewItemUploadPlaceholder] = useState("");
   const [showItemDetails, setShowItemDetails] = useState(false);
   const [tab, setTab] = useState("pipeline");
+  /** HR review queue: submitted-but-unverified onboarding items across hires. */
+  const [submissions, setSubmissions] = useState<ApiOnboardingSubmission[]>([]);
+  const [subLoading, setSubLoading] = useState(false);
+  const [verifyingId, setVerifyingId] = useState<number | null>(null);
+  /** Submission being returned for correction + the HR note. */
+  const [returnTarget, setReturnTarget] = useState<ApiOnboardingSubmission | null>(null);
+  const [returnNote, setReturnNote] = useState("");
+  const [returnBusy, setReturnBusy] = useState(false);
+
+  const loadSubmissions = useCallback(async () => {
+    setSubLoading(true);
+    try {
+      const res = await onboardingItemsApi.submissions();
+      setSubmissions(res?.data ?? []);
+    } catch {
+      // Keep previous state on error
+    } finally {
+      setSubLoading(false);
+    }
+  }, []);
+
+  /** Refresh the review queue whenever HR opens the Submissions tab. */
+  useEffect(() => {
+    if (tab === "submissions") {
+      loadSubmissions();
+    }
+  }, [tab, loadSubmissions]);
+
+  const handleVerifySubmission = async (s: ApiOnboardingSubmission) => {
+    setVerifyingId(s.employee_onboarding_item_id);
+    try {
+      await onboardingItemsApi.toggle(s.employee_onboarding_item_id, { done: true });
+      toast.success(`Verified "${s.item_text}" for ${s.hire_name}.`);
+      await loadSubmissions();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not verify submission.");
+    } finally {
+      setVerifyingId(null);
+    }
+  };
+
+  const handleReturnSubmission = async () => {
+    if (!returnTarget) return;
+    if (!returnNote.trim()) {
+      toast.error("Please add a correction note so the employee knows what to fix.");
+      return;
+    }
+    setReturnBusy(true);
+    try {
+      await onboardingItemsApi.returnItem(returnTarget.employee_onboarding_item_id, {
+        note: returnNote.trim(),
+      });
+      toast.success(`Returned "${returnTarget.item_text}" for correction.`);
+      setReturnTarget(null);
+      setReturnNote("");
+      await loadSubmissions();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not return submission.");
+    } finally {
+      setReturnBusy(false);
+    }
+  };
   const [draftItems, setDraftItems] = useState<
     {
       item_text: string;
@@ -1180,6 +1245,14 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
           </TabsTrigger>
           <TabsTrigger className="flex items-center gap-1.5" value="checklists">
             <Send className="h-3.5 w-3.5" /> Requested Checklists
+          </TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5" value="submissions">
+            <Inbox className="h-3.5 w-3.5" /> Submissions
+            {submissions.length > 0 && (
+              <span className="ml-1 rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold text-primary">
+                {submissions.length}
+              </span>
+            )}
           </TabsTrigger>
         </TabsList>
 
@@ -2236,6 +2309,127 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
             </Card>
           </div>
         </TabsContent>
+
+        <TabsContent value="submissions" className="mt-4 space-y-6">
+          {/* HR REVIEW QUEUE — every submitted-but-unverified item across
+              hires. Verifying notifies the employee; returning sends the
+              correction note back to their checklist. */}
+          <Card className="border-border/70">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
+              <div>
+                <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold">
+                  <Inbox className="h-5 w-5 text-primary" /> Submissions Awaiting Review
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {submissions.length === 0
+                    ? "Nothing pending — new employee uploads land here."
+                    : `${submissions.length} submission${submissions.length === 1 ? "" : "s"} need${submissions.length === 1 ? "s" : ""} verification.`}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 cursor-pointer"
+                onClick={loadSubmissions}
+                disabled={subLoading}
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", subLoading && "animate-spin")} />
+                Refresh
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {subLoading ? (
+                <ListSkeleton items={4} />
+              ) : submissions.length === 0 ? (
+                <ListEmptyState
+                  subject="submissions awaiting review"
+                />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>New Hire</TableHead>
+                      <TableHead>Requirement</TableHead>
+                      <TableHead>Submitted</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {submissions.map((s) => (
+                      <TableRow key={s.employee_onboarding_item_id}>
+                        <TableCell>
+                          <p className="text-sm font-semibold">{s.hire_name}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {s.hire_stage ?? "Probationary"}
+                            {s.returned_count > 0 ? ` · returned ${s.returned_count}×` : ""}
+                          </p>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm">{s.item_text}</p>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            {s.phase && (
+                              <Badge variant="outline" className="text-[10px]">
+                                {s.phase}
+                              </Badge>
+                            )}
+                            {s.file_name && (
+                              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                                <FileCheck2 className="h-3 w-3 text-primary" />
+                                {s.file_name}
+                              </span>
+                            )}
+                          </div>
+                          {s.notes && (
+                            <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
+                              Note: {s.notes}
+                            </p>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {s.submitted_at
+                            ? new Date(s.submitted_at).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                              })
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1.5">
+                            <Button
+                              size="sm"
+                              className="h-8 cursor-pointer text-xs"
+                              disabled={verifyingId === s.employee_onboarding_item_id}
+                              onClick={() => handleVerifySubmission(s)}
+                            >
+                              {verifyingId === s.employee_onboarding_item_id ? (
+                                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                              )}
+                              Verify
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 cursor-pointer text-xs"
+                              onClick={() => {
+                                setReturnTarget(s);
+                                setReturnNote(s.review_note ?? "");
+                              }}
+                            >
+                              <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                              Return
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {/* DELETE CONFIRMATION — checklist template / checklist item / requested checklist */}
@@ -2536,6 +2730,60 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Return-for-correction dialog: HR explains what the employee must fix */}
+      <Dialog
+        open={returnTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReturnTarget(null);
+            setReturnNote("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-4 w-4 text-orange-500" /> Return for correction
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            {returnTarget && (
+              <>
+                <strong className="text-foreground">{returnTarget.item_text}</strong> ·{" "}
+                {returnTarget.hire_name}. The employee keeps their uploaded file and
+                sees this note on their checklist.
+              </>
+            )}
+          </p>
+          <Textarea
+            value={returnNote}
+            onChange={(e) => setReturnNote(e.target.value)}
+            placeholder="e.g. The NBI clearance photo is blurry — please re-upload a clear scan."
+            rows={4}
+            className="text-xs"
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setReturnTarget(null);
+                setReturnNote("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleReturnSubmission} disabled={returnBusy}>
+              {returnBusy ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Send className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              Send correction
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -2557,6 +2805,10 @@ type EmployeeChecklistItem = {
   phase: Phase;
   /** Employee has submitted this requirement (awaiting HR verification). */
   submittedAt?: string;
+  /** HR correction feedback on a returned submission (null once verified). */
+  reviewNote?: string | null;
+  /** How many times HR has returned this item for correction. */
+  returnedCount?: number;
   /** Database onboarding item id — used to toggle completion / upload via the API. */
   dbId?: number;
   /** Template item id — virtual items are materialized on first interaction. */
@@ -2579,6 +2831,10 @@ function EmployeeChecklistRow({
   onView: (i: EmployeeChecklistItem) => void;
 }) {
   const submitted = Boolean(item.submittedAt || item.fileName || item.notes);
+  /** Pre-onboarding items are HR-owned context — visible but not actionable. */
+  const readOnly = item.phase === "Pre-onboarding";
+  /** HR sent the submission back with a correction note. */
+  const returned = !item.done && !!item.reviewNote;
 
   return (
     <div
@@ -2617,13 +2873,26 @@ function EmployeeChecklistRow({
               className={
                 item.done
                   ? "bg-success/10 text-success border-success/30 text-[10px]"
-                  : submitted
-                    ? "bg-destructive/10 text-destructive border-destructive/30 text-[10px]"
-                    : "bg-caution/10 text-caution border-caution/30 text-[10px]"
+                  : returned
+                    ? "bg-orange-500/10 text-orange-600 border-orange-500/30 text-[10px]"
+                    : submitted
+                      ? "bg-destructive/10 text-destructive border-destructive/30 text-[10px]"
+                      : "bg-caution/10 text-caution border-caution/30 text-[10px]"
               }
             >
-              {item.done ? "Verified by HR" : submitted ? "Submitted · pending review" : "Pending"}
+              {item.done
+                ? "Verified by HR"
+                : returned
+                  ? "Returned for correction"
+                  : submitted
+                    ? "Submitted · pending review"
+                    : "Pending"}
             </Badge>
+            {readOnly && (
+              <Badge variant="outline" className="bg-muted/40 text-muted-foreground text-[10px]">
+                Pre-onboarding · view only
+              </Badge>
+            )}
             {item.fileName && (
               <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                 <FileCheck2 className="h-3 w-3 text-primary" /> Attachment uploaded
@@ -2631,6 +2900,14 @@ function EmployeeChecklistRow({
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">{item.date}</p>
+            {returned && (
+              <p className="text-[11px] text-orange-600 dark:text-orange-400 mt-1 leading-snug">
+                HR feedback: {item.reviewNote}
+                {typeof item.returnedCount === "number" && item.returnedCount > 1
+                  ? ` (returned ${item.returnedCount}×)`
+                  : ""}
+              </p>
+            )}
         </div>
       </div>
 
@@ -2727,13 +3004,11 @@ export function EmployeeOnboarding() {
       .then((mine) => {
         if (!mine) return;
         return itemLookup(mine).then((apiItems) => {
-          // Show ONLY the Probationary checklist — pre-onboarding / onboarding
-          // items are hidden from the employee portal entirely.
-          const probationaryOnly = apiItems.filter(
-            (i) => (i.phase ?? "Probationary") === "Probationary",
-          );
+          // All assigned phases are visible. Probationary items are fully
+          // actionable; Pre-onboarding items are read-only context (HR-owned)
+          // so new hires see what's coming without editing it.
           setItems(
-            probationaryOnly.map((i) => ({
+            apiItems.map((i) => ({
               id: i.employee_onboarding_item_id
                 ? `chk-${i.employee_onboarding_item_id}`
                 : `virt-${i.template_item_id}`,
@@ -2764,7 +3039,9 @@ export function EmployeeOnboarding() {
                   : (i.submitted_at?.slice(0, 10) ?? "2026-08-01"),
               done: Boolean(i.done),
               rank: i.done ? 0 : i.submitted_at ? 1 : 2,
-              phase: "Probationary" as Phase,
+              phase: ((i.phase ?? "Probationary") as Phase),
+              reviewNote: (i.review_note ?? null) as string | null,
+              returnedCount: (i.returned_count ?? 0) as number,
             })),
           );
         });
@@ -3294,7 +3571,7 @@ export function EmployeeOnboarding() {
                   <ClipboardList className="h-5 w-5 text-primary" /> Onboarding Checklist
                 </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Probationary checklist requirements
+                  Onboarding checklist requirements — probationary items are actionable, pre-onboarding items are view-only
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -3327,7 +3604,7 @@ export function EmployeeOnboarding() {
                 ) : filteredItems.length === 0 ? (
                   <div className="flex h-full items-center justify-center py-12 px-4 text-center text-sm text-muted-foreground">
                     {totalCount === 0
-                      ? "No probationary onboarding checklist assigned yet — your HR admin will assign requirements once you start."
+                      ? "No onboarding checklist assigned yet — your HR admin will assign requirements once you start."
                       : "No checklist items match the current filter."}
                   </div>
                 ) : (
@@ -3367,8 +3644,13 @@ export function EmployeeOnboarding() {
                       {viewingItem.done ? "Completed" : "Pending Action"}
                     </Badge>
                     <Badge variant="outline" className="text-xs">
-                      Probationary
+                      {viewingItem.phase}
                     </Badge>
+                    {viewingItem.phase === "Pre-onboarding" && (
+                      <Badge variant="outline" className="bg-muted/40 text-muted-foreground text-xs">
+                        View only · managed by HR
+                      </Badge>
+                    )}
                   </div>
                   <CardTitle className="font-display text-lg font-semibold leading-tight">
                     {viewingItem.title}
@@ -3396,6 +3678,29 @@ export function EmployeeOnboarding() {
                     "Please complete this requirement and upload the supporting document for HR verification."}
                 </div>
 
+                {/* HR correction feedback — resubmit below to resolve it */}
+                {!viewingItem.done && viewingItem.reviewNote && (
+                  <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-xs leading-relaxed">
+                    <p className="font-semibold text-orange-600 dark:text-orange-400">
+                      HR requested a correction
+                      {typeof viewingItem.returnedCount === "number" &&
+                      viewingItem.returnedCount > 1
+                        ? ` (returned ${viewingItem.returnedCount}×)`
+                        : ""}
+                    </p>
+                    <p className="text-foreground mt-1">{viewingItem.reviewNote}</p>
+                  </div>
+                )}
+
+                {/* Pre-onboarding items are HR-owned: details are visible,
+                    submission controls are hidden */}
+                {viewingItem.phase === "Pre-onboarding" && (
+                  <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground leading-relaxed">
+                    This is a pre-onboarding requirement managed by HR. No action
+                    is needed from you here — it will unlock for submission if HR
+                    assigns it to your probationary checklist.
+                  </div>
+                )}
                 {/* Existing Uploaded Document */}
                 {viewingItem.fileName && (
                   <div className="flex items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/5 p-3">
@@ -3433,7 +3738,8 @@ export function EmployeeOnboarding() {
                 {/* Upload Dropzone / Placeholder — only when the checklist
                     item requires an upload; stretches to fill leftover
                     vertical space in the card */}
-                {viewingItem.requiresUpload !== false && (
+                {viewingItem.phase !== "Pre-onboarding" &&
+                  viewingItem.requiresUpload !== false && (
                   <div className="flex flex-1 flex-col gap-2">
                     <Label className="text-xs font-semibold">
                       {viewingItem.fileName
@@ -3503,7 +3809,8 @@ export function EmployeeOnboarding() {
                   </div>
                 )}
 
-                {/* Optional Notes */}
+                {/* Optional Notes — hidden for read-only pre-onboarding items */}
+                {viewingItem.phase !== "Pre-onboarding" && (
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">
                     Notes / Details{" "}
@@ -3517,6 +3824,7 @@ export function EmployeeOnboarding() {
                     className="text-xs"
                   />
                 </div>
+                )}
 
                 {/* Action Buttons — pinned to the bottom of the card */}
                 <div className="mt-auto flex items-center justify-end gap-2 border-t border-border pt-3">
@@ -3531,6 +3839,7 @@ export function EmployeeOnboarding() {
                   >
                     Cancel
                   </Button>
+                  {viewingItem.phase !== "Pre-onboarding" && (
                   <Button
                     size="sm"
                     onClick={handleTaskSubmit}
@@ -3548,6 +3857,7 @@ export function EmployeeOnboarding() {
                       </>
                     )}
                   </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
