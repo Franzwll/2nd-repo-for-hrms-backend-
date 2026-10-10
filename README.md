@@ -1,4 +1,4 @@
-# HRMS — Recruitment, Onboarding & Core HCM
+# HRMS — Recruitment and Onboarding, & Core HCM
 
 A full-stack Human Resource Management System covering the complete employee lifecycle — from public job seekers and applicants, through onboarding, into day-to-day Core HCM and employee self-service.
 
