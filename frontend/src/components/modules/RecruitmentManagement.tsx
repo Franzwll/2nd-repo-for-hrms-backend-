@@ -166,7 +166,6 @@ import {
   type ReportFormat,
 } from "@/lib/report-export";
 import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
-import { ReportMenu } from "@/components/ui/report-menu";
 import {
   RequirementMatchPanel,
   ResumeInfoPanel,
@@ -1934,6 +1933,14 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
   const [tab, setTab] = useState("postings");
   const [mode, setMode] = useState<"template" | "custom">("custom");
+  /** Predefined reports dialog + password-protected export flow (asked on every export). */
+  const [reportsOpen, setReportsOpen] = useState(false);
+  const [csvOpen, setCsvOpen] = useState(false);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvPending, setCsvPending] = useState<{
+    id: RecruitmentReportId;
+    format: ReportFormat;
+  } | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [blocks, setBlocks] = useState<BlockId[]>([]);
   const [dragging, setDragging] = useState<BlockId | null>(null);
@@ -4197,9 +4204,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const recruitmentReport = buildPostingsReport();
   const requisitionReport = buildRequisitionsReport();
 
-<<<<<<< HEAD
-  /** Inner Vacancy Requisitions toolbar — same secure function as Export org chart. */
-=======
   /** Every format is password-protected: picking one opens the password gate. */
   const handleExportRecruitmentReport = (id: RecruitmentReportId, format: ReportFormat) => {
     if (buildRecruitmentReport(id).rows.length === 0) {
@@ -4284,7 +4288,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       </DropdownMenu>
     );
   };
->>>>>>> origin/ferdy
 
   const salaryLine =
     draft.salaryMin || draft.salaryMax
@@ -4836,12 +4839,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         title="Recruitment Management"
         actions={
           <div className="flex items-center gap-2">
-            <ReportMenu
-              recordCount={tab === "requisitions" ? filteredRequisitions.length : filteredJobs.length}
-              report={() =>
-                tab === "requisitions" ? buildRequisitionsReport() : buildPostingsReport()
-              }
-            />
+            <Button variant="outline" className="gap-2" onClick={() => setReportsOpen(true)}>
+              <Download className="h-4 w-4" /> Generate Report
+            </Button>
             <Button
               size="icon"
               variant="outline"
@@ -5376,9 +5376,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     </SelectContent>
                   </Select>
                   <ReportMenu
-                    report={() => buildRequisitionsReport()}
-                    recordCount={filteredRequisitions.length}
-                    label="Generate report"
+                    report={requisitionReport}
+                    reportId="requisitions"
                     buttonClassName="h-10 whitespace-nowrap"
                   />
                 </div>
@@ -8036,10 +8035,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         </DialogContent>
       </Dialog>
 
-<<<<<<< HEAD
-      {/* Predefined reports now export directly from the header MultiReportMenu
-          dropdown (same secure function as Export org chart). */}
-=======
       {/* PREDEFINED REPORTS DIALOG */}
       <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
         <DialogContent className="sm:max-w-lg">
@@ -8111,8 +8106,35 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           </div>
         </DialogContent>
       </Dialog>
->>>>>>> origin/ferdy
 
+      <SecureExportDialog
+        open={csvOpen}
+        onOpenChange={(o) => {
+          if (!csvBusy) {
+            setCsvOpen(o);
+            if (!o) setCsvPending(null);
+          }
+        }}
+        reportTitle={
+          csvPending
+            ? (recruitmentReportOptions.find((o) => o.id === csvPending.id)?.title ??
+              "Recruitment report")
+            : "Recruitment report"
+        }
+        formatLabel={
+          !csvPending
+            ? ""
+            : csvPending.format === "pdf"
+              ? "PDF"
+              : csvPending.format === "docx"
+                ? "DOCX"
+                : csvPending.format === "excel"
+                  ? "Excel"
+                  : "CSV"
+        }
+        busy={csvBusy}
+        onConfirm={confirmRecruitmentCsv}
+      />
     </div>
   );
 }

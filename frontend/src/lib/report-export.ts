@@ -915,16 +915,12 @@ export function printReport(report: ReportData): void {
   );
 }
 
-<<<<<<< HEAD
-export function build201FileReport(data: {
-=======
 /* ------------------------------------------------------------------ */
 /*  201-File Report Builder                                            */
 /* ------------------------------------------------------------------ */
 
 /** Input shape accepted by `build201FileReport`. */
 export interface Build201FileInput {
->>>>>>> origin/ferdy
   employeeName: string;
   employeeCode: string;
   position: string;
@@ -937,42 +933,6 @@ export interface Build201FileInput {
   supervisor: string;
   documents: { name: string; status: string; file?: string }[];
   history: { type: string; date: string; detail: string }[];
-<<<<<<< HEAD
-}): ReportData {
-  return {
-    title: `201 File Dossier: ${data.employeeName}`,
-    subtitle: `${data.employeeCode} · ${data.position} · ${data.department}`,
-    columns: [
-      { header: "Record / Document", key: "item" },
-      { header: "Type / Category", key: "type" },
-      { header: "Status / Date", key: "status" },
-      { header: "Details", key: "detail" },
-    ],
-    rows: [
-      ...data.documents.map((d) => ({
-        item: d.name,
-        type: "Document",
-        status: d.status,
-        detail: d.file ? `Attached: ${d.file}` : "On file",
-      })),
-      ...data.history.map((h) => ({
-        item: h.type,
-        type: "Employment History",
-        status: h.date,
-        detail: h.detail,
-      })),
-    ],
-    summary: [
-      { label: "Employee Name", value: data.employeeName },
-      { label: "ID Code", value: data.employeeCode },
-      { label: "Department", value: data.department },
-      { label: "Position", value: data.position },
-      { label: "Status", value: data.status },
-      { label: "Date Hired", value: data.dateHired },
-      { label: "Supervisor", value: data.supervisor },
-    ],
-    sensitive: true,
-=======
 }
 
 /**
@@ -1053,7 +1013,6 @@ export function build201FileReport(input: Build201FileInput): ReportData {
       { label: "Documents on File", value: documents.length },
       { label: "History Entries", value: history.length },
     ],
->>>>>>> origin/ferdy
   };
 }
 
