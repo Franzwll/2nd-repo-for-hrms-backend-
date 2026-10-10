@@ -77,16 +77,25 @@ function AdminDashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      dashboardApi.stats(),
-      applicantsApi.list({ per_page: 100 }),
-      jobPostsApi.list({ per_page: 100, status: "Open" }),
-    ])
-      .then(([s, a, j]) => {
-        if (cancelled) return;
-        setStats(s.data);
-        setApplicants(a.data ?? []);
-        setOpenJobs((j.data ?? []).filter((p) => p.active));
+    // Independent fetches: a single HTML/proxy failure must not blank the
+    // whole dashboard (Promise.all rejects on the first rejection, leaving
+    // `stats === null` and the pink skeletons stuck forever).
+    dashboardApi
+      .stats()
+      .then((s) => {
+        if (!cancelled) setStats(s.data);
+      })
+      .catch(() => {});
+    applicantsApi
+      .list({ per_page: 100 })
+      .then((a) => {
+        if (!cancelled) setApplicants(a.data ?? []);
+      })
+      .catch(() => {});
+    jobPostsApi
+      .list({ per_page: 100, status: "Open" })
+      .then((j) => {
+        if (!cancelled) setOpenJobs((j.data ?? []).filter((p) => p.active));
       })
       .catch(() => {});
 
