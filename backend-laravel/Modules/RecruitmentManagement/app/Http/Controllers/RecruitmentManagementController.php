@@ -276,7 +276,10 @@ class RecruitmentManagementController extends Controller
             }
         }
 
-        abort(404);
+        // The picture column points at a file that no longer exists on disk
+        // (stale path after a storage wipe / import). Degrade to the composed
+        // template poster instead of a 404 so cards never render broken.
+        return $this->posterResponse($model->title);
     }
 
     /* ------------------------------------------------------------------ */
@@ -320,6 +323,11 @@ class RecruitmentManagementController extends Controller
         }
         $platforms = $data['platforms'] ?? null;
         unset($data['platforms']);
+
+        // Same Core HCM band defaulting as create(): an edit that clears the
+        // salary (or omits it) still inherits the position's grade band rather
+        // than persisting an empty range on the post.
+        $data = $this->applyPositionSalaryDefaults($data);
 
         // Handle poster picture replacement
         if ($request->hasFile('picture')) {
@@ -437,7 +445,7 @@ class RecruitmentManagementController extends Controller
 
         if (! $generator->isConfigured()) {
             return response()->json([
-                'message' => 'The AI generator is not configured. Set GEMINI_API_KEY (or OPENROUTER_API_KEY) on the API server.',
+                'message' => 'The AI generator is not configured. Set JOB_GROQ_API_KEY (or a fallback key) on the API server.',
             ], 422);
         }
 

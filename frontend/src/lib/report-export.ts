@@ -915,7 +915,12 @@ export function printReport(report: ReportData): void {
   );
 }
 
-export function build201FileReport(data: {
+/* ------------------------------------------------------------------ */
+/*  201-File Report Builder                                            */
+/* ------------------------------------------------------------------ */
+
+/** Input shape accepted by `build201FileReport`. */
+export interface Build201FileInput {
   employeeName: string;
   employeeCode: string;
   position: string;
@@ -928,40 +933,86 @@ export function build201FileReport(data: {
   supervisor: string;
   documents: { name: string; status: string; file?: string }[];
   history: { type: string; date: string; detail: string }[];
-}): ReportData {
+}
+
+/**
+ * Builds a `ReportData` payload that represents an employee's complete 201 file.
+ *
+ * The resulting object can be passed directly to `exportReport` (PDF / DOCX /
+ * Excel / CSV) or `printReport` to produce a formal, branded document.
+ */
+export function build201FileReport(input: Build201FileInput): ReportData {
+  const {
+    employeeName,
+    employeeCode,
+    position,
+    department,
+    status,
+    employmentType,
+    dateHired,
+    email,
+    phone,
+    supervisor,
+    documents,
+    history,
+  } = input;
+
+  /* ---- rows: one row per document entry ---- */
+  const docRows = documents.map((d, i) => ({
+    "#": i + 1,
+    document: d.name,
+    status: d.status,
+    file: d.file || "—",
+  }));
+
+  /* ---- optional history addendum rows ---- */
+  const historyRows = history.map((h, i) => ({
+    "#": i + 1,
+    type: h.type,
+    date: h.date,
+    detail: h.detail,
+  }));
+
+  /* Combine document rows and history rows so the single report contains
+     everything.  If history is present, append a visual separator row and
+     then history entries. */
+  const rows: Record<string, any>[] = [
+    ...docRows,
+    ...(historyRows.length
+      ? [{ "#": "", document: "— Employment History —", status: "", file: "" }, ...historyRows.map((h) => ({
+          "#": h["#"],
+          document: `[${h.type}] ${h.detail}`,
+          status: h.date,
+          file: "",
+        }))]
+      : []),
+  ];
+
   return {
-    title: `201 File Dossier: ${data.employeeName}`,
-    subtitle: `${data.employeeCode} · ${data.position} · ${data.department}`,
-    columns: [
-      { header: "Record / Document", key: "item" },
-      { header: "Type / Category", key: "type" },
-      { header: "Status / Date", key: "status" },
-      { header: "Details", key: "detail" },
-    ],
-    rows: [
-      ...data.documents.map((d) => ({
-        item: d.name,
-        type: "Document",
-        status: d.status,
-        detail: d.file ? `Attached: ${d.file}` : "On file",
-      })),
-      ...data.history.map((h) => ({
-        item: h.type,
-        type: "Employment History",
-        status: h.date,
-        detail: h.detail,
-      })),
-    ],
-    summary: [
-      { label: "Employee Name", value: data.employeeName },
-      { label: "ID Code", value: data.employeeCode },
-      { label: "Department", value: data.department },
-      { label: "Position", value: data.position },
-      { label: "Status", value: data.status },
-      { label: "Date Hired", value: data.dateHired },
-      { label: "Supervisor", value: data.supervisor },
-    ],
+    title: `201 File — ${employeeName}`,
+    subtitle: `Employee Code: ${employeeCode} · ${department} · ${position}`,
     sensitive: true,
+    columns: [
+      { header: "#", key: "#", width: "40px" },
+      { header: "Document / Entry", key: "document" },
+      { header: "Status / Date", key: "status", width: "120px" },
+      { header: "Attachment", key: "file", width: "100px" },
+    ],
+    rows,
+    summary: [
+      { label: "Employee Name", value: employeeName },
+      { label: "Employee Code", value: employeeCode },
+      { label: "Position", value: position },
+      { label: "Department", value: department },
+      { label: "Status", value: status },
+      { label: "Employment Type", value: employmentType },
+      { label: "Date Hired", value: dateHired },
+      { label: "Email", value: email },
+      { label: "Phone", value: phone },
+      { label: "Supervisor", value: supervisor },
+      { label: "Documents on File", value: documents.length },
+      { label: "History Entries", value: history.length },
+    ],
   };
 }
 

@@ -4,7 +4,11 @@
 
 import { clearSession, getToken } from "./auth";
 
-const BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string) || "http://127.0.0.1:8000/api/v1";
+const RAW_BASE_URL =
+  (import.meta.env["VITE_API_BASE_URL"] as string) || "http://127.0.0.1:8000/api/v1";
+// Normalize: "/api" + "/applicants" must join as "/api/v1/applicants" (the Vite
+// dev proxy forwards /api -> Laravel), never "/api/applicants".
+const BASE_URL = RAW_BASE_URL.replace(/\/+$/, "") + (RAW_BASE_URL.replace(/\/+$/, "").endsWith("/v1") ? "" : "/v1");
 export const API_BASE_URL = BASE_URL;
 
 /** Never show raw SQL / DB internals to users — collapse them to a generic message. */
@@ -89,6 +93,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     // If 204 No Content
     if (response.status === 204) {
       return {} as T;
+    }
+
+    // Vite proxy / SSR fallback can answer with 200 + text/html (index.html)
+    // when the backend is unreachable or the dev server hasn't reloaded.
+    // Fail fast as a network error (mock-data fallback) instead of a
+    // confusing `JSON.parse: unexpected character` SyntaxError.
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      throw new TypeError(
+        `Expected JSON but received ${contentType || "unknown content type"} (HTTP ${response.status}) for ${url}`,
+      );
     }
 
     return response.json();
@@ -587,6 +602,11 @@ export const applicantsApi = {
 };
 
 export const assessmentsApi = {
+  /** Global Assessment Test / Practical Test switches owned by Core HCM. */
+  getConfig: () =>
+    request<{ data: { assessment_test_enabled: boolean; practical_test_enabled: boolean } }>(
+      `/assessments/config`,
+    ),
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
     return request<{ data: ApiAssessment[]; meta: any }>(`/assessments${qs ? `?${qs}` : ""}`);
@@ -1178,6 +1198,10 @@ export interface ApiPosition {
   level: string;
   headcount: number;
   filled_count: number;
+  /** Open slots = headcount - filled_count, resolved by PositionResource. */
+  vacancies?: number;
+  requires_assessment?: boolean;
+  requires_practical?: boolean;
 }
 
 /** Core HCM lookups — departments & positions live in the database. */
@@ -1786,6 +1810,8 @@ export interface ApiPosition {
   headcount: number;
   filled_count: number;
   vacancies?: number;
+  requires_assessment?: boolean;
+  requires_practical?: boolean;
 }
 
 export interface ApiSalaryGrade {
@@ -2326,6 +2352,8 @@ export interface ApiRecognitionItem {
     fire: number;
     star: number;
   };
+  shares?: number;
+  userReactions?: string[];
   timeAgo: string;
   createdAt: string;
 }
@@ -2339,6 +2367,8 @@ export interface ApiPayrollData {
   gross: number;
   net: number;
   nextPayout: string;
+  hero_source?: string;
+  hero_period?: string | null;
   deductions: {
     sss: number;
     philhealth: number;
@@ -2354,6 +2384,8 @@ export interface ApiPayrollData {
     net: number;
     payoutDate: string;
     status: string;
+    earnings?: { label: string; amount: number; ytd: number }[];
+    deductions_breakdown?: { label: string; amount: number; ytd: number }[];
   }[];
 }
 
@@ -2385,8 +2417,8 @@ export interface ApiEssOverview {
   performance_summary?: {
     lms_completed: number;
     lms_total: number;
-    competency_level: string;
-    average_score: number;
+    competency_level: string | null;
+    average_score: number | null;
   };
   leave_balances: ApiLeaveBalance[];
   pending_requests_count: number;
@@ -2493,26 +2525,67 @@ export const essApi = {
         name: string;
         role: string;
         department: string;
-        overall_rating: number;
-        competency_level: string;
+        overall_rating: number | null;
+        competency_level: string | null;
       };
       stats: {
         completed_courses: number;
         in_progress_courses: number;
-        average_score: number;
-        total_training_hours: number;
+        average_score: number | null;
+        total_training_hours: number | null;
       };
       courses: {
         id: string;
         title: string;
         category: string;
-        progress: number;
+        progress: number | null;
         status: string;
         score: number | null;
-        duration: string;
+        duration: string | null;
         completedDate: string | null;
       }[];
     }>("/ess/my-performance"),
+  updateLearningProgress: (data: { course_code: string }) =>
+    request<{ message: string; learning: any }>(`/ess/my-learning/progress`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  learningCertificate: (courseCode: string) =>
+    request<{
+      eligible: boolean;
+      verification_code: string | null;
+      course?: {
+        code: string;
+        title: string;
+        category: string;
+        score: number | null;
+        completed_date: string | null;
+      };
+    }>(`/ess/my-learning/certificate/${encodeURIComponent(courseCode)}`),
+  adminLearning: () =>
+    request<{
+      records: {
+        id: number;
+        employee_id: number;
+        employee_name: string;
+        email: string;
+        department: string;
+        course_id: number;
+        course_code: string;
+        course_title: string;
+        course_category: string;
+        status: string;
+        score: number | null;
+        assigned_date: string | null;
+        completed_date: string | null;
+      }[];
+      summary: { total: number; assigned: number; in_progress: number; completed: number };
+    }>(`/ess/admin/learning`),
+  verifyLearning: (id: number | string, data: { status: string; score?: number }) =>
+    request<{ message: string; record: any }>(`/ess/admin/learning/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
   getCategories: () =>
     request<{
       categories: {
@@ -2544,6 +2617,10 @@ export const essApi = {
         body: JSON.stringify({ reaction }),
       },
     ),
+  shareKudos: (id: string) =>
+    request<{ message: string; shares: number }>(`/ess/recognitions/${id}/share`, {
+      method: "POST",
+    }),
   myRequests: (params?: Record<string, any>) => {
     const qs = params ? new URLSearchParams(params).toString() : "";
     return request<{ requests: ApiEssRequestItem[] }>(`/ess/my-requests${qs ? `?${qs}` : ""}`);
@@ -2567,6 +2644,16 @@ export const essApi = {
       body: JSON.stringify({ action }),
     }),
   myPromotionRequests: () => request<{ data: ApiPromotionRequest[] }>("/ess/my-promotion-requests"),
+  // ESS-safe promotion position options (id/title/department only — no Core HCM permission needed).
+  promotionPositions: () =>
+    request<{ data: { position_id: number; title: string; department?: string | null }[] }>(
+      "/ess/promotion-positions",
+    ),
+  // ESS-safe view of the employee's OWN onboarding checklist.
+  myChecklist: () =>
+    request<{ data: any[]; new_hire: { new_hire_id: number; new_hire_code: string; name: string; stage: string } | null }>(
+      "/ess/my-checklist",
+    ),
   createPromotionRequest: (data: {
     requested_position_id?: number | null;
     requested_salary_grade_id?: number | null;
@@ -2739,10 +2826,10 @@ export const chatbotFaqApi = {
   unanswered: () => request<{ data: ApiChatbotUnanswered[] }>("/chatbot/unanswered"),
   dismissUnanswered: (hash: string) =>
     request<{ message: string }>(`/chatbot/unanswered/${hash}`, { method: "DELETE" }),
-  messageFeedback: (messageId: number, value: 1 | -1 | 0) =>
+  messageFeedback: (messageId: number, value: 1 | -1 | 0, sessionId?: string | null) =>
     request<{ message: string }>(`/chatbot/messages/${messageId}/feedback`, {
       method: "POST",
-      body: JSON.stringify({ value }),
+      body: JSON.stringify({ value, session_id: sessionId ?? null }),
     }),
 };
 

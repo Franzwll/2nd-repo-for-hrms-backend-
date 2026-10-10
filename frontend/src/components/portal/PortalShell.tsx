@@ -1,662 +1,1614 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+
 import {
+
   Bell,
+
   Plus,
+
   Trash2,
+
   BellOff,
+
   CheckCheck,
+
   ChevronDown,
+
   ChevronRight,
+
   Clock3,
+
   LogOut,
+
   Megaphone,
+
   Menu,
+
+  Moon,
+
   PanelLeftClose,
-  PanelLeftOpen,
+
   Settings as SettingsIcon,
+
   ShieldCheck,
+
+  Sun,
+
   UserCircle,
+
 } from "lucide-react";
 
+
+
 import { Logo } from "@/components/brand/Logo";
+
 import { AnnouncementDialog } from "@/components/portal/AnnouncementDialog";
+
 import { AiConciergeWidget } from "@/components/portal/AiConciergeWidget";
+
 import { GlobalSearch } from "@/components/portal/GlobalSearch";
+
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
+
 import { isVisibleTo, usePortalState } from "@/components/portal/portal-state";
+
+import { AnnouncementsModal } from "@/components/portal/AnnouncementsModal";
+
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+
 import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
+
 import {
+
   DropdownMenu,
+
   DropdownMenuContent,
+
   DropdownMenuItem,
+
   DropdownMenuLabel,
+
   DropdownMenuSeparator,
+
   DropdownMenuTrigger,
+
 } from "@/components/ui/dropdown-menu";
+
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
 import { ScrollArea } from "@/components/ui/scroll-area";
+
+import { Switch } from "@/components/ui/switch";
+
 import { cn } from "@/lib/utils";
+
 import { navForRole, roleMeta, type Role } from "@/lib/nav";
+
 import { authApi, mfaApi } from "@/lib/api";
+
 import { clearSession, getUser } from "@/lib/auth";
-import { applyInitialTheme } from "@/lib/theme";
+
+import { applyInitialTheme, applyTheme, type ThemeChoice } from "@/lib/theme";
+
 import type { Notification } from "@/components/portal/portal-state";
 
+
+
 /** Map a notification's target to an in-app route for the current role. */
-function notificationTarget(targetType: string | null | undefined, role: Role): string | null {
-  if (!targetType) return null;
+
+function notificationTarget(
+
+  n: Pick<Notification, "targetType" | "targetId" | "title" | "detail">,
+
+  role: Role,
+
+): string | null {
+
+  const rawType = (n.targetType ?? "").toLowerCase();
+
+  const targetId = n.targetId ?? null;
+
   const base = roleMeta[role].base;
-  switch (targetType) {
-    case "employees":
-      return role === "employee" ? null : `${base}/employees`;
-    case "departments":
-    case "positions":
-    case "salary_grades":
-      return role === "employee" ? null : `${base}/dept-pos`;
-    case "system_users":
-      return role === "superadmin" ? `${base}/users` : `${base}/settings`;
-    case "system_roles":
-      return `${base}/settings`;
-    case "hr3_recommendations":
-      return `${base}/ess`;
-    case "chatbot_faqs":
-      return role === "employee" ? null : `${base}/chatbot`;
-    default:
-      return null;
+
+  const text = `${n.title ?? ""} ${n.detail ?? ""}`.toLowerCase();
+
+  const hl = targetId ? `?highlight=${encodeURIComponent(targetId)}` : "";
+
+
+
+  const applicantRoute = `${base}/applicants${hl ? `${hl}&tab=ranking` : ""}`;
+
+  const interviewRoute = `${base}/applicants${hl ? `${hl}&tab=scheduling` : "?tab=scheduling"}`;
+
+
+
+  // Hiring notifications created via NotificationService (Applicant / Interview /
+
+  // Assessment / Practical / Final Evaluation). All land on Applicant Management;
+
+  // interviews also hint the interview tab via query params.
+
+  if (
+
+    rawType === "applicant" ||
+
+    rawType === "applicants" ||
+
+    rawType === "assessment" ||
+
+    rawType === "assessment test" ||
+
+    rawType === "assessment_test" ||
+
+    rawType === "practical test" ||
+
+    rawType === "practical_test" ||
+
+    rawType === "final evaluation" ||
+
+    rawType === "final_evaluation" ||
+
+    text.includes("applicant") ||
+
+    text.includes("interview") ||
+
+    text.includes("assessment") ||
+
+    text.includes("final evaluation")
+
+  ) {
+
+    if (role === "employee") return null;
+
+    if (rawType === "interview" || rawType === "interviews" || text.includes("interview")) {
+
+      return interviewRoute;
+
+    }
+
+    return applicantRoute;
+
   }
+
+
+
+  switch (rawType) {
+
+    case "interview":
+
+    case "interviews":
+
+      return role === "employee" ? null : interviewRoute;
+
+    case "announcement":
+
+    case "announcements":
+
+      // Announcements open in the modal via the detail popup (View announcement).
+
+      return "announcement-modal";
+
+    case "employee":
+
+    case "employees":
+
+      return role === "employee" ? null : `${base}/employees${hl}`;
+
+    case "department":
+
+    case "departments":
+
+    case "position":
+
+    case "positions":
+
+    case "salary-grade":
+
+    case "salary grade":
+
+    case "salary_grades":
+
+      return role === "employee" ? null : `${base}/dept-pos${hl}`;
+
+    case "user":
+
+    case "system_users":
+
+    case "system user":
+
+      return role === "superadmin" ? `${base}/users` : role === "employee" ? `${base}/profile` : `${base}/settings`;
+
+    case "role":
+
+    case "system_roles":
+
+      return `${base}/settings`;
+
+    case "hr3_recommendation":
+
+    case "hr3 recommendation":
+
+      return role === "employee" ? `${base}/ess` : `${base}/ess`;
+
+    case "faq":
+
+    case "chatbot_faqs":
+
+    case "chatbot faq":
+
+      return role === "employee" ? null : `${base}/chatbot`;
+
+    default:
+
+      return null;
+
+  }
+
 }
+
+
 
 function getInitials(name: string) {
+
   return name
+
     .split(" ")
+
     .filter(Boolean)
+
     .slice(0, 2)
+
     .map((p) => p[0]?.toUpperCase() ?? "")
+
     .join("");
+
 }
 
+
+
 export function PortalShell({ role, children }: { role: Role; children: ReactNode }) {
+
   const [open, setOpen] = useState(true);
-  const [mounted, setMounted] = useState(false);
-  const [time, setTime] = useState<Date>(new Date());
+
+  const [mounted, setMounted] = useState(false);
+
+  const [authName, setAuthName] = useState<string | null>(null);
+
+  const [authDept, setAuthDept] = useState<string | null>(null);
+
+  const [time, setTime] = useState<Date | null>(null);
+
   useSessionTimeout();
 
+
+
   useEffect(() => {
-    setMounted(true);
+
+    setMounted(true);
+
+    try {
+      const u = getUser();
+      if (u?.full_name) setAuthName(u.full_name);
+      if (u?.department_name) setAuthDept(u.department_name);
+    } catch {}
+
     applyInitialTheme();
+
     setTime(new Date());
+
     const timer = setInterval(() => setTime(new Date()), 1000);
+
     return () => clearInterval(timer);
+
   }, []);
 
-  const timeString = mounted
+
+
+  const timeString = mounted && time
+
     ? time.toLocaleTimeString("en-US", {
+
         hour: "2-digit",
+
         minute: "2-digit",
+
         second: "2-digit",
+
         hour12: true,
+
       })
+
     : "--:--:-- --";
 
-  const dateString = mounted
+
+
+  const dateString = mounted && time
+
     ? time.toLocaleDateString("en-US", {
+
         weekday: "short",
+
         month: "short",
+
         day: "numeric",
+
         year: "numeric",
+
       })
+
     : "Loading...";
 
+
+
   const navigate = useNavigate();
+
   const meta = roleMeta[role];
-  const user = getUser();
-  const displayName = user?.full_name || meta.user;
+
+  const displayName = mounted && authName ? authName : meta.user;
+
+  const displayDept = mounted && authDept ? authDept : meta.label;
+
   const nav = useMemo(() => navForRole(role), [role]);
+
   const location = useRouterState({ select: (s) => s.location });
+
   const pathname = location.pathname;
+
   const searchStr = location.searchStr || "";
+
   const [expanded, setExpanded] = useState<string[]>(() =>
+
     nav.filter((i) => i.children?.length).map((i) => i.label),
+
   );
+
   const [announceOpen, setAnnounceOpen] = useState(false);
+
   const [mfaRequired, setMfaRequired] = useState(false);
+
+  const [activeNotification, setActiveNotification] = useState<Notification | null>(null);
+
+  const [announcementViewId, setAnnouncementViewId] = useState<string | null>(null);
+
+  const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
+
   const lastActiveGroupRef = useRef<string | null>(null);
 
+
+
   // Soft-mandatory TOTP for Super Admins: nudge until enrolled.
+
   useEffect(() => {
+
     if (role !== "superadmin") return;
+
     let cancelled = false;
+
     mfaApi
+
       .status()
+
       .then((s) => {
+
         if (!cancelled) setMfaRequired(s.totp_required);
+
       })
+
       .catch(() => {});
+
     return () => {
+
       cancelled = true;
+
     };
+
   }, [role]);
 
+
+
   const handleLogout = async () => {
+
     try {
+
       await authApi.logout();
+
     } catch {
+
       // token already invalid — still clear the local session
+
     }
+
     clearSession();
+
     navigate({ to: "/login" });
+
   };
+
+
+
+  // Theme toggle for the Welcome dropdown — mirrors the Settings → Preferences theme.
+
+  const [isDark, setIsDark] = useState(
+
+    () =>
+
+      typeof document !== "undefined" &&
+
+      document.documentElement.classList.contains("dark"),
+
+  );
+
+
+
+  // Keep the toggle in sync if the theme is changed elsewhere (e.g. Settings page).
+
+  useEffect(() => {
+
+    if (typeof document === "undefined") return;
+
+    setIsDark(document.documentElement.classList.contains("dark"));
+
+    const observer = new MutationObserver(() => {
+
+      setIsDark(document.documentElement.classList.contains("dark"));
+
+    });
+
+    observer.observe(document.documentElement, {
+
+      attributes: true,
+
+      attributeFilter: ["class"],
+
+    });
+
+    return () => observer.disconnect();
+
+  }, []);
+
+
+
+  const toggleTheme = () => {
+
+    const next: ThemeChoice = isDark ? "Light" : "Dark";
+
+    applyTheme(next);
+
+    setIsDark(next === "Dark");
+
+  };
+
   const { notifications, unreadCount, markAllRead, markRead, announcements, removeAnnouncement } =
+
     usePortalState();
+
   const visibleAnnouncements = announcements.filter((a) => isVisibleTo(a.audience, role));
+
   const canAnnounce = role === "superadmin";
+
+
 
   const isActive = (to: string) => (to === meta.base ? pathname === to : pathname.startsWith(to));
 
+
+
   const isChildActive = (childTo: string) => {
+
     const [childPath, childQuery] = childTo.split("?");
+
     if (pathname !== childPath) return false;
+
     if (!childQuery) {
+
       return !searchStr || searchStr === "?" || !searchStr.includes("category=");
+
     }
-    if (childQuery === "category=Attendance" && (!searchStr || searchStr === "?" || !searchStr.includes("category="))) {
-      return true;
-    }
+
     return searchStr.includes(childQuery);
+
   };
 
+
+
   // Auto-expand the group that contains the active route, but respect manual collapse.
+
   // Previously `nav` was recreated every render, so the effect fired on every render
+
   // and immediately re-added the active group after the user collapsed it.
+
   // Now `nav` is memoized and we only auto-expand when the active *group* changes,
+
   // so closing "Recruitment & Onboarding" while on "/superadmin/onboarding" stays closed.
+
   useEffect(() => {
+
     const owner = nav.find((i) =>
+
       i.children?.some((c) => {
+
         const [cPath] = (c.to ?? "").split("?");
+
         return cPath ? pathname === cPath || pathname.startsWith(cPath) : false;
+
       }),
+
     );
+
     const ownerLabel = owner?.label ?? null;
+
     if (ownerLabel && lastActiveGroupRef.current !== ownerLabel) {
+
       setExpanded((prev) => (prev.includes(ownerLabel) ? prev : [...prev, ownerLabel]));
+
     }
+
     lastActiveGroupRef.current = ownerLabel;
+
   }, [pathname, nav]);
 
+
+
   return (
+
     <div className="flex min-h-screen w-full bg-background">
+
       <aside
+
         className={cn(
-          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-in-out md:flex overflow-hidden",
+
+          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 md:flex",
+
           open ? "w-64" : "w-[68px]",
+
         )}
+
       >
-        <div className="flex h-16 items-center border-b border-sidebar-border px-4 overflow-hidden transition-all duration-300">
-          <div className={cn("transition-all duration-300 ease-in-out shrink-0", open ? "w-full" : "w-8")}>
-            <Logo variant={open ? "full" : "mark"} mark="white" tone="invert" />
-          </div>
+
+        <div className="flex h-16 items-center gap-2 border-b border-sidebar-border px-4">
+
+          <Logo variant={open ? "full" : "mark"} mark="white" tone="invert" />
+
         </div>
+
+
 
         <ScrollArea className="flex-1">
+
           <nav className="space-y-1 p-2">
+
             {nav.map((item) => {
+
               const hasChildren = !!item.children?.length;
+
               const groupActive = hasChildren
+
                 ? item.children!.some((c) => {
+
                   const [cPath] = (c.to ?? "").split("?");
+
                   return cPath ? pathname === cPath || pathname.startsWith(cPath) : false;
+
                 })
+
                 : isActive(item.to);
+
               const isOpen = expanded.includes(item.label);
 
+
+
               const baseCls = cn(
+
                 "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors",
+
                 groupActive
+
                   ? "bg-sidebar-primary text-sidebar-primary-foreground"
+
                   : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+
               );
+
+
 
               return (
+
                 <div key={item.label}>
+
                   {hasChildren ? (
+
                     <button
+
                       type="button"
-                      className={cn(baseCls, "overflow-hidden relative group cursor-pointer")}
+
+                      className={baseCls}
+
                       title={item.label}
+
                       aria-expanded={isOpen}
+
                       onClick={() => {
+
                         if (!open) setOpen(true);
+
                         setExpanded((prev) =>
+
                           prev.includes(item.label)
+
                             ? prev.filter((l) => l !== item.label)
+
                             : [...prev, item.label],
+
                         );
+
                       }}
+
                     >
-                      <item.icon className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-105" />
-                      <span
-                        className={cn(
-                          "flex flex-1 items-center justify-between min-w-0 transition-all duration-300 ease-in-out whitespace-nowrap",
-                          open
-                            ? "opacity-100 max-w-[180px] translate-x-0"
-                            : "opacity-0 max-w-0 -translate-x-3 pointer-events-none"
-                        )}
-                      >
-                        <span className="truncate">{item.label}</span>
-                        <ChevronRight
-                          className={cn(
-                            "ml-auto h-4 w-4 shrink-0 transition-transform duration-200",
-                            isOpen && "rotate-90",
-                          )}
-                        />
-                      </span>
+
+                      <item.icon className="h-4 w-4 shrink-0" />
+
+                      {open && (
+
+                        <>
+
+                          <span className="truncate">{item.label}</span>
+
+                          <ChevronRight
+
+                            className={cn(
+
+                              "ml-auto h-4 w-4 shrink-0 transition-transform",
+
+                              isOpen && "rotate-90",
+
+                            )}
+
+                          />
+
+                        </>
+
+                      )}
+
                     </button>
+
                   ) : (
-                    <Link
-                      to={item.to}
-                      className={cn(baseCls, "overflow-hidden relative group")}
-                      title={item.label}
-                    >
-                      <item.icon className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-105" />
-                      <span
-                        className={cn(
-                          "flex flex-1 items-center justify-between min-w-0 transition-all duration-300 ease-in-out whitespace-nowrap",
-                          open
-                            ? "opacity-100 max-w-[180px] translate-x-0"
-                            : "opacity-0 max-w-0 -translate-x-3 pointer-events-none"
-                        )}
-                      >
-                        <span className="truncate">{item.label}</span>
-                        {item.badge && (
-                          <Badge className="ml-auto bg-primary text-primary-foreground text-[10px] shrink-0">
-                            {item.badge}
-                          </Badge>
-                        )}
-                      </span>
+
+                    <Link to={item.to} className={baseCls} title={item.label}>
+
+                      <item.icon className="h-4 w-4 shrink-0" />
+
+                      {open && <span className="truncate">{item.label}</span>}
+
                     </Link>
+
                   )}
+
+
 
                   {open && hasChildren && isOpen && (
-                    <div className="ml-5 mt-1 space-y-0.5 border-l border-sidebar-border pl-3 animate-in fade-in slide-in-from-top-1 duration-200">
+
+                    <div className="ml-5 mt-1 space-y-0.5 border-l border-sidebar-border pl-3">
+
                       {item.children!.map((child) => (
+
                         <Link
+
                           key={child.to}
+
                           to={child.to}
+
                           className={cn(
+
                             "block rounded-md px-3 py-2 text-[0.8rem] transition-colors",
+
                             isChildActive(child.to)
+
                               ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+
                               : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+
                           )}
+
                         >
+
                           {child.label}
+
                         </Link>
+
                       ))}
+
                     </div>
+
                   )}
+
                 </div>
+
               );
+
             })}
+
           </nav>
+
         </ScrollArea>
 
-        <div className="space-y-1 border-t border-sidebar-border p-2 overflow-hidden">
+
+
+        <div className="space-y-1 border-t border-sidebar-border p-2">
+
           <Link
+
             to={`${meta.base}/profile` as "/admin/profile"}
+
             className={cn(
-              "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors overflow-hidden group",
+
+              "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors",
+
               pathname === `${meta.base}/profile`
+
                 ? "bg-sidebar-primary text-sidebar-primary-foreground"
+
                 : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+
             )}
+
             title="My Profile"
+
           >
-            <UserCircle className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-105" />
-            <span
-              className={cn(
-                "truncate transition-all duration-300 ease-in-out whitespace-nowrap",
-                open
-                  ? "opacity-100 max-w-[160px] translate-x-0"
-                  : "opacity-0 max-w-0 -translate-x-3 pointer-events-none"
-              )}
-            >
-              My Profile
-            </span>
+
+            <UserCircle className="h-4 w-4 shrink-0" />
+
+            {open && <span>My Profile</span>}
+
           </Link>
+
           <button
+
             type="button"
+
             onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground overflow-hidden group cursor-pointer"
-            title="Logout"
+
+            className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+
           >
-            <LogOut className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-105" />
-            <span
-              className={cn(
-                "truncate transition-all duration-300 ease-in-out whitespace-nowrap",
-                open
-                  ? "opacity-100 max-w-[160px] translate-x-0"
-                  : "opacity-0 max-w-0 -translate-x-3 pointer-events-none"
-              )}
-            >
-              Logout
-            </span>
+
+            <LogOut className="h-4 w-4 shrink-0" />
+
+            {open && <span>Logout</span>}
+
           </button>
+
         </div>
+
       </aside>
 
+
+
       <div className="flex min-w-0 flex-1 flex-col">
+
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border bg-card/85 px-4 backdrop-blur md:px-6">
+
           <div className="flex items-center gap-3">
+
             <Button
+
               variant="ghost"
+
               size="icon"
-              className="hidden md:inline-flex text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-all duration-200 active:scale-95 cursor-pointer relative"
+
+              className="hidden md:inline-flex"
+
               onClick={() => setOpen((v) => !v)}
+
               aria-label="Toggle sidebar"
+
             >
-              <div className="relative h-5 w-5 flex items-center justify-center">
-                <PanelLeftClose
-                  className={cn(
-                    "h-5 w-5 transition-all duration-300 ease-in-out absolute",
-                    open
-                      ? "opacity-100 rotate-0 scale-100 text-foreground"
-                      : "opacity-0 -rotate-90 scale-75 pointer-events-none"
-                  )}
-                />
-                <PanelLeftOpen
-                  className={cn(
-                    "h-5 w-5 transition-all duration-300 ease-in-out absolute",
-                    !open
-                      ? "opacity-100 rotate-0 scale-100 text-primary"
-                      : "opacity-0 rotate-90 scale-75 pointer-events-none"
-                  )}
-                />
-              </div>
+
+              {open ? <PanelLeftClose className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+
             </Button>
+
             <div className="md:hidden">
+
               <Logo variant="mark" mark="white" tone="invert" />
+
             </div>
+
             <div className="hidden sm:block">
-              <p className="eyebrow">Oxford Suites Makati HRMS</p>
+
               <p className="text-sm font-medium">{meta.label} Portal</p>
+
             </div>
+
           </div>
+
+
 
           <div className="flex items-center gap-3 sm:gap-4">
+
             <GlobalSearch base={meta.base} />
+
             {/* Live Digital Clock & Date — minimal, no border */}
+
             <div className="flex items-center gap-2.5">
+
               <div className="hidden sm:flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
+
                 <Clock3 className="h-4 w-4 text-primary" />
+
               </div>
+
               <div className="flex flex-col items-end leading-none sm:items-start">
+
                 <span
+
                   className="font-mono text-sm font-semibold tabular-nums tracking-tight"
+
                   suppressHydrationWarning
+
                 >
+
                   {timeString}
+
                 </span>
+
                 <span
+
                   className="text-[10px] font-medium tracking-wider text-muted-foreground sm:text-[11px] mt-1"
+
                   suppressHydrationWarning
+
                 >
+
                   {dateString}
+
                 </span>
+
               </div>
+
             </div>
+
+
 
             <div className="flex items-center gap-2">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Announcements" className="relative">
-                  <Megaphone className="h-5 w-5" />
-                  {visibleAnnouncements.length > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-gold px-1 text-[0.6rem] font-semibold text-primary-foreground">
-                      {visibleAnnouncements.length}
-                    </span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-[22rem] p-0">
-                <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-                  <p className="font-display text-lg font-semibold">Announcements</p>
-                  {canAnnounce && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="ml-auto h-8 w-8 text-primary"
-                      aria-label="New announcement"
-                      title="New announcement"
-                      onClick={() => setAnnounceOpen(true)}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-                <ScrollArea className="max-h-80">
-                  <div className="divide-y divide-border">
-                    {visibleAnnouncements.length === 0 && (
-                      <p className="p-8 text-center text-sm text-muted-foreground">
-                        No announcements yet.
-                      </p>
-                    )}
-                    {visibleAnnouncements.map((a) => (
-                      <div key={a.id} className="px-4 py-3">
-                        <div className="flex items-start gap-2">
-                          <p className="min-w-0 text-sm font-medium">{a.title}</p>
-                          <Badge variant="outline" className="ml-auto shrink-0 text-[0.6rem]">
-                            {a.audience}
-                          </Badge>
-                          {role === "superadmin" && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 shrink-0 text-muted-foreground"
-                              aria-label={`Remove announcement ${a.title}`}
-                              onClick={() => removeAnnouncement(a.id)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">{a.body}</p>
-                        <p className="mt-1 text-[0.7rem] text-muted-foreground">
-                          {a.author} · {a.createdAt}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </PopoverContent>
-            </Popover>
 
             <Popover>
+
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Notifications" className="relative">
-                  <Bell className="h-5 w-5" />
-                  {unreadCount > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-semibold text-primary-foreground">
-                      {unreadCount}
+
+                <Button variant="ghost" size="icon" aria-label="Announcements" className="relative">
+
+                  <Megaphone className="h-5 w-5" />
+
+                  {visibleAnnouncements.length > 0 && (
+
+                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-gold px-1 text-[0.6rem] font-semibold text-primary-foreground">
+
+                      {visibleAnnouncements.length}
+
                     </span>
+
                   )}
+
                 </Button>
+
               </PopoverTrigger>
+
               <PopoverContent align="end" className="w-[22rem] p-0">
+
                 <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-                  <p className="font-display text-lg font-semibold">Notifications</p>
-                  {unreadCount > 0 && (
-                    <Badge variant="outline" className="text-[0.65rem]">
-                      {unreadCount} new
-                    </Badge>
-                  )}
-                  <div className="ml-auto flex items-center gap-1">
+
+                  <p className="font-display text-lg font-semibold">Announcements</p>
+
+                  {canAnnounce && (
+
                     <Button
+
                       variant="ghost"
+
                       size="icon"
-                      className="h-8 w-8"
-                      aria-label="Mark all as read"
-                      title="Mark all as read"
-                      onClick={markAllRead}
+
+                      className="ml-auto h-8 w-8 text-primary"
+
+                      aria-label="New announcement"
+
+                      title="New announcement"
+
+                      onClick={() => setAnnounceOpen(true)}
+
                     >
-                      <CheckCheck className="h-4 w-4" />
+
+                      <Plus className="h-4 w-4" />
+
                     </Button>
-                    {canAnnounce && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-primary"
-                        aria-label="Add announcement"
-                        title="Add announcement"
-                        onClick={() => setAnnounceOpen(true)}
-                      >
-                        <Megaphone className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
+
+                  )}
+
                 </div>
+
                 <ScrollArea className="max-h-80">
+
                   <div className="divide-y divide-border">
-                    {notifications.length === 0 && (
-                      <p className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
-                        <BellOff className="h-4 w-4" /> No notifications
+
+                    {visibleAnnouncements.length === 0 && (
+
+                      <p className="p-8 text-center text-sm text-muted-foreground">
+
+                        No announcements yet.
+
                       </p>
+
                     )}
-                    {notifications.map((n) => {
-                      const target = notificationTarget(n.targetType, role);
-                      return (
-                        <button
-                          key={n.id}
-                          type="button"
-                          onClick={() => {
-                            markRead(n.id);
-                            if (target) navigate({ to: target });
-                          }}
-                          className={cn(
-                            "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60",
-                            !n.read && "bg-primary/5",
-                            target && "cursor-pointer",
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "mt-1.5 h-2 w-2 shrink-0 rounded-full",
-                              n.tone === "success"
-                                ? "bg-success"
-                                : n.tone === "warning"
-                                  ? "bg-gold"
-                                  : "bg-primary",
-                              n.read && "opacity-30",
-                            )}
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-medium">{n.title}</span>
-                            <span className="block text-xs text-muted-foreground">{n.detail}</span>
-                            <span className="mt-1 block text-[0.7rem] text-muted-foreground">
-                              {n.time}
+
+                    {visibleAnnouncements.map((a) => (
+
+                      <button
+
+                        key={a.id}
+
+                        type="button"
+
+                        onClick={() => {
+
+                          setAnnouncementViewId(String(a.id));
+
+                          setAnnouncementModalOpen(true);
+
+                        }}
+
+                        className="block w-full px-4 py-3 text-left transition-colors hover:bg-muted/60 cursor-pointer group"
+
+                      >
+
+                        <div className="flex items-start gap-2">
+
+                          <p className="min-w-0 text-sm font-medium group-hover:text-primary transition-colors">{a.title}</p>
+
+                          <Badge variant="outline" className="ml-auto shrink-0 text-[0.6rem]">
+
+                            {a.audience}
+
+                          </Badge>
+
+                          {role === "superadmin" && (
+
+                            <span
+
+                              role="button"
+
+                              tabIndex={0}
+
+                              aria-label={`Remove announcement ${a.title}`}
+
+                              onClick={(e) => {
+
+                                e.stopPropagation();
+
+                                removeAnnouncement(a.id);
+
+                              }}
+
+                              onKeyDown={(e) => {
+
+                                if (e.key === "Enter" || e.key === " ") {
+
+                                  e.preventDefault();
+
+                                  e.stopPropagation();
+
+                                  removeAnnouncement(a.id);
+
+                                }
+
+                              }}
+
+                              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+
+                            >
+
+                              <Trash2 className="h-3.5 w-3.5" />
+
                             </span>
-                          </span>
-                          {target && (
-                            <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+
                           )}
-                        </button>
-                      );
-                    })}
+
+                          <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+
+                        </div>
+
+                        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{a.body}</p>
+
+                        <p className="mt-1 text-[0.7rem] text-muted-foreground">
+
+                          {a.author} · {a.createdAt}
+
+                        </p>
+
+                      </button>
+
+                    ))}
+
                   </div>
+
                 </ScrollArea>
+
               </PopoverContent>
+
             </Popover>
+
+
+
+            <Popover>
+
+              <PopoverTrigger asChild>
+
+                <Button variant="ghost" size="icon" aria-label="Notifications" className="relative">
+
+                  <Bell className="h-5 w-5" />
+
+                  {unreadCount > 0 && (
+
+                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-semibold text-primary-foreground">
+
+                      {unreadCount}
+
+                    </span>
+
+                  )}
+
+                </Button>
+
+              </PopoverTrigger>
+
+              <PopoverContent align="end" className="w-[22rem] p-0">
+
+                <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+
+                  <p className="font-display text-lg font-semibold">Notifications</p>
+
+                  {unreadCount > 0 && (
+
+                    <Badge variant="outline" className="text-[0.65rem]">
+
+                      {unreadCount} new
+
+                    </Badge>
+
+                  )}
+
+                  <div className="ml-auto flex items-center gap-1">
+
+                    <Button
+
+                      variant="ghost"
+
+                      size="icon"
+
+                      className="h-8 w-8"
+
+                      aria-label="Mark all as read"
+
+                      title="Mark all as read"
+
+                      onClick={markAllRead}
+
+                    >
+
+                      <CheckCheck className="h-4 w-4" />
+
+                    </Button>
+
+                    {canAnnounce && (
+
+                      <Button
+
+                        variant="ghost"
+
+                        size="icon"
+
+                        className="h-8 w-8 text-primary"
+
+                        aria-label="Add announcement"
+
+                        title="Add announcement"
+
+                        onClick={() => setAnnounceOpen(true)}
+
+                      >
+
+                        <Megaphone className="h-4 w-4" />
+
+                      </Button>
+
+                    )}
+
+                  </div>
+
+                </div>
+
+                <ScrollArea className="max-h-80">
+
+                  <div className="divide-y divide-border">
+
+                    {notifications.length === 0 && (
+
+                      <p className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
+
+                        <BellOff className="h-4 w-4" /> No notifications
+
+                      </p>
+
+                    )}
+
+                    {notifications.map((n) => {
+
+                      const target = notificationTarget(n, role);
+
+                      return (
+
+                        <button
+
+                          key={n.id}
+
+                          type="button"
+
+                          onClick={() => {
+
+                            markRead(n.id);
+
+                            setActiveNotification(n);
+
+                          }}
+
+                          className={cn(
+
+                            "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60",
+
+                            !n.read && "bg-primary/5",
+
+                            target && "cursor-pointer",
+
+                          )}
+
+                        >
+
+                          <span
+
+                            className={cn(
+
+                              "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+
+                              n.tone === "success"
+
+                                ? "bg-success"
+
+                                : n.tone === "warning"
+
+                                  ? "bg-gold"
+
+                                  : "bg-primary",
+
+                              n.read && "opacity-30",
+
+                            )}
+
+                          />
+
+                          <span className="min-w-0 flex-1">
+
+                            <span className="block text-sm font-medium">{n.title}</span>
+
+                            <span className="block text-xs text-muted-foreground">{n.detail}</span>
+
+                            <span className="mt-1 block text-[0.7rem] text-muted-foreground">
+
+                              {n.time}
+
+                            </span>
+
+                          </span>
+
+                          {target && (
+
+                            <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+
+                          )}
+
+                        </button>
+
+                      );
+
+                    })}
+
+                  </div>
+
+                </ScrollArea>
+
+              </PopoverContent>
+
+            </Popover>
+
+
 
             <DropdownMenu>
+
               <DropdownMenuTrigger asChild>
+
                 <button
+
                   type="button"
+
                   className="flex items-center gap-2 rounded-full border border-border bg-background py-1 pl-1 pr-3 transition-colors hover:bg-muted"
+
                 >
+
                   <Avatar className="h-7 w-7">
+
                     <AvatarFallback
+
                       suppressHydrationWarning
+
                       className="bg-primary text-[0.7rem] text-primary-foreground font-semibold"
+
                     >
+
                       {getInitials(displayName) || meta.initials}
+
                     </AvatarFallback>
+
                   </Avatar>
+
                   <span suppressHydrationWarning className="hidden text-sm sm:inline">
+
                     Welcome, <span className="font-medium">{displayName.split(" ")[0]}</span>
+
                   </span>
+
                   <ChevronDown className="hidden h-4 w-4 text-muted-foreground sm:inline" />
+
                 </button>
+
               </DropdownMenuTrigger>
+
               <DropdownMenuContent align="end" className="w-56">
+
                 <DropdownMenuLabel>
+
                   <p className="text-sm font-medium truncate">{displayName}</p>
-                  <p className="text-xs font-normal text-muted-foreground truncate">{user?.department_name || meta.label}</p>
+
+                  <p className="text-xs font-normal text-muted-foreground truncate">{displayDept}</p>
+
                 </DropdownMenuLabel>
+
                 <DropdownMenuSeparator />
+
                 <DropdownMenuItem asChild>
+
                   <Link to={`${meta.base}/profile` as "/admin/profile"}>
+
                     <UserCircle className="mr-2 h-4 w-4" /> View Profile
+
                   </Link>
+
                 </DropdownMenuItem>
+
                 <DropdownMenuItem asChild>
+
                   <Link to={`${meta.base}/settings` as "/admin/settings"}>
+
                     <SettingsIcon className="mr-2 h-4 w-4" /> Settings
+
                   </Link>
+
                 </DropdownMenuItem>
+
+                <DropdownMenuItem
+
+                  onSelect={(e) => {
+
+                    // Keep the menu open so the user sees the theme change instantly.
+
+                    e.preventDefault();
+
+                    toggleTheme();
+
+                  }}
+
+                  className="flex cursor-pointer items-center gap-2"
+
+                  title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+
+                >
+
+                  {isDark ? (
+
+                    <Moon className="mr-2 h-4 w-4 shrink-0" />
+
+                  ) : (
+
+                    <Sun className="mr-2 h-4 w-4 shrink-0" />
+
+                  )}
+
+                  <span className="flex-1">{isDark ? "Dark mode" : "Light mode"}</span>
+
+                  <Switch
+
+                    aria-label="Toggle dark mode"
+
+                    checked={isDark}
+
+                    onCheckedChange={toggleTheme}
+
+                    onClick={(e) => e.stopPropagation()}
+
+                    className="ml-auto"
+
+                  />
+
+                </DropdownMenuItem>
+
                 <DropdownMenuSeparator />
+
                 <DropdownMenuItem onSelect={handleLogout} className="text-primary">
+
                   <LogOut className="mr-2 h-4 w-4" /> Logout
+
                 </DropdownMenuItem>
+
               </DropdownMenuContent>
+
             </DropdownMenu>
+
           </div>
+
         </div>
+
         </header>
 
+
+
         {/* Mobile nav */}
+
         <div className="flex gap-1 overflow-x-auto border-b border-border bg-card px-3 py-2 md:hidden">
+
           {nav.map((item) => (
+
             <Link
+
               key={item.to}
+
               to={item.to}
+
               className={cn(
+
                 "whitespace-nowrap rounded-md px-3 py-1.5 text-xs",
+
                 isActive(item.to)
+
                   ? "bg-primary text-primary-foreground"
+
                   : "bg-muted text-muted-foreground",
+
               )}
+
             >
+
               {item.label}
+
             </Link>
+
           ))}
+
         </div>
 
+
+
         <main className="flex-1 px-4 py-6 md:px-8 md:py-8">
+
           {mfaRequired && (
+
             <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-gold/40 bg-gold/10 px-4 py-3 text-sm">
+
               <ShieldCheck className="h-4 w-4 shrink-0 text-gold" />
+
               <p className="min-w-0 flex-1">
+
                 <span className="font-semibold">Authenticator MFA is required for Super Admins.</span>{" "}
+
                 <span className="text-muted-foreground">
+
                   Enable it in Settings → Security to protect this account.
+
                 </span>
+
               </p>
+
               <Link
+
                 to={`${meta.base}/settings` as "/admin/settings"}
+
                 className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+
               >
+
                 Open Settings
+
               </Link>
+
             </div>
+
           )}
+
           {children}
+
         </main>
+
       </div>
 
+
+
       <AnnouncementDialog open={announceOpen} onOpenChange={setAnnounceOpen} author={meta.user} />
+
+
+
+      <AnnouncementsModal
+
+        open={announcementModalOpen}
+
+        onOpenChange={(isOpen) => {
+
+          setAnnouncementModalOpen(isOpen);
+
+          if (!isOpen) setAnnouncementViewId(null);
+
+        }}
+
+        initialSelectedId={announcementViewId}
+
+        role={role}
+
+      />
+
+
+
+      {/* Exact notification detail: reveals the full record context. */}
+
+      {activeNotification && (
+
+        <div
+
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+
+          onClick={() => setActiveNotification(null)}
+
+        >
+
+          <div
+
+            className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-lg"
+
+            onClick={(e) => e.stopPropagation()}
+
+          >
+
+            <div className="flex items-start gap-2">
+
+              <p className="min-w-0 flex-1 font-display text-lg font-semibold">
+
+                {activeNotification.title}
+
+              </p>
+
+              <Badge variant="outline" className="shrink-0 text-[0.65rem]">
+
+                {activeNotification.tone}
+
+              </Badge>
+
+            </div>
+
+            <p className="mt-2 text-sm text-muted-foreground">{activeNotification.detail}</p>
+
+            <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+
+              <p>
+
+                <span className="font-medium text-foreground">When: </span>
+
+                {activeNotification.time}
+
+              </p>
+
+              {activeNotification.targetType && (
+
+                <p>
+
+                  <span className="font-medium text-foreground">Record: </span>
+
+                  {activeNotification.targetType}
+
+                  {activeNotification.targetId ? ` #${activeNotification.targetId}` : ""}
+
+                </p>
+
+              )}
+
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+
+              <Button variant="outline" onClick={() => setActiveNotification(null)}>
+
+                Close
+
+              </Button>
+
+              {(() => {
+
+                const target = notificationTarget(activeNotification, role);
+
+                if (!target) return null;
+
+                const isAnnouncement = target === "announcement-modal";
+
+                const rawId = activeNotification.targetId ?? "";
+
+                // Announcements store numeric announcement_id; portal list uses string ids.
+
+                const announcementId = rawId ? String(rawId) : null;
+
+                return (
+
+                  <Button
+
+                    onClick={() => {
+
+                      if (isAnnouncement) {
+
+                        setActiveNotification(null);
+
+                        setAnnouncementViewId(announcementId);
+
+                        setAnnouncementModalOpen(true);
+
+                        return;
+
+                      }
+
+                      const to = target;
+
+                      setActiveNotification(null);
+
+                      navigate({ to });
+
+                    }}
+
+                  >
+
+                    {isAnnouncement ? "View announcement" : "View record"}
+
+                    <ChevronRight className="ml-1 h-4 w-4" />
+
+                  </Button>
+
+                );
+
+              })()}
+
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
     </div>
+
   );
+
 }
+

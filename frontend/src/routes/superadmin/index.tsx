@@ -492,7 +492,7 @@ function SuperAdminDashboard() {
                   Filled staff versus open roles across the property.
                 </p>
               </div>
-              <Badge variant="outline" className="border-gold/40 bg-gold/10 text-gold-foreground">
+              <Badge variant="outline" className="border-gold/40 bg-gold/10 text-gold-foreground dark:text-gold">
                 {deptData.reduce((sum, item) => sum + item.open, 0)} open roles
               </Badge>
             </div>

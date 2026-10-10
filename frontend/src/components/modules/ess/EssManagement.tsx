@@ -601,6 +601,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
           <TabsTrigger className="flex items-center gap-1.5" value="requests">
             <ListChecks className="h-3.5 w-3.5" /> Request Queue
           </TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5" value="learning">
+            <BookOpen className="h-3.5 w-3.5" /> Learning
+          </TabsTrigger>
           {role === "superadmin" && (
             <TabsTrigger className="flex items-center gap-1.5" value="config">
               <Settings2 className="h-3.5 w-3.5" /> ESS Administration
@@ -923,6 +926,15 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                   onPageChange={requestPage.setPage}
                 />
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="learning" className="mt-4">
+          <Card className="border-border/70">
+            <CardContent className="p-6">
+              <p className="text-sm text-muted-foreground">
+                Learning management is not available in this build.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>

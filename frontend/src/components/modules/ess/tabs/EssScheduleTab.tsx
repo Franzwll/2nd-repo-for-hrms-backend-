@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
   Clock,
   CheckCircle2,
@@ -15,7 +16,7 @@ import { myAttendance } from "@/data/ess";
 import { essApi, type ApiEssEmployee } from "@/lib/api";
 
 export function EssScheduleTab() {
-  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [employeeInfo, setEmployeeInfo] = useState<ApiEssEmployee | null>(null);
   const [punchLog, setPunchLog] = useState({
     timeIn: myAttendance.today.timeIn || "07:52 AM",
@@ -25,6 +26,7 @@ export function EssScheduleTab() {
   });
 
   useEffect(() => {
+    setCurrentTime(new Date());
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
@@ -54,47 +56,58 @@ export function EssScheduleTab() {
       .catch(() => {});
   }, []);
 
-  const formattedTime = currentTime.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
+  const formattedTime = currentTime
+    ? currentTime.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      })
+    : "--:--:--";
 
-  const formattedDate = currentTime.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = currentTime
+    ? currentTime.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    : "Loading…";
 
   const [currentDutyStatus, setCurrentDutyStatus] = useState<"clocked_in" | "on_break" | "clocked_out">(
     punchLog.timeOut !== "—" ? "clocked_out" : "clocked_in"
   );
 
+  const punchNow = () =>
+    (currentTime ?? new Date()).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+
   const handleClockIn = () => {
-    const timeStr = currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+    const timeStr = punchNow();
     setPunchLog((prev) => ({ ...prev, timeIn: timeStr, timeOut: "—" }));
     setCurrentDutyStatus("clocked_in");
     toast.success(`Successfully Clocked In at ${timeStr}! Have a safe and productive shift. ⏱️`);
   };
 
   const handleBreakOut = () => {
-    const timeStr = currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+    const timeStr = punchNow();
     setPunchLog((prev) => ({ ...prev, breakIn: timeStr }));
     setCurrentDutyStatus("on_break");
     toast.info(`Meal break started at ${timeStr}. Enjoy your 1-hour statutory interval! ☕`);
   };
 
   const handleBreakIn = () => {
-    const timeStr = currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+    const timeStr = punchNow();
     setPunchLog((prev) => ({ ...prev, breakOut: timeStr }));
     setCurrentDutyStatus("clocked_in");
     toast.success(`Duty resumed at ${timeStr}. Welcome back to your station! 💼`);
   };
 
   const handleClockOut = () => {
-    const timeStr = currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+    const timeStr = punchNow();
     setPunchLog((prev) => ({ ...prev, timeOut: timeStr }));
     setCurrentDutyStatus("clocked_out");
     toast.success(`Shift completed! Clocked Out at ${timeStr}. Rest well! 🏁`);

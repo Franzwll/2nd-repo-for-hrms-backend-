@@ -40,8 +40,22 @@ function FindJobs() {
   const [type, setType] = useState<string[]>([]);
   const [exp, setExp] = useState<string[]>([]);
   const [edu, setEdu] = useState<string[]>([]);
-  const [maxSalary, setMaxSalary] = useState(30000);
+  const [maxSalary, setMaxSalary] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+
+  // Salary grades go up to ₱90k (SG-18) but the old slider capped at ₱30k,
+  // permanently hiding every supervisory/managerial post whose salaryMin
+  // exceeds the cap. Derive the slider range from the live postings instead
+  // so the default (ceiling) never filters anything out.
+  const salaryFloor = useMemo(
+    () => (jobs.length ? Math.min(...jobs.map((j) => j.salaryMin)) : 14000),
+    [jobs],
+  );
+  const salaryCeil = useMemo(
+    () => Math.max(30000, ...jobs.map((j) => j.salaryMin)),
+    [jobs],
+  );
+  const effectiveMax = maxSalary ?? salaryCeil;
 
   const departments = useMemo(() => [...new Set(jobs.map((j) => j.department))], [jobs]);
   const types = useMemo(() => [...new Set(jobs.map((j) => j.employmentType))], [jobs]);
@@ -62,10 +76,10 @@ function FindJobs() {
         if (type.length && !type.includes(j.employmentType)) return false;
         if (exp.length && !exp.includes(j.experience)) return false;
         if (edu.length && !edu.includes(j.education)) return false;
-        if (j.salaryMin > maxSalary) return false;
+        if (j.salaryMin > effectiveMax) return false;
         return true;
       }),
-    [jobs, q, dept, type, exp, edu, maxSalary],
+    [jobs, q, dept, type, exp, edu, effectiveMax],
   );
 
   // Reset page when filters change
@@ -142,16 +156,16 @@ function FindJobs() {
             <div>
               <p className="mb-2 text-sm font-bold text-foreground">Salary Grade</p>
               <Slider
-                value={[maxSalary]}
-                min={14000}
-                max={30000}
+                value={[effectiveMax]}
+                min={salaryFloor}
+                max={salaryCeil}
                 step={1000}
                 onValueChange={(v) => {
-                  handleFilterChange(setMaxSalary)(v[0] ?? 30000);
+                  handleFilterChange(setMaxSalary)(v[0] ?? salaryCeil);
                 }}
               />
               <p className="mt-2 text-xs text-muted-foreground">
-                Up to {peso(maxSalary)} starting salary
+                Up to {peso(effectiveMax)} starting salary
               </p>
             </div>
 

@@ -83,6 +83,7 @@ import {
 } from "@/lib/report-export";
 import { usePasswordGate } from "@/components/ui/report-menu";
 import { usePagination } from "@/hooks/usePagination";
+import { useHighlightId, highlightRowClass } from "@/hooks/useHighlight";
 
 const documentTypes = [
   "Certificate of Employment (COE)",
@@ -286,6 +287,7 @@ const emptyEmployee = {
 
 export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const isSuper = role === "superadmin";
+  const { id: highlightId } = useHighlightId();
 
   const roster = useRoster();
   const [list, setList] = useState<Employee[]>([]);
@@ -934,7 +936,11 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                       {!roster.loaded && <TableRowsSkeleton cols={8} rows={6} />}
                       {roster.loaded &&
                         employeePage.pageItems.map((e) => (
-                        <TableRow key={e.id}>
+                        <TableRow
+                          key={e.id}
+                          data-highlight-id={e.id}
+                          className={highlightRowClass(!!highlightId && e.id === highlightId)}
+                        >
                           <TableCell>
                             <Checkbox
                               checked={selected.includes(e.id)}

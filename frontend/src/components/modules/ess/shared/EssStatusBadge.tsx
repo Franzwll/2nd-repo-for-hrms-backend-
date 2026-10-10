@@ -19,6 +19,7 @@ export function EssStatusBadge({ status }: { status: string }) {
       );
     case "Available":
     case "Released":
+    case "Assigned":
       return (
         <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30 font-medium">
           {status}

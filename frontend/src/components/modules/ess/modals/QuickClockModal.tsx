@@ -16,7 +16,8 @@ interface QuickClockModalProps {
 }
 
 export function QuickClockModal({ open, onOpenChange }: QuickClockModalProps) {
-  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  // Client-only clock (null until mounted so SSR HTML matches, no hydration flicker).
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [currentStatus] = useState<"clocked_in" | "on_break" | "clocked_out">("clocked_in");
   const punchLog = {
     timeIn: myAttendance.today.timeIn || "07:52 AM",
@@ -26,23 +27,29 @@ export function QuickClockModal({ open, onOpenChange }: QuickClockModalProps) {
   };
 
   useEffect(() => {
+    if (!open) return;
+    setCurrentTime(new Date());
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [open]);
 
-  const formattedTime = currentTime.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
+  const formattedTime = currentTime
+    ? currentTime.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      })
+    : "--:--:--";
 
-  const formattedDate = currentTime.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = currentTime
+    ? currentTime.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    : "Loading…";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

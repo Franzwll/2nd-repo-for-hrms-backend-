@@ -1,0 +1,10 @@
+﻿TABLE_NAME	columns
+applicants	applicant_id, applicant_code, job_post_id, name, email, phone, applied_at, fit_score, status, stage, source, resume_file_path, resume_original_name, resume_hash, summary, flags_json, created_at, updated_at
+employees	employee_id, employee_code, first_name, middle_name, last_name, email, personal_email, phone, address, birth_date, gender, civil_status, nationality, sss_number, philhealth_number, pagibig_number, tin_number, position_id, department_id, employment_type, date_hired, supervisor_employee_id, status, onboarding_complete, salary_grade_id, employee_record_last_updated_at, salary_step, created_at, updated_at
+employee_emergency_contacts	emergency_contact_id, employee_id, name, relationship, phone, address, is_primary, created_at, updated_at
+facilities	facility_id, name, type, location, capacity, icon, description, is_active, created_at, updated_at
+new_hires	new_hire_id, new_hire_code, applicant_id, employee_id, name, email, phone, position_id, department_id, stage, start_date, evaluation_requested_at, created_at, updated_at
+positions	position_id, position_code, title, department_id, salary_grade_id, level, headcount, filled_count, created_at, updated_at
+salary_grades	salary_grade_id, code, title, min_salary, max_salary, currency_code, level, notes, created_at, updated_at
+system_users	system_user_id, username, email, password_hash, full_name, department_name, employee_id, role_id, status, otp_enabled, mfa_method, totp_secret, totp_confirmed_at, mfa_recovery_codes, failed_attempts, locked_until, last_login_at, last_login_ip, created_at, updated_at
+work_schedules	work_schedule_id, employee_id, day_of_week, shift_name, start_time, end_time, location, is_rest_day, effective_from, effective_to, created_at, updated_at

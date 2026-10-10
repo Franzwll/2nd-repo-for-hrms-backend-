@@ -38,10 +38,42 @@ return [
     'gemini' => [
         'key' => env('GEMINI_API_KEY'),
         'fallback_key' => env('GEMINI_FALLBACK_API_KEY'),
-        'model' => env('GEMINI_MODEL', 'gemini-3.6-flash'),
+        'model' => env('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
         'fallback_model' => env('GEMINI_FALLBACK_MODEL'),
         'timeout' => (int) env('GEMINI_TIMEOUT', 30),
         'max_tokens' => (int) env('GEMINI_MAX_TOKENS', 2048),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | AI chat (Landing + ESS share one chain)
+    |--------------------------------------------------------------------------
+    | 1st Groq (openai/gpt-oss-20b) -> 2nd OpenRouter
+    | (nvidia/nemotron-3-super-120b-a12b:free) -> 3rd shared Gemini.
+    */
+    'chat_groq' => [
+        'key' => env('CHAT_GROQ_API_KEY'),
+        'model' => env('CHAT_GROQ_MODEL', 'openai/gpt-oss-20b'),
+    ],
+
+    'chat_openrouter' => [
+        'key' => env('CHAT_OPENROUTER_API_KEY'),
+        'model' => env('CHAT_OPENROUTER_MODEL', 'nvidia/nemotron-3-super-120b-a12b:free'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | AI job-post drafts (own Groq/OpenRouter keys, shared Gemini key)
+    |--------------------------------------------------------------------------
+    */
+    'job_groq' => [
+        'key' => env('JOB_GROQ_API_KEY'),
+        'model' => env('JOB_GROQ_MODEL', 'openai/gpt-oss-20b'),
+    ],
+
+    'job_openrouter' => [
+        'key' => env('JOB_OPENROUTER_API_KEY'),
+        'model' => env('JOB_OPENROUTER_MODEL', 'nvidia/nemotron-3-super-120b-a12b:free'),
     ],
 
     'turnstile' => [

@@ -422,7 +422,7 @@ export function ProfilePage({ role }: { role: Role }) {
             <div className="relative">
               <Avatar className="h-28 w-28 border-4 border-card shadow-md">
                 {photo ? <AvatarImage src={photo} alt={value.fullName} /> : null}
-                <AvatarFallback className="bg-gold-soft font-display text-3xl font-semibold text-primary border border-gold/15">
+                <AvatarFallback className="bg-gold-soft font-display text-3xl font-semibold text-primary border border-gold/15 dark:bg-gold/15 dark:text-gold">
                   {initialsOf(value.fullName)}
                 </AvatarFallback>
               </Avatar>
@@ -437,7 +437,7 @@ export function ProfilePage({ role }: { role: Role }) {
             </div>
 
             <h2 className="mt-4 font-display text-xl font-semibold tracking-tight">{value.fullName}</h2>
-            <p className="text-sm font-medium text-primary">{value.position}</p>
+            <p className="text-sm font-medium text-primary dark:text-[oklch(0.7_0.16_22)]">{value.position}</p>
             <Badge className="mt-2 border-success/20 bg-success/10 text-success hover:bg-success/15 px-2.5 py-0.5">
               <span className="h-1.5 w-1.5 rounded-full bg-success mr-1.5 inline-block" />
               {value.status}
@@ -472,7 +472,7 @@ export function ProfilePage({ role }: { role: Role }) {
                 { icon: Clock, label: "Last Login", value: value.lastLogin },
               ].map((row) => (
                 <div key={row.label} className="flex items-center gap-3">
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/[0.08] border border-primary/10 text-primary">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/[0.08] border border-primary/10 text-primary dark:bg-primary/20 dark:text-[oklch(0.7_0.16_22)]">
                     <row.icon className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
@@ -486,7 +486,7 @@ export function ProfilePage({ role }: { role: Role }) {
             {role !== "superadmin" ? (
               <Button variant="outline" className="mt-5 w-full border-primary/15 bg-gold-soft/30 hover:bg-gold-soft/50 text-foreground" asChild>
                 <Link to={settingsPath as never} hash="security">
-                  <KeyRound className="mr-2 h-4 w-4 text-primary" />
+                  <KeyRound className="mr-2 h-4 w-4 text-primary dark:text-[oklch(0.7_0.16_22)]" />
                   Change Password
                 </Link>
               </Button>
@@ -539,7 +539,7 @@ export function ProfilePage({ role }: { role: Role }) {
                   </div>
 
                   <div className="p-6">
-                    <p className="text-xs font-semibold uppercase tracking-widest text-primary/80">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-primary/80 dark:text-[oklch(0.7_0.16_22)]">
                       Personal Details
                     </p>
 
@@ -551,7 +551,7 @@ export function ProfilePage({ role }: { role: Role }) {
                           value={value.fullName}
                           disabled={!editing}
                           onChange={(e) => set("fullName", e.target.value)}
-                          className="disabled:bg-muted/40 disabled:text-foreground/80"
+                          className="disabled:bg-muted/40 disabled:text-foreground/80 disabled:opacity-100 dark:disabled:text-foreground"
                         />
                       </div>
                       <div className="space-y-2">
@@ -565,6 +565,14 @@ export function ProfilePage({ role }: { role: Role }) {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            {/* The stored position may come from Core HCM and not
+                                exist in the static list — always offer it so the
+                                field never renders empty. */}
+                            {!positionOptions.includes(value.position) && value.position ? (
+                              <SelectItem key={value.position} value={value.position}>
+                                {value.position}
+                              </SelectItem>
+                            ) : null}
                             {positionOptions.map((p) => (
                               <SelectItem key={p} value={p}>
                                 {p}
@@ -581,7 +589,7 @@ export function ProfilePage({ role }: { role: Role }) {
                           value={value.email}
                           disabled={!editing}
                           onChange={(e) => set("email", e.target.value)}
-                          className="disabled:bg-muted/40 disabled:text-foreground/80"
+                          className="disabled:bg-muted/40 disabled:text-foreground/80 disabled:opacity-100 dark:disabled:text-foreground"
                         />
                       </div>
                       {role !== "superadmin" && (
@@ -596,6 +604,11 @@ export function ProfilePage({ role }: { role: Role }) {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
+                              {!departmentOptions.includes(value.department) && value.department ? (
+                                <SelectItem key={value.department} value={value.department}>
+                                  {value.department}
+                                </SelectItem>
+                              ) : null}
                               {departmentOptions.map((d) => (
                                 <SelectItem key={d} value={d}>
                                   {d}
@@ -613,7 +626,7 @@ export function ProfilePage({ role }: { role: Role }) {
                           value={value.phone}
                           disabled={!editing}
                           onChange={(e) => set("phone", e.target.value)}
-                          className="disabled:bg-muted/40 disabled:text-foreground/80"
+                          className="disabled:bg-muted/40 disabled:text-foreground/80 disabled:opacity-100 dark:disabled:text-foreground"
                         />
                       </div>
 
@@ -628,6 +641,11 @@ export function ProfilePage({ role }: { role: Role }) {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            {!civilStatusOptions.includes(value.civilStatus) && value.civilStatus ? (
+                              <SelectItem key={value.civilStatus} value={value.civilStatus}>
+                                {value.civilStatus}
+                              </SelectItem>
+                            ) : null}
                             {civilStatusOptions.map((c) => (
                               <SelectItem key={c} value={c}>
                                 {c}
@@ -645,7 +663,7 @@ export function ProfilePage({ role }: { role: Role }) {
                         className="cursor-pointer text-xs"
                         onClick={() => setActiveTab("full-info")}
                       >
-                        <IdCard className="mr-1.5 h-3.5 w-3.5 text-primary" /> View Complete 201 Record
+                        <IdCard className="mr-1.5 h-3.5 w-3.5 text-primary dark:text-[oklch(0.7_0.16_22)]" /> View Complete 201 Record
                       </Button>
 
                       <div className="flex gap-2">
@@ -734,7 +752,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 value={value.email}
                                 disabled={!editing}
                                 onChange={(e) => set("email", e.target.value)}
-                                className="pl-9 disabled:bg-muted/40"
+                                className="pl-9 disabled:bg-muted/40 disabled:opacity-100"
                               />
                             </div>
                           </div>
@@ -748,7 +766,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 value={value.personalEmail}
                                 disabled={!editing}
                                 onChange={(e) => set("personalEmail", e.target.value)}
-                                className="pl-9 disabled:bg-muted/40"
+                                className="pl-9 disabled:bg-muted/40 disabled:opacity-100"
                               />
                             </div>
                           </div>
@@ -762,7 +780,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 value={value.phone}
                                 disabled={!editing}
                                 onChange={(e) => set("phone", e.target.value)}
-                                className="pl-9 disabled:bg-muted/40"
+                                className="pl-9 disabled:bg-muted/40 disabled:opacity-100"
                               />
                             </div>
                           </div>
@@ -776,7 +794,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 value={value.telephone}
                                 disabled={!editing}
                                 onChange={(e) => set("telephone", e.target.value)}
-                                className="pl-9 disabled:bg-muted/40"
+                                className="pl-9 disabled:bg-muted/40 disabled:opacity-100"
                               />
                             </div>
                           </div>
@@ -790,7 +808,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 value={value.currentAddress}
                                 disabled={!editing}
                                 onChange={(e) => set("currentAddress", e.target.value)}
-                                className="pl-9 disabled:bg-muted/40"
+                                className="pl-9 disabled:bg-muted/40 disabled:opacity-100"
                               />
                             </div>
                           </div>
@@ -804,7 +822,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 value={value.permanentAddress}
                                 disabled={!editing}
                                 onChange={(e) => set("permanentAddress", e.target.value)}
-                                className="pl-9 disabled:bg-muted/40"
+                                className="pl-9 disabled:bg-muted/40 disabled:opacity-100"
                               />
                             </div>
                           </div>
@@ -836,6 +854,11 @@ export function ProfilePage({ role }: { role: Role }) {
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
+                                  {!civilStatusOptions.includes(value.civilStatus) && value.civilStatus ? (
+                                    <SelectItem key={value.civilStatus} value={value.civilStatus}>
+                                      {value.civilStatus}
+                                    </SelectItem>
+                                  ) : null}
                                   {civilStatusOptions.map((c) => (
                                     <SelectItem key={c} value={c}>
                                       {c}
@@ -853,7 +876,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 disabled={!editing}
                                 placeholder="N/A if Single"
                                 onChange={(e) => set("spouseName", e.target.value)}
-                                className="disabled:bg-muted/40"
+                                className="disabled:bg-muted/40 disabled:opacity-100"
                               />
                             </div>
 
@@ -865,7 +888,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 disabled={!editing}
                                 placeholder="e.g. Accountant at XYZ Corp"
                                 onChange={(e) => set("spouseOccupation", e.target.value)}
-                                className="disabled:bg-muted/40"
+                                className="disabled:bg-muted/40 disabled:opacity-100"
                               />
                             </div>
 
@@ -876,7 +899,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 value={value.fatherName}
                                 disabled={!editing}
                                 onChange={(e) => set("fatherName", e.target.value)}
-                                className="disabled:bg-muted/40"
+                                className="disabled:bg-muted/40 disabled:opacity-100"
                               />
                             </div>
 
@@ -887,7 +910,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 value={value.motherMaidenName}
                                 disabled={!editing}
                                 onChange={(e) => set("motherMaidenName", e.target.value)}
-                                className="disabled:bg-muted/40"
+                                className="disabled:bg-muted/40 disabled:opacity-100"
                               />
                             </div>
                           </div>
@@ -919,7 +942,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                         {dep.relationship} • Born {dep.birthDate}
                                       </p>
                                     </div>
-                                    <span className="text-xs font-medium text-primary px-2 py-0.5 rounded bg-primary/10">
+                                    <span className="text-xs font-medium text-primary px-2 py-0.5 rounded bg-primary/10 dark:text-[oklch(0.7_0.16_22)] dark:bg-primary/20">
                                       Dependent #{idx + 1}
                                     </span>
                                   </div>
@@ -952,7 +975,7 @@ export function ProfilePage({ role }: { role: Role }) {
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-1.5">
                                 <CheckCircle2 className="h-4 w-4 text-primary" />
-                                <span className="text-xs font-bold text-primary">Primary Emergency Contact</span>
+                                <span className="text-xs font-bold text-primary dark:text-[oklch(0.7_0.16_22)]">Primary Emergency Contact</span>
                               </div>
                               <Badge className="bg-primary text-primary-foreground text-[10px] px-2 py-0.5">
                                 First Dial
@@ -966,7 +989,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 value={value.emergencyName}
                                 disabled={!editing}
                                 onChange={(e) => set("emergencyName", e.target.value)}
-                                className="disabled:bg-background/80"
+                                className="disabled:bg-background/80 disabled:opacity-100"
                               />
                             </div>
 
@@ -978,7 +1001,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 value={value.emergencyRelationship}
                                 disabled={!editing}
                                 onChange={(e) => set("emergencyRelationship", e.target.value)}
-                                className="disabled:bg-background/80"
+                                className="disabled:bg-background/80 disabled:opacity-100"
                               />
                               </div>
                               <div className="space-y-1.5">
@@ -988,7 +1011,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 value={value.emergencyPhone}
                                 disabled={!editing}
                                 onChange={(e) => set("emergencyPhone", e.target.value)}
-                                className="disabled:bg-background/80"
+                                className="disabled:bg-background/80 disabled:opacity-100"
                               />
                               </div>
                             </div>
@@ -1000,7 +1023,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 value={value.emergencyAddress}
                                 disabled={!editing}
                                 onChange={(e) => set("emergencyAddress", e.target.value)}
-                                className="disabled:bg-background/80"
+                                className="disabled:bg-background/80 disabled:opacity-100"
                               />
                             </div>
                           </div>
@@ -1024,7 +1047,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 value={value.emergencySecondaryName}
                                 disabled={!editing}
                                 onChange={(e) => set("emergencySecondaryName", e.target.value)}
-                                className="disabled:bg-background/80"
+                                className="disabled:bg-background/80 disabled:opacity-100"
                               />
                             </div>
 
@@ -1036,7 +1059,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 value={value.emergencySecondaryRelationship}
                                 disabled={!editing}
                                 onChange={(e) => set("emergencySecondaryRelationship", e.target.value)}
-                                className="disabled:bg-background/80"
+                                className="disabled:bg-background/80 disabled:opacity-100"
                               />
                               </div>
                               <div className="space-y-1.5">
@@ -1046,7 +1069,7 @@ export function ProfilePage({ role }: { role: Role }) {
                                 value={value.emergencySecondaryPhone}
                                 disabled={!editing}
                                 onChange={(e) => set("emergencySecondaryPhone", e.target.value)}
-                                className="disabled:bg-background/80"
+                                className="disabled:bg-background/80 disabled:opacity-100"
                               />
                               </div>
                             </div>
@@ -1092,7 +1115,7 @@ export function ProfilePage({ role }: { role: Role }) {
                             <div className="space-y-1">
                               <span className="text-xs text-muted-foreground">Employment Status / Type</span>
                               <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary text-xs font-semibold">
+                                <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary text-xs font-semibold dark:text-[oklch(0.7_0.16_22)] dark:bg-primary/15">
                                   {value.employmentType}
                                 </Badge>
                                 <Badge className="border-success/20 bg-success/10 text-success text-xs">
@@ -1246,15 +1269,15 @@ export function ProfilePage({ role }: { role: Role }) {
                     <div className="grid gap-5 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label htmlFor="p-id">Employee ID</Label>
-                        <Input id="p-id" value={value.employeeId} disabled className="bg-muted/40 text-foreground/80" />
+                        <Input id="p-id" value={value.employeeId} disabled className="bg-muted/40 text-foreground/80 disabled:opacity-100 dark:text-foreground" />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="p-login">Last Login</Label>
-                        <Input id="p-login" value={value.lastLogin} disabled className="bg-muted/40 text-foreground/80" />
+                        <Input id="p-login" value={value.lastLogin} disabled className="bg-muted/40 text-foreground/80 disabled:opacity-100 dark:text-foreground" />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="p-created">Date Created</Label>
-                        <Input id="p-created" value={value.dateCreated} disabled className="bg-muted/40 text-foreground/80" />
+                        <Input id="p-created" value={value.dateCreated} disabled className="bg-muted/40 text-foreground/80 disabled:opacity-100 dark:text-foreground" />
                       </div>
                       <div className="space-y-2">
                         <Label>Account Status</Label>

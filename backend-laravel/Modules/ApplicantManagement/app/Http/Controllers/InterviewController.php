@@ -110,7 +110,8 @@ class InterviewController extends Controller
             module: 'Applicant Management',
             type: 'info',
             targetType: 'Interview',
-            targetId: (string) $interview->interview_id
+            targetId: (string) $interview->interview_id,
+            onlyRoleNames: ['Admin', 'Super Admin']
         );
 
         if ($applicant->email) {
@@ -161,14 +162,8 @@ class InterviewController extends Controller
             details: "Facility request approved — {$model->facility->name} for {$applicant?->name}'s interview on {$model->scheduled_date} at {$model->scheduled_time}. Confirmation email sent to {$applicant?->email}."
         );
 
-        NotificationService::send(
-            title: "Facility request approved: {$model->facility->name}",
-            body: "{$applicant?->name}'s interview schedule is confirmed. Confirmation email sent.",
-            module: 'Applicant Management',
-            type: 'success',
-            targetType: 'Interview',
-            targetId: (string) $model->interview_id
-        );
+        // Helpful-only: facility confirmation already emails the applicant and
+        // stays in audit log. No bell needed.
 
         // Automatically email the applicant their confirmed schedule.
         if ($applicant?->email) {
@@ -244,7 +239,8 @@ class InterviewController extends Controller
                 module: 'Applicant Management',
                 type: 'warning',
                 targetType: 'Interview',
-                targetId: (string) $model->interview_id
+                targetId: (string) $model->interview_id,
+                onlyRoleNames: ['Admin', 'Super Admin']
             );
 
             if ($applicant?->email) {
@@ -352,7 +348,8 @@ class InterviewController extends Controller
             module: 'Applicant Management',
             type: 'warning',
             targetType: 'Interview',
-            targetId: (string) $model->interview_id
+            targetId: (string) $model->interview_id,
+            onlyRoleNames: ['Admin', 'Super Admin']
         );
 
         $model->delete();

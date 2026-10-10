@@ -118,8 +118,8 @@ class ActivityObserver
     }
 
     /**
-     * Announcements are broadcast to all users (except the actor) rather than a
-     * fixed admin list, since they are company-wide communication.
+     * Announcements respect their Audience so the bell matches the board
+     * (All / Employee / Admin / Super Admin). Actor is still excluded.
      */
     protected function broadcastAnnouncement(string $event, Announcement $announcement): void
     {
@@ -128,14 +128,23 @@ class ActivityObserver
 
         $verb = $event === 'created' ? 'published' : 'updated';
 
-        Notifier::toAll([
+        $attrs = [
             'title' => "Announcement {$verb}",
             'body' => "\"{$announcement->title}\" was {$verb}.",
             'type' => 'info',
             'module_name' => 'Announcements',
             'target_type' => 'announcement',
             'target_id' => (string) $announcement->announcement_id,
-        ], $except);
+        ];
+
+        $roles = Notifier::audienceRoleNames($announcement->audience);
+
+        if ($roles === null) {
+            Notifier::toAll($attrs, $except);
+            return;
+        }
+
+        Notifier::toActiveRoles($roles, $attrs, $except);
     }
 
     protected function meta(Model $model): ?array

@@ -195,8 +195,8 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
     }
   }, [initialTab]);
 
-  // Live Clock Terminal State
-  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  // Live Clock Terminal State — client-only (null until mounted so SSR HTML matches).
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [currentDutyStatus, setCurrentDutyStatus] = useState<"clocked_in" | "on_break" | "clocked_out">("clocked_in");
   const [punchLog, setPunchLog] = useState({
     timeIn: myAttendance.today.timeIn || "07:52 AM",
@@ -240,8 +240,9 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
   const [leaveBalances, setLeaveBalances] = useState<ApiLeaveBalance[]>([]);
   const [leaveHistory, setLeaveHistory] = useState<any[]>([]);
 
-  // Clock Ticker
+  // Clock Ticker — starts after mount so SSR HTML matches (no hydration mismatch).
   useEffect(() => {
+    setCurrentTime(new Date());
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
@@ -298,21 +299,25 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
     loadData();
   }, []);
 
-  const formattedTime = currentTime.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
+  const formattedTime = currentTime
+    ? currentTime.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      })
+    : "--:--:--";
 
-  const formattedDate = currentTime.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = currentTime
+    ? currentTime.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    : "Loading…";
 
-  const todayDayName = currentTime.toLocaleDateString("en-US", { weekday: "long" });
+  const todayDayName = currentTime ? currentTime.toLocaleDateString("en-US", { weekday: "long" }) : "";
 
 
   const filteredAttRequests = useMemo(() => {
@@ -483,7 +488,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
               </Button>
             </div>
           </div>
-          <Card className="border-border/70 shadow-xs">
+          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-end gap-2 pb-4">
                 <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary text-xs font-medium px-2.5 py-1">
@@ -622,7 +627,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
             </div>
             </CardContent>
           </Card>
-          <Card className="border-border/70 shadow-xs">
+          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
             <CardContent className="p-6">
               {scheduleLoading ? (
                 <StatCardsSkeleton count={4} />
@@ -714,7 +719,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
             </div>
           </div>
 
-          <Card className="border-border/70 shadow-xs">
+          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
@@ -783,7 +788,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
             </CardContent>
           </Card>
 
-          <Card className="border-border/70 shadow-xs">
+          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
@@ -870,7 +875,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         </TabsContent>
 
         <TabsContent value="leave" className="mt-4 space-y-4">
-          <Card className="border-border/70 shadow-xs">
+          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <h2 className="flex items-center gap-2 font-display text-lg font-semibold">

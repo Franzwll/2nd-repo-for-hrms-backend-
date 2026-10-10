@@ -176,7 +176,8 @@ class ApplicantManagementController extends Controller
             module: 'Applicant Management',
             type: 'info',
             targetType: 'Applicant',
-            targetId: (string) $applicant->applicant_id
+            targetId: (string) $applicant->applicant_id,
+            onlyRoleNames: ['Admin', 'Super Admin']
         );
 
         return response()->json(
@@ -419,18 +420,51 @@ class ApplicantManagementController extends Controller
         $validated = $request->validate([
             'resume' => ['required', 'file', 'max:20480'],
             'job_post_id' => ['required', 'integer', 'exists:job_posts,job_post_id'],
+            'documents' => ['sometimes', 'array', 'max:10'],
+            'documents.*' => ['file', 'max:10240'],
+            'doc_types' => ['sometimes', 'array'],
+            'doc_types.*' => ['string', 'in:COE,Certificate,Credential,Others'],
         ]);
 
         $storedPath = $request->file('resume')->store('resumes-tmp', 'local');
+        $docTmps = [];
         try {
-            $result = $this->screening->screenPreviewFile(
+            $files = $request->file('documents', []);
+            if ($files instanceof \Illuminate\Http\UploadedFile) {
+                $files = [$files];
+            }
+            $types = $request->input('doc_types', []);
+            if (! is_array($types)) {
+                $types = [$types];
+            }
+            foreach (array_values(is_array($files) ? $files : []) as $i => $docFile) {
+                if (! $docFile instanceof \Illuminate\Http\UploadedFile || ! $docFile->isValid()) {
+                    continue;
+                }
+                $docStored = $docFile->store('resumes-tmp', 'local');
+                $docTmps[] = [
+                    'stored_path' => $docStored,
+                    'original_name' => $docFile->getClientOriginalName() ?: 'document',
+                    'doc_type' => (string) ($types[$i] ?? 'Others'),
+                    'title' => $docFile->getClientOriginalName() ?: 'document',
+                ];
+            }
+
+            $result = $this->screening->screenPreviewWithDocuments(
                 $storedPath,
                 $request->file('resume')->getClientOriginalName() ?: 'resume',
-                (int) $validated['job_post_id']
+                (int) $validated['job_post_id'],
+                $docTmps
             );
         } finally {
             if (Storage::disk('local')->exists($storedPath)) {
                 Storage::disk('local')->delete($storedPath);
+            }
+            foreach ($docTmps as $tmp) {
+                $p = $tmp['stored_path'] ?? null;
+                if ($p && Storage::disk('local')->exists($p)) {
+                    Storage::disk('local')->delete($p);
+                }
             }
         }
 
@@ -554,14 +588,19 @@ class ApplicantManagementController extends Controller
                 details: "Stage changed from {$oldStage} to {$newStage} for {$model->name} ({$positionTitle})."
             );
 
-            NotificationService::send(
-                title: "Applicant {$model->name}: {$newStage}",
-                body: "Stage updated from {$oldStage} to {$newStage} for {$positionTitle}.",
-                module: 'Applicant Management',
-                type: $newStage === 'Rejected' ? 'warning' : 'info',
-                targetType: 'Applicant',
-                targetId: (string) $model->applicant_id
-            );
+            // Helpful-only: bell only for action stages (needs HR decision).
+            // Intermediate moves stay in audit log.
+            if (in_array($newStage, ['Interview Scheduled', 'Offer', 'Hired', 'Rejected'], true)) {
+                NotificationService::send(
+                    title: "Applicant {$model->name}: {$newStage}",
+                    body: "Stage updated from {$oldStage} to {$newStage} for {$positionTitle}.",
+                    module: 'Applicant Management',
+                    type: $newStage === 'Rejected' ? 'warning' : 'info',
+                    targetType: 'Applicant',
+                    targetId: (string) $model->applicant_id,
+                    onlyRoleNames: ['Admin', 'Super Admin']
+                );
+            }
 
             // Send Emails based on stage change
             if ($model->email) {
@@ -712,7 +751,8 @@ class ApplicantManagementController extends Controller
             module: 'Applicant Management',
             type: 'success',
             targetType: 'Applicant',
-            targetId: (string) $model->applicant_id
+            targetId: (string) $model->applicant_id,
+            onlyRoleNames: ['Admin', 'Super Admin']
         );
 
         if ($model->email && $nextStage === 'Offer') {

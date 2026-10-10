@@ -55,6 +55,7 @@ export function AnnouncementsModal({
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [currentPage, setCurrentPage] = useState(1);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
 
   // 1. Role visibility filter
   const visibleToRole = useMemo(() => {
@@ -219,13 +220,25 @@ export function AnnouncementsModal({
           ) : (
             paginatedItems.map((a) => {
               const isHighlighted = highlightedId === a.id;
+              const isFocused = focusedId === a.id;
               return (
                 <div
                   key={a.id}
-                  className={`rounded-2xl border p-4 sm:p-5 shadow-xs transition-all space-y-2.5 group ${
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setFocusedId(isFocused ? null : a.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setFocusedId(isFocused ? null : a.id);
+                    }
+                  }}
+                  className={`rounded-2xl border p-4 sm:p-5 shadow-xs transition-all space-y-2.5 group cursor-pointer ${
                     isHighlighted
                       ? "border-primary ring-2 ring-primary/30 bg-primary/5 shadow-md"
-                      : "border-border/80 bg-card hover:border-primary/40 hover:bg-muted/10"
+                      : isFocused
+                        ? "border-primary/60 bg-primary/5 shadow-md"
+                        : "border-border/80 bg-card hover:border-primary/40 hover:bg-muted/10"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -247,6 +260,9 @@ export function AnnouncementsModal({
                         <span>·</span>
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3.5 w-3.5" /> {a.createdAt}
+                        </span>
+                        <span className="ml-1 text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                          {isFocused ? "Hide details" : "View details"} →
                         </span>
                       </div>
                     </div>
@@ -270,7 +286,10 @@ export function AnnouncementsModal({
                           size="icon"
                           className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                           aria-label={`Remove announcement ${a.title}`}
-                          onClick={() => removeAnnouncement(a.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeAnnouncement(a.id);
+                          }}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -278,9 +297,20 @@ export function AnnouncementsModal({
                     </div>
                   </div>
 
-                  <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed whitespace-pre-line border-t border-border/40 pt-2.5">
+                  <p
+                    className={`text-xs sm:text-sm text-muted-foreground leading-relaxed whitespace-pre-line border-t border-border/40 pt-2.5 ${
+                      isFocused ? "" : "line-clamp-3"
+                    }`}
+                  >
                     {a.body}
                   </p>
+                  {isFocused && (
+                    <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Sparkles className="h-3.5 w-3.5 text-primary" /> Full post shown
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })

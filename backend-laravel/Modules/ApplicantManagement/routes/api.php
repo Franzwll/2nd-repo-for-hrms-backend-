@@ -150,6 +150,11 @@ Route::prefix('v1')
           Route::get('facilities', [FacilityController::class, 'index'])
                ->name('facilities.index');
 
+          /* Global assessment switches (owned by Core HCM, read here)          */
+          Route::get('assessments/config', [AssessmentConfigController::class, 'show'])
+               ->name('assessments.config');
+
+
           /* ------------------------------------------------------------------ */
           /* Global assessment switches (owned by Core HCM, read here)          */
           /* ------------------------------------------------------------------ */

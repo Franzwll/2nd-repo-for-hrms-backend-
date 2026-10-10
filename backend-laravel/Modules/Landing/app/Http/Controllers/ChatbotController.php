@@ -25,26 +25,59 @@ class ChatbotController extends Controller
         $topic = $request->filled('topic') ? (string) $request->string('topic') : null;
 
         // Role: explicit request role wins; else derive from the logged-in user.
-        $role = (string) ($request->string('role') ?: 'guest');
+        // SECURITY: unauthenticated callers can NEVER claim employee/admin —
+        // only guest/applicant. Authenticated users get their real role
+        // (prevents privilege-escalation via a forged `role` field).
+        $requestedRole = (string) ($request->string('role') ?: 'guest');
+        $role = 'guest';
         $user = $request->user();
         if ($user) {
             if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
                 $role = 'superadmin';
             } elseif (! empty($user->role)) {
                 $role = strtolower((string) $user->role);
-            } elseif ($role === 'guest') {
+            } else {
                 $role = 'employee';
             }
+        } elseif (in_array($requestedRole, ['guest', 'applicant'], true)) {
+            $role = $requestedRole;
         }
         if (! in_array($role, ['guest', 'applicant', 'employee', 'admin', 'superadmin'], true)) {
             $role = 'guest';
         }
 
+        // Deterministic injection pre-filter (no provider cost, no bypass via
+        // provider-hopping): prompt-extraction / jailbreak attempts get a
+        // canned safe refusal and are still logged for HR review.
+        if (($refusal = GeminiChatService::refusalFor($message)) !== null) {
+            $messageId = $this->persistExchange(
+                $request,
+                $role,
+                $sessionId,
+                $message,
+                $refusal,
+                'guardrail',
+                [],
+                false,
+            );
+
+            return response()->json([
+                'reply' => $refusal,
+                'quick_replies' => $this->quickReplies($role),
+                'topic' => $topic,
+                'source' => 'guardrail',
+                'reduced' => false,
+                'message_id' => $messageId,
+                'sources' => [],
+            ]);
+        }
+
         [$context, $contextFaqIds] = $this->buildContext($role, $message);
         $hadFaqContext = count($contextFaqIds) > 0;
 
-        // Try real AI first (backend proxy keeps GEMINI_API_KEY server-side).
-        // The circuit breaker drops to the rule engine after repeated failures.
+        // Try real AI first (backend proxy keeps keys server-side: Groq ->
+        // OpenRouter -> shared Gemini). The circuit breaker drops to the rule
+        // engine after repeated failures.
         if ($gemini->configured() && $gemini->available()) {
             $history = collect($request->input('history', []))
                 ->map(fn ($t) => ['role' => $t['role'] ?? 'user', 'text' => (string) ($t['text'] ?? '')])
@@ -55,8 +88,13 @@ class ChatbotController extends Controller
             $result = $gemini->chat(GeminiChatService::systemPrompt($role, $context), $history, $message);
 
             if ($result['ok'] ?? false) {
+                // Only honour SOURCES the model actually saw: intersect with the
+                // FAQ ids present in this request's context (citation-forgery
+                // guard — a smuggled "SOURCES: FAQ-1" can't conjure trust).
                 [$replyText, $sourceIds] = $this->extractSources($result['text']);
+                $sourceIds = array_values(array_intersect($sourceIds, $contextFaqIds));
                 $sources = $this->faqSources($sourceIds);
+                $via = in_array($result['via'] ?? 'gemini', ['groq', 'openrouter', 'gemini'], true) ? $result['via'] : 'gemini';
 
                 $messageId = $this->persistExchange(
                     $request,
@@ -64,7 +102,7 @@ class ChatbotController extends Controller
                     $sessionId,
                     $message,
                     $replyText,
-                    'gemini',
+                    $via,
                     $sourceIds ?: $contextFaqIds,
                     $hadFaqContext,
                 );
@@ -73,13 +111,13 @@ class ChatbotController extends Controller
                     'reply' => $replyText,
                     'quick_replies' => $this->quickReplies($role),
                     'topic' => $topic,
-                    'source' => 'gemini',
+                    'source' => $via,
                     'reduced' => false,
                     'message_id' => $messageId,
                     'sources' => $sources,
                 ]);
             }
-            // Fall through to the rule engine when Gemini is unavailable.
+            // Fall through to the rule engine when every AI provider is unavailable.
         }
 
         $reply = $engine->respond($message, $sessionId, $topic);
