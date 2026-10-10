@@ -4,7 +4,11 @@
 
 import { clearSession, getToken } from "./auth";
 
-const BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string) || "http://127.0.0.1:8000/api/v1";
+const RAW_BASE_URL =
+  (import.meta.env["VITE_API_BASE_URL"] as string) || "http://127.0.0.1:8000/api/v1";
+// Normalize: "/api" + "/applicants" must join as "/api/v1/applicants" (the Vite
+// dev proxy forwards /api -> Laravel), never "/api/applicants".
+const BASE_URL = RAW_BASE_URL.replace(/\/+$/, "") + (RAW_BASE_URL.replace(/\/+$/, "").endsWith("/v1") ? "" : "/v1");
 export const API_BASE_URL = BASE_URL;
 
 /** Never show raw SQL / DB internals to users — collapse them to a generic message. */
@@ -2624,6 +2628,16 @@ export const essApi = {
       body: JSON.stringify({ action }),
     }),
   myPromotionRequests: () => request<{ data: ApiPromotionRequest[] }>("/ess/my-promotion-requests"),
+  // ESS-safe promotion position options (id/title/department only — no Core HCM permission needed).
+  promotionPositions: () =>
+    request<{ data: { position_id: number; title: string; department?: string | null }[] }>(
+      "/ess/promotion-positions",
+    ),
+  // ESS-safe view of the employee's OWN onboarding checklist.
+  myChecklist: () =>
+    request<{ data: any[]; new_hire: { new_hire_id: number; new_hire_code: string; name: string; stage: string } | null }>(
+      "/ess/my-checklist",
+    ),
   createPromotionRequest: (data: {
     requested_position_id?: number | null;
     requested_salary_grade_id?: number | null;

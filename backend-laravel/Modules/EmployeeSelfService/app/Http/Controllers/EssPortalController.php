@@ -1579,6 +1579,67 @@ class EssPortalController extends Controller
         return response()->json(['data' => $rows]);
     }
 
+    /**
+     * ESS-safe position options for promotion requests.
+     * Employees have Core HCM = None so they cannot hit /positions directly;
+     * this exposes id/title/department only (no headcount/salary internals).
+     */
+    public function promotionPositions(Request $request): JsonResponse
+    {
+        $employee = $this->resolveEmployee($request);
+        if (! $employee) {
+            return response()->json(['message' => 'No linked employee record found.'], 404);
+        }
+
+        $rows = \App\Models\Position::query()
+            ->with('department:department_id,name')
+            ->orderBy('title')
+            ->limit(200)
+            ->get(['position_id', 'title', 'department_id'])
+            ->map(fn ($p) => [
+                'position_id' => $p->position_id,
+                'title' => $p->title,
+                'department' => $p->department?->name,
+            ]);
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * ESS-safe checklist view for the employee's OWN onboarding items
+     * (no New Hire Onboarding module permission needed beyond ESS).
+     */
+    public function myChecklist(Request $request): JsonResponse
+    {
+        $employee = $this->resolveEmployee($request);
+        if (! $employee) {
+            return response()->json(['message' => 'No linked employee record found.'], 404);
+        }
+
+        $hire = \Modules\NewHireOnboarding\Models\NewHire::with(['onboardingItems.templateItem.template'])
+            ->where('employee_id', $employee->employee_id)
+            ->orWhere(function ($q) use ($employee) {
+                $q->where('email', $employee->email)
+                    ->orWhere('name', trim(($employee->first_name ?? '').' '.($employee->last_name ?? '')));
+            })
+            ->orderByDesc('start_date')
+            ->first();
+
+        if (! $hire) {
+            return response()->json(['data' => [], 'new_hire' => null]);
+        }
+
+        return response()->json([
+            'data' => $hire->onboardingItems ?? [],
+            'new_hire' => [
+                'new_hire_id' => $hire->new_hire_id,
+                'new_hire_code' => $hire->new_hire_code,
+                'name' => $hire->name,
+                'stage' => $hire->stage,
+            ],
+        ]);
+    }
+
     public function createPromotionRequest(Request $request): JsonResponse
     {
         $employee = $this->resolveEmployee($request);

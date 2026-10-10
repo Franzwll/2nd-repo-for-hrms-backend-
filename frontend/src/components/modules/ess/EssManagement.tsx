@@ -97,7 +97,6 @@ import { useSort, SortHead } from "@/components/portal/sortable";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { EmployeeEss } from "./EmployeeEss";
-import { AdminLearningTab } from "./tabs/AdminLearningTab";
 import { essApi, type ApiEssRequestItem } from "@/lib/api";
 
 type Status = ESSRequest["status"] | "Returned for Clarification";
@@ -931,7 +930,13 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
           </Card>
         </TabsContent>
         <TabsContent value="learning" className="mt-4">
-          <AdminLearningTab />
+          <Card className="border-border/70">
+            <CardContent className="p-6">
+              <p className="text-sm text-muted-foreground">
+                Learning management is not available in this build.
+              </p>
+            </CardContent>
+          </Card>
         </TabsContent>
         {role === "superadmin" && (
           <TabsContent value="config" className="mt-4">

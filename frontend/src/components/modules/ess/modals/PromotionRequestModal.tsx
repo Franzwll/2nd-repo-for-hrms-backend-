@@ -25,7 +25,7 @@ import {
 import { toast } from "sonner";
 import { myProfile, myPerformance } from "@/data/ess";
 import { positions as fallbackPositions } from "@/data/hr";
-import { essApi, hcmApi } from "@/lib/api";
+import { essApi } from "@/lib/api";
 
 interface PromotionRequestModalProps {
   open: boolean;
@@ -109,17 +109,15 @@ export function PromotionRequestModal({
         salaryBand: p.salaryBand,
       }));
 
-    // 2. Fetch active positions from HCM API, also restricting strictly to employee's department
-    hcmApi.positions
-      .list({ per_page: 100 })
+    // 2. Fetch positions via the ESS-safe endpoint (employees have Core HCM=None
+    // so /positions 403s). Falls back to the ladder when the API is unreachable.
+    essApi
+      .promotionPositions()
       .then((res) => {
         if (res?.data?.length) {
           const apiPositions: PositionOption[] = res.data
             .filter((p) => {
-              const deptName =
-                typeof p.department === "object" && p.department
-                  ? (p.department as any).name
-                  : (p.department as string || "");
+              const deptName = p.department || "";
               return (
                 matchesDepartment(deptName, myProfile.department) &&
                 p.title !== myProfile.position &&
@@ -129,10 +127,7 @@ export function PromotionRequestModal({
             .map((p) => ({
               id: p.position_id,
               title: p.title,
-              dept:
-                typeof p.department === "object" && p.department
-                  ? (p.department as any).name
-                  : (p.department as string || undefined),
+              dept: p.department || undefined,
             }));
 
           // Merge fallback ladder positions and API positions, deduplicating by title

@@ -195,8 +195,8 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
     }
   }, [initialTab]);
 
-  // Live Clock Terminal State
-  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  // Live Clock Terminal State — client-only (null until mounted so SSR HTML matches).
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [currentDutyStatus, setCurrentDutyStatus] = useState<"clocked_in" | "on_break" | "clocked_out">("clocked_in");
   const [punchLog, setPunchLog] = useState({
     timeIn: myAttendance.today.timeIn || "07:52 AM",
@@ -240,8 +240,9 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
   const [leaveBalances, setLeaveBalances] = useState<ApiLeaveBalance[]>([]);
   const [leaveHistory, setLeaveHistory] = useState<any[]>([]);
 
-  // Clock Ticker
+  // Clock Ticker — starts after mount so SSR HTML matches (no hydration mismatch).
   useEffect(() => {
+    setCurrentTime(new Date());
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
@@ -298,21 +299,25 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
     loadData();
   }, []);
 
-  const formattedTime = currentTime.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
+  const formattedTime = currentTime
+    ? currentTime.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      })
+    : "--:--:--";
 
-  const formattedDate = currentTime.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = currentTime
+    ? currentTime.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    : "Loading…";
 
-  const todayDayName = currentTime.toLocaleDateString("en-US", { weekday: "long" });
+  const todayDayName = currentTime ? currentTime.toLocaleDateString("en-US", { weekday: "long" }) : "";
 
 
   const filteredAttRequests = useMemo(() => {

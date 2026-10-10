@@ -97,6 +97,7 @@ import {
   applicantsApi,
   checklistRequestsApi,
   coreHcmApi,
+  essApi,
   newHiresApi,
   onboardingItemsApi,
   resolveStorageUrl,
@@ -337,13 +338,15 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
         setRequestedItems((res?.data ?? []).map(transformApiRequest));
       })
       .catch((err) => console.warn("Could not fetch checklist requests from API:", err));
+    // default_password is sensitive (Settings:Full only) — non-Full roles 404
+    // by design. Silently keep the shipped default instead of warning.
     settingsApi
       .get("default_password")
       .then((res) => {
         const pw = res?.setting_value?.password;
         if (pw) setDefaultPassword(pw);
       })
-      .catch((err) => console.warn("Could not fetch default password from database:", err));
+      .catch(() => {});
     // Auto-regularization threshold (days worked, default 180 = 6 months) —
     // shared through system_settings so every admin session follows the
     // same DOLE cap. Readable by all roles with Settings:View.
@@ -401,7 +404,15 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
           setCandidateApplicants(hired);
         }
       })
-      .catch((err) => console.warn("Could not fetch applicants from API:", err));
+      .catch((err) => {
+        // 401 (expired token) is handled globally (redirect to /login);
+        // CORS-blocked fetches throw NetworkError — both fall back to mock
+        // data, so only log unexpected failures.
+        const status = (err as { status?: number } | null)?.status;
+        if (status !== 401 && !(err instanceof TypeError)) {
+          console.warn("Could not fetch applicants from API:", err);
+        }
+      });
   }, []);
 
   const [reqItemDraft, setReqItemDraft] = useState("");
@@ -2658,26 +2669,63 @@ export function EmployeeOnboarding() {
     const authUser = getUser();
     const myName = authUser?.full_name?.trim().toLowerCase() ?? "";
     const myEmployeeId = authUser?.employee_id ?? null;
+    const isEmployeePortal = (authUser?.role ?? "").toLowerCase() === "employee";
 
-    newHiresApi
-      .list({ per_page: 100 })
-      .then((res) => {
-        const mine =
-          (myEmployeeId != null
-            ? res.data.find((h) => h.employee_id === myEmployeeId)
-            : undefined) ??
-          (myName ? res.data.find((h) => h.name.trim().toLowerCase() === myName) : undefined) ??
-          // Demo fallback: prefer a Probationary hire so the probationary
-          // checklist view stays populated straight from the database.
-          res.data.find((h) => h.stage === "Probationary") ??
-          res.data[0] ??
-          null;
-        setNewHire(mine);
-        return mine;
-      })
+    // Employees use the ESS-safe endpoint (staff /new-hires list needs the
+    // New Hire Onboarding module permission, which employees don't have).
+    // hireLookup resolves the hire header; itemLookup resolves the rows the
+    // same way so NO staff-only call fires on the employee portal.
+    const hireLookup: Promise<ApiNewHire | null> = isEmployeePortal
+      ? essApi
+          .myChecklist()
+          .then((res) => {
+            const nh = res?.new_hire;
+            if (!nh) return null;
+            const mine = {
+              new_hire_id: nh.new_hire_id,
+              new_hire_code: nh.new_hire_code,
+              name: nh.name,
+              email: authUser?.email ?? "",
+              phone: "",
+              stage: nh.stage,
+            } as ApiNewHire;
+            setNewHire(mine);
+            return mine;
+          })
+          .catch(() => null)
+      : newHiresApi
+          .list({ per_page: 100 })
+          .then((res) => {
+            const mine =
+              (myEmployeeId != null
+                ? res.data.find((h) => h.employee_id === myEmployeeId)
+                : undefined) ??
+              (myName ? res.data.find((h) => h.name.trim().toLowerCase() === myName) : undefined) ??
+              // Demo fallback: prefer a Probationary hire so the probationary
+              // checklist view stays populated straight from the database.
+              res.data.find((h) => h.stage === "Probationary") ??
+              res.data[0] ??
+              null;
+            setNewHire(mine);
+            return mine;
+          });
+
+    // ESS-safe rows come bundled with myChecklist; staff rows come from the
+    // staff onboarding-items endpoint. Keeps employee + staff shapes identical.
+    const itemLookup = (mine: ApiNewHire): Promise<any[]> =>
+      isEmployeePortal
+        ? essApi
+            .myChecklist()
+            .then((res) => res?.data ?? [])
+            .catch(() => [])
+        : onboardingItemsApi
+            .listForNewHire(mine.new_hire_id)
+            .catch(() => []);
+
+    hireLookup
       .then((mine) => {
         if (!mine) return;
-        return onboardingItemsApi.listForNewHire(mine.new_hire_id).then((apiItems) => {
+        return itemLookup(mine).then((apiItems) => {
           // Show ONLY the Probationary checklist — pre-onboarding / onboarding
           // items are hidden from the employee portal entirely.
           const probationaryOnly = apiItems.filter(

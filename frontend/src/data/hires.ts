@@ -8,6 +8,7 @@ import {
   type ApiNewHire,
   type ApiChecklistTemplate,
 } from "@/lib/api";
+import { getUser } from "@/lib/auth";
 
 /** Draft handed over from Applicant Management when an assessment is accepted. */
 export type PendingHire = {
@@ -144,9 +145,14 @@ const SYNC_INTERVAL_MS = 15000;
 let syncing = false;
 
 /** Refetches new hires + checklist templates from the API and replaces local
- *  data. Safe to call repeatedly — API rows win over local cache. */
+ *  data. Safe to call repeatedly — API rows win over local cache.
+ *  Employees skip staff-only lists (they 403: Core HCM=None / NHO=View);
+ *  the employee portal loads its own checklist via /ess/my-checklist. */
 async function syncFromApi() {
   if (syncing) return;
+  const role = (getUser()?.role ?? "").toLowerCase();
+  const isStaff = role === "admin" || role === "superadmin";
+  if (!isStaff) return;
   syncing = true;
   try {
     const [hiresRes, tmplRes] = await Promise.allSettled([

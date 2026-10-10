@@ -27,6 +27,10 @@ Route::middleware(['auth:sanctum', 'permission:ESS Management'])->prefix('v1/ess
     Route::post('clock', [EssPortalController::class, 'clock']);
     Route::get('my-promotion-requests', [EssPortalController::class, 'myPromotionRequests']);
     Route::post('my-promotion-requests', [EssPortalController::class, 'createPromotionRequest']);
+    // ESS-safe promotion position options (id/title/department only — no HCM permission needed).
+    Route::get('promotion-positions', [EssPortalController::class, 'promotionPositions']);
+    // ESS-safe view of the employee's OWN onboarding checklist.
+    Route::get('my-checklist', [EssPortalController::class, 'myChecklist']);
 
     // Admin & Super Admin Read Endpoints (View access)
     Route::get('admin/requests', [EssAdminController::class, 'getRequests']);

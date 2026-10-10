@@ -1837,7 +1837,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         setJobList((res?.data ?? []).map(transformApiJob));
       })
       .catch((err) => {
-        console.warn("Could not fetch jobs from API:", err);
+        // 401 (expired token) is handled globally (redirect to /login);
+        // CORS-blocked fetches throw NetworkError — both fall back to mock
+        // data, so only log unexpected failures.
+        const status = (err as { status?: number } | null)?.status;
+        if (status !== 401 && !(err instanceof TypeError)) {
+          console.warn("Could not fetch jobs from API:", err);
+        }
       })
       .finally(() => setJobsLoading(false));
   }, []);

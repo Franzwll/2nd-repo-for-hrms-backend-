@@ -33,7 +33,8 @@ export function EssPromotionTab() {
     try {
       const [mine, pos] = await Promise.allSettled([
         essApi.myPromotionRequests(),
-        hcmApi.positions.list({ per_page: 100 }),
+        // ESS-safe endpoint — employees have Core HCM=None so /positions 403s.
+        essApi.promotionPositions(),
       ]);
       if (mine.status === "fulfilled") setRows(mine.value?.data ?? []);
       if (pos.status === "fulfilled") {
