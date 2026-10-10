@@ -25,7 +25,7 @@ const legalLinks = [
   { label: "Cookie Preferences", to: "/cookies" },
 ];
 
-export function PublicShell({ children }: { children: ReactNode }) {
+export function PublicShell({ children, bare = false }: { children: ReactNode; bare?: boolean }) {
   const { company } = useCompany();
   useEffect(() => {
     applyInitialTheme();
