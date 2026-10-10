@@ -48,7 +48,11 @@ import {
 } from "@/components/ui/select";
 import { roleMeta, type Role } from "@/lib/nav";
 import { getUser } from "@/lib/auth";
-import { essApi } from "@/lib/api";
+import { essApi, profileApi } from "@/lib/api";
+
+// Preset profile images
+import defaultBoy from "@/assets/Preset Profile/Preset Profile/defaultboy.svg";
+import defaultGirl from "@/assets/Preset Profile/Preset Profile/default girl.svg";
 
 type Dependent = {
   name: string;
@@ -66,6 +70,7 @@ type ProfileState = {
   dateCreated: string;
   lastLogin: string;
   status: string;
+  gender?: "Male" | "Female" | "Other";
 
   // 1. Contact Information
   personalEmail: string;
@@ -138,6 +143,7 @@ const seedByRole: Record<Role, ProfileState> = {
     dateCreated: "January 12, 2024",
     lastLogin: "August 1, 2026 09:24 AM",
     status: "Active",
+    gender: "Male",
 
     personalEmail: "bullseur.santiago@outlook.com",
     telephone: "+63 2 8899 0001",
@@ -185,6 +191,7 @@ const seedByRole: Record<Role, ProfileState> = {
     dateCreated: "February 5, 2024",
     lastLogin: "August 1, 2026 10:10 AM",
     status: "Active",
+    gender: "Male",
 
     personalEmail: "juan.delacruz.ph@gmail.com",
     telephone: "+63 2 8765 4321",
@@ -231,6 +238,7 @@ const seedByRole: Record<Role, ProfileState> = {
     dateCreated: "April 15, 2026",
     lastLogin: "August 1, 2026 07:52 AM",
     status: "Active",
+    gender: "Male",
 
     personalEmail: "kevin.delacruz92@gmail.com",
     telephone: "+63 2 8123 4567",
@@ -301,6 +309,7 @@ export function ProfilePage({ role }: { role: Role }) {
         })
       : seed.lastLogin,
     status: user?.status || seed.status,
+    gender: user?.gender || seed.gender,
 
     personalEmail: seed.personalEmail,
     telephone: seed.telephone,
@@ -341,7 +350,22 @@ export function ProfilePage({ role }: { role: Role }) {
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("profile");
   const [photo, setPhoto] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Get preset image based on gender
+  const getPresetImage = (gender?: string) => {
+    switch (gender) {
+      case "Male":
+        return defaultBoy;
+      case "Female":
+        return defaultGirl;
+      default:
+        return defaultBoy; // fallback
+    }
+  };
+
+  const presetImage = getPresetImage(value.gender);
 
   useEffect(() => {
     if (role === "employee") {
@@ -388,15 +412,39 @@ export function ProfilePage({ role }: { role: Role }) {
     setDraft((d) => ({ ...d, [key]: v }));
   }
 
-  function onPickPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onPickPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
       toast.error("Photo must be 2MB or smaller");
       return;
     }
-    setPhoto(URL.createObjectURL(file));
-    toast.success("Profile photo updated");
+    setUploading(true);
+    const localUrl = URL.createObjectURL(file);
+    setPhoto(localUrl);
+    try {
+      await profileApi.uploadPhoto(file);
+      toast.success("Profile photo uploaded");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to upload photo");
+      setPhoto(null);
+      URL.revokeObjectURL(localUrl);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function removePhoto() {
+    setUploading(true);
+    try {
+      await profileApi.removePhoto();
+      setPhoto(null);
+      toast.success("Profile photo removed");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to remove photo");
+    } finally {
+      setUploading(false);
+    }
   }
 
   return (
@@ -421,7 +469,11 @@ export function ProfilePage({ role }: { role: Role }) {
           <CardContent className="-mt-16 flex flex-col items-center px-6 pb-6 text-center">
             <div className="relative">
               <Avatar className="h-28 w-28 border-4 border-card shadow-md">
-                {photo ? <AvatarImage src={photo} alt={value.fullName} /> : null}
+                {photo ? (
+                  <AvatarImage src={photo} alt={value.fullName} />
+                ) : (
+                  <AvatarImage src={presetImage} alt={value.fullName} />
+                )}
                 <AvatarFallback className="bg-gold-soft font-display text-3xl font-semibold text-primary border border-gold/15 dark:bg-gold/15 dark:text-gold">
                   {initialsOf(value.fullName)}
                 </AvatarFallback>
@@ -449,11 +501,20 @@ export function ProfilePage({ role }: { role: Role }) {
               accept="image/png,image/jpeg"
               className="hidden"
               onChange={onPickPhoto}
+              disabled={uploading}
             />
-            <Button className="mt-4 w-full shadow-sm" onClick={() => fileRef.current?.click()}>
-              <Camera className="mr-2 h-4 w-4" />
-              Change Photo
-            </Button>
+            <div className="mt-4 space-y-2">
+              <Button className="w-full shadow-sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
+                <Camera className="mr-2 h-4 w-4" />
+                {uploading ? "Uploading…" : photo ? "Change Photo" : "Upload Photo"}
+              </Button>
+              {photo && (
+                <Button variant="outline" className="w-full" onClick={removePhoto} disabled={uploading}>
+                  <Camera className="mr-2 h-4 w-4" />
+                  Remove Photo
+                </Button>
+              )}
+            </div>
             <p className="mt-2 text-xs text-muted-foreground">JPG, PNG (Max. 2MB)</p>
 
             <div className="mt-5 w-full space-y-3 border-t border-border/50 pt-5 text-left">

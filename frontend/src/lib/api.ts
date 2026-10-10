@@ -2879,7 +2879,47 @@ export interface GlobalSearchResult {
   employees_hidden: boolean;
 }
 
+export interface UnifiedSearchResult {
+  id: number | string;
+  type: string;
+  module: string;
+  title: string;
+  subtitle: string;
+  url: string;
+}
+
+export interface UnifiedSearchGroup {
+  module: string;
+  count: number;
+  items: UnifiedSearchResult[];
+}
+
+export interface UnifiedSearchResponse {
+  results: UnifiedSearchGroup[];
+  total: number;
+  query: string;
+}
+
 export const searchApi = {
   global: (q: string, limit = 6) =>
     request<{ data: GlobalSearchResult }>(`/search?q=${encodeURIComponent(q)}&limit=${limit}`),
+  unified: (q: string, limit = 8) =>
+    request<{ data: UnifiedSearchResponse }>(`/search/unified?q=${encodeURIComponent(q)}&limit=${limit}`),
+};
+
+/* ========================================================================= */
+/* 13. PROFILE PHOTO                                                          */
+/* ========================================================================= */
+
+export const profileApi = {
+  uploadPhoto: (file: File) => {
+    const formData = new FormData();
+    formData.append("photo", file);
+    return request<{ message: string; url: string }>("/profile/photo", {
+      method: "POST",
+      body: formData,
+    });
+  },
+  removePhoto: () =>
+    request<{ message: string }>("/profile/photo", { method: "DELETE" }),
 };

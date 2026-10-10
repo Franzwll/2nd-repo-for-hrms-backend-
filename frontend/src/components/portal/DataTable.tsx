@@ -26,6 +26,7 @@ export interface DataColumn<T> {
   filterType?: FilterType;
   filterOptions?: string[];
   align?: "left" | "right" | "center";
+  subtext?: React.ReactNode;
 }
 
 function matchesFilter<T>(row: T, col: DataColumn<T>, f: string): boolean {
@@ -59,6 +60,8 @@ export function DataTable<T extends { id?: string | number }>({
   label = "records",
   initialSort = null,
   className,
+  enableColumnFilters = true,
+  hideSubtext = false,
 }: {
   columns: DataColumn<T>[];
   rows: T[];
@@ -70,6 +73,8 @@ export function DataTable<T extends { id?: string | number }>({
   label?: string;
   initialSort?: SortState<string>;
   className?: string;
+  enableColumnFilters?: boolean;
+  hideSubtext?: boolean;
 }) {
   const keys = React.useMemo(() => columns.map((c) => c.key), [columns]);
   const accessors = React.useMemo(() => {
@@ -99,7 +104,7 @@ export function DataTable<T extends { id?: string | number }>({
   const from = filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
   const to = Math.min(safePage * pageSize, filtered.length);
   const pageRows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
-  const hasFilter = columns.some((c) => c.filterable !== false);
+  const hasFilter = enableColumnFilters && columns.some((c) => c.filterable !== false);
 
   return (
     <div className={cn("w-full", className)}>
@@ -123,6 +128,15 @@ export function DataTable<T extends { id?: string | number }>({
                 ),
               )}
             </TableRow>
+            {!hideSubtext && columns.some((c) => c.subtext) && (
+              <TableRow className="text-xs text-muted-foreground">
+                {columns.map((c) => (
+                  <TableHead key={`st-${c.key}`} className="px-3 py-1">
+                    {c.subtext}
+                  </TableHead>
+                ))}
+              </TableRow>
+            )}
             {hasFilter && (
               <TableRow className="bg-muted/40">
                 {columns.map((c) =>

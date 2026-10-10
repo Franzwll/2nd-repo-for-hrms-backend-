@@ -1,5 +1,5 @@
 import { useState, Suspense, lazy } from "react";
-import { useRouterState } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
@@ -86,6 +86,7 @@ function EssPageSkeleton() {
 }
 
 export function EmployeeEss() {
+  const navigate = useNavigate();
   // Global Quick Action Modals
   const [clockModalOpen, setClockModalOpen] = useState(false);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
@@ -205,13 +206,13 @@ export function EmployeeEss() {
         onOpenChange={setAiModalOpen}
         onNavigateCategory={(cat) => {
           if (cat === "Schedule" || cat === "Clocking" || cat === "Attendance" || cat === "Leave") {
-            window.location.href = `/employee/ess?category=${cat}`;
+            navigate({ to: "/employee/ess", search: { category: cat } });
           } else if (cat === "Payroll") {
-            window.location.href = "/employee/ess?category=Payroll";
+            navigate({ to: "/employee/ess", search: { category: "Payroll" } });
           } else if (cat === "Documents") {
-            window.location.href = "/employee/ess?category=Documents";
+            navigate({ to: "/employee/ess", search: { category: "Documents" } });
           } else if (cat === "Recognition") {
-            window.location.href = "/employee/ess?category=Recognition";
+            navigate({ to: "/employee/ess", search: { category: "Recognition" } });
           }
         }}
       />

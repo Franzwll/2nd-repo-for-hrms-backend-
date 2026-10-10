@@ -10761,15 +10761,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {applicantPage.pageItems.map((a) => (
-                            <TableRow
-                              key={a.id}
-                              data-highlight-id={a.dbId ?? a.id}
-                              className={highlightRowClass(
-                                !!highlightId &&
-                                  (String(a.dbId ?? "") === highlightId || a.id === highlightId),
-                              )}
-                            >
                           {loading ? (
                             Array.from({ length: 5 }).map((_, i) => (
                               <TableRow key={`skeleton-${i}`}>
@@ -10808,87 +10799,94 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             ))
                           ) : (
                             applicantPage.pageItems.map((a) => (
-                            <TableRow key={a.id}>
-                              <TableCell className="max-w-0">
-                                <div className="flex min-w-0 items-center gap-2">
-                                  <Avatar className="h-7 w-7 shrink-0">
-                                    <AvatarFallback className="bg-secondary text-[0.65rem]">
-                                      {initials(a.name)}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <div className="min-w-0">
-                                    <p className="truncate font-medium" title={a.name}>
-                                      {a.name}
-                                    </p>
-                                    <p className="truncate text-muted-foreground">{a.id}</p>
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell className="hidden max-w-0 md:table-cell">
-                                <p className="truncate" title={a.email}>
-                                  {a.email}
-                                </p>
-                                <p className="truncate text-muted-foreground">{a.phone}</p>
-                              </TableCell>
-                              <TableCell className="max-w-0 truncate" title={a.position}>
-                                {a.position}
-                              </TableCell>
-                              <TableCell
-                                className="max-w-0 truncate text-muted-foreground"
-                                title={displayAppliedAt(a.appliedAt)}
+                              <TableRow
+                                key={a.id}
+                                data-highlight-id={a.dbId ?? a.id}
+                                className={highlightRowClass(
+                                  !!highlightId &&
+                                    (String(a.dbId ?? "") === highlightId || a.id === highlightId),
+                                )}
                               >
-                                {displayAppliedAt(a.appliedAt)}
-                              </TableCell>
-                              <TableCell>
-                                <span className="font-display text-sm font-semibold">
-                                  {a.score}%
-                                </span>
-                                {(a.docCount ?? 0) > 0 ? (
-                                  <p
-                                    className="truncate text-xs font-medium text-primary"
-                                    title={`${a.docCount} supporting document${a.docCount === 1 ? "" : "s"} uploaded — open View profile → Resume & Documents to inspect`}
-                                  >
-                                    {a.docCount} supporting doc{a.docCount === 1 ? "" : "s"}
+                                <TableCell className="max-w-0">
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <Avatar className="h-7 w-7 shrink-0">
+                                      <AvatarFallback className="bg-secondary text-[0.65rem]">
+                                        {initials(a.name)}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="min-w-0">
+                                      <p className="truncate font-medium" title={a.name}>
+                                        {a.name}
+                                      </p>
+                                      <p className="truncate text-muted-foreground">{a.id}</p>
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="hidden max-w-0 md:table-cell">
+                                  <p className="truncate" title={a.email}>
+                                    {a.email}
                                   </p>
-                                ) : null}
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "max-w-full truncate px-1.5 py-0.5",
-                                    statusMeta[a.status].className,
-                                  )}
-                                  title={statusMeta[a.status].label}
+                                  <p className="truncate text-muted-foreground">{a.phone}</p>
+                                </TableCell>
+                                <TableCell className="max-w-0 truncate" title={a.position}>
+                                  {a.position}
+                                </TableCell>
+                                <TableCell
+                                  className="max-w-0 truncate text-muted-foreground"
+                                  title={displayAppliedAt(a.appliedAt)}
                                 >
-                                  <span
-                                    className={cn(
-                                      "mr-1 h-1.5 w-1.5 shrink-0 rounded-full",
-                                      statusMeta[a.status].dot,
-                                    )}
-                                  />
-                                  <span className="truncate">{statusMeta[a.status].label}</span>
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="max-w-0 truncate" title={a.stage}>
-                                {a.stage}
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex justify-end gap-1.5">
-                                  <Button
-                                    size="sm"
+                                  {displayAppliedAt(a.appliedAt)}
+                                </TableCell>
+                                <TableCell>
+                                  <span className="font-display text-sm font-semibold">
+                                    {a.score}%
+                                  </span>
+                                  {(a.docCount ?? 0) > 0 ? (
+                                    <p
+                                      className="truncate text-xs font-medium text-primary"
+                                      title={`${a.docCount} supporting document${a.docCount === 1 ? "" : "s"} uploaded — open View profile → Resume & Documents to inspect`}
+                                    >
+                                      {a.docCount} supporting doc{a.docCount === 1 ? "" : "s"}
+                                    </p>
+                                  ) : null}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
                                     variant="outline"
-                                    className="h-7 cursor-pointer"
-                                    title="Open applicant view profile"
-                                    onClick={() => setViewingApplicant(a)}
+                                    className={cn(
+                                      "max-w-full truncate px-1.5 py-0.5",
+                                      statusMeta[a.status].className,
+                                    )}
+                                    title={statusMeta[a.status].label}
                                   >
-                                    <Eye className="mr-1.5 h-3.5 w-3.5" /> View profile
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        )}
+                                    <span
+                                      className={cn(
+                                        "mr-1 h-1.5 w-1.5 shrink-0 rounded-full",
+                                        statusMeta[a.status].dot,
+                                      )}
+                                    />
+                                    <span className="truncate">{statusMeta[a.status].label}</span>
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="max-w-0 truncate" title={a.stage}>
+                                  {a.stage}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex justify-end gap-1.5">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 cursor-pointer"
+                                      title="Open applicant view profile"
+                                      onClick={() => setViewingApplicant(a)}
+                                    >
+                                      <Eye className="mr-1.5 h-3.5 w-3.5" /> View profile
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
                         </TableBody>
                       </Table>
                     </ListBody>
