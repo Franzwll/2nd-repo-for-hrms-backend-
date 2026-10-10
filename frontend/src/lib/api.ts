@@ -611,6 +611,11 @@ export const assessmentsApi = {
     const qs = new URLSearchParams(params).toString();
     return request<{ data: ApiAssessment[]; meta: any }>(`/assessments${qs ? `?${qs}` : ""}`);
   },
+  /** Global Assessment Test / Practical Test switches owned by Core HCM. */
+  getConfig: () =>
+    request<{ data: { assessment_test_enabled: boolean; practical_test_enabled: boolean } }>(
+      `/assessments/config`,
+    ),
 };
 
 export interface ApiScreeningReference {

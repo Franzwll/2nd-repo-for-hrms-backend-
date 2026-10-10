@@ -30,6 +30,7 @@ export function persistLoginContext(ctx: {
   email: string;
   expires_in: number;
   mfa_method?: "email_otp" | "totp";
+  debug_otp?: string;
 }) {
   try {
     sessionStorage.setItem(LOGIN_CONTEXT_KEY, JSON.stringify({ ...ctx, issued_at: Date.now() }));
@@ -43,6 +44,7 @@ export function getLoginContext(): {
   email: string;
   expires_in: number;
   mfa_method?: "email_otp" | "totp";
+  debug_otp?: string;
 } | null {
   try {
     const raw = sessionStorage.getItem(LOGIN_CONTEXT_KEY);
@@ -52,6 +54,7 @@ export function getLoginContext(): {
       email: string;
       expires_in: number;
       mfa_method?: "email_otp" | "totp";
+      debug_otp?: string;
       issued_at: number;
     };
     if (Date.now() - ctx.issued_at > ctx.expires_in * 1000) {
@@ -197,11 +200,35 @@ function LoginPage() {
         return;
       }
 
+      // Development bypass: if OTP is required but debug_otp is provided,
+      // authenticate directly without navigating to the OTP page.
+      if (
+        import.meta.env.DEV &&
+        res.otp_required === true &&
+        res.token &&
+        res.user &&
+        res.debug_otp
+      ) {
+        setToken(res.token);
+        setUser(res.user);
+        clearLoginContext();
+        toast.success("Welcome back! OTP bypassed (development mode).");
+        const target =
+          res.user.role === "Super Admin"
+            ? "/superadmin"
+            : res.user.role === "Admin"
+              ? "/admin"
+              : "/employee";
+        navigate({ to: target });
+        return;
+      }
+
       persistLoginContext({
         login_token: res.login_token,
         email: email.trim(),
         expires_in: res.expires_in,
         mfa_method: res.mfa_method ?? "email_otp",
+        debug_otp: res.debug_otp,
       });
       toast.success(
         res.mfa_method === "totp"

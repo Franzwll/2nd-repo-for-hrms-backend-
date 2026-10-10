@@ -125,6 +125,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
@@ -6831,6 +6832,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const navigate = useNavigate();
   const { id: highlightId, tab: highlightTab } = useHighlightId();
   const [rows, setRows] = useState<Applicant[]>([]);
+  const [loading, setLoading] = useState(true);
 
   /**
    * Loads every pipeline record that drives the applicant progress bar:
@@ -6845,6 +6847,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     // rejected applicants stay in the list, only labelled as "Rejected".
     const excludeStages = "Hired";
     try {
+      setLoading(true);
       const [appRes, intRes, asmRes, testRes, practRes, finalRes] = await Promise.allSettled([
         fetchAllPages(applicantsApi.list, { exclude_stages: excludeStages }),
         fetchAllPages(interviewsApi.list),
@@ -6892,6 +6895,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       }
     } catch (err) {
       console.warn("Could not fetch applicants/interviews/assessments from API:", err);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -10396,80 +10401,88 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
                     <div className="mx-auto mt-2 flex w-full max-w-3xl flex-1 flex-wrap items-center justify-center gap-8 py-2">
                       <div className="relative h-[380px] w-[380px] shrink-0">
-                        <PieChart width={380} height={380}>
-                          <Pie
-                            isAnimationActive={false}
-                            data={distribution}
-                            dataKey="value"
-                            nameKey="name"
-                            cx={190}
-                            cy={190}
-                            innerRadius={80}
-                            outerRadius={130}
-                            paddingAngle={2}
-                            labelLine={false}
-                            label={(props: {
-                              cx?: number;
-                              cy?: number;
-                              midAngle?: number;
-                              innerRadius?: number;
-                              outerRadius?: number;
-                              value?: number;
-                            }) => {
-                              const {
-                                cx = 0,
-                                cy = 0,
-                                midAngle = 0,
-                                innerRadius = 0,
-                                outerRadius = 0,
-                                value = 0,
-                              } = props;
-                              const pct = screenedTotal ? (value / screenedTotal) * 100 : 0;
-                              if (pct < 4) return null;
-                              const r = innerRadius + (outerRadius - innerRadius) / 2;
-                              const rad = -midAngle * (Math.PI / 180);
-                              return (
-                                <text
-                                  x={cx + r * Math.cos(rad)}
-                                  y={cy + r * Math.sin(rad)}
-                                  textAnchor="middle"
-                                  dominantBaseline="central"
-                                  fill="#fff"
-                                  fontSize={11}
-                                  fontWeight={600}
-                                >
-                                  {Math.round(pct)}%
-                                </text>
-                              );
-                            }}
-                          >
-                            {distribution.map((d) => (
-                              <Cell
-                                key={d.key}
-                                fill={statusChartColor[d.key]}
-                                className="cursor-pointer"
-                                onClick={() => goToStatus(d.key)}
+                        {loading ? (
+                          <div className="h-full w-full flex items-center justify-center">
+                            <Skeleton className="h-[380px] w-[380px] rounded-full" />
+                          </div>
+                        ) : (
+                          <>
+                            <PieChart width={380} height={380}>
+                              <Pie
+                                isAnimationActive={false}
+                                data={distribution}
+                                dataKey="value"
+                                nameKey="name"
+                                cx={190}
+                                cy={190}
+                                innerRadius={80}
+                                outerRadius={130}
+                                paddingAngle={2}
+                                labelLine={false}
+                                label={(props: {
+                                  cx?: number;
+                                  cy?: number;
+                                  midAngle?: number;
+                                  innerRadius?: number;
+                                  outerRadius?: number;
+                                  value?: number;
+                                }) => {
+                                  const {
+                                    cx = 0,
+                                    cy = 0,
+                                    midAngle = 0,
+                                    innerRadius = 0,
+                                    outerRadius = 0,
+                                    value = 0,
+                                  } = props;
+                                  const pct = screenedTotal ? (value / screenedTotal) * 100 : 0;
+                                  if (pct < 4) return null;
+                                  const r = innerRadius + (outerRadius - innerRadius) / 2;
+                                  const rad = -midAngle * (Math.PI / 180);
+                                  return (
+                                    <text
+                                      x={cx + r * Math.cos(rad)}
+                                      y={cy + r * Math.sin(rad)}
+                                      textAnchor="middle"
+                                      dominantBaseline="central"
+                                      fill="#fff"
+                                      fontSize={11}
+                                      fontWeight={600}
+                                    >
+                                      {Math.round(pct)}%
+                                    </text>
+                                  );
+                                }}
+                              >
+                                {distribution.map((d) => (
+                                  <Cell
+                                    key={d.key}
+                                    fill={statusChartColor[d.key]}
+                                    className="cursor-pointer"
+                                    onClick={() => goToStatus(d.key)}
+                                  />
+                                ))}
+                              </Pie>
+                              <RTooltip
+                                contentStyle={tooltipStyle}
+                                formatter={(value: number | string) => {
+                                  const n = Number(value);
+                                  const pct = screenedTotal ? Math.round((n / screenedTotal) * 100) : 0;
+                                  return [`${n} (${pct}%)`, "Resumes"] as [string, string];
+                                }}
                               />
-                            ))}
-                          </Pie>
-                          <RTooltip
-                            contentStyle={tooltipStyle}
-                            formatter={(value: number | string) => {
-                              const n = Number(value);
-                              const pct = screenedTotal ? Math.round((n / screenedTotal) * 100) : 0;
-                              return [`${n} (${pct}%)`, "Resumes"] as [string, string];
-                            }}
-                          />
-                        </PieChart>
+                            </PieChart>
 
-                        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                          <span className="font-display text-3xl font-semibold">
-                            {screenedTotal}
-                          </span>
-                          <span className="text-[0.7rem] uppercase tracking-wide text-muted-foreground">
-                            Resumes
-                          </span>
-                        </div>
+                            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                              <span className="font-display text-3xl font-semibold">
+                                {screenedTotal}
+                              </span>
+                              <span className="text-[0.7rem] uppercase tracking-wide text-muted-foreground">
+                                Resumes
+                              </span>
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       <div className="grid w-full min-w-[16rem] max-w-[24rem] flex-1 grid-cols-1 gap-2">
@@ -10511,7 +10524,27 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       style={topFiveViewport ? { maxHeight: `${topFiveViewport}px` } : undefined}
                       className="mt-4 flex max-h-[33rem] min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1"
                     >
-                      {topFiveToday.map((a, i) => (
+                      {loading ? (
+                        Array.from({ length: 3 }).map((_, i) => (
+                          <li
+                            key={`skeleton-top5-${i}`}
+                            className="flex shrink-0 flex-col gap-3 rounded-xl border border-border/80 bg-card p-5 shadow-sm"
+                          >
+                            <div className="flex items-center gap-3">
+                              <Skeleton className="h-7 w-7 rounded-full" />
+                              <Skeleton className="h-12 w-12 rounded-full" />
+                              <div className="min-w-0 flex-1">
+                                <Skeleton className="h-5 w-48" />
+                                <Skeleton className="h-4 w-32 mt-1" />
+                                <Skeleton className="h-5 w-24 mt-2" />
+                              </div>
+                              <Skeleton className="h-8 w-20 ml-auto" />
+                            </div>
+                            <Skeleton className="h-9 w-full mt-2" />
+                          </li>
+                        ))
+                      ) : (
+                        topFiveToday.map((a, i) => (
                         <li
                           key={a.id}
                           ref={i === 0 ? setTopFiveCard : undefined}
@@ -10574,7 +10607,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             Review
                           </Button>
                         </li>
-                      ))}
+                        ))
+                      )}
                     </ol>
                   </CardContent>
                 </Card>
@@ -10721,7 +10755,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               onSort={applicantSort.toggle}
                               className="w-[8%]"
                             >
-                              Stage
+                              Stagehttps://github.com/Franzwll/2nd-repo-for-hrms-backend-/pull/28/conflict?name=frontend%252Fsrc%252Fcomponents%252Fmodules%252FApplicantManagement.tsx&ancestor_oid=c08870fadb500c0d51ff789665458115ac209b1b&base_oid=59070d6da86b5b9f4d1bb84aab14f3b24e3af8d1&head_oid=177eda9c2a270d5fd56603c2d9809e8b85540647
                             </SortHead>
                             <TableHead className="w-[15%] text-right">Actions</TableHead>
                           </TableRow>
@@ -10736,6 +10770,45 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                   (String(a.dbId ?? "") === highlightId || a.id === highlightId),
                               )}
                             >
+                          {loading ? (
+                            Array.from({ length: 5 }).map((_, i) => (
+                              <TableRow key={`skeleton-${i}`}>
+                                <TableCell className="max-w-0">
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <Skeleton className="h-7 w-7 rounded-full" />
+                                    <div className="min-w-0">
+                                      <Skeleton className="h-4 w-48" />
+                                      <Skeleton className="h-3 w-32 mt-1" />
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="hidden max-w-0 md:table-cell">
+                                  <Skeleton className="h-4 w-48" />
+                                  <Skeleton className="h-3 w-32 mt-1" />
+                                </TableCell>
+                                <TableCell className="max-w-0 truncate">
+                                  <Skeleton className="h-4 w-36" />
+                                </TableCell>
+                                <TableCell className="max-w-0 truncate text-muted-foreground">
+                                  <Skeleton className="h-4 w-24" />
+                                </TableCell>
+                                <TableCell>
+                                  <Skeleton className="h-5 w-16" />
+                                </TableCell>
+                                <TableCell>
+                                  <Skeleton className="h-5 w-24" />
+                                </TableCell>
+                                <TableCell className="max-w-0 truncate">
+                                  <Skeleton className="h-4 w-20" />
+                                </TableCell>
+                                <TableCell>
+                                  <Skeleton className="h-7 w-24" />
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            applicantPage.pageItems.map((a) => (
+                            <TableRow key={a.id}>
                               <TableCell className="max-w-0">
                                 <div className="flex min-w-0 items-center gap-2">
                                   <Avatar className="h-7 w-7 shrink-0">
@@ -10814,7 +10887,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 </div>
                               </TableCell>
                             </TableRow>
-                          ))}
+                          ))
+                        )}
                         </TableBody>
                       </Table>
                     </ListBody>

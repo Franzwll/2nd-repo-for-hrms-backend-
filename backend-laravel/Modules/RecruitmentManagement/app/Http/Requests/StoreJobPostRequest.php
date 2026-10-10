@@ -29,6 +29,8 @@ class StoreJobPostRequest extends FormRequest
             /* Designated hands-on positions take a practical exam after the
                assessment test (Applicant Management). */
             'requires_practical' => ['boolean'],
+            /* Assessment test requirement for this position. */
+            'requires_assessment' => ['boolean'],
             'experience_level' => ['nullable', 'string', 'in:No Experience,1-2 Years,3-5 Years,5+ Years'],
             'education_level' => ['nullable', 'string', 'in:High School Graduate,Vocational / TESDA,College Level,Bachelor\'s Degree'],
             'summary' => ['nullable', 'string'],

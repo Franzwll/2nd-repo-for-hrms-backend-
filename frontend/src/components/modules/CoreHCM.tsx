@@ -320,23 +320,38 @@ function setHcmFetching(v: boolean) {
   emitHcm();
 }
 
-async function fetchHcmData() {
+async function fetchHcmData(options: { includeEmployees?: boolean } = {}) {
   setHcmFetching(true);
   try {
+    // Dept-pos only needs departments/positions/salaryGrades/orgChart.
+    // Employees (per_page=500) is the heaviest slice and is only used for
+    // the department-head dropdown — skip it on the initial mount so the
+    // page paints fast, then lazy-load it in the background / on demand.
+    const includeEmployees = options.includeEmployees ?? hcmData.employees.length > 0;
     const [emp, dep, pos, sg, org] = await Promise.all([
-      hcmApi.employees.list({ per_page: 500 }),
+      includeEmployees ? hcmApi.employees.list({ per_page: 500 }) : Promise.resolve(null),
       hcmApi.departments.list({ per_page: 500 }),
       hcmApi.positions.list({ per_page: 500 }),
       hcmApi.salaryGrades.list({ per_page: 500 }),
       hcmApi.orgChart.list(),
     ]);
     hcmData = {
-      employees: emp.data ?? [],
+      employees: emp?.data ?? hcmData.employees,
       departments: dep.data ?? [],
       positions: pos.data ?? [],
       salaryGrades: sg.data ?? [],
       orgChart: org.data ?? [],
     };
+    // Backfill employees without blocking first paint.
+    if (!includeEmployees) {
+      hcmApi.employees
+        .list({ per_page: 500 })
+        .then((res) => {
+          hcmData = { ...hcmData, employees: res.data ?? [] };
+          emitHcm();
+        })
+        .catch((err) => console.warn('Could not backfill Core HCM employees.', err));
+    }
   } catch (err) {
     console.warn("Could not load Core HCM data.", err);
   } finally {
@@ -486,8 +501,8 @@ function toUiPosition(p: ApiPosition, sGrades: ApiSalaryGrade[]): Position {
     salaryBand: sg
       ? `${sg.code} (${formatMoney(Number(sg.min_salary))} – ${formatMoney(Number(sg.max_salary))})`
       : p.salary_grade || "",
-    requires_assessment: (p as any).requires_assessment ?? false,
-    requires_practical: (p as any).requires_practical ?? false,
+    requires_assessment: p.requires_assessment ?? false,
+    requires_practical: p.requires_practical ?? false,
   };
 }
 
@@ -4526,41 +4541,41 @@ function DepartmentAndPositionManager({
                     </SelectItem>
                   ))}
                 </SelectContent>
-              </Select>
-            </div>
+</Select>
+             </div>
+           </div>
 
-            {/* Assessment Test & Practical Test toggles */}
-            <div className="space-y-3 pt-2 border-t border-border/50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <ClipboardList className="h-4 w-4 text-primary" />
-                  <div>
-                    <p className="text-xs font-medium">Assessment Test</p>
-                    <p className="text-[10px] text-muted-foreground">Written test + applicant self-service links in Applicant Management.</p>
-                  </div>
-                </div>
-                <Switch
-                  checked={posRequiresAssessment}
-                  onCheckedChange={(v) => setPosRequiresAssessment(v)}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Hammer className="h-4 w-4 text-primary" />
-                  <div>
-                    <p className="text-xs font-medium">Practical Test</p>
-                    <p className="text-[10px] text-muted-foreground">Hands-on exam for designated positions. Per-job flags still apply when enabled.</p>
-                  </div>
-                </div>
-                <Switch
-                  checked={posRequiresPractical}
-                  onCheckedChange={(v) => setPosRequiresPractical(v)}
-                />
-              </div>
-            </div>
-          </div>
+           {/* Assessment Test & Practical Test toggles */}
+           <div className="space-y-3 pt-2 border-t border-border/50">
+             <div className="flex items-center justify-between">
+               <div className="flex items-center gap-2">
+                 <ClipboardList className="h-4 w-4 text-primary" />
+                 <div>
+                   <p className="text-xs font-medium">Assessment Test</p>
+                   <p className="text-[10px] text-muted-foreground">Written test + applicant self-service links in Applicant Management.</p>
+                 </div>
+               </div>
+               <Switch
+                 checked={posRequiresAssessment}
+                 onCheckedChange={(v) => setPosRequiresAssessment(v)}
+               />
+             </div>
+             <div className="flex items-center justify-between">
+               <div className="flex items-center gap-2">
+                 <Hammer className="h-4 w-4 text-primary" />
+                 <div>
+                   <p className="text-xs font-medium">Practical Test</p>
+                   <p className="text-[10px] text-muted-foreground">Hands-on exam for designated positions. Per-job flags still apply when enabled.</p>
+                 </div>
+               </div>
+               <Switch
+                 checked={posRequiresPractical}
+                 onCheckedChange={(v) => setPosRequiresPractical(v)}
+               />
+             </div>
+           </div>
 
-          <DialogFooter>
+           <DialogFooter>
             <Button
               variant="outline"
               onClick={() => {
