@@ -22,12 +22,15 @@ class EmployeeOnboardingItem extends Model
         'submitted_at',
         'completed_at',
         'completed_by_user_id',
+        'review_note',
+        'returned_count',
     ];
 
     protected $casts = [
         'done'         => 'boolean',
         'completed_at' => 'datetime',
         'submitted_at' => 'datetime',
+        'returned_count' => 'integer',
     ];
 
     protected $appends = ['file_url'];

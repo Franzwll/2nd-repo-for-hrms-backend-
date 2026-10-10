@@ -549,15 +549,19 @@ function buildOrgTree(orgNodes: ApiOrgNode[], employees: ApiEmployee[]): OrgNode
    ========================================================================= */
 
 export function OrgChartModule({ role = "admin" }: { role?: Role }) {
-  const [activeTab, setActiveTab] = useState<"org" | "employees" | "promotions" | "logs">(() => {
-    const saved =
-      typeof window !== "undefined" ? window.sessionStorage.getItem("hcm-org-tab") : null;
+  // SSR-safe: constant initial tab so server and first client render match.
+  // The persisted tab is restored after mount (sessionStorage is client-only).
+  const [activeTab, setActiveTab] = useState<"org" | "employees" | "promotions" | "logs">("org");
+
+  useEffect(() => {
+    const saved = window.sessionStorage.getItem("hcm-org-tab");
     const valid =
       saved === "org" || saved === "employees" || saved === "promotions" || saved === "logs"
         ? saved
         : "org";
-    return role !== "superadmin" && valid === "logs" ? "employees" : valid;
-  });
+    setActiveTab(role !== "superadmin" && valid === "logs" ? "employees" : valid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [empSearch, setEmpSearch] = useState("");
   /** Slot each tab portals its Generate Report control into (page header). */
   const [headerActionsEl, setHeaderActionsEl] = useState<HTMLDivElement | null>(null);
@@ -3506,14 +3510,21 @@ function LifecycleLogsViewer() {
    ========================================================================= */
 
 export function DeptPosModule({ role = "admin" }: { role?: Role }) {
-  const [activeTab, setActiveTab] = useState<"depts" | "positions" | "salary" | "reqs">(() => {
-    const saved =
-      typeof window !== "undefined" ? window.sessionStorage.getItem("hcm-deptpos-tab") : null;
-    if (saved === "deptpos") return "depts" as const;
-    return (saved === "depts" || saved === "positions" || saved === "salary" || saved === "reqs"
-      ? saved
-      : "depts") as "depts" | "positions" | "salary" | "reqs";
-  });
+  // SSR-safe: constant initial tab so server and first client render match.
+  // The persisted tab is restored after mount (sessionStorage is client-only).
+  const [activeTab, setActiveTab] = useState<"depts" | "positions" | "salary" | "reqs">("depts");
+
+  useEffect(() => {
+    const saved = window.sessionStorage.getItem("hcm-deptpos-tab");
+    if (
+      saved === "depts" ||
+      saved === "positions" ||
+      saved === "salary" ||
+      saved === "reqs"
+    ) {
+      setActiveTab(saved);
+    }
+  }, []);
 
   useEffect(() => {
     window.sessionStorage.setItem("hcm-deptpos-tab", activeTab);
