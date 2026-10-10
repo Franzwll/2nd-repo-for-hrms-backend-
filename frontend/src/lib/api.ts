@@ -95,6 +95,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       return {} as T;
     }
 
+    // Vite proxy / SSR fallback can answer with 200 + text/html (index.html)
+    // when the backend is unreachable or the dev server hasn't reloaded.
+    // Fail fast as a network error (mock-data fallback) instead of a
+    // confusing `JSON.parse: unexpected character` SyntaxError.
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      throw new TypeError(
+        `Expected JSON but received ${contentType || "unknown content type"} (HTTP ${response.status}) for ${url}`,
+      );
+    }
+
     return response.json();
   };
 
