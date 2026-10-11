@@ -42,11 +42,6 @@ export function AnnouncementsCard({ role, className }: { role: Role; className?:
                   {visible.length}
                 </Badge>
               </h2>
-              {role !== "employee" && (
-                <p className="text-xs text-muted-foreground">
-                  Company-wide updates and bulletins posted by HR.
-                </p>
-              )}
             </div>
           </div>
 

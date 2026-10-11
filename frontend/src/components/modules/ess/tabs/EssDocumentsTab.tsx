@@ -153,8 +153,9 @@ export function EssDocumentsTab() {
                 <FileCheck className="h-4 w-4" />
               </div>
             </div>
-            <p className="mt-1 text-2xl font-bold font-display text-emerald-600 dark:text-emerald-400">
-              {documents.filter((d) => d.status === "Submitted" || d.status === "Available" || d.status === "Released").length} File(s)
+            <p className="mt-1 font-bold font-display text-emerald-600 dark:text-emerald-400">
+              <span className="text-4xl">{documents.filter((d) => d.status === "Submitted" || d.status === "Available" || d.status === "Released").length}</span>{" "}
+              <span className="text-base">File(s)</span>
             </p>
           </CardContent>
         </Card>
@@ -167,8 +168,9 @@ export function EssDocumentsTab() {
                 <AlertCircle className="h-4 w-4" />
               </div>
             </div>
-            <p className="mt-1 text-2xl font-bold font-display text-rose-600 dark:text-rose-400">
-              {documents.filter((d) => d.status === "Missing").length} Action Item
+            <p className="mt-1 font-bold font-display text-rose-600 dark:text-rose-400">
+              <span className="text-4xl">{documents.filter((d) => d.status === "Missing").length}</span>{" "}
+              <span className="text-base">Action Item</span>
             </p>
           </CardContent>
         </Card>
@@ -181,8 +183,9 @@ export function EssDocumentsTab() {
                 <Download className="h-4 w-4" />
               </div>
             </div>
-            <p className="mt-1 text-2xl font-bold font-display text-primary">
-              {documents.filter((d) => d.status === "Available" || d.status === "Released").length} Records
+            <p className="mt-1 font-bold font-display text-primary">
+              <span className="text-4xl">{documents.filter((d) => d.status === "Available" || d.status === "Released").length}</span>{" "}
+              <span className="text-base">Records</span>
             </p>
           </CardContent>
         </Card>
