@@ -171,9 +171,6 @@ export function EssPerformanceTab() {
                 <Sparkles className="h-5 w-5 text-primary" />
                 Career Advancement &amp; Promotion Application
               </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Apply for a position upgrade, merit promotion, or rank progression. Submissions feed into Core HCM and initiate an HR3 performance evaluation.
-              </p>
             </div>
             <Button
               size="sm"
@@ -230,7 +227,6 @@ export function EssPerformanceTab() {
             <BookOpen className="h-5 w-5 text-primary" />
             Learning Management System (LMS) Modules
           </CardTitle>
-          <p className="text-xs text-muted-foreground">Assigned corporate training programs and certification test scores.</p>
         </CardHeader>
         <CardContent>
           <Table>
