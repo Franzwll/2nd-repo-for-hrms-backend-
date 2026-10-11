@@ -170,7 +170,6 @@ export function EmployeeEss() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Employee Portal"
         title={getPageTitle()}
         description={getPageDescription()}
       />

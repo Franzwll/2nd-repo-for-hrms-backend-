@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { peso, useCompany, useLandingJobs } from "@/lib/landing";
+import { useLightOnly } from "@/lib/theme";
 import heroImage from "@/assets/hero-oxford-suites.jpg";
 
 export const Route = createFileRoute("/_landing/")({
@@ -38,6 +39,8 @@ function Landing() {
   const { company } = useCompany();
   const { jobs } = useLandingJobs();
   const featured = jobs.slice(0, 3);
+
+  useLightOnly();
 
   return (
     <PublicShell>

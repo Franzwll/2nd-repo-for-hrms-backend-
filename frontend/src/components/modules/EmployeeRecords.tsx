@@ -726,9 +726,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     <div>
       {gateDialog}
       <PageHeader
-        eyebrow={isSuper ? "Super Admin · Core HR" : "Admin · Core HR"}
         title="Employee Records"
-        description="201 files, employment details, records analytics and document generation."
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <span className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-[0.7rem] text-muted-foreground">
@@ -802,13 +800,16 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                   <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                     <Users className="h-5 w-5 text-primary" /> Employee List
                   </h2>
-                  <p className="text-xs text-muted-foreground">
-                    {listView === "archived"
-                      ? "Records inactive/unmodified for 10+ years (DOLE/BIR retention). Hidden from the default list."
-                      : selected.length > 0
-                        ? `${selected.length} selected for bulk generation.`
-                        : "Select employees to generate documents in bulk."}
-                  </p>
+                  {listView === "archived" ? (
+                    <p className="text-xs text-muted-foreground">
+                      Records inactive/unmodified for 10+ years (DOLE/BIR retention). Hidden
+                      from the default list.
+                    </p>
+                  ) : selected.length > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {selected.length} selected for bulk generation.
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <div className="relative">
@@ -1031,6 +1032,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                 to={employeePage.to}
                 total={employeePage.total}
                 label="employees"
+                showRangeLabel={false}
                 onPageChange={employeePage.setPage}
               />
             </CardContent>
@@ -1045,9 +1047,6 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                   <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                     <History className="h-5 w-5 text-primary" /> Record History
                   </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Log of who added, edited, or deleted employee records and files.
-                  </p>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <div className="relative">
@@ -1157,6 +1156,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                 to={logPage.to}
                 total={logPage.total}
                 label="log entries"
+                showRangeLabel={false}
                 onPageChange={logPage.setPage}
               />
             </CardContent>
@@ -1169,10 +1169,6 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display text-xl">Auto-archive settings</DialogTitle>
-            <DialogDescription>
-              Records left unmodified for the retention period below are moved to the Archived list
-              automatically. Manually archived records stay archived.
-            </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             <Label htmlFor="archive-years">Auto-archive after (years)</Label>
@@ -1823,10 +1819,6 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Generate Reports</DialogTitle>
-            <DialogDescription>
-              Company-wide HR reports across all employee records. Reports are confidential and
-              require password confirmation before downloading.
-            </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             {reportTypes.map((r) => (

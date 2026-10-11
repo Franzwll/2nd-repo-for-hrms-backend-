@@ -419,28 +419,24 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         <StatCard
           label="Present Days"
           value={attSummary.present_days}
-          hint={`Avg ${attSummary.average_hours.toFixed(1)}h per day`}
           icon={CheckCircle2}
           tone="success"
         />
         <StatCard
           label="Late Days"
           value={attSummary.late_days}
-          hint="Arrivals past grace period"
           icon={Clock}
           tone="caution"
         />
         <StatCard
           label="Absent Days"
           value={attSummary.absent_days}
-          hint="Unexcused absences this cut-off"
           icon={AlertCircle}
           tone="primary"
         />
         <StatCard
           label="Overtime Hours"
           value={`${attSummary.overtime_hours}h`}
-          hint="Approved OT this cut-off"
           icon={Sparkles}
           tone="gold"
         />

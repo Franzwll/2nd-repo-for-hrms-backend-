@@ -19,6 +19,10 @@ class ApplicantAcceptedMail extends Mailable
         public ?string $interviewDate = null,
         public ?string $interviewTime = null,
         public ?string $interviewMode = null,
+        public ?string $interviewerName = null,
+        public ?string $zoomJoinUrl = null,
+        public ?string $zoomContinueUrl = null,
+        public ?string $zoomPassword = null,
     ) {
     }
 
@@ -39,6 +43,10 @@ class ApplicantAcceptedMail extends Mailable
                 'interviewDate' => $this->interviewDate,
                 'interviewTime' => $this->interviewTime,
                 'interviewMode' => $this->interviewMode,
+                'interviewerName'   => $this->interviewerName,
+                'zoomJoinUrl'       => $this->zoomJoinUrl,
+                'zoomContinueUrl'   => $this->zoomContinueUrl,
+                'zoomPassword'      => $this->zoomPassword,
             ],
         );
     }

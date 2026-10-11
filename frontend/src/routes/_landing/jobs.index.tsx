@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { peso, useLandingJobs } from "@/lib/landing";
+import { useLightOnly } from "@/lib/theme";
 
 export const Route = createFileRoute("/_landing/jobs/")({
   head: () => ({
@@ -42,6 +43,8 @@ function FindJobs() {
   const [edu, setEdu] = useState<string[]>([]);
   const [maxSalary, setMaxSalary] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+
+  useLightOnly();
 
   // Salary grades go up to ₱90k (SG-18) but the old slider capped at ₱30k,
   // permanently hiding every supervisory/managerial post whose salaryMin

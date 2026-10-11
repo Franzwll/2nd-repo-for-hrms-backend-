@@ -8,6 +8,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { useCompany } from "@/lib/landing";
+import { useLightOnly } from "@/lib/theme";
 
 export const Route = createFileRoute("/_landing/faq")({
   head: () => ({
@@ -30,6 +31,8 @@ export const Route = createFileRoute("/_landing/faq")({
 
 function Faq() {
   const { company } = useCompany();
+
+  useLightOnly();
 
   return (
     <PublicShell>

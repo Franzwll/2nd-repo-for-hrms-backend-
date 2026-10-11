@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useCompany } from "@/lib/landing";
+import { useLightOnly } from "@/lib/theme";
 
 export const Route = createFileRoute("/_landing/contact")({
   head: () => ({
@@ -31,6 +32,8 @@ export const Route = createFileRoute("/_landing/contact")({
 
 function Contact() {
   const { company } = useCompany();
+
+  useLightOnly();
   const details = [
     { icon: Phone, label: "Phone", value: company.phone },
     { icon: Mail, label: "Email", value: company.email },

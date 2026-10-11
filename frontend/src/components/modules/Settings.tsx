@@ -1,21 +1,25 @@
 import { useState, useEffect } from "react";
-import { mySettingsApi, settingsApi } from "@/lib/api";
+import { mySettingsApi, settingsApi, chatbotFaqApi, type ApiChatbotFaq, type ApiChatbotAnalytics } from "@/lib/api";
 import { applyTheme, getStoredTheme, type ThemeChoice } from "@/lib/theme";
 import { myProfile } from "@/data/ess";
 import { getUser } from "@/lib/auth";
 import { isValidEmail, isValidPhone, sanitizeName, sanitizePhone } from "@/lib/validation";
 import {
   ArrowRight,
-  Bell,
+  Bot,
   Building2,
   Database,
   Download,
   Eye,
   EyeOff,
   KeyRound,
+  Pencil,
   Plus,
   Shield,
   SlidersHorizontal,
+  ThumbsDown,
+  ThumbsUp,
+  Trash2,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -55,6 +59,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -84,7 +89,7 @@ function SettingsCard({
 }: {
   icon: React.ReactNode;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   action?: React.ReactNode;
   className?: string;
   children: React.ReactNode;
@@ -98,7 +103,7 @@ function SettingsCard({
             <span className="grid h-10 w-10 shrink-0 place-items-center text-primary">{icon}</span>
             <div>
               <h2 className="font-display text-xl font-semibold">{title}</h2>
-              <p className="text-xs text-muted-foreground">{subtitle}</p>
+              {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
             </div>
           </div>
           {action}
@@ -142,9 +147,296 @@ function InfoRow({
   );
 }
 
+/** Compact Chatbot FAQ manager sized for a single settings grid card.
+ *  Lives in the slot previously occupied by Notifications. */
+function ChatbotFaqSettingsCard() {
+  const [faqs, setFaqs] = useState<ApiChatbotFaq[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<ApiChatbotFaq | null>(null);
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [keywords, setKeywords] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [analytics, setAnalytics] = useState<ApiChatbotAnalytics | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    chatbotFaqApi
+      .list()
+      .then((res) => setFaqs(res.data ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+    chatbotFaqApi
+      .analytics()
+      .then((res) => setAnalytics(res.data))
+      .catch(() => setAnalytics(null));
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const activeCount = faqs.filter((f) => f.enabled).length;
+  const aiTotal = (analytics?.gemini_messages_30d ?? 0) + (analytics?.fallback_messages_30d ?? 0);
+  const aiShare = aiTotal > 0 ? Math.round(((analytics?.gemini_messages_30d ?? 0) / aiTotal) * 100) : 0;
+
+  const openCreate = () => {
+    setEditing(null);
+    setQuestion("");
+    setAnswer("");
+    setKeywords("");
+    setDialogOpen(true);
+  };
+
+  const openEdit = (faq: ApiChatbotFaq) => {
+    setEditing(faq);
+    setQuestion(faq.question);
+    setAnswer(faq.answer);
+    setKeywords(faq.keywords ?? "");
+    setDialogOpen(true);
+  };
+
+  const save = async () => {
+    if (!question.trim()) {
+      toast.error("Question is required.");
+      return;
+    }
+    if (!answer.trim()) {
+      toast.error("Answer is required.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        question: question.trim(),
+        answer: answer.trim(),
+        keywords: keywords.trim() || null,
+        enabled: editing?.enabled ?? true,
+        sort_order: editing?.sort_order ?? 0,
+      };
+      const res =
+        editing === null
+          ? await chatbotFaqApi.create(payload)
+          : await chatbotFaqApi.update(editing.faq_id, payload);
+      toast.success(res.message);
+      setDialogOpen(false);
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save the FAQ.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleEnabled = async (faq: ApiChatbotFaq) => {
+    try {
+      const res = await chatbotFaqApi.update(faq.faq_id, { enabled: !faq.enabled });
+      toast.success(res.message);
+      setFaqs((prev) =>
+        prev.map((f) => (f.faq_id === faq.faq_id ? { ...f, enabled: !f.enabled } : f)),
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update the FAQ.");
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (deleteId === null) return;
+    try {
+      const res = await chatbotFaqApi.remove(deleteId);
+      toast.success(res.message);
+      setDeleteId(null);
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete the FAQ.");
+    }
+  };
+
+  return (
+    <SettingsCard
+      icon={<Bot className="h-5 w-5" />}
+      title="Chatbot FAQ"
+      action={
+        <Button size="sm" variant="outline" onClick={openCreate} title="Add FAQ">
+          <Plus className="mr-1 h-3.5 w-3.5" /> Add
+        </Button>
+      }
+    >
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
+            {faqs.length} total
+          </Badge>
+          <Badge variant="outline" className="border-success/30 bg-success/15 text-success">
+            {activeCount} active
+          </Badge>
+        </div>
+
+        {/* Insights — compact usage summary mirroring the full manager */}
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-lg border border-border/70 p-2.5">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+              Conversations today
+            </p>
+            <p className="font-display text-xl font-semibold text-primary">
+              {analytics?.conversations_today ?? 0}
+            </p>
+            <p className="text-[0.65rem] text-muted-foreground">
+              {analytics?.messages_today ?? 0} messages
+            </p>
+          </div>
+          <div className="rounded-lg border border-border/70 p-2.5">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+              AI vs fallback (30d)
+            </p>
+            <p className="font-display text-xl font-semibold">{aiShare}%</p>
+            <div className="mt-1 flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-full bg-primary" style={{ width: `${aiShare}%` }} />
+              <div className="h-full bg-gold" style={{ width: `${100 - aiShare}%` }} />
+            </div>
+          </div>
+          <div className="rounded-lg border border-border/70 p-2.5">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+              Answer feedback
+            </p>
+            <p className="flex items-center gap-2 font-display text-xl font-semibold">
+              <span className="flex items-center gap-1 text-success">
+                <ThumbsUp className="h-3.5 w-3.5" /> {analytics?.feedback_up ?? 0}
+              </span>
+              <span className="flex items-center gap-1 text-destructive">
+                <ThumbsDown className="h-3.5 w-3.5" /> {analytics?.feedback_down ?? 0}
+              </span>
+            </p>
+          </div>
+          <div className="rounded-lg border border-border/70 p-2.5">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+              Tokens this month
+            </p>
+            <p className="font-display text-xl font-semibold">
+              {(analytics?.gemini_tokens_month ?? 0).toLocaleString()}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3 max-h-[190px] min-h-0 flex-1 divide-y divide-border/60 overflow-y-auto pr-1">
+          {loading && <p className="py-4 text-center text-xs text-muted-foreground">Loading FAQs…</p>}
+          {!loading && faqs.length === 0 && (
+            <p className="py-4 text-center text-xs text-muted-foreground">
+              No FAQs yet. Click Add to create one.
+            </p>
+          )}
+          {faqs.map((f) => (
+            <div key={f.faq_id} className="flex items-center justify-between gap-2 py-2">
+              <p className="min-w-0 flex-1 truncate text-sm" title={f.question}>
+                {f.question}
+              </p>
+              <div className="flex shrink-0 items-center gap-1">
+                <Switch
+                  aria-label={`Enable ${f.question}`}
+                  checked={f.enabled}
+                  onCheckedChange={() => toggleEnabled(f)}
+                />
+                <Button size="icon" variant="ghost" title="Edit FAQ" onClick={() => openEdit(f)}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title="Delete FAQ"
+                  className="hover:text-destructive"
+                  onClick={() => setDeleteId(f.faq_id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">
+              {editing === null ? "Add FAQ" : "Edit FAQ"}
+            </DialogTitle>
+            <DialogDescription>
+              {editing === null
+                ? "Create a new question-and-answer entry for the careers assistant."
+                : "Update this entry. Changes take effect immediately on the landing page."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="settings-faq-question">Question</Label>
+              <Input
+                id="settings-faq-question"
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                placeholder="What should I wear to the interview?"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="settings-faq-answer">Answer</Label>
+              <Textarea
+                id="settings-faq-answer"
+                rows={4}
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                placeholder="Write the assistant's reply…"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="settings-faq-keywords">Keywords (comma-separated)</Label>
+              <Input
+                id="settings-faq-keywords"
+                value={keywords}
+                onChange={(e) => setKeywords(e.target.value)}
+                placeholder="dress code, wear, attire, outfit"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? "Saving…" : editing === null ? "Create FAQ" : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteId !== null} onOpenChange={(o) => !o && setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this FAQ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This entry will be removed from the careers assistant immediately.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                confirmDelete();
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </SettingsCard>
+  );
+}
+
 export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employee" }) {
   /** The portal's current user key — resolved from the authenticated session
-   *  so every logged-in account manages its OWN notifications / preferences /
+   *  so every logged-in account manages its OWN preferences /
    *  password / OTP values in the database. */
   const currentUser =
     getUser()?.email ??
@@ -161,7 +453,6 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   const [restoreInProgress, setRestoreInProgress] = useState(false);
   const [backupProgress, setBackupProgress] = useState(0);
   const [restoreTarget, setRestoreTarget] = useState<BackupEntry | null>(null);
-  const [notify, setNotify] = useState<Record<string, boolean>>({});
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -223,7 +514,6 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
       company: typeof company;
       preferences: typeof preferences;
       security: typeof security;
-      notifications: Record<string, boolean>;
       backups: BackupEntry[];
       backup: { enabled?: boolean; schedule?: string };
     }>,
@@ -233,19 +523,19 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
       setCompanyDraft(map["company"]);
     }
     if (map["preferences"]) {
-      setPreferences((prev) => ({ ...prev, ...map["preferences"] }));
-      setPrefsSavedSnapshot(JSON.stringify({ ...preferences, ...map["preferences"] }));
-      const t = (map["preferences"] as { theme?: string }).theme;
-      if (t === "Light" || t === "Dark" || t === "System") {
-        applyTheme(t as ThemeChoice);
-      }
+      // Theme is deliberately excluded: the live theme lives in localStorage and
+      // must only change via the header toggle or Preferences Save — never as a
+      // side effect of loading Settings. Merging a stale saved theme here is what
+      // used to flip the page "automatically" on every Settings visit.
+      const { theme: _savedTheme, ...savedPrefs } = map["preferences"];
+      setPreferences((prev) => ({ ...prev, ...savedPrefs }));
+      setPrefsSavedSnapshot(
+        JSON.stringify({ ...preferences, ...savedPrefs, theme: getStoredTheme() as string }),
+      );
     }
     if (map["security"]) {
       setSecurity(map["security"]);
       setSecuritySavedSnapshot(JSON.stringify(map["security"]));
-    }
-    if (map["notifications"]) {
-      setNotify(map["notifications"]);
     }
     if (map["backups"]) {
       setBackups(Array.isArray(map["backups"]) ? map["backups"] : []);
@@ -269,21 +559,21 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
         console.warn("Could not fetch settings from database:", err);
       });
 
-    // Per-user designated values — this user's own notifications/preferences
+    // Per-user designated values — this user's own preferences
     // (merged over the system defaults above) and their personal OTP flag.
     mySettingsApi
       .get(currentUser)
       .then((mine) => {
-        if (mine?.notifications && Object.keys(mine.notifications).length > 0) {
-          setNotify((prev) => ({ ...prev, ...mine.notifications }));
-        }
         if (mine?.preferences && Object.keys(mine.preferences).length > 0) {
-          setPreferences((prev) => ({ ...prev, ...mine.preferences }));
-          setPrefsSavedSnapshot(JSON.stringify(mine.preferences));
-          const t = (mine.preferences as { theme?: string }).theme;
-          if (t === "Light" || t === "Dark" || t === "System") {
-            applyTheme(t as ThemeChoice);
-          }
+          // Same as above: populate the form but never touch the live theme.
+          const { theme: _savedTheme, ...savedPrefs } = mine.preferences as Record<
+            string,
+            string
+          >;
+          setPreferences((prev) => ({ ...prev, ...savedPrefs }));
+          setPrefsSavedSnapshot(
+            JSON.stringify({ ...savedPrefs, theme: getStoredTheme() as string }),
+          );
         }
         setOtpEnabled(mine?.otp_enabled ?? true);
       })
@@ -453,52 +743,19 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   return (
     <div>
       <PageHeader
-        eyebrow={role === "superadmin" ? "Super Admin" : role === "admin" ? "Admin" : "Employee"}
         title="Settings"
-        description="Notifications, preferences and system data management."
       />
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-        {/* Notifications — edited inline; each switch saves instantly */}
-        <SettingsCard
-          icon={<Bell className="h-5 w-5" />}
-          title="Notifications"
-          subtitle="Choose how you receive alerts and updates"
-        >
-          <div className="divide-y divide-border/60">
-            {(
-              ["Email notifications", "Browser notifications", "System announcements"] as const
-            ).map((label) => (
-              <div
-                key={label}
-                className="flex items-center justify-between gap-4 py-2.5 first:pt-0 last:pb-0"
-              >
-                <span className="text-sm text-muted-foreground">{label}</span>
-                <Switch
-                  aria-label={label}
-                  checked={notify[label] ?? false}
-                  onCheckedChange={(v) => {
-                    setNotify((prev) => {
-                      const next = { ...prev, [label]: v };
-                      mySettingsApi
-                        .save("notifications", currentUser, next)
-                        .catch((e) => console.warn("Could not save notification settings:", e));
-                      return next;
-                    });
-                    toast.success(`${label} ${v ? "enabled" : "disabled"}`);
-                  }}
-                />
-              </div>
-            ))}
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">Changes are saved automatically.</p>
-        </SettingsCard>
+        {/* Chatbot FAQ — compact manager in the former Notifications slot (admins only) */}
+        {(isSuperAdmin || role === "admin") && (
+          <ChatbotFaqSettingsCard />
+        )}
 
         {/* Preferences — edited inline on the card */}
         <SettingsCard
           icon={<SlidersHorizontal className="h-5 w-5" />}
           title="Preferences"
-          subtitle="Personalize how the portal looks and formats data"
         >
           <div className="space-y-2.5">
             <div className="flex items-center justify-between gap-3">
@@ -506,10 +763,9 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
               <Select
                 value={preferences.theme}
                 onValueChange={(v) => {
+                  // Staged only — the live theme applies when the user clicks
+                  // Save changes, so picking a value never flips the page by itself.
                   setPreferences((p) => ({ ...p, theme: v }));
-                  if (v === "Light" || v === "Dark" || v === "System") {
-                    applyTheme(v as ThemeChoice);
-                  }
                 }}
               >
                 <SelectTrigger className="h-8 w-40">
@@ -602,7 +858,6 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
           <SettingsCard
             icon={<Shield className="h-5 w-5" />}
             title="Login Security"
-            subtitle="System-wide login security policy for all portals"
           >
             <div className="flex min-h-0 flex-1 flex-col">
               {/* Editable security controls — kept inside a bounded scroll area
@@ -723,9 +978,6 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
               </span>
               <div>
                 <h2 className="font-display text-xl font-semibold">Security</h2>
-                <p className="text-xs text-muted-foreground">
-                  Manage your password and sign-in security.
-                </p>
               </div>
             </div>
 
@@ -733,11 +985,6 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
             <div className="flex items-center justify-between gap-4 rounded-md border border-border/70 bg-muted/30 px-3 py-2.5">
               <div className="min-w-0">
                 <p className="text-sm font-medium">OTP verification at login</p>
-                <p className="text-xs text-muted-foreground">
-                  {otpEnabled === false
-                    ? "Off — sign in with your password only"
-                    : "On — a code is emailed to you when you sign in"}
-                </p>
               </div>
               <Switch
                 aria-label="Require OTP at login"
@@ -906,7 +1153,6 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
           <SettingsCard
             icon={<Building2 className="h-5 w-5" />}
             title="Company"
-            subtitle="Default used in documents, job post and portals"
             footer={{
               label: "Edit company info",
               onClick: () => {
@@ -1031,9 +1277,6 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   </span>
                   <div>
                     <h2 className="font-display text-xl font-semibold">Backup & Restore</h2>
-                    <p className="text-xs text-muted-foreground">
-                      Manage system backups and restore points
-                    </p>
                   </div>
                 </div>
                 <Button onClick={createBackup} disabled={backupInProgress}>
@@ -1157,9 +1400,6 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                   </TableBody>
                 </Table>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Showing {backups.length > 0 ? 1 : 0}-{backups.length} of {backups.length} backups
-              </p>
             </CardContent>
           </Card>
         )}

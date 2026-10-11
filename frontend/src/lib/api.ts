@@ -8,7 +8,9 @@ const RAW_BASE_URL =
   (import.meta.env["VITE_API_BASE_URL"] as string) || "http://127.0.0.1:8000/api/v1";
 // Normalize: "/api" + "/applicants" must join as "/api/v1/applicants" (the Vite
 // dev proxy forwards /api -> Laravel), never "/api/applicants".
-const BASE_URL = RAW_BASE_URL.replace(/\/+$/, "") + (RAW_BASE_URL.replace(/\/+$/, "").endsWith("/v1") ? "" : "/v1");
+const BASE_URL =
+  RAW_BASE_URL.replace(/\/+$/, "") +
+  (RAW_BASE_URL.replace(/\/+$/, "").endsWith("/v1") ? "" : "/v1");
 export const API_BASE_URL = BASE_URL;
 
 /** Never show raw SQL / DB internals to users — collapse them to a generic message. */
@@ -314,7 +316,12 @@ export interface ApiInterview {
   scheduled_time: string;
   mode: "On-site" | "Virtual";
   facility_id: number | null;
-  facility_status: "Not Required" | "Waiting for Facility Approval" | "Facility Approved" | "Facility Declined" | null;
+  facility_status:
+    | "Not Required"
+    | "Waiting for Facility Approval"
+    | "Facility Approved"
+    | "Facility Declined"
+    | null;
   facility?: {
     facility_id: number;
     name: string;
@@ -325,6 +332,10 @@ export interface ApiInterview {
   } | null;
   interviewer_employee_id: number | null;
   interviewer_name: string | null;
+  zoom_meeting_id: string | null;
+  zoom_join_url: string | null;
+  zoom_continue_url: string | null;
+  zoom_password: string | null;
   status: "Scheduled" | "Completed" | "No Show";
   applicant?: {
     applicant_id: number;
@@ -448,11 +459,7 @@ export interface ApiFinalEvaluation {
 /* Supporting-document verification (NLP comparison of an uploaded COE /
  * Certificate / Credential against the applicant's resume claims). */
 export type DocumentVerificationStatus =
-  | "PENDING"
-  | "PROCESSING"
-  | "VERIFIED"
-  | "DISCREPANCY_FOUND"
-  | "UNABLE_TO_VERIFY";
+  "PENDING" | "PROCESSING" | "VERIFIED" | "DISCREPANCY_FOUND" | "UNABLE_TO_VERIFY";
 
 export interface ApiComparedResumeEntry {
   entry_index: number | null;
@@ -508,7 +515,10 @@ export function resolveStorageUrl(value: string | null): string | null {
   // Fall back to the page origin when it is not an absolute URL.
   let origin: string;
   try {
-    origin = new URL(BASE_URL, typeof window !== "undefined" ? window.location.origin : "http://localhost").origin;
+    origin = new URL(
+      BASE_URL,
+      typeof window !== "undefined" ? window.location.origin : "http://localhost",
+    ).origin;
   } catch {
     origin = typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:8000";
   }
@@ -647,11 +657,7 @@ export interface ScreeningConfiguration {
 
 /** Entity types a requirement template row can carry (mirrors the NLP entity set). */
 export type ScreeningRequirementEntityType =
-  | "skill"
-  | "job_role"
-  | "certification"
-  | "education"
-  | "experience";
+  "skill" | "job_role" | "certification" | "education" | "experience";
 
 export interface ApiRequirementTemplateItem {
   item_id: number;
@@ -781,10 +787,9 @@ export const screeningApi = {
         { method: "PUT", body: JSON.stringify(payload) },
       ),
     remove: (id: number) =>
-      request<{ success: boolean; message: string }>(
-        `/screening/requirement-templates/${id}`,
-        { method: "DELETE" },
-      ),
+      request<{ success: boolean; message: string }>(`/screening/requirement-templates/${id}`, {
+        method: "DELETE",
+      }),
     toggleActive: (id: number) =>
       request<{ success: boolean; data: ApiRequirementTemplate }>(
         `/screening/requirement-templates/${id}/toggle`,
@@ -831,7 +836,9 @@ export const facilitiesApi = {
 export const assessmentTestsApi = {
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
-    return request<{ data: ApiAssessmentTest[]; meta: any }>(`/assessment-tests${qs ? `?${qs}` : ""}`);
+    return request<{ data: ApiAssessmentTest[]; meta: any }>(
+      `/assessment-tests${qs ? `?${qs}` : ""}`,
+    );
   },
   create: (applicantId: number | string, data: Record<string, any>) =>
     request<ApiAssessmentTest>(`/applicants/${applicantId}/assessment-tests`, {
@@ -882,7 +889,9 @@ export const assessmentInvitesApi = {
 export const practicalTestsApi = {
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
-    return request<{ data: ApiPracticalTest[]; meta: any }>(`/practical-tests${qs ? `?${qs}` : ""}`);
+    return request<{ data: ApiPracticalTest[]; meta: any }>(
+      `/practical-tests${qs ? `?${qs}` : ""}`,
+    );
   },
   create: (applicantId: number | string, data: Record<string, any>) =>
     request<ApiPracticalTest>(`/applicants/${applicantId}/practical-tests`, {
@@ -927,7 +936,9 @@ export interface ApiFinalEvaluationPreview {
 export const finalEvaluationsApi = {
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
-    return request<{ data: ApiFinalEvaluation[]; meta: any }>(`/final-evaluations${qs ? `?${qs}` : ""}`);
+    return request<{ data: ApiFinalEvaluation[]; meta: any }>(
+      `/final-evaluations${qs ? `?${qs}` : ""}`,
+    );
   },
   preview: (applicantId: number | string) =>
     request<ApiFinalEvaluationPreview>(`/applicants/${applicantId}/final-evaluations/preview`),
@@ -1227,7 +1238,7 @@ export const coreHcmApi = {
   salaryGrades: {
     list: (params?: Record<string, any>) => {
       const qs = new URLSearchParams(params).toString();
-      return request<{ data: ApiSalaryGrade[]; meta: any }>(`/salary-grades${qs ? `?${qs}` : ''}`);
+      return request<{ data: ApiSalaryGrade[]; meta: any }>(`/salary-grades${qs ? `?${qs}` : ""}`);
     },
   },
 };
@@ -1409,10 +1420,10 @@ export const onboardingItemsApi = {
       completed_at: string | null;
       review_note?: string | null;
       returned_count?: number;
-    }>(
-      `/onboarding-items/${itemId}/toggle`,
-      { method: "PATCH", ...(body ? { body: JSON.stringify(body) } : {}) },
-    ),
+    }>(`/onboarding-items/${itemId}/toggle`, {
+      method: "PATCH",
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    }),
   /** HR sends a submission back for correction with a reason (Edit-gated). */
   returnItem: (itemId: number | string, body: { note: string }) =>
     request<{
@@ -2686,9 +2697,10 @@ export const essApi = {
     ),
   // ESS-safe view of the employee's OWN onboarding checklist.
   myChecklist: () =>
-    request<{ data: any[]; new_hire: { new_hire_id: number; new_hire_code: string; name: string; stage: string } | null }>(
-      "/ess/my-checklist",
-    ),
+    request<{
+      data: any[];
+      new_hire: { new_hire_id: number; new_hire_code: string; name: string; stage: string } | null;
+    }>("/ess/my-checklist"),
   createPromotionRequest: (data: {
     requested_position_id?: number | null;
     requested_salary_grade_id?: number | null;
@@ -2939,7 +2951,9 @@ export const searchApi = {
   global: (q: string, limit = 6) =>
     request<{ data: GlobalSearchResult }>(`/search?q=${encodeURIComponent(q)}&limit=${limit}`),
   unified: (q: string, limit = 8) =>
-    request<{ data: UnifiedSearchResponse }>(`/search/unified?q=${encodeURIComponent(q)}&limit=${limit}`),
+    request<{ data: UnifiedSearchResponse }>(
+      `/search/unified?q=${encodeURIComponent(q)}&limit=${limit}`,
+    ),
 };
 
 /* ========================================================================= */
@@ -2955,6 +2969,5 @@ export const profileApi = {
       body: formData,
     });
   },
-  removePhoto: () =>
-    request<{ message: string }>("/profile/photo", { method: "DELETE" }),
+  removePhoto: () => request<{ message: string }>("/profile/photo", { method: "DELETE" }),
 };

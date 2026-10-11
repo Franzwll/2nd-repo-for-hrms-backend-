@@ -240,7 +240,7 @@ function notificationTarget(
 
     case "chatbot faq":
 
-      return role === "employee" ? null : `${base}/chatbot`;
+      return role === "employee" ? null : `${base}/settings`;
 
     default:
 
@@ -810,15 +810,15 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
             </Button>
 
-            <div className="md:hidden">
-
-              <Logo variant="mark" mark="white" tone="invert" />
-
-            </div>
-
             <div className="hidden sm:block">
 
               <p className="text-sm font-medium">{meta.label} Portal</p>
+
+            </div>
+
+            <div className="md:hidden">
+
+              <Logo variant="mark" mark="white" tone="invert" />
 
             </div>
 

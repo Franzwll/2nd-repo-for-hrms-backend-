@@ -21,6 +21,10 @@ class InterviewRescheduledMail extends Mailable
         public ?string $interviewMode,
         public ?string $previousDate = null,
         public ?string $previousTime = null,
+        public ?string $interviewerName = null,
+        public ?string $zoomJoinUrl = null,
+        public ?string $zoomContinueUrl = null,
+        public ?string $zoomPassword = null,
     ) {
     }
 
@@ -43,6 +47,10 @@ class InterviewRescheduledMail extends Mailable
                 'interviewMode' => $this->interviewMode,
                 'previousDate'  => $this->previousDate,
                 'previousTime'  => $this->previousTime,
+                'interviewerName'   => $this->interviewerName,
+                'zoomJoinUrl'       => $this->zoomJoinUrl,
+                'zoomContinueUrl'   => $this->zoomContinueUrl,
+                'zoomPassword'      => $this->zoomPassword,
             ],
         );
     }

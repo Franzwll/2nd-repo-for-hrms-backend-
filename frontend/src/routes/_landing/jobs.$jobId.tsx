@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { landingApi } from "@/lib/api";
 import { mapJob, peso } from "@/lib/landing";
 import { cn } from "@/lib/utils";
+import { useLightOnly } from "@/lib/theme";
 import {
   isValidEmail,
   isValidName,
@@ -58,6 +59,8 @@ function JobDetail() {
   const [submitted, setSubmitted] = useState(false);
   const [fileName, setFileName] = useState("");
   const [applying, setApplying] = useState(false);
+
+  useLightOnly();
   // Auto-fill fields from resume extraction (only name,email,phone,location)
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");

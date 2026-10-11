@@ -169,9 +169,7 @@ export function AuditLogs() {
   return (
     <div>
       <PageHeader
-        eyebrow="Super Admin"
         title="Audit Logs"
-        description="Full system activity trail across all modules and users."
         actions={
           <Dialog open={reportOpen} onOpenChange={setReportOpen}>
             <DialogTrigger asChild>
@@ -228,7 +226,6 @@ export function AuditLogs() {
           tone="primary"
           icon={Activity}
           onClick={() => setSeverity("all")}
-          hint="Click to view all"
         />
         <StatCard
           label="Critical"
@@ -236,7 +233,6 @@ export function AuditLogs() {
           tone="caution"
           icon={ShieldAlert}
           onClick={() => setSeverity("Critical")}
-          hint="Click to filter critical"
         />
         <StatCard
           label="Warnings"
@@ -244,7 +240,6 @@ export function AuditLogs() {
           tone="gold"
           icon={AlertTriangle}
           onClick={() => setSeverity("Warning")}
-          hint="Click to filter warnings"
         />
         <StatCard
           label="Unique Actors"
@@ -252,7 +247,6 @@ export function AuditLogs() {
           tone="success"
           icon={Users}
           onClick={() => setSeverity("Info")}
-          hint="Click to filter info"
         />
       </div>
 
@@ -443,6 +437,7 @@ export function AuditLogs() {
             to={auditPage.to}
             total={auditPage.total}
             label="entries"
+            showRangeLabel={false}
             onPageChange={auditPage.setPage}
           />
         </CardContent>

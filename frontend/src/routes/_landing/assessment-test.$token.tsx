@@ -12,6 +12,7 @@ import {
 import { PublicShell } from "@/components/public/PublicShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useLightOnly } from "@/lib/theme";
 
 /* The public applicant page talks to the API without a staff session, so it
    uses the same base URL as the main client (relative "/api/v1", proxied to
@@ -71,6 +72,8 @@ function ApplicantAssessmentTest() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<SubmitResult | null>(null);
+
+  useLightOnly();
 
   /* Load the test (public, no auth). */
   useEffect(() => {

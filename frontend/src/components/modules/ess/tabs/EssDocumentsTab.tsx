@@ -192,10 +192,7 @@ export function EssDocumentsTab() {
       </div>
 
       {/* Toolbar row above the cards — Export sits outside, like Export payroll */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="text-xs text-muted-foreground">
-          {documents.length} document(s) · {filteredDocRequests.length} request(s)
-        </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
         <div className="flex shrink-0 items-center gap-2">
           <ReportMenu
             size="sm"
@@ -379,6 +376,7 @@ export function EssDocumentsTab() {
             to={docPage.to}
             total={docPage.total}
             label="documents"
+            showRangeLabel={false}
             onPageChange={docPage.setPage}
           />
         </CardContent>

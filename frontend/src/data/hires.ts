@@ -120,7 +120,10 @@ const emit = () => listeners.forEach((l) => l());
 
 const subscribe = (listener: () => void) => {
   listeners.add(listener);
-  if (!hasFetched) fetchHiresFromApi();
+  // The module-scope fetch fires pre-login (no session → syncFromApi no-ops
+  // but still flips hasFetched). Retry on mount while the cache is empty so
+  // the pipeline never sits blank right after login.
+  if (!hasFetched || hires.length === 0) fetchHiresFromApi();
   return () => listeners.delete(listener);
 };
 
@@ -130,7 +133,10 @@ let hasFetched = false;
 /// refetches (15s interval, window focus) never flash loaders. */
 let hiresFetching = true;
 async function fetchHiresFromApi() {
-  if (hasFetched) return;
+  // Skip only when rows are already cached. A poisoned hasFetched flag with
+  // an empty cache (pre-login no-op fetch, or a failed first attempt) must
+  // still retry — otherwise the pipeline stays empty until the 15s poll.
+  if (hasFetched && hires.length > 0) return;
   hasFetched = true;
   hiresFetching = true;
   emit();

@@ -1,5 +1,9 @@
 import * as React from "react";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
+
+// Layout effect in the browser (runs before first paint — no dark flash),
+// plain effect during SSR where layout effects don't exist.
+const useIsomorphicLayoutEffect = typeof document !== "undefined" ? useLayoutEffect : useEffect;
 
 export type ThemeChoice = "Light" | "Dark" | "System";
 
@@ -80,11 +84,13 @@ export function useThemeChoice(): { choice: ThemeChoice; setChoice: (c: ThemeCho
 
 /**
  * Force the light theme while a public-only surface (landing site, login,
- * forgot/otp/reset) is mounted. Restores the stored portal theme on unmount
- * so the authenticated portals keep following the user's preference.
+ * forgot/otp/reset) is mounted — applied in a layout effect (before first
+ * paint) so light mode is what the user sees first, never a dark flash.
+ * Restores the stored portal theme on unmount so the authenticated portals
+ * keep following the user's preference.
  */
 export function useLightOnly(): void {
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (typeof document === "undefined") return;
     const hadDark = document.documentElement.classList.contains("dark");
     document.documentElement.classList.remove("dark");
