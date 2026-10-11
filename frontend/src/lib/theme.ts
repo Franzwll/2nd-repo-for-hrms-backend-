@@ -67,7 +67,9 @@ export function applyInitialTheme(): void {
 
 /** Reactive theme choice for UI bindings (toggle components). */
 export function useThemeChoice(): { choice: ThemeChoice; setChoice: (c: ThemeChoice) => void } {
-  const [choice, setChoiceState] = React.useState<ThemeChoice>(() => getStoredTheme());
+  // Init to "System" to match SSR (getStoredTheme returns "System" on server).
+  // Sync to localStorage value in an effect to avoid hydration mismatch.
+  const [choice, setChoiceState] = React.useState<ThemeChoice>("System");
   const setChoice = React.useCallback((c: ThemeChoice) => {
     applyTheme(c);
     setChoiceState(c);

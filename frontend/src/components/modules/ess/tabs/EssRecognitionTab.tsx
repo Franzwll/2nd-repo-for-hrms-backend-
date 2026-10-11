@@ -356,21 +356,6 @@ export function EssRecognitionTab() {
     p.recipientName.toLowerCase().includes(currentUserName.toLowerCase())
   ).length;
 
-  // Most-used core value across the visible wall (was a hardcoded label).
-  const topCoreValue = useMemo(() => {
-    const counts = new Map<string, number>();
-    posts.forEach((p) => counts.set(p.coreValue, (counts.get(p.coreValue) ?? 0) + 1));
-    let top = "Guest Delight";
-    let best = -1;
-    counts.forEach((n, v) => {
-      if (n > best) {
-        best = n;
-        top = v;
-      }
-    });
-    return top;
-  }, [posts]);
-
   // Keep the recipient picker valid: never offer yourself (dropdown is a
   // static list that may contain the logged-in user).
   const availableColleagues = useMemo(
@@ -633,7 +618,6 @@ export function EssRecognitionTab() {
               <p className="mt-1 text-3xl font-bold font-display text-primary">
                 {myReceivedCount} <span className="text-xs font-normal text-muted-foreground">shout-outs</span>
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">Top: ⭐ {topCoreValue}</p>
             </div>
             <div className="rounded-xl bg-primary/10 p-3 text-primary border border-primary/20">
               <Award className="h-6 w-6" />
@@ -648,7 +632,6 @@ export function EssRecognitionTab() {
               <p className="mt-1 text-3xl font-bold font-display text-primary">
                 {posts.length} <span className="text-xs font-normal text-muted-foreground">published</span>
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">Governed by Team 3 (HR3)</p>
             </div>
             <div className="rounded-xl bg-primary/10 p-3 text-primary border border-primary/20">
               <ShieldCheck className="h-6 w-6" />
@@ -663,7 +646,6 @@ export function EssRecognitionTab() {
               <p className="mt-1 text-2xl font-bold font-display text-foreground">
                 5 Core Pillars
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">Hotel hospitality standards</p>
             </div>
             <div className="rounded-xl bg-primary/10 p-3 text-primary border border-primary/20">
               <Building2 className="h-6 w-6" />

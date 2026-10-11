@@ -3457,9 +3457,6 @@ export function EmployeeOnboarding() {
               <Compass className="h-5 w-5 text-primary" />
               Probationary Journey &amp; Milestone Timeline
             </CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Track your active tenure duration, 30-90-180 day performance touchpoints, and regularization pathway.
-            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs font-semibold px-2.5 py-1 flex items-center gap-1.5 shadow-2xs">
@@ -3523,9 +3520,6 @@ export function EmployeeOnboarding() {
                   <h4 className="font-display text-sm font-bold text-foreground">
                     {m.title}
                   </h4>
-                  <p className="text-xs text-muted-foreground mt-1 leading-snug">
-                    {m.desc}
-                  </p>
 
                   <div className="mt-3 pt-2.5 border-t border-border/60 flex items-center justify-between text-[11px]">
                     <span className="text-muted-foreground">Target: Day {m.dayTarget}</span>

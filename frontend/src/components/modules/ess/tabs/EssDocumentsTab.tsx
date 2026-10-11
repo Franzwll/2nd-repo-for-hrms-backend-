@@ -156,7 +156,6 @@ export function EssDocumentsTab() {
             <p className="mt-1 text-2xl font-bold font-display text-emerald-600 dark:text-emerald-400">
               {documents.filter((d) => d.status === "Submitted" || d.status === "Available" || d.status === "Released").length} File(s)
             </p>
-            <p className="text-xs text-muted-foreground mt-1">Verified by HR Administration</p>
           </CardContent>
         </Card>
 
@@ -171,7 +170,6 @@ export function EssDocumentsTab() {
             <p className="mt-1 text-2xl font-bold font-display text-rose-600 dark:text-rose-400">
               {documents.filter((d) => d.status === "Missing").length} Action Item
             </p>
-            <p className="text-xs text-muted-foreground mt-1">Please submit missing compliance requirement</p>
           </CardContent>
         </Card>
 
@@ -186,20 +184,17 @@ export function EssDocumentsTab() {
             <p className="mt-1 text-2xl font-bold font-display text-primary">
               {documents.filter((d) => d.status === "Available" || d.status === "Released").length} Records
             </p>
-            <p className="text-xs text-muted-foreground mt-1">COE, BIR 2316 &amp; Certifications</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Toolbar row above the cards — Export sits outside, like Export payroll */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="text-xs text-muted-foreground">
-          {documents.length} document(s) · {filteredDocRequests.length} request(s)
-        </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
         <div className="flex shrink-0 items-center gap-2">
           <ReportMenu
             size="sm"
             label="Export documents"
+            showPrint={false}
             recordCount={documents.length + filteredDocRequests.length}
             report={() => ({
               title: "My Employment Documents Report",

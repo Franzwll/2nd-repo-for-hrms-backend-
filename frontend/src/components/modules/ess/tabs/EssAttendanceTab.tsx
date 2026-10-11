@@ -419,28 +419,24 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         <StatCard
           label="Present Days"
           value={attSummary.present_days}
-          hint={`Avg ${attSummary.average_hours.toFixed(1)}h per day`}
           icon={CheckCircle2}
           tone="success"
         />
         <StatCard
           label="Late Days"
           value={attSummary.late_days}
-          hint="Arrivals past grace period"
           icon={Clock}
           tone="caution"
         />
         <StatCard
           label="Absent Days"
           value={attSummary.absent_days}
-          hint="Unexcused absences this cut-off"
           icon={AlertCircle}
           tone="primary"
         />
         <StatCard
           label="Overtime Hours"
           value={`${attSummary.overtime_hours}h`}
-          hint="Approved OT this cut-off"
           icon={Sparkles}
           tone="gold"
         />
@@ -473,24 +469,13 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         </TabsList>
 
         <TabsContent value="schedule" className="mt-4 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-              <Clock className="h-4 w-4 text-primary" /> Attendance &amp; Schedule
-            </h2>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button
-                onClick={() => setSwapModalOpen(true)}
-                variant="outline"
-                size="sm"
-                className="gap-1.5 shadow-xs text-xs cursor-pointer"
-              >
-                <ArrowLeftRight className="h-4 w-4 text-purple-600" /> Request Shift Swap
-              </Button>
-            </div>
-          </div>
           <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
             <CardContent className="p-6">
-              <div className="flex flex-wrap items-center justify-end gap-2 pb-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
+                <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
+                  <Clock className="h-4 w-4 text-primary" /> Attendance &amp; Schedule
+                </h2>
+                <div className="flex flex-wrap items-center justify-end gap-2">
                 <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary text-xs font-medium px-2.5 py-1">
                   Station Active
                 </Badge>
@@ -511,6 +496,15 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                     Shift Completed / Clocked Out
                   </Badge>
                 )}
+                <Button
+                  onClick={() => setSwapModalOpen(true)}
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 shadow-xs text-xs cursor-pointer"
+                >
+                  <ArrowLeftRight className="h-4 w-4 text-purple-600" /> Request Shift Swap
+                </Button>
+                </div>
               </div>
 
             <div className="space-y-6">
@@ -704,20 +698,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         </TabsContent>
 
         <TabsContent value="dtr" className="mt-4 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-              <Clock className="h-4 w-4 text-primary" /> Attendance Logs &amp; Daily Time Record (DTR)
-            </h2>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button
-                size="sm"
-                onClick={() => setCorrectionModalOpen(true)}
-                className="gap-1.5 text-xs shadow-xs cursor-pointer"
-              >
-                <Plus className="h-4 w-4" /> File DTR Correction
-              </Button>
-            </div>
-          </div>
 
           <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
             <CardContent className="p-6">
@@ -735,6 +715,13 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                       className="pl-8"
                     />
                   </div>
+                  <Button
+                    size="sm"
+                    onClick={() => setCorrectionModalOpen(true)}
+                    className="gap-1.5 text-xs shadow-xs cursor-pointer"
+                  >
+                    <Plus className="h-4 w-4" /> File DTR Correction
+                  </Button>
                 </div>
               </div>
               <ListBody className="mt-4">

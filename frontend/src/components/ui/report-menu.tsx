@@ -144,12 +144,15 @@ export function ReportMenu({
   label = "Generate Report",
   buttonClassName,
   size = "default",
+  showPrint = true,
 }: {
   report: ReportData | (() => ReportData);
   recordCount?: number;
   label?: string;
   buttonClassName?: string;
   size?: "default" | "sm" | "icon";
+  /** Hide the Print… item (e.g. employee payroll export). Defaults to true. */
+  showPrint?: boolean;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -209,16 +212,20 @@ export function ReportMenu({
             Every file is sealed in a password-protected ZIP (AES-256). You will be asked for a file
             password.
           </p>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => {
-              const data = typeof report === "function" ? report() : report;
-              printReport(data);
-              toast.success(`${data.title} sent to printer.`);
-            }}
-          >
-            <Printer className="mr-2 h-4 w-4" /> Print…
-          </DropdownMenuItem>
+          {showPrint && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  const data = typeof report === "function" ? report() : report;
+                  printReport(data);
+                  toast.success(`${data.title} sent to printer.`);
+                }}
+              >
+                <Printer className="mr-2 h-4 w-4" /> Print…
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
       <SecureExportDialog
@@ -257,12 +264,15 @@ export function MultiReportMenu({
   label = "Generate Report",
   buttonClassName,
   size = "default",
+  showPrint = true,
 }: {
   report: ReportData | (() => ReportData);
   recordCount?: number;
   label?: string;
   buttonClassName?: string;
   size?: "default" | "sm" | "icon";
+  /** Hide the Print… item. Defaults to true. */
+  showPrint?: boolean;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -322,16 +332,20 @@ export function MultiReportMenu({
             Every file is sealed in a password-protected ZIP (AES-256). You will be asked for a file
             password.
           </p>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => {
-              const data = typeof report === "function" ? report() : report;
-              printReport(data);
-              toast.success(`${data.title} sent to printer.`);
-            }}
-          >
-            <Printer className="mr-2 h-4 w-4" /> Print…
-          </DropdownMenuItem>
+          {showPrint && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  const data = typeof report === "function" ? report() : report;
+                  printReport(data);
+                  toast.success(`${data.title} sent to printer.`);
+                }}
+              >
+                <Printer className="mr-2 h-4 w-4" /> Print…
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
       <SecureExportDialog
