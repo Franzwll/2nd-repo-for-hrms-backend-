@@ -12,6 +12,7 @@ Route::prefix('v1')->group(function () {
     Route::get('landing/jobs/{job_post}', [LandingController::class, 'job']);
     Route::get('landing/announcements', [LandingController::class, 'announcements']);
     Route::post('landing/extract-resume', [LandingController::class, 'extractResume']);
+    Route::post('landing/classify-document', [LandingController::class, 'classifyDocument']);
     Route::post('landing/apply', [LandingController::class, 'apply']);
     // Public applicant bot (rate-limited per user account, per IP for guests);
     // authenticated users pass their Sanctum token so the controller can

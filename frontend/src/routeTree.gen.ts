@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as EmployeeRouteImport } from './routes/employee'
 import { Route as SuperadminRouteImport } from './routes/superadmin'
+import { Route as TestDocRecognitionRouteImport } from './routes/test-doc-recognition'
 import { Route as LandingIndexRouteImport } from './routes/_landing/index'
 import { Route as LandingAboutRouteImport } from './routes/_landing/about'
 import { Route as LandingContactRouteImport } from './routes/_landing/contact'
@@ -74,6 +75,11 @@ const EmployeeRoute = EmployeeRouteImport.update({
 const SuperadminRoute = SuperadminRouteImport.update({
   id: '/superadmin',
   path: '/superadmin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TestDocRecognitionRoute = TestDocRecognitionRouteImport.update({
+  id: '/test-doc-recognition',
+  path: '/test-doc-recognition',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LandingIndexRoute = LandingIndexRouteImport.update({
@@ -343,6 +349,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/employee': typeof EmployeeRouteWithChildren
   '/superadmin': typeof SuperadminRouteWithChildren
+  '/test-doc-recognition': typeof TestDocRecognitionRoute
   '/about': typeof LandingAboutRoute
   '/contact': typeof LandingContactRoute
   '/cookies': typeof LandingCookiesRoute
@@ -393,6 +400,7 @@ export interface FileRoutesByFullPath {
   '/jobs/': typeof LandingJobsIndexRoute
 }
 export interface FileRoutesByTo {
+  '/test-doc-recognition': typeof TestDocRecognitionRoute
   '/about': typeof LandingAboutRoute
   '/contact': typeof LandingContactRoute
   '/cookies': typeof LandingCookiesRoute
@@ -447,6 +455,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/employee': typeof EmployeeRouteWithChildren
   '/superadmin': typeof SuperadminRouteWithChildren
+  '/test-doc-recognition': typeof TestDocRecognitionRoute
   '/_landing/about': typeof LandingAboutRoute
   '/_landing/contact': typeof LandingContactRoute
   '/_landing/cookies': typeof LandingCookiesRoute
@@ -502,6 +511,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/employee'
     | '/superadmin'
+    | '/test-doc-recognition'
     | '/about'
     | '/contact'
     | '/cookies'
@@ -552,6 +562,7 @@ export interface FileRouteTypes {
     | '/jobs/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/test-doc-recognition'
     | '/about'
     | '/contact'
     | '/cookies'
@@ -605,6 +616,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/employee'
     | '/superadmin'
+    | '/test-doc-recognition'
     | '/_landing/about'
     | '/_landing/contact'
     | '/_landing/cookies'
@@ -659,6 +671,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   EmployeeRoute: typeof EmployeeRouteWithChildren
   SuperadminRoute: typeof SuperadminRouteWithChildren
+  TestDocRecognitionRoute: typeof TestDocRecognitionRoute
   LandingAboutRoute: typeof LandingAboutRoute
   LandingContactRoute: typeof LandingContactRoute
   LandingCookiesRoute: typeof LandingCookiesRoute
@@ -700,6 +713,13 @@ declare module '@tanstack/react-router' {
       path: '/superadmin'
       fullPath: '/superadmin'
       preLoaderRoute: typeof SuperadminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/test-doc-recognition': {
+      id: '/test-doc-recognition'
+      path: '/test-doc-recognition'
+      fullPath: '/test-doc-recognition'
+      preLoaderRoute: typeof TestDocRecognitionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_landing/': {
@@ -1140,6 +1160,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   EmployeeRoute: EmployeeRouteWithChildren,
   SuperadminRoute: SuperadminRouteWithChildren,
+  TestDocRecognitionRoute: TestDocRecognitionRoute,
   LandingAboutRoute: LandingAboutRoute,
   LandingContactRoute: LandingContactRoute,
   LandingCookiesRoute: LandingCookiesRoute,

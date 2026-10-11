@@ -13,6 +13,8 @@ export function useHighlightId(): { id: string | null; tab: string | null } {
   });
 
   useEffect(() => {
+    let t1: ReturnType<typeof setTimeout> | undefined;
+    let t2: ReturnType<typeof setTimeout> | undefined;
     try {
       const params = new URLSearchParams(searchStr || "");
       const id = params.get("highlight");
@@ -20,18 +22,18 @@ export function useHighlightId(): { id: string | null; tab: string | null } {
       setHighlight({ id, tab });
       if (!id) return;
       // Scroll the exact row into view, then clear after 6s.
-      const t1 = setTimeout(() => {
+      t1 = setTimeout(() => {
         const el = document.querySelector(`[data-highlight-id="${CSS.escape(id)}"]`);
         el?.scrollIntoView({ behavior: "smooth", block: "center" });
       }, 350);
-      const t2 = setTimeout(() => setHighlight({ id: null, tab: null }), 6000);
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-      };
+      t2 = setTimeout(() => setHighlight({ id: null, tab: null }), 6000);
     } catch {
       setHighlight({ id: null, tab: null });
     }
+    return () => {
+      if (t1) clearTimeout(t1);
+      if (t2) clearTimeout(t2);
+    };
   }, [searchStr]);
 
   return highlight;

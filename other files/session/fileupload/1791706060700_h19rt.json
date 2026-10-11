@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "session_id": "1791706060700_h19rt",
+  "source": "vscode",
+  "pid": 8056,
+  "started_at": "2026-10-11T08:07:41.073Z",
+  "ended_at": "2026-10-11T09:59:52.132Z",
+  "exit_code": 0,
+  "status": "completed",
+  "interactive": true,
+  "provider": "cline",
+  "model": "cline-free/muse-spark-1.3-contributor",
+  "cwd": "c:\\Users\\PC\\Downloads\\Ferdi\\4TH_YR\\DEV\\v15\\2nd-repo-for-hrms-backend-",
+  "workspace_root": "c:\\Users\\PC\\Downloads\\Ferdi\\4TH_YR\\DEV\\v15\\2nd-repo-for-hrms-backend-",
+  "enable_tools": true,
+  "enable_spawn": false,
+  "enable_teams": false,
+  "prompt": "understand in high intelligence and carefully the test-doc-recognition, I am planning now to transform my resume file up",
+  "metadata": {
+    "sessionHistoryOrigin": {
+      "mode": "user",
+      "version": "4.1.23"
+    },
+    "git": {
+      "url": "https://github.com/Franzwll/2nd-repo-for-hrms-backend-.git",
+      "branch": "merging-ground"
+    },
+    "checkpoint": {
+      "latest": {
+        "ref": "340b15f5fc3f393de3866f55059d7dc12b5ac6eb",
+        "createdAt": 1791711872322,
+        "runCount": 9,
+        "kind": "stash"
+      },
+      "history": [
+        {
+          "ref": "cb6e07100e0ddc093aff519682c5efd5f70eab89",
+          "createdAt": 1791706062328,
+          "runCount": 1,
+          "kind": "stash"
+        },
+        {
+          "ref": "0991cea377c755a0a75b974d0999c9716d861776",
+          "createdAt": 1791706293301,
+          "runCount": 2,
+          "kind": "stash"
+        },
+        {
+          "ref": "3ca2bbd57c65e2127d90f78e2360d719d9766461",
+          "createdAt": 1791709259071,
+          "runCount": 3,
+          "kind": "stash"
+        },
+        {
+          "ref": "89c1cfd5b504be53330756f9bf5c531aeb56ca78",
+          "createdAt": 1791709364201,
+          "runCount": 4,
+          "kind": "stash"
+        },
+        {
+          "ref": "13ed08d0ca7e43b7cd4ca28304c4ce223d8eae1f",
+          "createdAt": 1791709605196,
+          "runCount": 5,
+          "kind": "stash"
+        },
+        {
+          "ref": "e6b40b29818ad52ce3c27205ecd9df6c938c71fa",
+          "createdAt": 1791710266478,
+          "runCount": 6,
+          "kind": "stash"
+        },
+        {
+          "ref": "8b591f77aa4695266e91d0c14d74b21f31cd3baf",
+          "createdAt": 1791710673325,
+          "runCount": 7,
+          "kind": "stash"
+        },
+        {
+          "ref": "ecd321ecfdac849288ecbcc7e338901e5c8ad4fa",
+          "createdAt": 1791711758352,
+          "runCount": 8,
+          "kind": "stash"
+        },
+        {
+          "ref": "340b15f5fc3f393de3866f55059d7dc12b5ac6eb",
+          "createdAt": 1791711872322,
+          "runCount": 9,
+          "kind": "stash"
+        }
+      ]
+    },
+    "size": 401081,
+    "title": "understand in high intelligence and carefully the test-doc-recognition, I am planning now to transform my resume file up",
+    "isFavorited": false,
+    "totalCost": 0,
+    "tokensIn": 22702519,
+    "tokensOut": 85084,
+    "cacheWrites": 0,
+    "cacheReads": 62090600,
+    "modelId": "cline-free/muse-spark-1.3-contributor",
+    "legacyTask": false,
+    "aggregatedAgentsCost": 0,
+    "usage": {
+      "inputTokens": 84793119,
+      "outputTokens": 85084,
+      "cacheReadTokens": 62090600,
+      "cacheWriteTokens": 0,
+      "totalCost": 0
+    },
+    "aggregateUsage": {
+      "inputTokens": 84793119,
+      "outputTokens": 85084,
+      "cacheReadTokens": 62090600,
+      "cacheWriteTokens": 0,
+      "totalCost": 0
+    }
+  },
+  "messages_path": "C:\\Users\\PC\\.cline\\data\\sessions\\1791706060700_h19rt\\1791706060700_h19rt.messages.json",
+  "compaction_path": "C:\\Users\\PC\\.cline\\data\\sessions\\1791706060700_h19rt\\1791706060700_h19rt.compaction.json"
+}

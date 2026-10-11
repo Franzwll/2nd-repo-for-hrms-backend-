@@ -105,25 +105,6 @@ function Landing() {
         </div>
       </section>
 
-      {/* Facilities */}
-      <section className="border-y border-border bg-secondary/50">
-        <div className="mx-auto max-w-7xl px-4 py-16 md:px-8">
-          <p className="eyebrow">Property</p>
-          <h2 className="mt-1 font-display text-4xl font-semibold">Facilities & Services</h2>
-          <div className="gold-rule my-6" />
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {company.facilities.map((f, i) => (
-              <Reveal key={f.name} delay={(i % 3) * 80}>
-                <div className="rounded-md border border-border bg-card p-5 transition-transform duration-300 hover:-translate-y-1">
-                  <h3 className="font-display text-xl font-semibold">{f.name}</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">{f.body}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* Featured jobs */}
       <section className="mx-auto max-w-7xl px-4 py-16 md:px-8">
         <div className="flex flex-wrap items-end justify-between gap-4">

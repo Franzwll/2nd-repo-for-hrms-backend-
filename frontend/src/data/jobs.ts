@@ -26,6 +26,9 @@ export type Job = {
   platforms: string[];
   /** Uploaded hiring-poster picture (API url) */
   picture?: string;
+  /** Assessment / practical test requirement flags (API-owned, optional on mocks). */
+  requires_assessment?: boolean;
+  requires_practical?: boolean;
 };
 
 export const jobs: Job[] = [
