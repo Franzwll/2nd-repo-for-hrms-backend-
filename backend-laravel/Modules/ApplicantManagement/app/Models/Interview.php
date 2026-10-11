@@ -20,6 +20,10 @@ class Interview extends Model
         'facility_status',
         'interviewer_employee_id',
         'interviewer_name',
+        'zoom_meeting_id',
+        'zoom_join_url',
+        'zoom_continue_url',
+        'zoom_password',
         'status',
     ];
 

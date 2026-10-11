@@ -23,7 +23,6 @@ import {
   Download,
   Eye,
   Facebook,
-  FileCheck,
   FilePlus2,
   FileText,
   Flag,
@@ -32,7 +31,6 @@ import {
   GraduationCap,
   GripVertical,
   Heart,
-  Image as ImageIcon,
   Info,
   Instagram,
   LayoutGrid,
@@ -110,13 +108,17 @@ import {
   interviewers,
   screeningCriteria,
   statusMeta,
-  VERIFICATION_DOC_TYPES,
   type ApplicantStatus,
   type VerificationDocType,
 } from "@/data/applicants";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useSort } from "@/components/portal/sortable";
+import {
+  UnifiedDocumentsUploader,
+  pickResumeDoc,
+  type UnifiedDoc,
+} from "@/components/documents/UnifiedDocumentsUploader";
 import { cn } from "@/lib/utils";
 import {
   API_BASE_URL,
@@ -1984,23 +1986,29 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   /* ------------------------------------------------------------------ */
 
   const [addOpen, setAddOpen] = useState(false);
-  const [addStep, setAddStep] = useState<1 | 2 | 3>(1);
-  const [addMethod, setAddMethod] = useState<"file" | "image">("file");
-  const [addFileName, setAddFileName] = useState("");
-  const [addResumeFile, setAddResumeFile] = useState<File | null>(null);
+  const [addStep, setAddStep] = useState<1 | 2>(1);
   /**
-   * Verification documents uploaded with the applicant (COE, certificates,
-   * credentials, others) — used to verify the content of the resume/CV.
+   * Single smart upload box (Step 1): resume + supporting docs in any order.
+   * Each file is recognized by content (rule + filename + content check);
+   * the highest Resume-score file becomes the resume pick, the rest are
+   * supporting docs. First upload is expected to be the resume.
+   * Derived bridges keep every downstream consumer (auto-fill, screening,
+   * save, replace-confirm) working unchanged.
    */
-  const [verificationDocs, setVerificationDocs] = useState<
-    { docType: VerificationDocType; title: string; originalCopy: boolean; file: File }[]
-  >([]);
-  /** True while a file is being dragged over the resume drop zone. */
-  const [resumeDragActive, setResumeDragActive] = useState(false);
-  /** Which verification row is currently being dragged over (for drop highlight). */
-  const [verificationDragType, setVerificationDragType] = useState<VerificationDocType | null>(
-    null,
-  );
+  const [unifiedDocs, setUnifiedDocs] = useState<UnifiedDoc[]>([]);
+  const unifiedResumePick = pickResumeDoc(unifiedDocs);
+  const addResumeFile = unifiedResumePick?.file ?? null;
+  const addFileName = addResumeFile?.name ?? "";
+  const verificationDocs = unifiedDocs
+    .filter((d) => unifiedResumePick?.id !== d.id)
+    .map((d) => {
+      const raw = d.manualType ?? d.result?.predicted_type ?? "Others";
+      // screen-resume + applicant-documents only accept COE | Certificate | Credential | Others —
+      // anything else (Resume leftovers, unexpected strings) becomes Others so validation never 422s.
+      const docType: VerificationDocType =
+        raw === "COE" || raw === "Certificate" || raw === "Credential" ? raw : "Others";
+      return { docType, title: d.file.name, originalCopy: false, file: d.file };
+    });
   /** Pending upload awaiting user confirmation to replace existing details. */
   const [pendingResume, setPendingResume] = useState<File | null>(null);
   const [replaceOpen, setReplaceOpen] = useState(false);
@@ -2014,11 +2022,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     address: "",
     position: "",
   });
-  /** Confirmation when Step 2 has unsaved fill-up and user tries to Back/X */
+  /** Confirmation when Step 1 has unsaved fill-up and user tries to X */
   const [confirmStep2ExitOpen, setConfirmStep2ExitOpen] = useState(false);
-  const [pendingStep2ExitAction, setPendingStep2ExitAction] = useState<"back" | "close" | null>(
-    null,
-  );
   const hasStep2Data =
     [addForm.name, addForm.email, addForm.phone, addForm.address].some(
       (v) => v.trim().length > 0,
@@ -2314,45 +2319,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     }
   };
 
-  /** Validates type/size, then routes through the replacement-confirmation
-   *  rules: if the form already holds any applicant details (typed or
-   *  extracted from a previous resume), a confirm modal protects them;
-   *  an empty form accepts the new resume silently. */
-  const handleResumeFile = (file: File | null | undefined) => {
-    if (!file) return;
-    const isImage = addMethod === "image";
-    const name = file.name.toLowerCase();
-    const okType = isImage
-      ? /\.(jpe?g|png)$/.test(name) || file.type === "image/jpeg" || file.type === "image/png"
-      : /\.(pdf|docx?)$/.test(name);
-    if (!okType) {
-      toast.error(
-        isImage
-          ? "Unsupported image — please use a JPG or PNG file."
-          : "Unsupported file — please use a PDF or DOCX resume.",
-      );
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("File is larger than the 10 MB limit.");
-      return;
-    }
-    const hasExistingDetails = [addForm.name, addForm.email, addForm.phone, addForm.address].some(
-      (v) => v.trim().length > 0,
-    );
-    if (hasExistingDetails) {
-      setPendingResume(file);
-      setReplaceOpen(true);
-      return;
-    }
-    applyResumeFile(file);
-  };
-
   /** Applies the file unconditionally and runs the extraction auto-fill
    *  in replace mode (values overwrite whatever the form held). */
   const applyResumeFile = (file: File) => {
-    setAddResumeFile(file);
-    setAddFileName(file.name);
     void autofillFromResume(file, { overwrite: true });
   };
 
@@ -2422,23 +2391,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     }
   };
 
-  /** Blob URL for previewing the selected resume; revoked on change/unmount. */
-  const [resumePreviewUrl, setResumePreviewUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!addResumeFile) {
-      setResumePreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(addResumeFile);
-    setResumePreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [addResumeFile]);
-
-  /** Opens the selected resume in a new tab (images/PDFs render natively). */
-  const openResumePreview = () => {
-    if (resumePreviewUrl) window.open(resumePreviewUrl, "_blank", "noopener");
-  };
-
   /** Opens any staged local file (resume or verification doc) in a new tab. */
   const openLocalFile = (file: File) => {
     const url = URL.createObjectURL(file);
@@ -2504,11 +2456,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const resetAddWizard = () => {
     setAddStep(1);
     setScreenResult(null);
-    setAddResumeFile(null);
-    setVerificationDocs([]);
+    setUnifiedDocs([]);
     setPendingResume(null);
     setReplaceOpen(false);
-    setAddFileName("");
     setAddForm({ name: "", email: "", phone: "", address: "", position: "" });
   };
 
@@ -2517,47 +2467,21 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     resetAddWizard();
   };
 
-  const clearStep2Fields = () => {
-    setAddForm((prev) => ({ ...prev, name: "", email: "", phone: "", address: "" }));
-    setAddFileName("");
-    setAddResumeFile(null);
-    setPendingResume(null);
-    setReplaceOpen(false);
-  };
-
   const requestCloseWizard = () => {
-    if (addStep === 2 && hasStep2Data) {
-      setPendingStep2ExitAction("close");
+    if (addStep === 1 && hasStep2Data) {
       setConfirmStep2ExitOpen(true);
     } else {
       closeAddWizard();
-    }
-  };
-
-  const requestBackToStep1 = () => {
-    if (hasStep2Data) {
-      setPendingStep2ExitAction("back");
-      setConfirmStep2ExitOpen(true);
-    } else {
-      setAddStep(1);
     }
   };
 
   const handleConfirmStep2Discard = () => {
-    const action = pendingStep2ExitAction;
     setConfirmStep2ExitOpen(false);
-    setPendingStep2ExitAction(null);
-    if (action === "close") {
-      closeAddWizard();
-    } else if (action === "back") {
-      clearStep2Fields();
-      setAddStep(1);
-    }
+    closeAddWizard();
   };
 
   const handleConfirmStep2Stay = () => {
     setConfirmStep2ExitOpen(false);
-    setPendingStep2ExitAction(null);
   };
 
   /** Admin flow — locked to the clicked job post (department + position auto-set). */
@@ -2567,8 +2491,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setAddForm({ name: "", email: "", phone: "", address: "", position: job.title });
     setAddStep(1);
     setScreenResult(null);
-    setAddResumeFile(null);
-    setAddFileName("");
+    setUnifiedDocs([]);
     setPendingResume(null);
     setReplaceOpen(false);
     setAddOpen(true);
@@ -2583,8 +2506,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setAddForm({ name: "", email: "", phone: "", address: "", position: firstPos });
     setAddStep(1);
     setScreenResult(null);
-    setAddResumeFile(null);
-    setAddFileName("");
+    setUnifiedDocs([]);
     setPendingResume(null);
     setReplaceOpen(false);
     setAddOpen(true);
@@ -2684,7 +2606,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       toast.success(
         `Screening complete — ${result.match_score ?? 0}% (${statusMeta[toUiStatus(result.screening_status)].label})`,
       );
-      setAddStep(3);
+      setAddStep(2);
     } catch (e) {
       console.warn("Resume screening failed:", e);
       toast.error(
@@ -2727,13 +2649,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       const jobPostId = addPresetJob?.dbId ?? (await resolveJobPostId());
       if (!jobPostId) return;
 
+      const isImageResume =
+        Boolean(addResumeFile) &&
+        (/\.(jpe?g|png|webp|heic|heif|bmp|gif|tiff?|avif|svg)$/i.test(addResumeFile?.name ?? "") ||
+          (addResumeFile?.type ?? "").startsWith("image/"));
       const base = {
         job_post_id: jobPostId,
         name: addForm.name.trim(),
         email: addForm.email.trim(),
         phone: addForm.phone.trim(),
-        source: addMethod === "image" ? "Walk-in" : "Online Portal",
-        summary: `Added via ${addMethod === "image" ? "image (OCR)" : "document"} screening — ${addFileName || "uploaded resume"}, scored ${res.score}%.`,
+        source: isImageResume ? "Walk-in" : "Online Portal",
+        summary: `Added via ${isImageResume ? "image (OCR)" : "document"} screening — ${addFileName || "uploaded resume"}, scored ${res.score}%.`,
         status: res.status,
         stage: "Screened",
         flags_json: res.status === "credential" ? ["Manual credential verification required"] : [],
@@ -6673,57 +6599,15 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             <DialogTitle className="font-display text-2xl">Add Applicant</DialogTitle>
             <DialogDescription>
               {addPresetJob
-                ? `${addPresetJob.department} · Step ${addStep} of 3 — `
-                : `Step ${addStep} of 3 — `}
+                ? `${addPresetJob.department} · Step ${addStep} of 2 — `
+                : `Step ${addStep} of 2 — `}
               {addStep === 1
-                ? "choose how the resume will be screened"
-                : addStep === 2
-                  ? "upload the resume and enter applicant details"
-                  : "review the screening result"}
+                ? "upload documents and enter applicant details"
+                : "review the screening result"}
             </DialogDescription>
           </DialogHeader>
 
           {addStep === 1 && (
-            <div className="space-y-3">
-              {[
-                {
-                  id: "file" as const,
-                  icon: FileText,
-                  title: "Through file",
-                  body: "PDF or DOCX resume — text is parsed directly by the NER model.",
-                },
-                {
-                  id: "image" as const,
-                  icon: ImageIcon,
-                  title: "Through image",
-                  body: "Photo or scan of a walk-in resume — OCR first, then NER screening.",
-                },
-              ].map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setAddMethod(m.id)}
-                  className={cn(
-                    "flex w-full items-start gap-3 rounded-md border p-4 text-left transition-colors",
-                    addMethod === m.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/40",
-                  )}
-                >
-                  <m.icon className="mt-0.5 h-5 w-5 text-primary" />
-                  <span>
-                    <span className="block text-sm font-medium">{m.title}</span>
-                    <span className="block text-xs text-muted-foreground">{m.body}</span>
-                  </span>
-                </button>
-              ))}
-              <DialogFooter>
-                <Button onClick={() => setAddStep(2)}>Continue</Button>
-              </DialogFooter>
-            </div>
-          )}
-
-          {addStep === 2 && (
             <div className="space-y-4">
               {/* Department — locked to the clicked job post for admins,
                   free choice of every department for the super admin. */}
@@ -6857,235 +6741,45 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 </div>
               </div>
 
-              <label
-                className={cn(
-                  "flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed p-8 text-center transition-colors",
-                  resumeDragActive
-                    ? "border-primary bg-primary/10"
-                    : "border-border bg-muted/40 hover:bg-muted/60",
-                )}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setResumeDragActive(true);
-                }}
-                onDragEnter={(e) => {
-                  e.preventDefault();
-                  setResumeDragActive(true);
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault();
-                  setResumeDragActive(false);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setResumeDragActive(false);
-                  handleResumeFile(e.dataTransfer.files?.[0]);
-                }}
-              >
-                {addMethod === "image" ? (
-                  <ImageIcon
-                    className={cn(
-                      "h-9 w-9",
-                      resumeDragActive ? "text-primary" : "text-muted-foreground",
-                    )}
-                  />
-                ) : (
-                  <FileText
-                    className={cn(
-                      "h-9 w-9",
-                      resumeDragActive ? "text-primary" : "text-muted-foreground",
-                    )}
-                  />
-                )}
-                {addFileName ? (
-                  <span
-                    className="mt-3 inline-flex max-w-full flex-wrap items-center gap-1.5 break-words text-sm font-medium text-primary underline underline-offset-2"
-                    style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                    title="Click to open a preview of this file"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      openResumePreview();
-                    }}
-                  >
-                    <span
-                      className="min-w-0 flex-1"
-                      style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                    >
-                      {addFileName}
-                    </span>
-                    <Eye className="h-3.5 w-3.5 shrink-0" />
-                  </span>
-                ) : (
-                  <span className="mt-3 text-sm font-medium">
-                    {`Choose resume ${addMethod === "image" ? "photo / scan" : "file"}`}
-                  </span>
-                )}
-                <span className="text-xs text-muted-foreground">
-                  {resumeAutofilling
-                    ? "Reading resume — filling contact fields…"
-                    : addMethod === "image"
-                      ? "JPG or PNG up to 10 MB — click to browse or drag & drop here"
-                      : "PDF or DOCX up to 10 MB — click to browse or drag & drop here"}
-                </span>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept={
-                    addMethod === "image"
-                      ? ".jpg,.jpeg,.png,image/jpeg,image/png"
-                      : ".pdf,.doc,.docx"
+              <UnifiedDocumentsUploader
+                docs={unifiedDocs}
+                onChange={(next) => {
+                  // Route each newly added file through the replace-confirm
+                  // guard (protects typed / previously extracted details).
+                  // Files are always kept — only the auto-fill waits for confirm,
+                  // so the staged resume is never lost.
+                  const prevIds = new Set(unifiedDocs.map((d) => d.id));
+                  const added = next.filter((d) => !prevIds.has(d.id));
+                  setUnifiedDocs(next);
+                  if (added.length === 0) {
+                    return;
                   }
-                  onChange={(e) => {
-                    handleResumeFile(e.target.files?.[0]);
-                    // allow re-selecting the same file after a failed pick
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-
-              {/* VERIFICATION DOCUMENTS — prove the content claimed in the resume */}
-              <div className="space-y-2 rounded-md border border-border/70 bg-muted/20 p-4">
-                <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground">
-                  <FileCheck className="h-3.5 w-3.5" /> VERIFICATION OF RESUME (OPTIONAL)
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Upload proof of the content claimed in the resume/CV. Requirements needed to
-                  verify: COE (work experience), Certificates (trainings), Credentials (diploma,
-                  license, TOR), and Others (awards, portfolio). Original copies are prioritized.
-                </p>
-                <div className="space-y-2">
-                  {VERIFICATION_DOC_TYPES.map((t) => {
-                    const existing = verificationDocs.filter((d) => d.docType === t.type);
-                    const isDragging = verificationDragType === t.type;
-                    const addVerificationFiles = (files: File[]) => {
-                      if (!files.length) return;
-                      setVerificationDocs((prev) => [
-                        ...prev,
-                        ...files.map((file) => ({
-                          docType: t.type,
-                          title: file.name,
-                          originalCopy: false,
-                          file,
-                        })),
-                      ]);
-                    };
-                    return (
-                      <div
-                        key={t.type}
-                        onDragEnter={(e) => {
-                          e.preventDefault();
-                          setVerificationDragType(t.type);
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          if (verificationDragType !== t.type) setVerificationDragType(t.type);
-                        }}
-                        onDragLeave={(e) => {
-                          e.preventDefault();
-                          if (!e.currentTarget.contains(e.relatedTarget as Node))
-                            setVerificationDragType(null);
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          setVerificationDragType(null);
-                          addVerificationFiles(Array.from(e.dataTransfer.files ?? []));
-                        }}
-                        className={cn(
-                          "rounded-md border bg-background px-3 py-2 transition-colors",
-                          isDragging
-                            ? "border-dashed border-primary bg-primary/5 ring-1 ring-primary"
-                            : "border-border/70",
-                        )}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-xs font-medium">{t.label}</p>
-                            <p className="text-[0.7rem] text-muted-foreground">{t.verifies}</p>
-                          </div>
-                          <label className="cursor-pointer text-xs font-medium text-primary hover:underline">
-                            <Upload className="mr-1 inline h-3 w-3" />
-                            {isDragging ? "Drop files here" : "Upload"}
-                            <input
-                              type="file"
-                              className="hidden"
-                              accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-                              multiple
-                              onChange={(e) => {
-                                addVerificationFiles(Array.from(e.target.files ?? []));
-                                e.target.value = "";
-                              }}
-                            />
-                          </label>
-                        </div>
-                        <p
-                          className={cn(
-                            "mt-1.5 rounded border border-dashed px-2 py-1.5 text-center text-[0.7rem]",
-                            isDragging
-                              ? "border-primary bg-primary/10 font-medium text-primary"
-                              : "border-border/60 text-muted-foreground",
-                          )}
-                        >
-                          {isDragging
-                            ? `Drop to attach to ${t.label}`
-                            : "Drag & drop files here or click Upload"}
-                        </p>
-                        {existing.map((d, i) => {
-                          const globalIdx = verificationDocs.indexOf(d);
-                          return (
-                            <div
-                              key={`${t.type}-${i}`}
-                              className="mt-1.5 flex items-center justify-between gap-2 rounded border border-border/60 bg-muted/30 px-2 py-1"
-                            >
-                              <span className="min-w-0 flex-1 truncate text-xs">
-                                {d.title}
-                                {d.originalCopy && (
-                                  <Badge className="ml-1.5 bg-gold text-gold-foreground">
-                                    Original
-                                  </Badge>
-                                )}
-                              </span>
-                              <label className="flex shrink-0 items-center gap-1 text-[0.7rem] text-muted-foreground">
-                                <input
-                                  type="checkbox"
-                                  className="accent-primary"
-                                  checked={d.originalCopy}
-                                  onChange={(e) =>
-                                    setVerificationDocs((prev) =>
-                                      prev.map((x, xi) =>
-                                        xi === globalIdx
-                                          ? { ...x, originalCopy: e.target.checked }
-                                          : x,
-                                      ),
-                                    )
-                                  }
-                                />
-                                Original copy
-                              </label>
-                              <button
-                                type="button"
-                                className="shrink-0 text-destructive hover:underline"
-                                onClick={() =>
-                                  setVerificationDocs((prev) =>
-                                    prev.filter((_, xi) => xi !== globalIdx),
-                                  )
-                                }
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+                  const hasExistingDetails = [addForm.name, addForm.email, addForm.phone, addForm.address].some(
+                    (v) => v.trim().length > 0,
+                  );
+                  const firstAdded = added[0];
+                  if (hasExistingDetails && firstAdded) {
+                    setPendingResume(firstAdded.file);
+                    setReplaceOpen(true);
+                    return;
+                  }
+                  const pick = pickResumeDoc(next);
+                  if (pick) void autofillFromResume(pick.file, { overwrite: false });
+                }}
+                onResumePick={(file) => {
+                  if (file) void autofillFromResume(file, { overwrite: false });
+                }}
+                title="Resume + supporting documents"
+                hint="Drop the resume + COE + certificates in any order — first file is expected to be the resume, but every file is recognized by content. Press Recognize files, then Run resume screening."
+              />
+              {resumeAutofilling && (
+                <p className="text-xs text-muted-foreground">Reading resume — filling contact fields…</p>
+              )}
+              {/* OLD_RESUME_DROPZONE_REMOVED */}
+              {/* Supporting docs auto-split inside the unified box above — no
+                  separate verification panel (files persist via verificationDocs). */}
 
               <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={requestBackToStep1}>
-                  Back
-                </Button>
                 <Button
                   disabled={
                     screeningLoading ||
@@ -7160,7 +6854,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             </div>
           )}
 
-          {addStep === 3 && screenResult && (
+          {addStep === 2 && screenResult && (
             <div className="space-y-4">
               {/* Applicant strip — mirrors the Review dialog header */}
               <div className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-card p-4">
@@ -7570,7 +7264,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               </div>
 
               <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={() => setAddStep(2)}>
+                <Button variant="outline" onClick={() => setAddStep(1)}>
                   Back
                 </Button>
                 <Button onClick={saveNewApplicant}>Save applicant</Button>
@@ -7765,9 +7459,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             <DialogTitle>Discard filled information?</DialogTitle>
             <DialogDescription>
               You have unsaved information in Full name, Email, Contact number or Address
-              {addFileName ? ` (file "${addFileName}")` : ""}. If you{" "}
-              {pendingStep2ExitAction === "back" ? "go back" : "exit"}, your fill-up will be
-              removed. Stay will keep your data and stay in Step 2.
+              {addFileName ? ` (file "${addFileName}")` : ""}. If you exit, your fill-up will be
+              removed. Stay will keep your data and stay in Step 1.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -7775,7 +7468,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               Stay
             </Button>
             <Button variant="destructive" onClick={handleConfirmStep2Discard}>
-              {pendingStep2ExitAction === "back" ? "Discard & Back" : "Discard & Exit"}
+              Discard & Exit
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -50,6 +50,21 @@
                 @if(!empty($interviewMode))
                 <p style="margin:4px 0;font-size:13px;color:#b45309;"><strong>Mode:</strong> {{ $interviewMode }}</p>
                 @endif
+                @if(!empty($interviewerName))
+                <p style="margin:4px 0;font-size:13px;color:#b45309;"><strong>Interviewer:</strong> {{ $interviewerName }}</p>
+                @endif
+              </div>
+              @endif
+              @if(!empty($zoomJoinUrl))
+              <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px;margin:16px 0;">
+                <p style="margin:0 0 8px;font-size:13px;font-weight:bold;color:#1d4ed8;text-transform:uppercase;letter-spacing:0.05em;">Virtual Interview — Zoom Details</p>
+                <p style="margin:6px 0;font-size:13px;color:#1e40af;line-height:1.5;"><strong>1st Link — Join Zoom Meeting:</strong><br/><a href="{{ $zoomJoinUrl }}" style="color:#1d4ed8;word-break:break-all;">{{ $zoomJoinUrl }}</a></p>
+                @if(!empty($zoomContinueUrl))
+                <p style="margin:6px 0;font-size:13px;color:#1e40af;line-height:1.5;"><strong>2nd Link — Continue / Rejoin Interview:</strong><br/><a href="{{ $zoomContinueUrl }}" style="color:#1d4ed8;word-break:break-all;">{{ $zoomContinueUrl }}</a><br/><span style="font-size:12px;color:#3b82f6;">Use this link if you get disconnected and need to continue the interview.</span></p>
+                @endif
+                @if(!empty($zoomPassword))
+                <p style="margin:6px 0;font-size:13px;color:#1e40af;"><strong>Zoom Password:</strong> <code style="background:#dbeafe;padding:2px 8px;border-radius:6px;font-size:14px;">{{ $zoomPassword }}</code></p>
+                @endif
               </div>
               @endif
               <p style="margin:16px 0 0;font-size:14px;color:#4b5563;line-height:1.6;">

@@ -60,6 +60,11 @@ import {
   UserPlus,
   Users,
   Video,
+  VideoOff,
+  Mic,
+  MicOff,
+  Copy,
+  PhoneOff,
   Volume2,
   Wrench,
   X,
@@ -334,6 +339,11 @@ function transformApiInterview(i: ApiInterview): Interview {
     // Request facility feature — reserved facility + approval status
     facilityName: i.facility?.name ?? null,
     facilityStatus: (i.facility_status ?? "Not Required") as FacilityStatus,
+    // Zoom virtual-interview links (emailed to applicant for Virtual mode)
+    zoomMeetingId: (i as unknown as Record<string, string | null>)["zoom_meeting_id"] ?? null,
+    zoomJoinUrl: (i as unknown as Record<string, string | null>)["zoom_join_url"] ?? null,
+    zoomContinueUrl: (i as unknown as Record<string, string | null>)["zoom_continue_url"] ?? null,
+    zoomPassword: (i as unknown as Record<string, string | null>)["zoom_password"] ?? null,
   };
 }
 
@@ -410,7 +420,9 @@ function transformApiFinalEvaluation(f: ApiFinalEvaluation): FinalEvaluationRow 
     practicalTestScore: f.practical_test_score,
     practicalTestResult: f.practical_test_result,
     overallScore: f.overall_score ?? null,
-    overallScoreRounded: f.overall_score_rounded ?? (f.overall_score != null ? Math.round(f.overall_score * 10) / 10 : null),
+    overallScoreRounded:
+      f.overall_score_rounded ??
+      (f.overall_score != null ? Math.round(f.overall_score * 10) / 10 : null),
     scoreBreakdown: (f.score_breakdown as FinalScoreBreakdownItem[] | null) ?? null,
     recommendation: f.recommendation,
     recommendedJobPostId: f.recommended_job_post_id ?? null,
@@ -1783,8 +1795,7 @@ function reportAllUnrecognized(
     }),
   );
   toast.success(`${unique.size} unrecognized entr${unique.size === 1 ? "y" : "ies"} reported`, {
-    description:
-      "Process them in Recruitment Management → Screening Setup → Reported Entities.",
+    description: "Process them in Recruitment Management → Screening Setup → Reported Entities.",
   });
 }
 
@@ -3330,8 +3341,8 @@ export function ScreeningReferenceManager() {
                   ) : rows.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                        No reference entries yet — add one above, or bulk-upload a file from the
-                        Add Reference Entry dialog.
+                        No reference entries yet — add one above, or bulk-upload a file from the Add
+                        Reference Entry dialog.
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -4064,11 +4075,9 @@ function DocVerificationCheckRow({
         {check.note && <p className="text-[0.65rem] italic text-muted-foreground">{check.note}</p>}
         {check.compared_resume_entry && check.compared_resume_entry.total_entries > 1 && (
           <p className="text-[0.65rem] italic text-muted-foreground">
-            Compared against work entry{" "}
-            {(check.compared_resume_entry.entry_index ?? 0) + 1} of{" "}
+            Compared against work entry {(check.compared_resume_entry.entry_index ?? 0) + 1} of{" "}
             {check.compared_resume_entry.total_entries}
-            {check.compared_resume_entry.job_title ||
-            check.compared_resume_entry.company
+            {check.compared_resume_entry.job_title || check.compared_resume_entry.company
               ? ` (${[check.compared_resume_entry.job_title, check.compared_resume_entry.company].filter(Boolean).join(" · ")})`
               : ""}
           </p>
@@ -4434,7 +4443,7 @@ export function ScreeningResumeDocsMatchDetail({
     }
     const workDocs = new Set(
       docs
-        .filter((d) => d.doc_type === "COE" || d.verification_result?.checks?.company)
+        .filter((d) => d.doc_type === "COE" || d.verification_result?.checks?.["company"])
         .map((d) => d.applicant_document_id),
     ).size;
     const work: MatchSection = {
@@ -4470,7 +4479,7 @@ export function ScreeningResumeDocsMatchDetail({
         .filter(
           (d) =>
             (d.doc_type === "Certificate" || d.doc_type === "Credential") &&
-            d.verification_result?.checks?.degree,
+            d.verification_result?.checks?.["degree"],
         )
         .map((d) => d.applicant_document_id),
     ).size;
@@ -4506,7 +4515,7 @@ export function ScreeningResumeDocsMatchDetail({
         .filter(
           (d) =>
             (d.doc_type === "Credential" || d.doc_type === "Certificate") &&
-            d.verification_result?.checks?.certification,
+            d.verification_result?.checks?.["certification"],
         )
         .map((d) => d.applicant_document_id),
     ).size;
@@ -6493,37 +6502,89 @@ function ApplicantViewScreen({
                           </div>
                         </div>
                       ) : interview ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-4 py-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium">
-                              {interview.date} · {interview.time}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {interview.mode}
-                              {interview.facilityName ? ` · ${interview.facilityName}` : ""}
-                              {interview.facilityStatus ? ` · ${interview.facilityStatus}` : ""}
-                              {interview.interviewer ? ` · ${interview.interviewer}` : ""}
-                            </p>
+                        <div className="mt-4 space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-4 py-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium">
+                                {interview.date} · {interview.time}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {interview.mode}
+                                {interview.facilityName ? ` · ${interview.facilityName}` : ""}
+                                {interview.facilityStatus ? ` · ${interview.facilityStatus}` : ""}
+                                {interview.interviewer ? ` · ${interview.interviewer}` : ""}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge
+                                variant="outline"
+                                className="border-gold/40 bg-gold-soft text-gold-foreground dark:bg-gold/15 dark:text-gold"
+                              >
+                                {interview.status}
+                              </Badge>
+                              {interview.date === TODAY_ISO ? (
+                                interview.mode === "Virtual" ? (
+                                  <Button size="sm" onClick={onStartInterview}>
+                                    <Video className="mr-1.5 h-3.5 w-3.5" /> Start Zoom Interview
+                                  </Button>
+                                ) : (
+                                  <Button size="sm" onClick={onStartInterview}>
+                                    <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" /> Start
+                                    Interview
+                                  </Button>
+                                )
+                              ) : (
+                                <span className="text-xs text-muted-foreground">
+                                  {interview.date > TODAY_ISO
+                                    ? "Available on interview day"
+                                    : "Interview window has passed"}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge
-                              variant="outline"
-                              className="border-gold/40 bg-gold-soft text-gold-foreground dark:bg-gold/15 dark:text-gold"
-                            >
-                              {interview.status}
-                            </Badge>
-                            {interview.date === TODAY_ISO ? (
-                              <Button size="sm" onClick={onStartInterview}>
-                                <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" /> Start Interview
-                              </Button>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                {interview.date > TODAY_ISO
-                                  ? "Available on interview day"
-                                  : "Interview window has passed"}
-                              </span>
+                          {interview.mode === "Virtual" &&
+                            (interview.zoomJoinUrl ||
+                              interview.zoomContinueUrl ||
+                              interview.zoomPassword) && (
+                              <div className="mt-3 rounded-md border border-blue-200 bg-blue-50/60 p-3 text-xs dark:border-blue-900/40 dark:bg-blue-950/20">
+                                <p className="mb-1.5 flex items-center gap-1.5 font-semibold text-blue-800 dark:text-blue-200">
+                                  <Video className="h-3.5 w-3.5" /> Zoom details emailed to
+                                  applicant
+                                </p>
+                                {interview.zoomJoinUrl && (
+                                  <p className="mb-1 break-all text-blue-700 dark:text-blue-300">
+                                    1st link — Join:{" "}
+                                    <a
+                                      href={interview.zoomJoinUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="underline"
+                                    >
+                                      {interview.zoomJoinUrl}
+                                    </a>
+                                  </p>
+                                )}
+                                {interview.zoomContinueUrl && (
+                                  <p className="mb-1 break-all text-blue-700 dark:text-blue-300">
+                                    2nd link — Continue:{" "}
+                                    <a
+                                      href={interview.zoomContinueUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="underline"
+                                    >
+                                      {interview.zoomContinueUrl}
+                                    </a>
+                                  </p>
+                                )}
+                                <p className="text-blue-700 dark:text-blue-300">
+                                  {interview.zoomPassword
+                                    ? `Password: ${interview.zoomPassword} · `
+                                    : ""}
+                                  Interviewer: {interview.interviewer}
+                                </p>
+                              </div>
                             )}
-                          </div>
                         </div>
                       ) : (
                         <div className="mt-4">
@@ -6818,7 +6879,6 @@ function ApplicantViewScreen({
           })()}
         </div>
       </div>
-
     </div>
   );
 }
@@ -6981,9 +7041,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const loggedInAssessorId = useMemo(() => {
     if (!currentUserId) return "";
     if (assessors.length === 0) return currentUserId;
-    return assessors.some((u) => String(u.system_user_id) === currentUserId)
-      ? currentUserId
-      : "";
+    return assessors.some((u) => String(u.system_user_id) === currentUserId) ? currentUserId : "";
   }, [currentUserId, assessors]);
 
   /** Applicant currently having a secure assessment test link generated. */
@@ -7108,6 +7166,19 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [evalRemarks, setEvalRemarks] = useState("");
   const [evalAssessor, setEvalAssessor] = useState("");
   const [evalDateTime, setEvalDateTime] = useState(() => isoOf(new Date()));
+
+  /* --- Zoom virtual-interview room (landscape: eval left, video right, transcription bottom) --- */
+  const [zoomRoom, setZoomRoom] = useState<{ applicant: Applicant; interview: Interview } | null>(
+    null,
+  );
+  const [zoomMicOn, setZoomMicOn] = useState(true);
+  const [zoomCamOn, setZoomCamOn] = useState(true);
+  const [zoomTranscripts, setZoomTranscripts] = useState<{ time: string; text: string }[]>([]);
+  const [zoomListening, setZoomListening] = useState(false);
+  const [zoomManualCaption, setZoomManualCaption] = useState("");
+  const zoomVideoRef = useRef<HTMLVideoElement | null>(null);
+  const zoomStreamRef = useRef<MediaStream | null>(null);
+  const zoomRecogRef = useRef<{ stop: () => void } | null>(null);
 
   /* --- Assessment Test dialog state (job-specific test after interview) --- */
   const [testingTest, setTestingTest] = useState<Applicant | null>(null);
@@ -8406,6 +8477,191 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setEvalDateTime(isoOf(new Date()));
   };
 
+  /** Client-side mock Zoom links (instant preview before the API responds).
+   *  Mirrors the backend ZoomMeetingService shape. */
+  const mockZoomFor = (code: string) => {
+    const id = String(Math.floor(10000000000 + Math.random() * 89999999999));
+    const pwd = Math.random()
+      .toString(36)
+      .slice(2, 8)
+      .replace(/[^A-Za-z0-9]/g, "X");
+    const hash = btoa(`${code}:${pwd}`).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return {
+      zoomMeetingId: id,
+      zoomJoinUrl: `https://zoom.us/j/${id}?pwd=${hash}`,
+      zoomContinueUrl: `https://zoom.us/j/${id}?pwd=${hash}&continue=1#rejoin`,
+      zoomPassword: pwd,
+    };
+  };
+
+  const copyZoomText = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copied`);
+    } catch {
+      toast.error(`Could not copy ${label}`);
+    }
+  };
+
+  /** Opens the landscape Zoom room (Virtual, scheduled today): inits the same
+   *  eval state as Start Interview, then shows video preview + transcription. */
+  const openZoomRoom = (a: Applicant) => {
+    const iv =
+      interviews.find((x) => x.applicant === a.name && x.status !== "Cancelled") ??
+      interviews.find((x) => x.applicant === a.name);
+    if (!iv) {
+      toast.error("No interview found for this applicant");
+      return;
+    }
+    startInterviewFor(a);
+    setZoomMicOn(true);
+    setZoomCamOn(true);
+    setZoomRoom({ applicant: a, interview: iv });
+  };
+
+  const closeZoomRoom = () => {
+    try {
+      zoomStreamRef.current?.getTracks().forEach((t) => t.stop());
+    } catch {
+      /* ignore */
+    }
+    zoomStreamRef.current = null;
+    try {
+      zoomRecogRef.current?.stop();
+    } catch {
+      /* ignore */
+    }
+    zoomRecogRef.current = null;
+    setZoomListening(false);
+    setZoomRoom(null);
+  };
+
+  const toggleZoomMic = () => {
+    const next = !zoomMicOn;
+    setZoomMicOn(next);
+    zoomStreamRef.current?.getAudioTracks().forEach((t) => {
+      t.enabled = next;
+    });
+  };
+
+  const toggleZoomCam = () => {
+    const next = !zoomCamOn;
+    setZoomCamOn(next);
+    zoomStreamRef.current?.getVideoTracks().forEach((t) => {
+      t.enabled = next;
+    });
+  };
+
+  const startZoomTranscription = () => {
+    const w = window as unknown as Record<string, unknown>;
+    const SR =
+      (w["SpeechRecognition"] as unknown as new () => unknown) ??
+      (w["webkitSpeechRecognition"] as unknown as new () => unknown);
+    if (!SR) {
+      toast.error("Live transcription not supported — type captions manually below.");
+      return;
+    }
+    try {
+      const recog = new SR() as unknown as {
+        continuous: boolean;
+        interimResults: boolean;
+        lang: string;
+        onresult:
+          | ((e: {
+              results: { [k: number]: { [j: number]: { transcript: string } }; length: number };
+            }) => void)
+          | null;
+        onerror: (() => void) | null;
+        onend: (() => void) | null;
+        start: () => void;
+        stop: () => void;
+      };
+      recog.continuous = true;
+      recog.interimResults = false;
+      recog.lang = "en-US";
+      recog.onresult = (e) => {
+        const last = e.results[e.results.length - 1]?.[0]?.transcript?.trim();
+        if (!last) return;
+        const time = new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+        setZoomTranscripts((prev) => [...prev.slice(-199), { time, text: last }]);
+      };
+      recog.onerror = () => undefined;
+      recog.onend = () => {
+        // Auto-restart while the room wants to keep listening.
+        setZoomListening((listening) => {
+          if (listening) {
+            try {
+              recog.start();
+            } catch {
+              /* already started */
+            }
+            return true;
+          }
+          return false;
+        });
+      };
+      recog.start();
+      zoomRecogRef.current = recog;
+      setZoomListening(true);
+      toast.success("Live transcription started");
+    } catch {
+      toast.error("Could not start transcription on this browser.");
+    }
+  };
+
+  const stopZoomTranscription = () => {
+    try {
+      zoomRecogRef.current?.stop();
+    } catch {
+      /* ignore */
+    }
+    zoomRecogRef.current = null;
+    setZoomListening(false);
+  };
+
+  /* Local camera preview for the Zoom room (right-side video pane). */
+  useEffect(() => {
+    if (!zoomRoom) return;
+    let cancelled = false;
+    const el = zoomVideoRef.current;
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        zoomStreamRef.current = stream;
+        stream.getAudioTracks().forEach((t) => {
+          t.enabled = zoomMicOn;
+        });
+        stream.getVideoTracks().forEach((t) => {
+          t.enabled = zoomCamOn;
+        });
+        if (el) {
+          el.srcObject = stream;
+          await el.play().catch(() => undefined);
+        }
+      } catch {
+        if (!cancelled) toast.error("Camera unavailable — you can still join via the Zoom links.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+      try {
+        zoomStreamRef.current?.getTracks().forEach((t) => t.stop());
+      } catch {
+        /* ignore */
+      }
+      zoomStreamRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomRoom?.interview.id]);
+
   /** Re-book — like reschedule but also reactivates Rejected applicants.
    *  Bypasses isInterviewLocked (which locks Rejected) and resets the
    *  applicant stage to Interview Scheduled so confirming the new slot
@@ -8578,13 +8834,31 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       });
       try {
         if (updateTarget.dbId) {
-          await interviewsApi.update(updateTarget.dbId, {
+          const rescheduled = await interviewsApi.update(updateTarget.dbId, {
             scheduled_date: schedule.date,
             scheduled_time: schedule.time.includes(":") ? schedule.time.slice(0, 5) : "09:00",
             mode: schedule.mode,
             interviewer_name: schedule.interviewer,
             status: "Scheduled",
           });
+          // Backend auto-generates Zoom links when switching to Virtual — merge them in.
+          const r = rescheduled as unknown as Record<string, string | null>;
+          if (r?.["zoom_join_url"] || schedule.mode === "Virtual") {
+            setInterviews((prev) =>
+              prev.map((x) =>
+                x.id === updateTarget.id
+                  ? {
+                      ...x,
+                      zoomMeetingId: (r["zoom_meeting_id"] as string) ?? x.zoomMeetingId ?? null,
+                      zoomJoinUrl: (r["zoom_join_url"] as string) ?? x.zoomJoinUrl ?? null,
+                      zoomContinueUrl:
+                        (r["zoom_continue_url"] as string) ?? x.zoomContinueUrl ?? null,
+                      zoomPassword: (r["zoom_password"] as string) ?? x.zoomPassword ?? null,
+                    }
+                  : x,
+              ),
+            );
+          }
         }
       } catch (e) {
         console.warn("Could not persist interview reschedule to database API:", e);
@@ -8655,6 +8929,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       facilityStatus: (schedule.facilityId && schedule.facilityId !== "none"
         ? "Waiting for Facility Approval"
         : "Not Required") as FacilityStatus,
+      // Instant Zoom preview for Virtual — replaced by backend links on response.
+      ...(schedule.mode === "Virtual" ? mockZoomFor(`INT-${300 + interviews.length}`) : {}),
     };
     setInterviews((prev) => [newInt, ...prev]);
     if (schedule.facilityId && schedule.facilityId !== "none") {
@@ -8698,6 +8974,31 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         status: "Scheduled",
         facility_id: chosenFacility?.dbId ?? null,
       });
+      // Merge backend Zoom links (1st join + 2nd continue + password) into the row.
+      if (createdInterview) {
+        const c = createdInterview as unknown as Record<string, unknown>;
+        const zoomPatch: Partial<Interview> = {};
+        if (typeof c["zoom_meeting_id"] === "string")
+          zoomPatch.zoomMeetingId = c["zoom_meeting_id"] as string;
+        if (typeof c["zoom_join_url"] === "string")
+          zoomPatch.zoomJoinUrl = c["zoom_join_url"] as string;
+        if (typeof c["zoom_continue_url"] === "string")
+          zoomPatch.zoomContinueUrl = c["zoom_continue_url"] as string;
+        if (typeof c["zoom_password"] === "string")
+          zoomPatch.zoomPassword = c["zoom_password"] as string;
+        if (typeof c["interview_id"] === "number") zoomPatch.dbId = c["interview_id"] as number;
+        if (typeof c["interview_code"] === "string") zoomPatch.id = c["interview_code"] as string;
+        if (Object.keys(zoomPatch).length > 0) {
+          setInterviews((prev) =>
+            prev.map((x) => (x.id === newInt.id ? { ...x, ...zoomPatch } : x)),
+          );
+        }
+        if (zoomPatch.zoomJoinUrl) {
+          toast.success("Zoom meeting generated — links emailed to applicant", {
+            description: `${zoomPatch.zoomJoinUrl}`,
+          });
+        }
+      }
       // Mock facility approval after 3 seconds + confirmation email.
       if (createdInterview?.interview_id && chosenFacility) {
         setTimeout(() => {
@@ -8965,6 +9266,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       details: `Interview saved with a total score of ${total}% — verdict ${result}.`,
     });
     setEvaluating(null);
+    closeZoomRoom();
     toast.success(`Interview saved — ${total}% (${result})`);
     // Re-read the saved records so the progress bar reflects them at once.
     syncAfterStageChange();
@@ -9110,9 +9412,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         details: `Generated a secure assessment test link for ${a.name} (${a.position}).`,
       });
     } catch (e) {
-      toast.error(
-        e instanceof Error ? e.message : "Could not generate the applicant test link.",
-      );
+      toast.error(e instanceof Error ? e.message : "Could not generate the applicant test link.");
     } finally {
       setInviteBusyId(null);
     }
@@ -9396,7 +9696,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       return;
     }
     const snap = finalSnapshotFor(finalizing);
-    const previewOverall = finalPreview?.overall_score_rounded ?? finalPreview?.overall_score ?? null;
+    const previewOverall =
+      finalPreview?.overall_score_rounded ?? finalPreview?.overall_score ?? null;
     const row: FinalEvaluationRow = {
       id: `FIN-${Date.now()}`,
       applicantId: finalizing.id,
@@ -9405,21 +9706,27 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       screeningScore: finalPreview?.scores.screening_score ?? snap.screeningScore,
       screeningStatus: finalPreview?.scores.screening_status ?? snap.screeningStatus,
       interviewScore: finalPreview?.scores.interview_score ?? snap.interviewScore,
-      interviewResult: (finalPreview?.scores.interview_result as PassFail | null) ?? snap.interviewResult,
+      interviewResult:
+        (finalPreview?.scores.interview_result as PassFail | null) ?? snap.interviewResult,
       assessmentTestScore: finalPreview?.scores.assessment_test_score ?? snap.testScore,
-      assessmentTestResult: (finalPreview?.scores.assessment_test_result as PassFail | null) ?? snap.testResult,
+      assessmentTestResult:
+        (finalPreview?.scores.assessment_test_result as PassFail | null) ?? snap.testResult,
       practicalRequired: finalPreview?.practical_required ?? snap.practicalRequired,
-      practicalTestScore: finalPreview ? finalPreview.scores.practical_test_score : snap.practicalScore,
+      practicalTestScore: finalPreview
+        ? finalPreview.scores.practical_test_score
+        : snap.practicalScore,
       practicalTestResult: finalPreview
         ? (finalPreview.scores.practical_test_result as PassFail | null)
         : snap.practicalResult,
       overallScore: finalPreview?.overall_score ?? previewOverall,
       overallScoreRounded: previewOverall,
-      scoreBreakdown: (finalPreview?.score_breakdown as FinalScoreBreakdownItem[] | undefined) ?? null,
+      scoreBreakdown:
+        (finalPreview?.score_breakdown as FinalScoreBreakdownItem[] | undefined) ?? null,
       recommendation,
       recommendedJobPostId: finalAltJobPostId ? Number(finalAltJobPostId) : null,
       recommendedPositionTitle:
-        dbJobPosts.find((j: any) => String(j.job_post_id) === String(finalAltJobPostId))?.title ?? null,
+        dbJobPosts.find((j: any) => String(j.job_post_id) === String(finalAltJobPostId))?.title ??
+        null,
       overallRemarks: finalRemarks,
       date: finalDate,
       evaluatedBy:
@@ -9443,8 +9750,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         row.overallScore = mapped.overallScore ?? row.overallScore;
         row.overallScoreRounded = mapped.overallScoreRounded ?? row.overallScoreRounded;
         row.scoreBreakdown = mapped.scoreBreakdown ?? row.scoreBreakdown;
-        row.recommendedJobPostId = mapped.recommendedJobPostId ?? row.recommendedJobPostId;
-        row.recommendedPositionTitle = mapped.recommendedPositionTitle ?? row.recommendedPositionTitle;
+        row.recommendedJobPostId = mapped.recommendedJobPostId ?? row.recommendedJobPostId ?? null;
+        row.recommendedPositionTitle =
+          mapped.recommendedPositionTitle ?? row.recommendedPositionTitle ?? null;
       } catch (e) {
         reportStageSaveFailure("Final evaluation", e);
         return;
@@ -10211,7 +10519,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             setViewingApplicant(null);
             setTab("scheduling");
           }}
-          onStartInterview={() => startInterviewFor(viewedApplicant)}
+          onStartInterview={() => {
+            const iv =
+              interviews.find(
+                (x) => x.applicant === viewedApplicant.name && x.status !== "Cancelled",
+              ) ?? interviews.find((x) => x.applicant === viewedApplicant.name);
+            if (iv?.mode === "Virtual") openZoomRoom(viewedApplicant);
+            else startInterviewFor(viewedApplicant);
+          }}
           onAcceptAndSchedule={() => {
             // Show the resume screening result first — the review dialog's
             // Accept & schedule continues into the booking form.
@@ -10266,89 +10581,113 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         />
       ) : (
         <>
-          <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="h-full [&>*]:h-full">
-              <StatCard
-                label="Total Applicants"
-                value={rows.length}
-                icon={Users}
-                tone="primary"
-                onClick={() => goToApplicants("all")}
-              />
+          {loading ? (
+            <div
+              className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4"
+              aria-busy="true"
+              aria-label="Loading metrics"
+            >
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={`skeleton-metric-${i}`} className="h-full [&>*]:h-full">
+                  <Card className="h-full">
+                    <CardContent className="space-y-3 p-5">
+                      <div className="flex items-center justify-between gap-3">
+                        <Skeleton className="h-3 w-28" />
+                        <Skeleton className="h-4 w-4 rounded-full" />
+                      </div>
+                      <Skeleton className="h-9 w-20" />
+                    </CardContent>
+                  </Card>
+                </div>
+              ))}
             </div>
-            <div className="h-full [&>*]:h-full">
-              <StatCard
-                label="New Applicant"
-                value={rows.filter((a) => a.stage === "Screened").length}
-                icon={UserPlus}
-                tone="primary"
-                onClick={goToNewApplicants}
-              />
-            </div>
-            <div className="h-full [&>*]:h-full">
-              {/* Perfect for the Job — same card shape as StatCard, plus a
+          ) : (
+            <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="h-full [&>*]:h-full">
+                <StatCard
+                  label="Total Applicants"
+                  value={rows.length}
+                  icon={Users}
+                  tone="primary"
+                  onClick={() => goToApplicants("all")}
+                />
+              </div>
+              <div className="h-full [&>*]:h-full">
+                <StatCard
+                  label="New Applicant"
+                  value={rows.filter((a) => a.stage === "Screened").length}
+                  icon={UserPlus}
+                  tone="primary"
+                  onClick={goToNewApplicants}
+                />
+              </div>
+              <div className="h-full [&>*]:h-full">
+                {/* Perfect for the Job — same card shape as StatCard, plus a
                   Today / Week / Month quick range switch for the count. */}
-              <Card
-                className="group h-full cursor-pointer transition-colors hover:border-primary/40"
-                onClick={goToPerfectForJob}
-              >
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <p className="eyebrow">Perfect for the Job</p>
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+                <Card
+                  className="group h-full cursor-pointer transition-colors hover:border-primary/40"
+                  onClick={goToPerfectForJob}
+                >
+                  <CardContent className="p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p className="eyebrow">Perfect for the Job</p>
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+                      </div>
+                      <div
+                        className="flex w-fit shrink-0 items-center gap-0.5 rounded-md border border-border bg-muted/50 p-0.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {(["today", "week", "month"] as const).map((r) => (
+                          <button
+                            key={r}
+                            type="button"
+                            onClick={() => setPerfectRange(r)}
+                            className={cn(
+                              "cursor-pointer rounded px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide transition-colors",
+                              perfectRange === r
+                                ? "bg-primary text-primary-foreground"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
+                          >
+                            {r}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <div
-                      className="flex w-fit shrink-0 items-center gap-0.5 rounded-md border border-border bg-muted/50 p-0.5"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {(["today", "week", "month"] as const).map((r) => (
-                        <button
-                          key={r}
-                          type="button"
-                          onClick={() => setPerfectRange(r)}
-                          className={cn(
-                            "cursor-pointer rounded px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide transition-colors",
-                            perfectRange === r
-                              ? "bg-primary text-primary-foreground"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {r}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <p className="mt-2 font-display text-3xl font-semibold text-success">
-                    {(() => {
-                      const inRange = (appliedAt: string) => {
-                        const d = new Date(appliedAt.replace(" ", "T"));
-                        if (Number.isNaN(d.getTime())) return false;
-                        if (perfectRange === "today") return isoOf(d) === TODAY_ISO;
-                        const days = perfectRange === "week" ? 7 : 30;
-                        const cutoff = new Date();
-                        cutoff.setHours(0, 0, 0, 0);
-                        cutoff.setDate(cutoff.getDate() - (days - 1));
-                        return d.getTime() >= cutoff.getTime();
-                      };
-                      return rows.filter((a) => a.status === "fit" && inRange(a.appliedAt)).length;
-                    })()}
-                  </p>
-                </CardContent>
-              </Card>
+                    <p className="mt-2 font-display text-3xl font-semibold text-success">
+                      {(() => {
+                        const inRange = (appliedAt: string) => {
+                          const d = new Date(appliedAt.replace(" ", "T"));
+                          if (Number.isNaN(d.getTime())) return false;
+                          if (perfectRange === "today") return isoOf(d) === TODAY_ISO;
+                          const days = perfectRange === "week" ? 7 : 30;
+                          const cutoff = new Date();
+                          cutoff.setHours(0, 0, 0, 0);
+                          cutoff.setDate(cutoff.getDate() - (days - 1));
+                          return d.getTime() >= cutoff.getTime();
+                        };
+                        return rows.filter((a) => a.status === "fit" && inRange(a.appliedAt))
+                          .length;
+                      })()}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+              <div className="h-full [&>*]:h-full">
+                <StatCard
+                  label="Today Scheduled Interview"
+                  value={
+                    interviews.filter((i) => i.date === TODAY_ISO && i.status !== "Cancelled")
+                      .length
+                  }
+                  icon={CalendarDays}
+                  tone="gold"
+                  onClick={goToTodayInterviews}
+                />
+              </div>
             </div>
-            <div className="h-full [&>*]:h-full">
-              <StatCard
-                label="Today Scheduled Interview"
-                value={
-                  interviews.filter((i) => i.date === TODAY_ISO && i.status !== "Cancelled").length
-                }
-                icon={CalendarDays}
-                tone="gold"
-                onClick={goToTodayInterviews}
-              />
-            </div>
-          </div>
+          )}
 
           <Tabs value={tab} onValueChange={setTab} className="mt-6">
             <TabsList className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
@@ -10467,7 +10806,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 contentStyle={tooltipStyle}
                                 formatter={(value: number | string) => {
                                   const n = Number(value);
-                                  const pct = screenedTotal ? Math.round((n / screenedTotal) * 100) : 0;
+                                  const pct = screenedTotal
+                                    ? Math.round((n / screenedTotal) * 100)
+                                    : 0;
                                   return [`${n} (${pct}%)`, "Resumes"] as [string, string];
                                 }}
                               />
@@ -10486,24 +10827,42 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       </div>
 
                       <div className="grid w-full min-w-[16rem] max-w-[24rem] flex-1 grid-cols-1 gap-2">
-                        {distribution.map((d) => (
-                          <button
-                            type="button"
-                            key={d.key}
-                            title={`Show the ${d.name} applicants in the Applicant List`}
-                            onClick={() => goToStatus(d.key)}
-                            className="flex cursor-pointer items-center justify-between rounded-md border border-border px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/40"
-                          >
-                            <span className="flex items-center gap-2 text-sm">
-                              <span
-                                className="h-3 w-3 rounded-full"
-                                style={{ background: statusChartColor[d.key] }}
-                              />
-                              {d.name}
-                            </span>
-                            <span className="font-display text-lg font-semibold">{d.value}</span>
-                          </button>
-                        ))}
+                        {loading ? (
+                          <>
+                            {Array.from({ length: 4 }).map((_, i) => (
+                              <div
+                                key={`skeleton-breakdown-${i}`}
+                                className="flex items-center justify-between rounded-md border border-border px-4 py-3"
+                                aria-hidden="true"
+                              >
+                                <span className="flex items-center gap-2">
+                                  <Skeleton className="h-3 w-3 rounded-full" />
+                                  <Skeleton className="h-4 w-28" />
+                                </span>
+                                <Skeleton className="h-5 w-10" />
+                              </div>
+                            ))}
+                          </>
+                        ) : (
+                          distribution.map((d) => (
+                            <button
+                              type="button"
+                              key={d.key}
+                              title={`Show the ${d.name} applicants in the Applicant List`}
+                              onClick={() => goToStatus(d.key)}
+                              className="flex cursor-pointer items-center justify-between rounded-md border border-border px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/40"
+                            >
+                              <span className="flex items-center gap-2 text-sm">
+                                <span
+                                  className="h-3 w-3 rounded-full"
+                                  style={{ background: statusChartColor[d.key] }}
+                                />
+                                {d.name}
+                              </span>
+                              <span className="font-display text-lg font-semibold">{d.value}</span>
+                            </button>
+                          ))
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -10524,91 +10883,91 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       style={topFiveViewport ? { maxHeight: `${topFiveViewport}px` } : undefined}
                       className="mt-4 flex max-h-[33rem] min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1"
                     >
-                      {loading ? (
-                        Array.from({ length: 3 }).map((_, i) => (
-                          <li
-                            key={`skeleton-top5-${i}`}
-                            className="flex shrink-0 flex-col gap-3 rounded-xl border border-border/80 bg-card p-5 shadow-sm"
-                          >
-                            <div className="flex items-center gap-3">
-                              <Skeleton className="h-7 w-7 rounded-full" />
-                              <Skeleton className="h-12 w-12 rounded-full" />
-                              <div className="min-w-0 flex-1">
-                                <Skeleton className="h-5 w-48" />
-                                <Skeleton className="h-4 w-32 mt-1" />
-                                <Skeleton className="h-5 w-24 mt-2" />
-                              </div>
-                              <Skeleton className="h-8 w-20 ml-auto" />
-                            </div>
-                            <Skeleton className="h-9 w-full mt-2" />
-                          </li>
-                        ))
-                      ) : (
-                        topFiveToday.map((a, i) => (
-                        <li
-                          key={a.id}
-                          ref={i === 0 ? setTopFiveCard : undefined}
-                          className="flex shrink-0 flex-col gap-3 rounded-xl border border-border/80 bg-card p-5 shadow-sm transition-shadow hover:shadow-md"
-                        >
-                          {/* Row 1: Rank + Avatar + Name/Position */}
-                          <div className="flex items-center gap-3">
-                            <span
-                              className={cn(
-                                "flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-display text-xs font-semibold",
-                                i === 0
-                                  ? "bg-gold text-gold-foreground"
-                                  : "bg-secondary text-secondary-foreground",
-                              )}
+                      {loading
+                        ? Array.from({ length: 3 }).map((_, i) => (
+                            <li
+                              key={`skeleton-top5-${i}`}
+                              className="flex shrink-0 flex-col gap-3 rounded-xl border border-border/80 bg-card p-5 shadow-sm"
                             >
-                              {i + 1}
-                            </span>
-                            <Avatar className="h-12 w-12 shrink-0">
-                              <AvatarFallback className="bg-secondary text-sm font-medium">
-                                {initials(a.name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-base font-semibold">{a.name}</p>
-                              <p className="truncate text-sm text-muted-foreground">{a.position}</p>
-                              {(() => {
-                                const tier = computeTopCandidateTier(
-                                  a.status,
-                                  applicantDocs[a.id] ?? [],
-                                );
-                                return (
-                                  <Badge
-                                    variant="outline"
-                                    className={cn(
-                                      "mt-1 text-[0.65rem]",
-                                      topCandidateTierMeta[tier].className,
-                                    )}
-                                  >
-                                    <Trophy className="mr-1 h-3 w-3" />
-                                    {topCandidateTierMeta[tier].label}
-                                  </Badge>
-                                );
-                              })()}
-                            </div>
-                            {/* Score shares the name/badge row — the separate
+                              <div className="flex items-center gap-3">
+                                <Skeleton className="h-7 w-7 rounded-full" />
+                                <Skeleton className="h-12 w-12 rounded-full" />
+                                <div className="min-w-0 flex-1">
+                                  <Skeleton className="h-5 w-48" />
+                                  <Skeleton className="h-4 w-32 mt-1" />
+                                  <Skeleton className="h-5 w-24 mt-2" />
+                                </div>
+                                <Skeleton className="h-8 w-20 ml-auto" />
+                              </div>
+                              <Skeleton className="h-9 w-full mt-2" />
+                            </li>
+                          ))
+                        : topFiveToday.map((a, i) => (
+                            <li
+                              key={a.id}
+                              ref={i === 0 ? setTopFiveCard : undefined}
+                              className="flex shrink-0 flex-col gap-3 rounded-xl border border-border/80 bg-card p-5 shadow-sm transition-shadow hover:shadow-md"
+                            >
+                              {/* Row 1: Rank + Avatar + Name/Position */}
+                              <div className="flex items-center gap-3">
+                                <span
+                                  className={cn(
+                                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-display text-xs font-semibold",
+                                    i === 0
+                                      ? "bg-gold text-gold-foreground"
+                                      : "bg-secondary text-secondary-foreground",
+                                  )}
+                                >
+                                  {i + 1}
+                                </span>
+                                <Avatar className="h-12 w-12 shrink-0">
+                                  <AvatarFallback className="bg-secondary text-sm font-medium">
+                                    {initials(a.name)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-base font-semibold">{a.name}</p>
+                                  <p className="truncate text-sm text-muted-foreground">
+                                    {a.position}
+                                  </p>
+                                  {(() => {
+                                    const tier = computeTopCandidateTier(
+                                      a.status,
+                                      applicantDocs[a.id] ?? [],
+                                    );
+                                    return (
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          "mt-1 text-[0.65rem]",
+                                          topCandidateTierMeta[tier].className,
+                                        )}
+                                      >
+                                        <Trophy className="mr-1 h-3 w-3" />
+                                        {topCandidateTierMeta[tier].label}
+                                      </Badge>
+                                    );
+                                  })()}
+                                </div>
+                                {/* Score shares the name/badge row — the separate
                                 score row that left a white gap before Review is
                                 gone, and the percent lines up with the badge. */}
-                            <span className="ml-auto shrink-0 self-center font-display text-2xl font-bold text-primary">
-                              {a.score}%
-                            </span>
-                          </div>
+                                <span className="ml-auto shrink-0 self-center font-display text-2xl font-bold text-primary">
+                                  {a.score}%
+                                </span>
+                              </div>
 
-                          {/* Review button — full width, matches photo */}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="w-full"
-                            onClick={() => openReview(a)}
-                          >
-                            Review
-                          </Button>
-                        </li>
-                        ))
-                      )}
+                              {/* Review button — full width, matches photo */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="w-full"
+                                onClick={() => openReview(a)}
+                              >
+                                Review
+                              </Button>
+                            </li>
+                          ))}
                     </ol>
                   </CardContent>
                 </Card>
@@ -10761,132 +11120,131 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {loading ? (
-                            Array.from({ length: 5 }).map((_, i) => (
-                              <TableRow key={`skeleton-${i}`}>
-                                <TableCell className="max-w-0">
-                                  <div className="flex min-w-0 items-center gap-2">
-                                    <Skeleton className="h-7 w-7 rounded-full" />
-                                    <div className="min-w-0">
-                                      <Skeleton className="h-4 w-48" />
-                                      <Skeleton className="h-3 w-32 mt-1" />
+                          {loading
+                            ? Array.from({ length: 5 }).map((_, i) => (
+                                <TableRow key={`skeleton-${i}`}>
+                                  <TableCell className="max-w-0">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <Skeleton className="h-7 w-7 rounded-full" />
+                                      <div className="min-w-0">
+                                        <Skeleton className="h-4 w-48" />
+                                        <Skeleton className="h-3 w-32 mt-1" />
+                                      </div>
                                     </div>
-                                  </div>
-                                </TableCell>
-                                <TableCell className="hidden max-w-0 md:table-cell">
-                                  <Skeleton className="h-4 w-48" />
-                                  <Skeleton className="h-3 w-32 mt-1" />
-                                </TableCell>
-                                <TableCell className="max-w-0 truncate">
-                                  <Skeleton className="h-4 w-36" />
-                                </TableCell>
-                                <TableCell className="max-w-0 truncate text-muted-foreground">
-                                  <Skeleton className="h-4 w-24" />
-                                </TableCell>
-                                <TableCell>
-                                  <Skeleton className="h-5 w-16" />
-                                </TableCell>
-                                <TableCell>
-                                  <Skeleton className="h-5 w-24" />
-                                </TableCell>
-                                <TableCell className="max-w-0 truncate">
-                                  <Skeleton className="h-4 w-20" />
-                                </TableCell>
-                                <TableCell>
-                                  <Skeleton className="h-7 w-24" />
-                                </TableCell>
-                              </TableRow>
-                            ))
-                          ) : (
-                            applicantPage.pageItems.map((a) => (
-                            <TableRow
-                              key={a.id}
-                              data-highlight-id={a.dbId ?? a.id}
-                              className={highlightRowClass(
-                                !!highlightId &&
-                                  (String(a.dbId ?? "") === highlightId || a.id === highlightId),
-                              )}
-                            >
-                              <TableCell className="max-w-0">
-                                <div className="flex min-w-0 items-center gap-2">
-                                  <Avatar className="h-7 w-7 shrink-0">
-                                    <AvatarFallback className="bg-secondary text-[0.65rem]">
-                                      {initials(a.name)}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <div className="min-w-0">
-                                    <p className="truncate font-medium" title={a.name}>
-                                      {a.name}
-                                    </p>
-                                    <p className="truncate text-muted-foreground">{a.id}</p>
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell className="hidden max-w-0 md:table-cell">
-                                <p className="truncate" title={a.email}>
-                                  {a.email}
-                                </p>
-                                <p className="truncate text-muted-foreground">{a.phone}</p>
-                              </TableCell>
-                              <TableCell className="max-w-0 truncate" title={a.position}>
-                                {a.position}
-                              </TableCell>
-                              <TableCell
-                                className="max-w-0 truncate text-muted-foreground"
-                                title={displayAppliedAt(a.appliedAt)}
-                              >
-                                {displayAppliedAt(a.appliedAt)}
-                              </TableCell>
-                              <TableCell>
-                                <span className="font-display text-sm font-semibold">
-                                  {a.score}%
-                                </span>
-                                {(a.docCount ?? 0) > 0 ? (
-                                  <p
-                                    className="truncate text-xs font-medium text-primary"
-                                    title={`${a.docCount} supporting document${a.docCount === 1 ? "" : "s"} uploaded — open View profile → Resume & Documents to inspect`}
-                                  >
-                                    {a.docCount} supporting doc{a.docCount === 1 ? "" : "s"}
-                                  </p>
-                                ) : null}
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "max-w-full truncate px-1.5 py-0.5",
-                                    statusMeta[a.status].className,
+                                  </TableCell>
+                                  <TableCell className="hidden max-w-0 md:table-cell">
+                                    <Skeleton className="h-4 w-48" />
+                                    <Skeleton className="h-3 w-32 mt-1" />
+                                  </TableCell>
+                                  <TableCell className="max-w-0 truncate">
+                                    <Skeleton className="h-4 w-36" />
+                                  </TableCell>
+                                  <TableCell className="max-w-0 truncate text-muted-foreground">
+                                    <Skeleton className="h-4 w-24" />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Skeleton className="h-5 w-16" />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Skeleton className="h-5 w-24" />
+                                  </TableCell>
+                                  <TableCell className="max-w-0 truncate">
+                                    <Skeleton className="h-4 w-20" />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Skeleton className="h-7 w-24" />
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            : applicantPage.pageItems.map((a) => (
+                                <TableRow
+                                  key={a.id}
+                                  data-highlight-id={a.dbId ?? a.id}
+                                  className={highlightRowClass(
+                                    !!highlightId &&
+                                      (String(a.dbId ?? "") === highlightId ||
+                                        a.id === highlightId),
                                   )}
-                                  title={statusMeta[a.status].label}
                                 >
-                                  <span
-                                    className={cn(
-                                      "mr-1 h-1.5 w-1.5 shrink-0 rounded-full",
-                                      statusMeta[a.status].dot,
-                                    )}
-                                  />
-                                  <span className="truncate">{statusMeta[a.status].label}</span>
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="max-w-0 truncate" title={a.stage}>
-                                {a.stage}
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex justify-end gap-1.5">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 cursor-pointer"
-                                    title="Open applicant view profile"
-                                    onClick={() => setViewingApplicant(a)}
+                                  <TableCell className="max-w-0">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <Avatar className="h-7 w-7 shrink-0">
+                                        <AvatarFallback className="bg-secondary text-[0.65rem]">
+                                          {initials(a.name)}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <div className="min-w-0">
+                                        <p className="truncate font-medium" title={a.name}>
+                                          {a.name}
+                                        </p>
+                                        <p className="truncate text-muted-foreground">{a.id}</p>
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="hidden max-w-0 md:table-cell">
+                                    <p className="truncate" title={a.email}>
+                                      {a.email}
+                                    </p>
+                                    <p className="truncate text-muted-foreground">{a.phone}</p>
+                                  </TableCell>
+                                  <TableCell className="max-w-0 truncate" title={a.position}>
+                                    {a.position}
+                                  </TableCell>
+                                  <TableCell
+                                    className="max-w-0 truncate text-muted-foreground"
+                                    title={displayAppliedAt(a.appliedAt)}
                                   >
-                                    <Eye className="mr-1.5 h-3.5 w-3.5" /> View profile
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        )}
+                                    {displayAppliedAt(a.appliedAt)}
+                                  </TableCell>
+                                  <TableCell>
+                                    <span className="font-display text-sm font-semibold">
+                                      {a.score}%
+                                    </span>
+                                    {(a.docCount ?? 0) > 0 ? (
+                                      <p
+                                        className="truncate text-xs font-medium text-primary"
+                                        title={`${a.docCount} supporting document${a.docCount === 1 ? "" : "s"} uploaded — open View profile → Resume & Documents to inspect`}
+                                      >
+                                        {a.docCount} supporting doc{a.docCount === 1 ? "" : "s"}
+                                      </p>
+                                    ) : null}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge
+                                      variant="outline"
+                                      className={cn(
+                                        "max-w-full truncate px-1.5 py-0.5",
+                                        statusMeta[a.status].className,
+                                      )}
+                                      title={statusMeta[a.status].label}
+                                    >
+                                      <span
+                                        className={cn(
+                                          "mr-1 h-1.5 w-1.5 shrink-0 rounded-full",
+                                          statusMeta[a.status].dot,
+                                        )}
+                                      />
+                                      <span className="truncate">{statusMeta[a.status].label}</span>
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="max-w-0 truncate" title={a.stage}>
+                                    {a.stage}
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex justify-end gap-1.5">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 cursor-pointer"
+                                        title="Open applicant view profile"
+                                        onClick={() => setViewingApplicant(a)}
+                                      >
+                                        <Eye className="mr-1.5 h-3.5 w-3.5" /> View profile
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
                         </TableBody>
                       </Table>
                     </ListBody>
@@ -12394,6 +12752,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                   ))}
                               </SelectContent>
                             </Select>
+                            {schedule.mode === "Virtual" && (
+                              <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50/70 p-2.5 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200">
+                                <Video className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                <span>
+                                  Virtual booking auto-generates a Zoom meeting. The applicant is
+                                  emailed the <b>1st Join link</b>, <b>2nd Continue link</b>,
+                                  password and interviewer name.
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -13590,7 +13958,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                   data-highlight-id={a.dbId ?? a.id}
                                   className={`hover:bg-muted/30 ${highlightRowClass(
                                     !!highlightId &&
-                                      (String(a.dbId ?? "") === highlightId || a.id === highlightId),
+                                      (String(a.dbId ?? "") === highlightId ||
+                                        a.id === highlightId),
                                   )}`}
                                 >
                                   <TableCell className="max-w-0">
@@ -14000,11 +14369,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                                 disabled={!startToday || facilityPending}
                                                 onClick={
                                                   startToday && !facilityPending
-                                                    ? () => startInterviewFor(a)
+                                                    ? () =>
+                                                        interview?.mode === "Virtual"
+                                                          ? openZoomRoom(a)
+                                                          : startInterviewFor(a)
                                                     : undefined
                                                 }
                                               >
-                                                Start interview
+                                                {interview?.mode === "Virtual" ? (
+                                                  <span className="flex items-center gap-1.5">
+                                                    <Video className="h-3.5 w-3.5" /> Start Zoom
+                                                    interview
+                                                  </span>
+                                                ) : (
+                                                  "Start interview"
+                                                )}
                                               </DropdownMenuItem>
                                             </span>
                                           ) : null}
@@ -14031,7 +14410,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                           ) : null}
                                           {showStartTest ? (
                                             <>
-                                              <DropdownMenuItem onClick={() => openAssessmentTest(a)}>
+                                              <DropdownMenuItem
+                                                onClick={() => openAssessmentTest(a)}
+                                              >
                                                 Start assessment test
                                               </DropdownMenuItem>
                                               <DropdownMenuItem
@@ -14947,8 +15328,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <p className="flex w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
                       <Info className="h-4 w-4 shrink-0" />
                       This applicant is already at the{" "}
-                      <span className="font-semibold text-foreground">{review.stage}</span> stage
-                      —
+                      <span className="font-semibold text-foreground">{review.stage}</span> stage —
                       {review.stage === "Accepted"
                         ? " use Schedule interview to book them in."
                         : " no further accept, reject or referral actions can be taken here."}
@@ -15048,8 +15428,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           </Badge>
                         </span>
                         <span className="block text-xs text-muted-foreground">
-                          {p.department} — {p.headcount - p.filled} seat(s) open —{" "}
-                          {p.salaryBand}
+                          {p.department} — {p.headcount - p.filled} seat(s) open — {p.salaryBand}
                         </span>
                         <span className="mt-1 block text-[0.7rem] text-muted-foreground">
                           {fit.total > 0
@@ -15076,8 +15455,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         </DialogContent>
       </Dialog>
 
-      {/* INTERVIEW DIALOG — wider layout, comments on the right */}
-      <Dialog open={!!evaluating} onOpenChange={(o) => !o && setEvaluating(null)}>
+      {/* INTERVIEW DIALOG — wider layout, comments on the right (On-site / non-Zoom path;
+          Virtual-today uses the landscape Zoom room below instead) */}
+      <Dialog open={!!evaluating && !zoomRoom} onOpenChange={(o) => !o && setEvaluating(null)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto overflow-x-hidden sm:max-w-4xl">
           {evaluating && (
             <>
@@ -15238,6 +15618,418 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         </DialogContent>
       </Dialog>
 
+      {/* ZOOM INTERVIEW ROOM — landscape: video preview left, eval form right (30%),
+          live transcription spanning full width below. Opens from
+          "Start Zoom Interview" for Virtual interviews scheduled today. */}
+      <Dialog open={!!zoomRoom} onOpenChange={(o) => !o && closeZoomRoom()}>
+        <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-6xl lg:max-w-[92vw] xl:max-w-[1400px]">
+          {zoomRoom && (
+            <>
+              <DialogHeader className="min-w-0">
+                <DialogTitle className="flex items-center gap-2 font-display text-2xl">
+                  <Video className="h-5 w-5 text-primary" /> Start Zoom Interview
+                </DialogTitle>
+                <DialogDescription
+                  className="min-w-0 max-w-full break-words"
+                  style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+                >
+                  {zoomRoom.applicant.name} — {zoomRoom.applicant.position} ·{" "}
+                  {zoomRoom.interview.date} · {zoomRoom.interview.time} · Virtual ·{" "}
+                  {zoomRoom.interview.interviewer}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid items-start gap-4 lg:h-[70vh] lg:min-h-[560px] lg:grid-cols-[1fr_28%]">
+                {/* RIGHT — interview scoring form / Image 1 (30% scope, same state as Interview dialog).
+                    Height-locked to the video column with internal scroll so both panes align. */}
+                <div className="order-2 min-w-0 space-y-4 lg:h-[70vh] lg:min-h-[560px] lg:overflow-y-auto lg:pr-2">
+                  <div className="grid grid-cols-1 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>
+                        Interviewer <span className="text-destructive">*</span>
+                      </Label>
+                      <Select value={evalAssessor} onValueChange={setEvalAssessor}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select interviewer" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {assessors.length === 0 && (
+                            <div className="px-2 py-3 text-xs text-muted-foreground">
+                              No system users found.
+                            </div>
+                          )}
+                          {assessors.map((u) => (
+                            <SelectItem key={u.system_user_id} value={String(u.system_user_id)}>
+                              {u.full_name}
+                              {u.department_name ? ` — ${u.department_name}` : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Interview date</Label>
+                      <Input
+                        type="date"
+                        value={evalDateTime}
+                        onChange={(e) => setEvalDateTime(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="overflow-hidden rounded-md border border-border">
+                    <div className="hidden">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Category
+                      </span>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Rate
+                      </span>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Comments
+                      </span>
+                    </div>
+                    {assessmentCriteria.map((c, idx) => (
+                      <div
+                        key={c}
+                        className={
+                          "grid grid-cols-1 gap-2 px-3 py-3" +
+                          (idx > 0 ? " border-t border-border" : "")
+                        }
+                      >
+                        <span className="flex text-sm font-medium">{c}</span>
+                        <Select
+                          value={String(evalScores[c] ?? 4)}
+                          onValueChange={(v) => setEvalScores((p) => ({ ...p, [c]: Number(v) }))}
+                        >
+                          <SelectTrigger className="min-h-[48px] w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[5, 4, 3, 2, 1].map((n) => (
+                              <SelectItem key={n} value={String(n)}>
+                                {n} / 5
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Textarea
+                          rows={2}
+                          className="min-h-[56px]"
+                          value={evalComments[c] ?? ""}
+                          onChange={(e) => setEvalComments((p) => ({ ...p, [c]: e.target.value }))}
+                          placeholder={`Remarks for ${c.toLowerCase()}—`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Overall Evaluation</Label>
+                    <Textarea
+                      rows={3}
+                      value={evalRemarks}
+                      onChange={(e) => setEvalRemarks(e.target.value)}
+                      placeholder="Overall evaluation of the interview—"
+                    />
+                  </div>
+                  <div className="rounded-md border border-border p-3">
+                    <p className="eyebrow">Computed score</p>
+                    <p className="font-display text-3xl font-semibold text-primary">
+                      {Math.round(
+                        (assessmentCriteria.reduce((t, c) => t + (evalScores[c] ?? 4), 0) /
+                          (assessmentCriteria.length * 5)) *
+                          100,
+                      )}
+                      %
+                    </p>
+                  </div>
+                </div>
+
+                {/* LEFT — video preview + Zoom links (70%, same height as eval form) */}
+                <div className="order-1 min-w-0 space-y-3 lg:h-[70vh] lg:min-h-[560px] lg:overflow-y-auto lg:pr-1">
+                  <div className="overflow-hidden rounded-lg border border-border bg-black">
+                    <div className="flex items-center justify-between bg-muted/60 px-3 py-2">
+                      <p className="flex items-center gap-1.5 text-xs font-semibold">
+                        <Video className="h-3.5 w-3.5" /> Video preview
+                      </p>
+                      <Badge variant="outline" className="text-[0.65rem]">
+                        {zoomRoom.interview.date} · {zoomRoom.interview.time}
+                      </Badge>
+                    </div>
+                    <video
+                      ref={zoomVideoRef}
+                      muted
+                      playsInline
+                      className="aspect-video w-full bg-black object-cover lg:aspect-auto lg:h-[50vh] lg:min-h-[420px]"
+                    />
+                    <div className="flex flex-wrap items-center gap-2 bg-muted/60 px-3 py-2">
+                      <Button
+                        size="sm"
+                        variant={zoomMicOn ? "outline" : "destructive"}
+                        onClick={toggleZoomMic}
+                      >
+                        {zoomMicOn ? (
+                          <Mic className="h-3.5 w-3.5" />
+                        ) : (
+                          <MicOff className="h-3.5 w-3.5" />
+                        )}
+                        {zoomMicOn ? "Mute" : "Unmute"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={zoomCamOn ? "outline" : "destructive"}
+                        onClick={toggleZoomCam}
+                      >
+                        {zoomCamOn ? (
+                          <Video className="h-3.5 w-3.5" />
+                        ) : (
+                          <VideoOff className="h-3.5 w-3.5" />
+                        )}
+                        {zoomCamOn ? "Stop video" : "Start video"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-xs dark:border-blue-900/40 dark:bg-blue-950/20">
+                    <p className="mb-2 font-semibold text-blue-800 dark:text-blue-200">
+                      Zoom meeting — also emailed to applicant
+                    </p>
+                    {zoomRoom.interview.zoomJoinUrl ? (
+                      <div className="mb-2 space-y-1">
+                        <p className="break-all text-blue-700 dark:text-blue-300">
+                          <b>1st link — Join:</b>{" "}
+                          <a
+                            href={zoomRoom.interview.zoomJoinUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline"
+                          >
+                            {zoomRoom.interview.zoomJoinUrl}
+                          </a>
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              copyZoomText(zoomRoom.interview.zoomJoinUrl ?? "", "Join link")
+                            }
+                          >
+                            <Copy className="mr-1 h-3 w-3" /> Copy join
+                          </Button>
+                          <Button size="sm" asChild>
+                            <a
+                              href={zoomRoom.interview.zoomJoinUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <ExternalLink className="mr-1 h-3 w-3" /> Open in Zoom
+                            </a>
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mb-2 text-muted-foreground">
+                        Join link generates on booking — reschedule to Virtual to regenerate.
+                      </p>
+                    )}
+                    {zoomRoom.interview.zoomContinueUrl && (
+                      <div className="mb-2 space-y-1">
+                        <p className="break-all text-blue-700 dark:text-blue-300">
+                          <b>2nd link — Continue:</b>{" "}
+                          <a
+                            href={zoomRoom.interview.zoomContinueUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline"
+                          >
+                            {zoomRoom.interview.zoomContinueUrl}
+                          </a>
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              copyZoomText(
+                                zoomRoom.interview.zoomContinueUrl ?? "",
+                                "Continue link",
+                              )
+                            }
+                          >
+                            <Copy className="mr-1 h-3 w-3" /> Copy continue
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    <p className="text-blue-700 dark:text-blue-300">
+                      {zoomRoom.interview.zoomPassword && (
+                        <>
+                          <b>Password:</b>{" "}
+                          <code className="rounded bg-blue-100 px-1.5 py-0.5 dark:bg-blue-900">
+                            {zoomRoom.interview.zoomPassword}
+                          </code>{" "}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-1.5"
+                            onClick={() =>
+                              copyZoomText(zoomRoom.interview.zoomPassword ?? "", "Password")
+                            }
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                          <br />
+                        </>
+                      )}
+                      <b>Interviewer:</b> {zoomRoom.interview.interviewer}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* BELOW — live transcription spanning left to right */}
+              <div className="mt-4 rounded-lg border border-border">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <FileText className="h-3.5 w-3.5" /> Live transcription
+                  </p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {zoomListening ? (
+                      <Button size="sm" variant="destructive" onClick={stopZoomTranscription}>
+                        <MicOff className="mr-1 h-3 w-3" /> Stop
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={startZoomTranscription}>
+                        <Mic className="mr-1 h-3 w-3" /> Start live transcription
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setZoomTranscripts([])}
+                      disabled={zoomTranscripts.length === 0}
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={zoomTranscripts.length === 0}
+                      onClick={() =>
+                        copyZoomText(
+                          zoomTranscripts.map((t) => `[${t.time}] ${t.text}`).join("\n"),
+                          "Transcript",
+                        )
+                      }
+                    >
+                      <Copy className="mr-1 h-3 w-3" /> Copy
+                    </Button>
+                  </div>
+                </div>
+                <div className="max-h-44 space-y-1.5 overflow-y-auto px-4 py-3">
+                  {zoomTranscripts.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {zoomListening
+                        ? "Listening… speak to transcribe the interview."
+                        : "Press Start live transcription (browser mic) or add captions manually below."}
+                    </p>
+                  ) : (
+                    zoomTranscripts.map((t, idx) => (
+                      <p key={idx} className="text-xs leading-relaxed">
+                        <span className="font-semibold text-muted-foreground">[{t.time}]</span>{" "}
+                        {t.text}
+                      </p>
+                    ))
+                  )}
+                </div>
+                <div className="flex flex-col gap-2 border-t border-border px-4 py-2.5 sm:flex-row">
+                  <Input
+                    value={zoomManualCaption}
+                    onChange={(e) => setZoomManualCaption(e.target.value)}
+                    placeholder="Type a caption line manually…"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && zoomManualCaption.trim()) {
+                        const time = new Date().toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          second: "2-digit",
+                        });
+                        setZoomTranscripts((prev) => [
+                          ...prev.slice(-199),
+                          { time, text: zoomManualCaption.trim() },
+                        ]);
+                        setZoomManualCaption("");
+                      }
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!zoomManualCaption.trim()}
+                    onClick={() => {
+                      const time = new Date().toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                      });
+                      setZoomTranscripts((prev) => [
+                        ...prev.slice(-199),
+                        { time, text: zoomManualCaption.trim() },
+                      ]);
+                      setZoomManualCaption("");
+                    }}
+                  >
+                    Add caption
+                  </Button>
+                </div>
+              </div>
+
+              <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <Button variant="ghost" onClick={closeZoomRoom}>
+                  <PhoneOff className="mr-1.5 h-4 w-4" /> Leave room
+                </Button>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    Assessor Verdict:
+                  </span>
+                  <Button
+                    variant="outline"
+                    className="border-success/40 text-success hover:bg-success/10 hover:text-success"
+                    onClick={() =>
+                      askConfirm({
+                        title: "Mark this interview as Passed?",
+                        description: `${zoomRoom.applicant.name}'s interview will be saved with a Passed verdict and the candidate will advance to the assessment test stage.`,
+                        confirmLabel: "Yes, mark Passed",
+                        onConfirm: () => saveAssessment("Passed"),
+                      })
+                    }
+                  >
+                    <CheckCircle2 className="mr-1.5 h-4 w-4" /> Passed
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() =>
+                      askConfirm({
+                        title: "Mark this interview as Failed?",
+                        description: `${zoomRoom.applicant.name}'s interview will be saved with a Failed verdict.`,
+                        confirmLabel: "Yes, mark Failed",
+                        destructive: true,
+                        onConfirm: () => saveAssessment("Failed"),
+                      })
+                    }
+                  >
+                    <XCircle className="mr-1.5 h-4 w-4" /> Failed
+                  </Button>
+                </div>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* ASSESSMENT TEST RUNNER — candidate-facing quiz (mock data, auto-checked) */}
       <Dialog
         open={!!testingTest}
@@ -15279,8 +16071,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
                   <p className="mt-1 text-xs text-muted-foreground">
                     {testingTest.name} — {testingTest.position} · {testTitle} · Passing{" "}
-                    {testPassing}% · {answeredCount}/{totalQ} answered — auto-checked when all
-                    are answered.
+                    {testPassing}% · {answeredCount}/{totalQ} answered — auto-checked when all are
+                    answered.
                   </p>
 
                   {/* Question */}
@@ -15379,8 +16171,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   </div>
                   {!allAnswered && (
                     <p className="mt-2 text-right text-xs text-muted-foreground">
-                      {totalQ - answeredCount} question(s) left — the test auto-checks once all
-                      are answered.
+                      {totalQ - answeredCount} question(s) left — the test auto-checks once all are
+                      answered.
                     </p>
                   )}
                 </>
@@ -15574,8 +16366,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <DialogHeader>
                 <DialogTitle className="font-display text-2xl">Final Evaluation</DialogTitle>
                 <DialogDescription>
-                  {finalizing.name} — {finalizing.position}. System-calculated scores below
-                  are read-only; HR makes the final recommendation.
+                  {finalizing.name} — {finalizing.position}. System-calculated scores below are
+                  read-only; HR makes the final recommendation.
                 </DialogDescription>
               </DialogHeader>
 
@@ -15619,9 +16411,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   ? preview.scores.practical_test_score
                   : snap.practicalScore;
                 const overall = preview?.overall_score_rounded ?? preview?.overall_score ?? null;
-                const breakdown = (preview?.score_breakdown as FinalScoreBreakdownItem[] | undefined) ?? null;
+                const breakdown =
+                  (preview?.score_breakdown as FinalScoreBreakdownItem[] | undefined) ?? null;
                 const reqs = preview?.requirements ?? null;
-                const interviewOk = reqs ? reqs.interview_passed : snap.interviewResult === "Passed";
+                const interviewOk = reqs
+                  ? reqs.interview_passed
+                  : snap.interviewResult === "Passed";
                 const assessmentOk = reqs ? reqs.assessment_passed : snap.testResult === "Passed";
                 const practicalState: "passed" | "missing_or_failed" | "not_required" = reqs
                   ? reqs.practical
@@ -15634,7 +16429,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   (j: any) =>
                     j.status === "Open" &&
                     j.active !== false &&
-                    (Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0)) > 0,
+                    Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0) > 0,
                 );
                 return (
                   <div className="space-y-3">
@@ -15684,7 +16479,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           <div className="flex items-center justify-between gap-3 border-t border-border pt-2">
                             <span className="font-medium">
                               Overall Score{" "}
-                              <Badge variant="outline" className="ml-1 border-primary/40 text-primary">
+                              <Badge
+                                variant="outline"
+                                className="ml-1 border-primary/40 text-primary"
+                              >
                                 System Calculated
                               </Badge>
                             </span>
@@ -15709,17 +16507,19 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       </button>
                       {showScoreBreakdown && (
                         <div className="mt-2 space-y-1 rounded-md border border-border bg-background p-2.5 text-xs">
-                          {(breakdown ?? []).filter((b) => b.applied).map((b) => (
-                            <div key={b.key} className="flex items-center justify-between gap-3">
-                              <span>
-                                {b.label} — {b.score != null ? `${Math.round(b.score)}%` : "—"} ×{" "}
-                                {b.weight}%
-                              </span>
-                              <span className="font-medium">
-                                = {b.contribution != null ? b.contribution.toFixed(2) : "—"}
-                              </span>
-                            </div>
-                          ))}
+                          {(breakdown ?? [])
+                            .filter((b) => b.applied)
+                            .map((b) => (
+                              <div key={b.key} className="flex items-center justify-between gap-3">
+                                <span>
+                                  {b.label} — {b.score != null ? `${Math.round(b.score)}%` : "—"} ×{" "}
+                                  {b.weight}%
+                                </span>
+                                <span className="font-medium">
+                                  = {b.contribution != null ? b.contribution.toFixed(2) : "—"}
+                                </span>
+                              </div>
+                            ))}
                           {!breakdown && (
                             <p className="text-muted-foreground">
                               Screening {FINAL_EVALUATION_WEIGHTS.screening}% · Interview{" "}
@@ -15732,8 +16532,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             </p>
                           )}
                           <div className="border-t border-border pt-1 font-medium">
-                            Overall Score = {preview?.overall_score != null ? preview.overall_score.toFixed(2) : "—"}%
-                            {overall != null && preview?.overall_score != null && overall !== preview.overall_score
+                            Overall Score ={" "}
+                            {preview?.overall_score != null
+                              ? preview.overall_score.toFixed(2)
+                              : "—"}
+                            %
+                            {overall != null &&
+                            preview?.overall_score != null &&
+                            overall !== preview.overall_score
                               ? ` · Rounded = ${overall}%`
                               : ""}
                           </div>
@@ -15746,7 +16552,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                       <p className="eyebrow">Requirement Status — System Generated</p>
                       <div className="mt-2 space-y-1 text-sm">
                         <p className={interviewOk ? "text-success" : "text-destructive"}>
-                          {interviewOk ? "✓" : "✗"} Interview {interviewOk ? "Passed" : "Not Passed"}
+                          {interviewOk ? "✓" : "✗"} Interview{" "}
+                          {interviewOk ? "Passed" : "Not Passed"}
                         </p>
                         <p className={assessmentOk ? "text-success" : "text-destructive"}>
                           {assessmentOk ? "✓" : "✗"} Assessment Test{" "}
@@ -15767,8 +16574,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         {preview && preview.blocking_verification_issues > 0 && (
                           <p className="text-xs text-destructive">
                             ⚠ {preview.blocking_verification_issues} document verification
-                            discrepanc{preview.blocking_verification_issues === 1 ? "y" : "ies"} must
-                            be resolved before “Recommended for Hire”.
+                            discrepanc{preview.blocking_verification_issues === 1 ? "y" : "ies"}{" "}
+                            must be resolved before “Recommended for Hire”.
                           </p>
                         )}
                       </div>
@@ -15778,8 +16585,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     <div className="rounded-md border border-primary/30 p-3">
                       <p className="eyebrow">Final Recommendation — HR Decision</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        The Overall Score supports your decision — it never hires automatically. Only
-                        “Recommended for Hire” can proceed to Offer.
+                        The Overall Score supports your decision — it never hires automatically.
+                        Only “Recommended for Hire” can proceed to Offer.
                       </p>
                       <div className="mt-2 space-y-2">
                         {(
@@ -15803,7 +16610,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             <input
                               type="radio"
                               name="finalChoice"
-                              className={r === "Not Recommended" ? "accent-destructive" : "accent-primary"}
+                              className={
+                                r === "Not Recommended" ? "accent-destructive" : "accent-primary"
+                              }
                               checked={finalChoice === r}
                               onChange={() => setFinalChoice(r)}
                             />
@@ -15825,7 +16634,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 <SelectItem key={j.job_post_id} value={String(j.job_post_id)}>
                                   {j.title} — {j.department ?? ""} (
                                   {Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0)} slot
-                                  {Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0) === 1 ? "" : "s"})
+                                  {Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0) === 1
+                                    ? ""
+                                    : "s"}
+                                  )
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -15909,7 +16721,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   <p className="eyebrow">Overall Score — System Calculated (read-only)</p>
                   <p className="font-display text-xl font-semibold text-primary">
                     {viewingFinal.overallScoreRounded ?? viewingFinal.overallScore ?? "—"}
-                    {(viewingFinal.overallScoreRounded ?? viewingFinal.overallScore) != null ? "%" : ""}
+                    {(viewingFinal.overallScoreRounded ?? viewingFinal.overallScore) != null
+                      ? "%"
+                      : ""}
                   </p>
                   {viewingFinal.scoreBreakdown && viewingFinal.scoreBreakdown.length > 0 && (
                     <div className="mt-2 space-y-1 text-xs text-muted-foreground">
@@ -15921,7 +16735,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               {b.label} — {b.score != null ? `${Math.round(b.score)}%` : "—"} ×{" "}
                               {b.weight}%
                             </span>
-                            <span>= {b.contribution != null ? b.contribution.toFixed(2) : "—"}</span>
+                            <span>
+                              = {b.contribution != null ? b.contribution.toFixed(2) : "—"}
+                            </span>
                           </div>
                         ))}
                     </div>

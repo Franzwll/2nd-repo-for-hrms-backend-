@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -13,7 +12,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Briefcase,
-  AlertCircle,
   TrendingUp,
   Send,
   Building2,
@@ -280,10 +278,6 @@ export function PromotionRequestModal({
             <TrendingUp className="h-5 w-5" />
             <DialogTitle className="text-xl">Apply for Career Promotion</DialogTitle>
           </div>
-          <DialogDescription>
-            Submit an official promotion application. Submissions advance within your department career ladder
-            and initiate a promotion appraisal review with your department head.
-          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
@@ -349,9 +343,6 @@ export function PromotionRequestModal({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-[11px] text-muted-foreground">
-              Promotions are strictly intra-departmental. Showing positions within {myProfile.department}.
-            </p>
           </div>
 
           {/* Justification Textarea */}
@@ -482,14 +473,6 @@ export function PromotionRequestModal({
                 ))}
               </div>
             )}
-          </div>
-
-          <div className="rounded-md bg-amber-500/10 p-3 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-            <div>
-              <strong>HR Process Notice:</strong> Promotion applications are forwarded to Core HCM and the Performance
-              Appraisal Board. A supervisor evaluation recommendation (HR3) is required before final executive sign-off.
-            </div>
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0 pt-2">

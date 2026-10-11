@@ -320,7 +320,6 @@ export function EssAiAssistantModal({
             <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[11px] font-semibold flex items-center gap-1 py-0.5">
               <Sparkles className="h-3 w-3" /> Oxford HR AI Concierge
             </Badge>
-            <span className="text-xs text-muted-foreground hidden sm:inline">· Connected to Employee Portal</span>
           </div>
 
           <div className="flex items-center gap-1.5">

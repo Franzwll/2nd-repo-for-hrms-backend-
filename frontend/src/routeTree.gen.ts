@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as EmployeeRouteImport } from './routes/employee'
 import { Route as SuperadminRouteImport } from './routes/superadmin'
+import { Route as TestDocRecognitionRouteImport } from './routes/test-doc-recognition'
 import { Route as LandingIndexRouteImport } from './routes/_landing/index'
 import { Route as LandingAboutRouteImport } from './routes/_landing/about'
 import { Route as LandingContactRouteImport } from './routes/_landing/contact'
@@ -43,7 +44,6 @@ import { Route as AdminEssmanagementEssRouteImport } from './routes/admin/_essma
 import { Route as AdminNewhireonboardingOnboardingRouteImport } from './routes/admin/_newhireonboarding/onboarding'
 import { Route as AdminProfilepageProfileRouteImport } from './routes/admin/_profilepage/profile'
 import { Route as AdminRecruitmentmanagementRecruitmentRouteImport } from './routes/admin/_recruitmentmanagement/recruitment'
-import { Route as AdminSettingsChatbotRouteImport } from './routes/admin/_settings/chatbot'
 import { Route as AdminSettingsSettingsRouteImport } from './routes/admin/_settings/settings'
 import { Route as EmployeeEssmanagementEssRouteImport } from './routes/employee/_essmanagement/ess'
 import { Route as EmployeeNewhireonboardingOnboardingRouteImport } from './routes/employee/_newhireonboarding/onboarding'
@@ -59,7 +59,6 @@ import { Route as SuperadminEssmanagementEssRouteImport } from './routes/superad
 import { Route as SuperadminNewhireonboardingOnboardingRouteImport } from './routes/superadmin/_newhireonboarding/onboarding'
 import { Route as SuperadminProfilepageProfileRouteImport } from './routes/superadmin/_profilepage/profile'
 import { Route as SuperadminRecruitmentmanagementRecruitmentRouteImport } from './routes/superadmin/_recruitmentmanagement/recruitment'
-import { Route as SuperadminSettingsChatbotRouteImport } from './routes/superadmin/_settings/chatbot'
 import { Route as SuperadminSettingsSettingsRouteImport } from './routes/superadmin/_settings/settings'
 import { Route as SuperadminUsermanagementUsersRouteImport } from './routes/superadmin/_usermanagement/users'
 
@@ -76,6 +75,11 @@ const EmployeeRoute = EmployeeRouteImport.update({
 const SuperadminRoute = SuperadminRouteImport.update({
   id: '/superadmin',
   path: '/superadmin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TestDocRecognitionRoute = TestDocRecognitionRouteImport.update({
+  id: '/test-doc-recognition',
+  path: '/test-doc-recognition',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LandingIndexRoute = LandingIndexRouteImport.update({
@@ -240,11 +244,6 @@ const AdminRecruitmentmanagementRecruitmentRoute =
     path: '/recruitment',
     getParentRoute: () => AdminRoute,
   } as any)
-const AdminSettingsChatbotRoute = AdminSettingsChatbotRouteImport.update({
-  id: '/_settings/chatbot',
-  path: '/chatbot',
-  getParentRoute: () => AdminRoute,
-} as any)
 const AdminSettingsSettingsRoute = AdminSettingsSettingsRouteImport.update({
   id: '/_settings/settings',
   path: '/settings',
@@ -333,12 +332,6 @@ const SuperadminRecruitmentmanagementRecruitmentRoute =
     path: '/recruitment',
     getParentRoute: () => SuperadminRoute,
   } as any)
-const SuperadminSettingsChatbotRoute =
-  SuperadminSettingsChatbotRouteImport.update({
-    id: '/_settings/chatbot',
-    path: '/chatbot',
-    getParentRoute: () => SuperadminRoute,
-  } as any)
 const SuperadminSettingsSettingsRoute =
   SuperadminSettingsSettingsRouteImport.update({
     id: '/_settings/settings',
@@ -356,6 +349,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/employee': typeof EmployeeRouteWithChildren
   '/superadmin': typeof SuperadminRouteWithChildren
+  '/test-doc-recognition': typeof TestDocRecognitionRoute
   '/about': typeof LandingAboutRoute
   '/contact': typeof LandingContactRoute
   '/cookies': typeof LandingCookiesRoute
@@ -386,7 +380,6 @@ export interface FileRoutesByFullPath {
   '/admin/onboarding': typeof AdminNewhireonboardingOnboardingRoute
   '/admin/profile': typeof AdminProfilepageProfileRoute
   '/admin/recruitment': typeof AdminRecruitmentmanagementRecruitmentRoute
-  '/admin/chatbot': typeof AdminSettingsChatbotRoute
   '/admin/settings': typeof AdminSettingsSettingsRoute
   '/employee/ess': typeof EmployeeEssmanagementEssRoute
   '/employee/onboarding': typeof EmployeeNewhireonboardingOnboardingRoute
@@ -402,12 +395,12 @@ export interface FileRoutesByFullPath {
   '/superadmin/onboarding': typeof SuperadminNewhireonboardingOnboardingRoute
   '/superadmin/profile': typeof SuperadminProfilepageProfileRoute
   '/superadmin/recruitment': typeof SuperadminRecruitmentmanagementRecruitmentRoute
-  '/superadmin/chatbot': typeof SuperadminSettingsChatbotRoute
   '/superadmin/settings': typeof SuperadminSettingsSettingsRoute
   '/superadmin/users': typeof SuperadminUsermanagementUsersRoute
   '/jobs/': typeof LandingJobsIndexRoute
 }
 export interface FileRoutesByTo {
+  '/test-doc-recognition': typeof TestDocRecognitionRoute
   '/about': typeof LandingAboutRoute
   '/contact': typeof LandingContactRoute
   '/cookies': typeof LandingCookiesRoute
@@ -438,7 +431,6 @@ export interface FileRoutesByTo {
   '/admin/onboarding': typeof AdminNewhireonboardingOnboardingRoute
   '/admin/profile': typeof AdminProfilepageProfileRoute
   '/admin/recruitment': typeof AdminRecruitmentmanagementRecruitmentRoute
-  '/admin/chatbot': typeof AdminSettingsChatbotRoute
   '/admin/settings': typeof AdminSettingsSettingsRoute
   '/employee/ess': typeof EmployeeEssmanagementEssRoute
   '/employee/onboarding': typeof EmployeeNewhireonboardingOnboardingRoute
@@ -454,7 +446,6 @@ export interface FileRoutesByTo {
   '/superadmin/onboarding': typeof SuperadminNewhireonboardingOnboardingRoute
   '/superadmin/profile': typeof SuperadminProfilepageProfileRoute
   '/superadmin/recruitment': typeof SuperadminRecruitmentmanagementRecruitmentRoute
-  '/superadmin/chatbot': typeof SuperadminSettingsChatbotRoute
   '/superadmin/settings': typeof SuperadminSettingsSettingsRoute
   '/superadmin/users': typeof SuperadminUsermanagementUsersRoute
   '/jobs': typeof LandingJobsIndexRoute
@@ -464,6 +455,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/employee': typeof EmployeeRouteWithChildren
   '/superadmin': typeof SuperadminRouteWithChildren
+  '/test-doc-recognition': typeof TestDocRecognitionRoute
   '/_landing/about': typeof LandingAboutRoute
   '/_landing/contact': typeof LandingContactRoute
   '/_landing/cookies': typeof LandingCookiesRoute
@@ -494,7 +486,6 @@ export interface FileRoutesById {
   '/admin/_newhireonboarding/onboarding': typeof AdminNewhireonboardingOnboardingRoute
   '/admin/_profilepage/profile': typeof AdminProfilepageProfileRoute
   '/admin/_recruitmentmanagement/recruitment': typeof AdminRecruitmentmanagementRecruitmentRoute
-  '/admin/_settings/chatbot': typeof AdminSettingsChatbotRoute
   '/admin/_settings/settings': typeof AdminSettingsSettingsRoute
   '/employee/_essmanagement/ess': typeof EmployeeEssmanagementEssRoute
   '/employee/_newhireonboarding/onboarding': typeof EmployeeNewhireonboardingOnboardingRoute
@@ -510,7 +501,6 @@ export interface FileRoutesById {
   '/superadmin/_newhireonboarding/onboarding': typeof SuperadminNewhireonboardingOnboardingRoute
   '/superadmin/_profilepage/profile': typeof SuperadminProfilepageProfileRoute
   '/superadmin/_recruitmentmanagement/recruitment': typeof SuperadminRecruitmentmanagementRecruitmentRoute
-  '/superadmin/_settings/chatbot': typeof SuperadminSettingsChatbotRoute
   '/superadmin/_settings/settings': typeof SuperadminSettingsSettingsRoute
   '/superadmin/_usermanagement/users': typeof SuperadminUsermanagementUsersRoute
   '/_landing/jobs/': typeof LandingJobsIndexRoute
@@ -521,6 +511,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/employee'
     | '/superadmin'
+    | '/test-doc-recognition'
     | '/about'
     | '/contact'
     | '/cookies'
@@ -551,7 +542,6 @@ export interface FileRouteTypes {
     | '/admin/onboarding'
     | '/admin/profile'
     | '/admin/recruitment'
-    | '/admin/chatbot'
     | '/admin/settings'
     | '/employee/ess'
     | '/employee/onboarding'
@@ -567,12 +557,12 @@ export interface FileRouteTypes {
     | '/superadmin/onboarding'
     | '/superadmin/profile'
     | '/superadmin/recruitment'
-    | '/superadmin/chatbot'
     | '/superadmin/settings'
     | '/superadmin/users'
     | '/jobs/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/test-doc-recognition'
     | '/about'
     | '/contact'
     | '/cookies'
@@ -603,7 +593,6 @@ export interface FileRouteTypes {
     | '/admin/onboarding'
     | '/admin/profile'
     | '/admin/recruitment'
-    | '/admin/chatbot'
     | '/admin/settings'
     | '/employee/ess'
     | '/employee/onboarding'
@@ -619,7 +608,6 @@ export interface FileRouteTypes {
     | '/superadmin/onboarding'
     | '/superadmin/profile'
     | '/superadmin/recruitment'
-    | '/superadmin/chatbot'
     | '/superadmin/settings'
     | '/superadmin/users'
     | '/jobs'
@@ -628,6 +616,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/employee'
     | '/superadmin'
+    | '/test-doc-recognition'
     | '/_landing/about'
     | '/_landing/contact'
     | '/_landing/cookies'
@@ -658,7 +647,6 @@ export interface FileRouteTypes {
     | '/admin/_newhireonboarding/onboarding'
     | '/admin/_profilepage/profile'
     | '/admin/_recruitmentmanagement/recruitment'
-    | '/admin/_settings/chatbot'
     | '/admin/_settings/settings'
     | '/employee/_essmanagement/ess'
     | '/employee/_newhireonboarding/onboarding'
@@ -674,7 +662,6 @@ export interface FileRouteTypes {
     | '/superadmin/_newhireonboarding/onboarding'
     | '/superadmin/_profilepage/profile'
     | '/superadmin/_recruitmentmanagement/recruitment'
-    | '/superadmin/_settings/chatbot'
     | '/superadmin/_settings/settings'
     | '/superadmin/_usermanagement/users'
     | '/_landing/jobs/'
@@ -684,6 +671,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   EmployeeRoute: typeof EmployeeRouteWithChildren
   SuperadminRoute: typeof SuperadminRouteWithChildren
+  TestDocRecognitionRoute: typeof TestDocRecognitionRoute
   LandingAboutRoute: typeof LandingAboutRoute
   LandingContactRoute: typeof LandingContactRoute
   LandingCookiesRoute: typeof LandingCookiesRoute
@@ -725,6 +713,13 @@ declare module '@tanstack/react-router' {
       path: '/superadmin'
       fullPath: '/superadmin'
       preLoaderRoute: typeof SuperadminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/test-doc-recognition': {
+      id: '/test-doc-recognition'
+      path: '/test-doc-recognition'
+      fullPath: '/test-doc-recognition'
+      preLoaderRoute: typeof TestDocRecognitionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_landing/': {
@@ -944,13 +939,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRecruitmentmanagementRecruitmentRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/admin/_settings/chatbot': {
-      id: '/admin/_settings/chatbot'
-      path: '/chatbot'
-      fullPath: '/admin/chatbot'
-      preLoaderRoute: typeof AdminSettingsChatbotRouteImport
-      parentRoute: typeof AdminRoute
-    }
     '/admin/_settings/settings': {
       id: '/admin/_settings/settings'
       path: '/settings'
@@ -1056,13 +1044,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SuperadminRecruitmentmanagementRecruitmentRouteImport
       parentRoute: typeof SuperadminRoute
     }
-    '/superadmin/_settings/chatbot': {
-      id: '/superadmin/_settings/chatbot'
-      path: '/chatbot'
-      fullPath: '/superadmin/chatbot'
-      preLoaderRoute: typeof SuperadminSettingsChatbotRouteImport
-      parentRoute: typeof SuperadminRoute
-    }
     '/superadmin/_settings/settings': {
       id: '/superadmin/_settings/settings'
       path: '/settings'
@@ -1091,7 +1072,6 @@ interface AdminRouteChildren {
   AdminNewhireonboardingOnboardingRoute: typeof AdminNewhireonboardingOnboardingRoute
   AdminProfilepageProfileRoute: typeof AdminProfilepageProfileRoute
   AdminRecruitmentmanagementRecruitmentRoute: typeof AdminRecruitmentmanagementRecruitmentRoute
-  AdminSettingsChatbotRoute: typeof AdminSettingsChatbotRoute
   AdminSettingsSettingsRoute: typeof AdminSettingsSettingsRoute
 }
 
@@ -1108,7 +1088,6 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminProfilepageProfileRoute: AdminProfilepageProfileRoute,
   AdminRecruitmentmanagementRecruitmentRoute:
     AdminRecruitmentmanagementRecruitmentRoute,
-  AdminSettingsChatbotRoute: AdminSettingsChatbotRoute,
   AdminSettingsSettingsRoute: AdminSettingsSettingsRoute,
 }
 
@@ -1149,7 +1128,6 @@ interface SuperadminRouteChildren {
   SuperadminNewhireonboardingOnboardingRoute: typeof SuperadminNewhireonboardingOnboardingRoute
   SuperadminProfilepageProfileRoute: typeof SuperadminProfilepageProfileRoute
   SuperadminRecruitmentmanagementRecruitmentRoute: typeof SuperadminRecruitmentmanagementRecruitmentRoute
-  SuperadminSettingsChatbotRoute: typeof SuperadminSettingsChatbotRoute
   SuperadminSettingsSettingsRoute: typeof SuperadminSettingsSettingsRoute
   SuperadminUsermanagementUsersRoute: typeof SuperadminUsermanagementUsersRoute
 }
@@ -1170,7 +1148,6 @@ const SuperadminRouteChildren: SuperadminRouteChildren = {
   SuperadminProfilepageProfileRoute: SuperadminProfilepageProfileRoute,
   SuperadminRecruitmentmanagementRecruitmentRoute:
     SuperadminRecruitmentmanagementRecruitmentRoute,
-  SuperadminSettingsChatbotRoute: SuperadminSettingsChatbotRoute,
   SuperadminSettingsSettingsRoute: SuperadminSettingsSettingsRoute,
   SuperadminUsermanagementUsersRoute: SuperadminUsermanagementUsersRoute,
 }
@@ -1183,6 +1160,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   EmployeeRoute: EmployeeRouteWithChildren,
   SuperadminRoute: SuperadminRouteWithChildren,
+  TestDocRecognitionRoute: TestDocRecognitionRoute,
   LandingAboutRoute: LandingAboutRoute,
   LandingContactRoute: LandingContactRoute,
   LandingCookiesRoute: LandingCookiesRoute,

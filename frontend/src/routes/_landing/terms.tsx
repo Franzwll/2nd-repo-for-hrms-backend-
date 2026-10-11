@@ -3,6 +3,7 @@ import { ArrowLeft, ScrollText } from "lucide-react";
 
 import { PublicShell } from "@/components/public/PublicShell";
 import { TERMS_SECTIONS } from "@/data/legal";
+import { useLightOnly } from "@/lib/theme";
 
 export const Route = createFileRoute("/_landing/terms")({
   head: () => ({
@@ -19,6 +20,8 @@ export const Route = createFileRoute("/_landing/terms")({
 });
 
 function Terms() {
+  useLightOnly();
+
   return (
     <PublicShell>
       <div className="mx-auto max-w-3xl px-4 py-14 md:px-8">

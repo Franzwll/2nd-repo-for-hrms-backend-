@@ -21,6 +21,10 @@ class StoreInterviewRequest extends FormRequest
             'facility_id'             => ['nullable', 'integer', 'exists:facilities,facility_id'],
             'interviewer_employee_id' => ['nullable', 'integer', 'exists:employees,employee_id'],
             'interviewer_name'        => ['nullable', 'string', 'max:160'],
+            'zoom_meeting_id'         => ['nullable', 'string', 'max:64'],
+            'zoom_join_url'           => ['nullable', 'string', 'max:2000'],
+            'zoom_continue_url'       => ['nullable', 'string', 'max:2000'],
+            'zoom_password'           => ['nullable', 'string', 'max:64'],
             'status'                  => ['sometimes', 'string', 'in:Scheduled,Completed,No Show'],
         ];
     }

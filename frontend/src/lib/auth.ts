@@ -16,6 +16,8 @@ export interface AuthUser {
   otp_enabled?: boolean;
   permissions: Record<string, string>;
   last_login_at: string | null;
+  gender?: "Male" | "Female" | "Other";
+  profile_photo_url?: string | null;
 }
 
 export function getToken(): string | null {

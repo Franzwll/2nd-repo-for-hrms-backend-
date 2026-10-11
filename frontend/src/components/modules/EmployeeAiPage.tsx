@@ -482,15 +482,6 @@ export function EmployeeAiPage() {
 
               {/* System Info Badge */}
               <div className="space-y-2 pt-2 border-t border-border/50">
-                <div className="rounded-xl border border-border/70 bg-muted/20 p-2.5 text-xs space-y-1">
-                  <div className="flex items-center gap-1.5 font-semibold text-foreground text-[11px]">
-                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                    Verified HR Knowledge
-                  </div>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">
-                    Trained on Oxford Suites Makati HR policies, statutory DOLE labor standards, and benefits.
-                  </p>
-                </div>
 
                 {sessions.length > 0 && (
                   <Button

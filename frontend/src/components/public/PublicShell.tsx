@@ -5,7 +5,6 @@ import { Mail, MapPin, Menu, Phone, X } from "lucide-react";
 
 import { Logo } from "@/components/brand/Logo";
 import { Chatbot } from "@/components/public/Chatbot";
-import { ThemeToggle } from "@/components/portal/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { useCompany } from "@/lib/landing";
 import { applyInitialTheme } from "@/lib/theme";
@@ -75,7 +74,6 @@ export function PublicShell({ children, bare = false }: { children: ReactNode; b
 
           {/* Desktop CTA */}
           <div className="hidden items-center gap-2 lg:flex">
-            <ThemeToggle compact />
             <Button asChild size="sm">
               <Link to="/login">Login</Link>
             </Button>
@@ -83,7 +81,6 @@ export function PublicShell({ children, bare = false }: { children: ReactNode; b
 
           {/* Mobile: Login + Burger */}
           <div className="flex items-center gap-2 lg:hidden">
-            <ThemeToggle compact />
             <Button asChild size="sm" variant="outline" className="text-xs">
               <Link to="/login">Login</Link>
             </Button>

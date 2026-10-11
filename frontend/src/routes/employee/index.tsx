@@ -141,15 +141,6 @@ function EmployeeDashboard() {
   return (
     <div>
       <PageHeader
-        eyebrow={
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold uppercase tracking-wider">{position} · {department}</span>
-            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[11px] py-0">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block mr-1.5 animate-pulse" />
-              {shiftBadgeText}
-            </Badge>
-          </div>
-        }
         title={`${greeting}, ${firstName}`}
         description="Here's what's happening with your employment today."
       />

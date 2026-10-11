@@ -511,13 +511,18 @@ def extract_docx(path: Path) -> Dict:
 
     document = docx.Document(str(path))
     parts: List[str] = []
+    seen: set = set()
+
+    def add_text(text: str) -> None:
+        text = (text or "").strip()
+        if text and text not in seen:
+            seen.add(text)
+            parts.append(text)
 
     for element in document.element.body:
         if element.tag.endswith("p"):
             p = Paragraph(element, document)
-            text = p.text.strip()
-            if text:
-                parts.append(text)
+            add_text(p.text)
         elif element.tag.endswith("tbl"):
             t = Table(element, document)
             for row in t.rows:
@@ -541,9 +546,125 @@ def extract_docx(path: Path) -> Dict:
                         unique_cells = [unique_cells[1], unique_cells[0]]
 
                 for ctext in unique_cells:
-                    parts.append(ctext)
+                    add_text(ctext)
+
+    # Fancy resume templates often put ALL body text inside floating textboxes
+    # (w:txbxContent) or shapes — python-docx Paragraph.text skips those, so a
+    # 38 KB file can read as 0 chars. Sweep them explicitly (namespace-agnostic).
+    for txbx in document.element.body.iter():
+        if txbx.tag.endswith("}txbxContent"):
+            runs: List[str] = []
+            for t_elem in txbx.iter():
+                if t_elem.tag.endswith("}t") and t_elem.text and t_elem.text.strip():
+                    runs.append(t_elem.text.strip())
+            if runs:
+                add_text(" ".join(runs))
+
+    # Headers / footers (contact blocks often live here).
+    try:
+        for section in document.sections:
+            for container in (section.header, section.footer):
+                if container.is_linked_to_previous:
+                    continue
+                for p in container.paragraphs:
+                    add_text(p.text)
+                for tbl in container.tables:
+                    for row in tbl.rows:
+                        for cell in row.cells:
+                            add_text(cell.text)
+    except Exception:
+        pass
+
+    # Footnotes / endnotes live in separate parts — best-effort sweep.
+    try:
+        for rel in document.part.rels.values():
+            reltype = getattr(rel, "reltype", "") or ""
+            if "footnote" in reltype or "endnote" in reltype:
+                target = getattr(rel, "target_part", None)
+                element = getattr(target, "element", None)
+                if element is not None:
+                    runs = []
+                    for t_elem in element.iter():
+                        if t_elem.tag.endswith("}t") and t_elem.text and t_elem.text.strip():
+                            runs.append(t_elem.text.strip())
+                    if runs:
+                        add_text(" ".join(runs))
+    except Exception:
+        pass
+
+    # Last resort: catch-all sweep of EVERY text node in the body, any depth.
+    # Covers SmartArt/diagrams (a:t), VML shapes, form fields, grouped drawings
+    # and any other exotic structure. Field codes (instrText) and deleted
+    # revisions (delText) are skipped so we never invent stale text.
+    if not parts:
+        try:
+            runs = []
+            for t_elem in document.element.body.iter():
+                tag = t_elem.tag or ""
+                if not (tag.endswith("}t") and t_elem.text and t_elem.text.strip()):
+                    continue
+                if tag.endswith("}instrText") or tag.endswith("}delText"):
+                    continue
+                runs.append(t_elem.text.strip())
+            if runs:
+                add_text(" ".join(runs))
+        except Exception:
+            pass
 
     return {"text": "\n\n".join(parts).strip(), "method": "python-docx", "pages": 1}
+
+
+def describe_docx(path: Path) -> Dict:
+    """Best-effort structural stats for a .docx (never raises).
+
+    Used as diagnostics when a file yields 0 readable chars, so support can
+    tell image-only scans apart from exotic-but-textual templates.
+    """
+    stats: Dict = {
+        "paragraphs": 0, "paragraphs_with_text": 0, "tables": 0,
+        "textboxes": 0, "drawing_texts": 0, "embedded_images": 0,
+        "header_footer_text_chars": 0,
+    }
+    try:
+        import docx
+
+        document = docx.Document(str(path))
+        for element in document.element.body:
+            if element.tag.endswith("p"):
+                stats["paragraphs"] += 1
+                for t_elem in element.iter():
+                    if t_elem.tag.endswith("}t") and t_elem.text and t_elem.text.strip():
+                        stats["paragraphs_with_text"] += 1
+                        break
+            elif element.tag.endswith("tbl"):
+                stats["tables"] += 1
+        for elem in document.element.body.iter():
+            tag = elem.tag or ""
+            if tag.endswith("}txbxContent"):
+                stats["textboxes"] += 1
+            elif tag.endswith("}t") and not tag.endswith("}txbxContent"):
+                # DrawingML text (SmartArt/diagrams) uses a:t, not w:t.
+                if tag.startswith("{http://schemas.openxmlformats.org/drawingml"):
+                    stats["drawing_texts"] += 1
+        try:
+            for section in document.sections:
+                for container in (section.header, section.footer):
+                    for p in container.paragraphs:
+                        stats["header_footer_text_chars"] += len((p.text or "").strip())
+        except Exception:
+            pass
+    except Exception:
+        stats["open_error"] = True
+    try:
+        import zipfile
+
+        with zipfile.ZipFile(str(path)) as zf:
+            stats["embedded_images"] = sum(
+                1 for n in zf.namelist() if n.startswith("word/media/")
+            )
+    except Exception:
+        pass
+    return stats
 
 
 def extract_image(path: Path) -> Dict:

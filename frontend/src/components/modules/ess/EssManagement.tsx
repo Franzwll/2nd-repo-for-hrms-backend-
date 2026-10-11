@@ -534,13 +534,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   return (
     <div>
       <PageHeader
-        eyebrow={role === "superadmin" ? "Super Admin · Core HR" : "Admin · Core HR"}
         title="ESS Management"
-        description={
-          role === "superadmin"
-            ? "Organization-wide monitoring, bulk processing, workflow and policy configuration."
-            : "Process, approve and track employee self-service requests for your departments."
-        }
         actions={
           <Button size="sm" variant="outline" onClick={() => setReportsOpen(true)}>
             <FileText className="mr-2 h-4 w-4" /> Generate reports
@@ -577,7 +571,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
           label="Returned"
           value={count("Returned for Clarification")}
           icon={RotateCcw}
-          hint="Awaiting employee response"
           onClick={() => setStatus("Returned for Clarification")}
         />
         <StatCard
@@ -844,11 +837,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                             <Badge variant="outline" className={statusClass[r.status]}>
                               {r.status === "Returned for Clarification" ? "Returned" : r.status}
                             </Badge>
-                            {r.status === "Returned for Clarification" && (
-                              <p className="mt-1 text-[11px] text-muted-foreground">
-                                Awaiting employee response
-                              </p>
-                            )}
                             {(r.returnedCount ?? 0) > 1 && (
                               <p className="mt-1 text-[11px] text-caution">
                                 Returned {r.returnedCount}×
@@ -923,6 +911,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                   to={requestPage.to}
                   total={requestPage.total}
                   label="requests"
+                  showRangeLabel={false}
                   onPageChange={requestPage.setPage}
                 />
               </div>
@@ -947,10 +936,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                     <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                       <Cog className="h-5 w-5 text-primary" /> Category Management
                     </h2>
-                    <p className="text-xs text-muted-foreground">
-                      Create, edit and remove ESS request categories. Description shows to employees
-                      as the request-form placeholder.
-                    </p>
                   </div>
                   <div className="mt-3 rounded-md border border-dashed border-border">
                     <button
@@ -959,7 +944,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                       aria-expanded={newCategoryOpen}
                       className="flex w-full cursor-pointer items-center justify-between gap-2 p-3 text-left"
                     >
-                      <span className="eyebrow flex items-center gap-1.5">
+                      <span className="flex items-center gap-1.5 text-sm font-medium">
                         <ListChecks className="h-3.5 w-3.5" /> New category
                       </span>
                       <ChevronDown
@@ -1207,19 +1192,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                       <Settings2 className="h-5 w-5 text-primary" />
                       Request Management Settings
                     </h2>
-                    <p className="text-xs text-muted-foreground">
-                      Intake rules, approval routing, SLA and notifications applied to every open
-                      category.
-                    </p>
-                  </div>
-
-                  <div className="rounded-md border border-border p-3">
-                    <p className="eyebrow">Intake</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {categories.filter((c) => c.open !== false).length} of {categories.length}{" "}
-                      categories are open for new requests. Close a category in the list to stop
-                      accepting requests without deleting it.
-                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -1383,6 +1355,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                     to={logPage.to}
                     total={logPage.total}
                     label="log entries"
+                    showRangeLabel={false}
                     onPageChange={logPage.setPage}
                   />
                 </div>
@@ -1434,21 +1407,18 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                         value: "Approved",
                         id: "decision-approve",
                         label: "Approve",
-                        help: "Employee is notified and the request is finalised.",
                         active: "border-success/50 bg-success/10",
                       },
                       {
                         value: "Returned for Clarification",
                         id: "decision-clarify",
                         label: "Request clarification",
-                        help: "Sent back to the employee — they can edit and resubmit the same request.",
                         active: "border-primary/50 bg-primary/10",
                       },
                       {
                         value: "Rejected",
                         id: "decision-reject",
                         label: "Reject",
-                        help: "Request is closed permanently; the employee must file a new one.",
                         active: "border-destructive/50 bg-destructive/10",
                       },
                     ] as const
@@ -1462,7 +1432,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                       <RadioGroupItem value={o.value} id={o.id} className="mt-0.5" />
                       <span>
                         <span className="block text-sm font-medium">{o.label}</span>
-                        <span className="block text-xs text-muted-foreground">{o.help}</span>
                       </span>
                     </label>
                   ))}
@@ -1496,13 +1465,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                   </div>
                 )}
               </div>
-
-              {confirmReject && (
-                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
-                  Rejecting closes this request permanently. Press “Confirm rejection” to continue,
-                  or switch to “Request clarification” if the employee can still fix it.
-                </div>
-              )}
             </div>
           )}
           <DialogFooter>

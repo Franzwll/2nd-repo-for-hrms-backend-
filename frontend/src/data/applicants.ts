@@ -512,6 +512,11 @@ export type Interview = {
   /** Reserved facility for this schedule (request facility feature). */
   facilityName?: string | null;
   facilityStatus?: FacilityStatus;
+  /** Zoom virtual-interview links (auto-generated for Virtual mode). */
+  zoomMeetingId?: string | null;
+  zoomJoinUrl?: string | null;
+  zoomContinueUrl?: string | null;
+  zoomPassword?: string | null;
 };
 
 export const interviews: Interview[] = [

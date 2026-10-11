@@ -15,6 +15,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Modules\ApplicantManagement\Models\Applicant as ManagedApplicant;
+use Modules\ApplicantManagement\Models\ApplicantDocument;
+use Modules\ApplicantManagement\Services\DocumentVerificationService;
 use Modules\ApplicantManagement\Services\ScreeningService;
 use Modules\Landing\Http\Requests\JobApplicationRequest;
 use Modules\Landing\Http\Resources\AnnouncementResource;
@@ -26,6 +28,36 @@ class LandingController extends Controller
         protected NlpService $nlp,
         protected ScreeningService $screening
     ) {
+    }
+
+    /**
+     * Extensions accepted for public landing uploads.
+     * NOTE: validated against the CLIENT filename extension, not content
+     * sniffing — this PHP build's fileinfo reports valid .docx files as
+     * application/octet-stream, so the `mimes:` rule wrongly rejects real
+     * Word resumes with a 422. Uploads are temp-stored under random names,
+     * size-capped, and actually parsed downstream; a spoofed file only
+     * yields "unreadable", never execution.
+     */
+    public static function allowedUploadExtensions(): array
+    {
+        return ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'bmp', 'gif', 'tiff', 'tif', 'avif', 'svg', 'txt'];
+    }
+
+    /**
+     * Validation rule (Closure) accepting the extensions above. Keeps the
+     * same error message format the `mimes:` rule produced.
+     */
+    public static function uploadExtensionRule(): \Closure
+    {
+        $allowed = self::allowedUploadExtensions();
+
+        return function ($attribute, $value, $fail) use ($allowed) {
+            $ext = strtolower($value->getClientOriginalExtension());
+            if (! in_array($ext, $allowed, true)) {
+                $fail('The ' . $attribute . ' field must be a file of type: ' . implode(', ', $allowed) . '.');
+            }
+        };
     }
     public function company(): JsonResponse
     {
@@ -145,7 +177,7 @@ class LandingController extends Controller
     public function extractResume(Request $request): JsonResponse
     {
         $request->validate([
-            'resume' => ['required', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp,heic,heif,bmp,gif,tiff,tif,avif,svg', 'max:20480'],
+            'resume' => ['required', 'file', self::uploadExtensionRule(), 'max:20480'],
         ]);
 
         $originalName = $request->file('resume')->getClientOriginalName() ?: 'resume';
@@ -181,8 +213,48 @@ class LandingController extends Controller
         ]);
     }
 
-    public function apply(JobApplicationRequest $request): JsonResponse
+    /**
+     * Public content-based classifier for the isolated accuracy test page
+     * (and the future single-dropzone apply flow). Accepts any resume /
+     * supporting document and predicts Resume | COE | Certificate |
+     * Credential | Others.
+     *
+     * Three-signal fusion: CONTENT decides; filename is a small hint;
+     * is_first (first upload, expected resume slot) is a small +2 resume
+     * prior that never overrules strong document phrasing.
+     */
+    public function classifyDocument(Request $request): JsonResponse
     {
+        $request->validate([
+            'file' => ['required', 'file', self::uploadExtensionRule(), 'max:20480'],
+            // NOTE: 'boolean' rule rejects the strings FormData sends
+            // ("true"/"false"/"1"/"0"), so accept those explicitly and cast below.
+            'is_first' => ['sometimes', 'in:true,false,1,0,yes,no,on,off'],
+        ]);
+
+        $isFirst = filter_var($request->input('is_first', false), FILTER_VALIDATE_BOOLEAN);
+        $originalName = $request->file('file')->getClientOriginalName() ?: 'document';
+        $storedPath = $request->file('file')->store('classify-tmp', 'local');
+        try {
+            $fullPath = Storage::disk('local')->path($storedPath);
+            $result = $this->nlp->classifyDocument($fullPath, $originalName, $isFirst);
+        } finally {
+            if (Storage::disk('local')->exists($storedPath)) {
+                Storage::disk('local')->delete($storedPath);
+            }
+        }
+
+        if (! ($result['ok'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'error_message' => $result['error'] ?? 'Document classification failed.',
+            ], 502);
+        }
+
+        return response()->json(array_merge(['success' => true], $result['data'] ?? []));
+    }
+
+    public function apply(JobApplicationRequest $request): JsonResponse    {
         $jobPost = JobPost::find($request->integer('job_post_id'));
 
         if (! $jobPost || ! $jobPost->active || ! in_array($jobPost->status, ['published', 'Open']) || $jobPost->remainingSlots() <= 0) {
@@ -226,6 +298,44 @@ class LandingController extends Controller
         }
 
         $applicant = Applicant::create($payload);
+
+        // Persist supporting docs from the unified 1-box uploader
+        // (recognized COE / Certificate / Credential / Others). Same flow as
+        // Recruitment Management post-save: store + auto-verify each file.
+        $docFiles = $request->file('verification_docs', []);
+        if ($docFiles instanceof \Illuminate\Http\UploadedFile) {
+            $docFiles = [$docFiles];
+        }
+        $docTypes = $request->input('verification_doc_types', []);
+        if (! is_array($docTypes)) {
+            $docTypes = [$docTypes];
+        }
+        $allowedTypes = ['COE', 'Certificate', 'Credential', 'Others'];
+        foreach (array_values(is_array($docFiles) ? $docFiles : []) as $i => $docFile) {
+            if (! $docFile instanceof \Illuminate\Http\UploadedFile || ! $docFile->isValid()) {
+                continue;
+            }
+            $docType = (string) ($docTypes[$i] ?? 'Others');
+            if (! in_array($docType, $allowedTypes, true)) {
+                $docType = 'Others';
+            }
+            try {
+                $docPath = $docFile->store('applicant-documents', 'public');
+                $document = ApplicantDocument::create([
+                    'applicant_id' => $applicant->applicant_id,
+                    'doc_type' => $docType,
+                    'title' => $docFile->getClientOriginalName() ?: 'document',
+                    'original_copy' => false,
+                    'file_path' => $docPath,
+                    'original_name' => $docFile->getClientOriginalName(),
+                ]);
+                app(DocumentVerificationService::class)->verifyDocument($document);
+            } catch (\Throwable $docErr) {
+                \Illuminate\Support\Facades\Log::warning(
+                    'Landing apply document persist failed for applicant '.$applicant->applicant_id.': '.$docErr->getMessage()
+                );
+            }
+        }
 
         // Run spaCy NLP screening when a resume is present — same pipeline as Recruitment Management
         if (! empty($payload['resume_file_path'])) {

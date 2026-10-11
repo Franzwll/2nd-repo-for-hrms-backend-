@@ -28,10 +28,14 @@ from pydantic import BaseModel
 
 from app import config
 from app.services import document_verification, entity_extraction, matching, pipeline, preprocessing, screening
-from app.services import reference_data
+from app.services import doc_classifier, reference_data
 from app.services.text_extraction import ExtractionError, extract_text
 
 logger = logging.getLogger("nlp-service")
+
+# Bump this whenever the classifier/extractor changes so the test page can
+# prove which engine version actually answered (stale-process diagnosis).
+CLASSIFIER_VERSION = "v8-resume-ocr+diagnostics"
 
 app = FastAPI(
     title="HRMS NLP Screening Service",
@@ -327,6 +331,81 @@ async def verification_supporting_document(
             "extension": extracted_meta.get("extension"),
             "character_count": len(extracted_meta.get("text") or ""),
         }
+        return result
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+@app.post("/classify-document")
+async def classify_document(file: UploadFile = File(...), is_first: bool = Form(False)):
+    """Content-based single-dropzone classifier (test + future apply flow).
+
+    Three-signal fusion: CONTENT dominates; filename is a small hint; the
+    FIRST upload is expected to be the resume (is_first=True gives a small
+    +2 resume prior that never overrules strong document phrasing).
+    Unreadable files return predicted_type Others with confidence 0.
+    """
+    suffix = Path(file.filename or "").suffix or ".tmp"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(await file.read())
+        tmp_path = Path(tmp.name)
+
+    def _unreadable(reason: str) -> dict:
+        diagnostics = None
+        if suffix.lower() == ".docx":
+            try:
+                from app.services.text_extraction import describe_docx
+
+                diagnostics = describe_docx(tmp_path)
+            except Exception:  # noqa: BLE001 - diagnostics must never break the reply
+                diagnostics = None
+        reply = {
+            "success": True,
+            "classifier_version": CLASSIFIER_VERSION,
+            "predicted_type": "Others",
+            "confidence": 0.0,
+            "scores": {"Resume": 0.0, "COE": 0.0, "Certificate": 0.0, "Credential": 0.0, "Others": 0.0},
+            "reasons": [reason],
+            "signals": {"has_email": False, "has_phone": False, "sections": [], "char_count": 0},
+            "text_extraction": {"method": None, "pages": None, "extension": suffix.lstrip(".")},
+            "text_preview": "",
+        }
+        if diagnostics is not None:
+            reply["diagnostics"] = diagnostics
+        return reply
+
+    try:
+        try:
+            extracted_meta = extract_text(tmp_path, file.filename or "")
+        except ExtractionError as exc:
+            logger.warning("Classify-document extraction failed: %s", exc)
+            return _unreadable(f"Could not read file text: {exc}")
+
+        try:
+            cleaned = preprocessing.preprocess(extracted_meta["text"])
+            text = cleaned["cleaned_text"]
+        except Exception as exc:  # noqa: BLE001 - preprocessing must never break classification
+            logger.warning("Classify-document preprocessing failed: %s", exc)
+            return _unreadable(f"Could not process file text: {exc}")
+        try:
+            sections = list(entity_extraction.get_extractor().extract(text).get("sections_detected", []))
+        except Exception:  # noqa: BLE001 - section detection must never break classification
+            sections = []
+        try:
+            result = doc_classifier.classify_text(text, file.filename or "", sections, None, is_first)
+        except Exception as exc:  # noqa: BLE001 - classifier must never 500 the test page
+            logger.warning("Classify-document scoring failed: %s", exc)
+            return _unreadable(f"Could not score document: {exc}")
+        result["success"] = True
+        result["classifier_version"] = CLASSIFIER_VERSION
+        result["text_extraction"] = {
+            "method": extracted_meta.get("method"),
+            "pages": extracted_meta.get("pages"),
+            "extension": extracted_meta.get("extension"),
+            "character_count": len(extracted_meta.get("text") or ""),
+        }
+        # Short preview so the test page can show what was actually read.
+        result["text_preview"] = (extracted_meta.get("text") or "")[:600]
         return result
     finally:
         tmp_path.unlink(missing_ok=True)

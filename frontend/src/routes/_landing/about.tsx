@@ -14,6 +14,7 @@ import {
 import { PublicShell } from "@/components/public/PublicShell";
 import { Card, CardContent } from "@/components/ui/card";
 import { VALUE_BODIES, useCompany } from "@/lib/landing";
+import { useLightOnly } from "@/lib/theme";
 
 export const Route = createFileRoute("/_landing/about")({
   head: () => ({
@@ -86,6 +87,8 @@ const historyMilestones = [
 
 function About() {
   const { company } = useCompany();
+
+  useLightOnly();
 
   return (
     <PublicShell>

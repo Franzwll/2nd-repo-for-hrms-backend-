@@ -264,9 +264,6 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
             <h4 className="text-base font-bold font-display text-foreground tracking-tight">
               Compensation &amp; Payroll Summary
             </h4>
-            <p className="text-xs text-muted-foreground">
-              Official salary disbursement, tax withholdings, and statutory benefits
-            </p>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground font-medium">Next Payout:</span>
@@ -517,6 +514,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
             to={payslipPage.to}
             total={payslipPage.total}
             label="payslips"
+            showRangeLabel={false}
             onPageChange={payslipPage.setPage}
           />
         </CardContent>
@@ -532,9 +530,6 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
               <Building2 className="h-5 w-5 text-primary" />
               Statutory Benefits &amp; Active Loans
             </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Official government identification numbers, healthcare coverage, and active salary loan deduction schedules.
-            </p>
           </div>
           <Button
             size="sm"
@@ -637,9 +632,6 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
                 <HelpCircle className="h-5 w-5 text-primary" />
                 Payroll Requests &amp; Inquiries
               </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Submit overtime claims, report salary discrepancies, and track your filed payroll requests in one place.
-              </p>
             </div>
             <Badge variant="outline" className="text-xs gap-1.5 bg-primary/10 text-primary border-primary/20 font-semibold px-2.5 py-1 self-start sm:self-auto">
               <MessageSquareText className="h-3.5 w-3.5" />
@@ -787,9 +779,6 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
                   <MessageSquareText className="h-4 w-4 text-primary" />
                   My Payroll Requests History
                 </h4>
-                <p className="text-[11px] text-muted-foreground">
-                  Track the audit, verification, and resolution status of your filed payroll inquiries.
-                </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -882,6 +871,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
               to={payPage.to}
               total={payPage.total}
               label="requests"
+              showRangeLabel={false}
               onPageChange={payPage.setPage}
             />
           </div>

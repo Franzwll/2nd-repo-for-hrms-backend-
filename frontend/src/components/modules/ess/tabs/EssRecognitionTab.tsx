@@ -976,24 +976,7 @@ export function EssRecognitionTab() {
                 </ScrollArea>
 
                 {/* Pagination Toolbar */}
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-border/70 mt-2">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>
-                      Showing{" "}
-                      <span className="font-semibold text-foreground">
-                        {(currentPage - 1) * pageSize + 1}
-                      </span>{" "}
-                      to{" "}
-                      <span className="font-semibold text-foreground">
-                        {Math.min(currentPage * pageSize, filteredPosts.length)}
-                      </span>{" "}
-                      of{" "}
-                      <span className="font-semibold text-foreground">
-                        {filteredPosts.length}
-                      </span>{" "}
-                      recognitions
-                    </span>
-                  </div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 pt-4 border-t border-border/70 mt-2">
 
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1">

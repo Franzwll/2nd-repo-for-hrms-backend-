@@ -374,6 +374,7 @@ export function EssDocumentsTab() {
             to={docPage.to}
             total={docPage.total}
             label="documents"
+            showRangeLabel={false}
             onPageChange={docPage.setPage}
           />
         </CardContent>
