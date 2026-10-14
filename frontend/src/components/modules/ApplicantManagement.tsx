@@ -10755,7 +10755,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               onSort={applicantSort.toggle}
                               className="w-[8%]"
                             >
-                              Stagehttps://github.com/Franzwll/2nd-repo-for-hrms-backend-/pull/28/conflict?name=frontend%252Fsrc%252Fcomponents%252Fmodules%252FApplicantManagement.tsx&ancestor_oid=c08870fadb500c0d51ff789665458115ac209b1b&base_oid=59070d6da86b5b9f4d1bb84aab14f3b24e3af8d1&head_oid=177eda9c2a270d5fd56603c2d9809e8b85540647
+                              Stage
                             </SortHead>
                             <TableHead className="w-[15%] text-right">Actions</TableHead>
                           </TableRow>
