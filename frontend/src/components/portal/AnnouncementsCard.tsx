@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 
 export function AnnouncementsCard({ role, className }: { role: Role; className?: string }) {
   const { announcements, removeAnnouncement } = usePortalState();
-  const canManage = role === "superadmin";
+  const canManage = role === "superadmin" || role === "admin";
   const [publishOpen, setPublishOpen] = useState(false);
   const [viewAllOpen, setViewAllOpen] = useState(false);
   const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<string | null>(null);
@@ -42,9 +42,6 @@ export function AnnouncementsCard({ role, className }: { role: Role; className?:
                   {visible.length}
                 </Badge>
               </h2>
-              <p className="text-xs text-muted-foreground">
-                Company-wide updates and bulletins posted by HR.
-              </p>
             </div>
           </div>
 

@@ -1,18 +1,23 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, CheckCircle2, FileText, Upload } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, CheckCircle2, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 import { PublicShell } from "@/components/public/PublicShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  UnifiedDocumentsUploader,
+  pickResumeDoc,
+  type UnifiedDoc,
+} from "@/components/documents/UnifiedDocumentsUploader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { landingApi } from "@/lib/api";
 import { mapJob, peso } from "@/lib/landing";
-import { cn } from "@/lib/utils";
+import { useLightOnly } from "@/lib/theme";
 import {
   isValidEmail,
   isValidName,
@@ -56,21 +61,34 @@ export const Route = createFileRoute("/_landing/jobs/$jobId")({
 function JobDetail() {
   const { job } = Route.useLoaderData();
   const [submitted, setSubmitted] = useState(false);
-  const [fileName, setFileName] = useState("");
   const [applying, setApplying] = useState(false);
+
+  useLightOnly();
   // Auto-fill fields from resume extraction (only name,email,phone,location)
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [location, setLocation] = useState("");
   const [extracting, setExtracting] = useState(false);
-  const [resumeDragActive, setResumeDragActive] = useState(false);
-  const [resumeFile, setResumeFile] = useState<File | null>(null);
-  const [resumePreviewUrl, setResumePreviewUrl] = useState<string | null>(null);
-  /** Verification documents proving the content claimed in the resume/CV
-   *  (COE, certificates, credentials, others). Attached to the application. */
-  const [verifyDocs, setVerifyDocs] = useState<{ type: string; file: File }[]>([]);
-  const previewRef = useRef<HTMLDivElement>(null);
+  /**
+   * Single smart upload box: resume + supporting docs in any order.
+   * Each file is recognized by content (rule + filename + content check);
+   * the highest Resume-score file becomes the resume pick, the rest are
+   * supporting docs. First upload is expected to be the resume.
+   */
+  const [unifiedDocs, setUnifiedDocs] = useState<UnifiedDoc[]>([]);
+  const resumePick = pickResumeDoc(unifiedDocs);
+  const resumeFile = resumePick?.file ?? null;
+  const verifyDocs = unifiedDocs
+    .filter((d) => resumePick?.id !== d.id)
+    .map((d) => {
+      const raw = d.manualType ?? d.result?.predicted_type ?? "Others";
+      // applicant_documents only accepts COE | Certificate | Credential | Others —
+      // anything else becomes Others so validation never 422s.
+      const type: "COE" | "Certificate" | "Credential" | "Others" =
+        raw === "COE" || raw === "Certificate" || raw === "Credential" ? raw : "Others";
+      return { type, file: d.file };
+    });
 
   // Normalize PH phone (+63 → 0) for auto-fill
   const normalizePHPhone = (raw?: string | null) => {
@@ -83,10 +101,8 @@ function JobDetail() {
 
   const handleResumeExtract = async (file: File | null) => {
     if (!file) return;
-    setFileName(file.name);
-    setResumeFile(file);
-    // Validate type/size before extraction — same allow-list as Recruitment Management (add applicant)
-    const okType = /\.(pdf|docx?|png|jpe?g|webp|heic|heif|bmp|gif|tiff|tif|avif|svg)$/i.test(file.name);
+    // Validate type/size before extraction — same allow-list as the unified uploader
+    const okType = /\.(pdf|docx?|png|jpe?g|webp|heic|heif|bmp|gif|tiff?|avif|svg|txt)$/i.test(file.name);
     if (!okType) {
       toast.error("Unsupported file — please use PDF, DOC, DOCX, PNG, JPG or JPEG.");
       return;
@@ -139,7 +155,8 @@ function JobDetail() {
     }
   };
 
-  // Preview URL for the uploaded resume (so user can see the file)
+  // Resume pick preview URL (object URL per picked file, revoked on change)
+  const [resumePreviewUrl, setResumePreviewUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!resumeFile) {
       setResumePreviewUrl(null);
@@ -226,19 +243,38 @@ function JobDetail() {
                 </ul>
               </section>
 
-              <section className="mt-10">
-                <h2 className="font-display text-2xl font-semibold">Benefits</h2>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {(job.benefits ?? []).map((b: string) => (
-                    <span
-                      key={b}
-                      className="rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground/75"
-                    >
-                      {b}
-                    </span>
-                  ))}
-                </div>
-              </section>
+              {(job.additional ?? []).length > 0 && (
+                <section className="mt-10">
+                  <h2 className="font-display text-2xl font-semibold">Additional Info</h2>
+                  <ul className="mt-4 space-y-2.5">
+                    {(job.additional ?? []).map((r: string) => (
+                      <li key={r} className="flex gap-2.5 text-[15px] text-foreground/75">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
+                        {r}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {job.instructions?.trim() ? (
+                <section className="mt-10">
+                  <h2 className="font-display text-2xl font-semibold">How to Apply</h2>
+                  <p className="mt-3 text-[15px] leading-relaxed text-foreground/75">
+                    {job.instructions}
+                  </p>
+                </section>
+              ) : null}
+
+              {job.about?.trim() ? (
+                <section className="mt-10">
+                  <h2 className="font-display text-2xl font-semibold">About Company</h2>
+                  <p className="mt-3 text-[15px] leading-relaxed text-foreground/75">
+                    {job.about}
+                  </p>
+                </section>
+              ) : null}
+
             </div>
           </div>
 
@@ -264,8 +300,6 @@ function JobDetail() {
                   <form
                     onSubmit={async (e) => {
                       e.preventDefault();
-                      const fd = new FormData(e.currentTarget);
-                      const cover = String(fd.get("cover") ?? "").trim();
                       const n = name.trim();
                       const em = email.trim();
                       const ph = phone.trim();
@@ -315,7 +349,6 @@ function JobDetail() {
                           fd.append("email", em);
                           fd.append("phone", ph);
                           fd.append("source", "Landing Page");
-                          fd.append("summary", cover);
                           fd.append("resume", resumeFile);
                           // Verification documents (COE / Certificate /
                           // Credential / Others) proving the resume content.
@@ -331,7 +364,6 @@ function JobDetail() {
                             email: em,
                             phone: ph,
                             source: "Landing Page",
-                            summary: cover,
                           });
                         }
                         setSubmitted(true);
@@ -416,77 +448,18 @@ function JobDetail() {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label htmlFor="resume">
-                          Resume / CV (optional){" "}
+                        <Label>
+                          Resume + Supporting Documents (optional){" "}
                           {extracting && <span className="text-xs text-gold">Extracting…</span>}
                         </Label>
-                        <label
-                          htmlFor="resume"
-                          className={cn(
-                            "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed p-6 text-center transition-colors",
-                            resumeDragActive
-                              ? "border-primary bg-primary/10"
-                              : "border-border bg-muted/40 hover:bg-muted/60",
-                          )}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            setResumeDragActive(true);
-                          }}
-                          onDragEnter={(e) => {
-                            e.preventDefault();
-                            setResumeDragActive(true);
-                          }}
-                          onDragLeave={(e) => {
-                            e.preventDefault();
-                            setResumeDragActive(false);
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            setResumeDragActive(false);
-                            handleResumeExtract(e.dataTransfer.files?.[0] ?? null);
-                          }}
-                        >
-                          {fileName ? (
-                            <>
-                              <FileText
-                                className={cn(
-                                  "h-9 w-9",
-                                  resumeDragActive ? "text-primary" : "text-gold",
-                                )}
-                              />
-                              <span className="text-sm font-medium text-foreground">
-                                {fileName}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                {extracting
-                                  ? "Extracting name, email, phone, location…"
-                                  : "Drag a new file to replace or click to browse"}
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <Upload
-                                className={cn(
-                                  "h-9 w-9",
-                                  resumeDragActive ? "text-primary" : "text-muted-foreground",
-                                )}
-                              />
-                              <span className="text-sm text-muted-foreground">
-                                Drag a file here or click to upload — PDF, DOC, DOCX, PNG, JPG (max 10MB) —
-                                auto-fills name, email, phone, location
-                              </span>
-                            </>
-                          )}
-                        </label>
-                        <Input
-                          id="resume"
-                          name="resume"
-                          type="file"
-                          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,.heic,.heif,.bmp,.gif,.tiff,.tif,.avif,.svg"
-                          className="sr-only"
-                          onChange={(e) => handleResumeExtract(e.target.files?.[0] ?? null)}
+                        <UnifiedDocumentsUploader
+                          docs={unifiedDocs}
+                          onChange={setUnifiedDocs}
+                          onResumePick={(file) => handleResumeExtract(file)}
+                          title="Drop resume + COE + certificates here"
+                          hint="Any order, no tags needed — first file is expected to be the resume, but every file is recognized by content. Press Recognize files, then the resume auto-fills your details."
                         />
-                        {/* File name as clickable link — opens in new tab / downloads */}
+                        {/* Resume pick preview — opens in new tab / downloads */}
                         {resumeFile && resumePreviewUrl && (
                           <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2">
                             <div className="flex items-center gap-2 overflow-hidden">
@@ -497,7 +470,7 @@ function JobDetail() {
                                 rel="noopener noreferrer"
                                 download={resumeFile.name}
                                 className="truncate text-xs font-medium text-primary underline underline-offset-2 hover:text-primary/80"
-                                title="Click to open in new tab or download"
+                                title="Recognized resume — click to open in new tab or download"
                               >
                                 {resumeFile.name}
                               </a>
@@ -511,13 +484,8 @@ function JobDetail() {
                               size="sm"
                               className="h-7 shrink-0 text-xs text-muted-foreground"
                               onClick={() => {
-                                setResumeFile(null);
-                                setFileName("");
-                                setResumePreviewUrl(null);
-                                const el = document.getElementById(
-                                  "resume",
-                                ) as HTMLInputElement | null;
-                                if (el) el.value = "";
+                                const pick = pickResumeDoc(unifiedDocs);
+                                if (pick) setUnifiedDocs(unifiedDocs.filter((d) => d.id !== pick.id));
                               }}
                             >
                               Remove
@@ -525,85 +493,10 @@ function JobDetail() {
                           </div>
                         )}
                       </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="cover">Cover Letter (optional)</Label>
-                        <Textarea
-                          id="cover"
-                          name="cover"
-                          rows={4}
-                          placeholder="Tell us why you're a great fit."
-                        />
-                      </div>
 
-                      {/* VERIFICATION DOCUMENTS — prove the content claimed in
-                          the resume/CV (COE, certificates, credentials, others) */}
-                      <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3">
-                        <p className="text-xs font-semibold tracking-wide text-muted-foreground">
-                          VERIFICATION DOCUMENTS (OPTIONAL)
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Upload proof of the content claimed in your resume/CV: COE (work
-                          experience), Certificates (trainings), Credentials (diploma, license,
-                          TOR), and Others (awards, portfolio). Original copies are prioritized for
-                          verification.
-                        </p>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {["COE", "Certificate", "Credential", "Others"].map((type) => (
-                            <label
-                              key={type}
-                              className="flex cursor-pointer items-center justify-between gap-2 rounded-md border border-border/70 bg-background px-3 py-2 text-xs hover:border-primary/40"
-                            >
-                              <span className="font-medium">{type}</span>
-                              <span className="flex items-center gap-1 text-primary">
-                                <Upload className="h-3 w-3" />
-                                {verifyDocs.filter((d) => d.type === type).length > 0
-                                  ? `${verifyDocs.filter((d) => d.type === type).length} file(s)`
-                                  : "Upload"}
-                              </span>
-                              <input
-                                type="file"
-                                className="hidden"
-                                multiple
-                                accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-                                onChange={(e) => {
-                                  const files = Array.from(e.target.files ?? []);
-                                  if (files.length) {
-                                    setVerifyDocs((prev) => [
-                                      ...prev.filter((d) => d.type !== type),
-                                      ...files.map((file) => ({ type, file })),
-                                    ]);
-                                  }
-                                  e.target.value = "";
-                                }}
-                              />
-                            </label>
-                          ))}
-                        </div>
-                        {verifyDocs.length > 0 && (
-                          <div className="space-y-1">
-                            {verifyDocs.map((d, i) => (
-                              <div
-                                key={i}
-                                className="flex items-center justify-between gap-2 rounded border border-border/60 bg-background px-2 py-1 text-xs"
-                              >
-                                <span className="min-w-0 flex-1 truncate">
-                                  <span className="font-medium text-primary">{d.type}</span> —{" "}
-                                  {d.file.name}
-                                </span>
-                                <button
-                                  type="button"
-                                  className="shrink-0 text-destructive hover:underline"
-                                  onClick={() =>
-                                    setVerifyDocs((prev) => prev.filter((_, xi) => xi !== i))
-                                  }
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      {/* Recognized supporting docs ride along automatically —
+                          the auto-split preview above shows what ships as
+                          verification_docs. No manual tagging needed. */}
                     </div>
 
                     <Button type="submit" className="mt-5 w-full" disabled={applying || extracting}>

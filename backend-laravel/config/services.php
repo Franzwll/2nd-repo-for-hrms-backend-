@@ -38,10 +38,42 @@ return [
     'gemini' => [
         'key' => env('GEMINI_API_KEY'),
         'fallback_key' => env('GEMINI_FALLBACK_API_KEY'),
-        'model' => env('GEMINI_MODEL', 'gemini-3.6-flash'),
+        'model' => env('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
         'fallback_model' => env('GEMINI_FALLBACK_MODEL'),
         'timeout' => (int) env('GEMINI_TIMEOUT', 30),
         'max_tokens' => (int) env('GEMINI_MAX_TOKENS', 2048),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | AI chat (Landing + ESS share one chain)
+    |--------------------------------------------------------------------------
+    | 1st Groq (openai/gpt-oss-20b) -> 2nd OpenRouter
+    | (nvidia/nemotron-3-super-120b-a12b:free) -> 3rd shared Gemini.
+    */
+    'chat_groq' => [
+        'key' => env('CHAT_GROQ_API_KEY'),
+        'model' => env('CHAT_GROQ_MODEL', 'openai/gpt-oss-20b'),
+    ],
+
+    'chat_openrouter' => [
+        'key' => env('CHAT_OPENROUTER_API_KEY'),
+        'model' => env('CHAT_OPENROUTER_MODEL', 'nvidia/nemotron-3-super-120b-a12b:free'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | AI job-post drafts (own Groq/OpenRouter keys, shared Gemini key)
+    |--------------------------------------------------------------------------
+    */
+    'job_groq' => [
+        'key' => env('JOB_GROQ_API_KEY'),
+        'model' => env('JOB_GROQ_MODEL', 'openai/gpt-oss-20b'),
+    ],
+
+    'job_openrouter' => [
+        'key' => env('JOB_OPENROUTER_API_KEY'),
+        'model' => env('JOB_OPENROUTER_MODEL', 'nvidia/nemotron-3-super-120b-a12b:free'),
     ],
 
     'turnstile' => [
@@ -61,6 +93,29 @@ return [
         // (0 = unlimited). When set, the builder's AI usage indicator shows
         // "used X of N today" and the API answers 429 past the cap.
         'daily_limit' => (int) env('JOB_AI_DAILY_LIMIT', 0),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Zoom Meeting SDK (embedded virtual interviews)
+    |--------------------------------------------------------------------------
+    | Mock provider (default) needs no keys — ZoomMeetingService generates
+    | Zoom-style links stored on the interview row. To embed a REAL meeting
+    | inside the HRMS popup (no Zoom app), create a Meeting SDK app +
+    | Server-to-Server OAuth app at https://marketplace.zoom.us and fill:
+    |   ZOOM_PROVIDER=api
+    |   ZOOM_SDK_KEY=..., ZOOM_SDK_SECRET=...
+    |   ZOOM_ACCOUNT_ID=..., ZOOM_CLIENT_ID=..., ZOOM_CLIENT_SECRET=...
+    | The frontend joins via @zoom/meetingsdk Component View using the
+    | signature minted by POST /api/v1/interviews/{id}/zoom-signature.
+    */
+    'zoom' => [
+        'provider'      => env('ZOOM_PROVIDER', 'mock'),
+        'sdk_key'       => env('ZOOM_SDK_KEY'),
+        'sdk_secret'    => env('ZOOM_SDK_SECRET'),
+        'account_id'    => env('ZOOM_ACCOUNT_ID'),
+        'client_id'     => env('ZOOM_CLIENT_ID'),
+        'client_secret' => env('ZOOM_CLIENT_SECRET'),
     ],
 
 ];

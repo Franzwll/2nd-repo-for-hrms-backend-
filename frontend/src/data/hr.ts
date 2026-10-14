@@ -80,6 +80,10 @@ export type Position = {
   salaryGradeId?: number | null;
   salaryGradeMin?: number | null;
   salaryGradeMax?: number | null;
+  /** Whether this position requires an assessment test. */
+  requires_assessment?: boolean;
+  /** Whether this position requires a practical test. */
+  requires_practical?: boolean;
 };
 
 export const positions: Position[] = [
@@ -132,6 +136,36 @@ export const positions: Position[] = [
     filled: 6,
     salaryBand: "₱16,000 – ₱20,000",
     dbId: 5,
+  },
+  {
+    id: "POS-005-1",
+    title: "Senior Line Cook",
+    department: "Kitchen / Culinary",
+    level: "Rank & File",
+    headcount: 6,
+    filled: 4,
+    salaryBand: "₱20,000 – ₱24,000",
+    dbId: 113,
+  },
+  {
+    id: "POS-005-2",
+    title: "Demi Chef de Partie",
+    department: "Kitchen / Culinary",
+    level: "Rank & File",
+    headcount: 4,
+    filled: 2,
+    salaryBand: "₱24,000 – ₱28,000",
+    dbId: 114,
+  },
+  {
+    id: "POS-005-3",
+    title: "Chef de Partie (by station)",
+    department: "Kitchen / Culinary",
+    level: "Supervisory",
+    headcount: 3,
+    filled: 2,
+    salaryBand: "₱30,000 – ₱36,000",
+    dbId: 115,
   },
   {
     id: "POS-006-1",

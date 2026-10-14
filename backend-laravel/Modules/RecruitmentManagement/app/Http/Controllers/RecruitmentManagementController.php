@@ -201,10 +201,13 @@ class RecruitmentManagementController extends Controller
         $data['responsibilities_json'] = $data['responsibilities'] ?? [];
         $data['qualifications_json'] = $data['qualifications'] ?? [];
         $data['skills_json'] = $data['skills'] ?? [];
+        $data['additional_json'] = $data['additional'] ?? [];
+        // Builder canvas arrangement — the drag-and-drop order the recruiter set.
+        $data['blocks_json'] = $data['blocks'] ?? null;
         $data['posted_date'] = $data['posted_date'] ?? now()->toDateString();
 
         $platforms = $data['platforms'] ?? [];
-        unset($data['responsibilities'], $data['qualifications'], $data['skills'], $data['platforms']);
+        unset($data['responsibilities'], $data['qualifications'], $data['skills'], $data['additional'], $data['blocks'], $data['platforms']);
 
         // Handle poster picture upload
         if ($request->hasFile('picture')) {
@@ -276,7 +279,10 @@ class RecruitmentManagementController extends Controller
             }
         }
 
-        abort(404);
+        // The picture column points at a file that no longer exists on disk
+        // (stale path after a storage wipe / import). Degrade to the composed
+        // template poster instead of a 404 so cards never render broken.
+        return $this->posterResponse($model->title);
     }
 
     /* ------------------------------------------------------------------ */
@@ -318,8 +324,23 @@ class RecruitmentManagementController extends Controller
             $data['skills_json'] = $data['skills'];
             unset($data['skills']);
         }
+        if (isset($data['additional'])) {
+            $data['additional_json'] = $data['additional'];
+            unset($data['additional']);
+        }
+        // Only overwrite a stored arrangement when the builder sends one, so a
+        // client that doesn't know about ordering never resets a saved one.
+        if (isset($data['blocks'])) {
+            $data['blocks_json'] = $data['blocks'];
+            unset($data['blocks']);
+        }
         $platforms = $data['platforms'] ?? null;
         unset($data['platforms']);
+
+        // Same Core HCM band defaulting as create(): an edit that clears the
+        // salary (or omits it) still inherits the position's grade band rather
+        // than persisting an empty range on the post.
+        $data = $this->applyPositionSalaryDefaults($data);
 
         // Handle poster picture replacement
         if ($request->hasFile('picture')) {
@@ -433,11 +454,14 @@ class RecruitmentManagementController extends Controller
             'vacancies' => ['nullable', 'integer', 'min:1', 'max:500'],
             'experience_level' => ['nullable', 'string', 'max:60'],
             'education_level' => ['nullable', 'string', 'max:60'],
+            'blocks' => ['nullable', 'array'],
+            'blocks.*' => ['string', 'in:description,responsibilities,qualifications,additional,instructions,about'],
+            'notes' => ['nullable', 'array'],
         ]);
 
         if (! $generator->isConfigured()) {
             return response()->json([
-                'message' => 'The AI generator is not configured. Set GEMINI_API_KEY (or OPENROUTER_API_KEY) on the API server.',
+                'message' => 'The AI generator is not configured. Set JOB_GROQ_API_KEY (or a fallback key) on the API server.',
             ], 422);
         }
 
@@ -468,6 +492,8 @@ class RecruitmentManagementController extends Controller
             'vacancies' => $validated['vacancies'] ?? 1,
             'experience_level' => $validated['experience_level'] ?? null,
             'education_level' => $validated['education_level'] ?? null,
+            'blocks' => $validated['blocks'] ?? ['description', 'responsibilities', 'qualifications', 'additional', 'instructions', 'about'],
+            'notes' => $validated['notes'] ?? [],
         ], $vocabulary);
 
         if (! $result['ok']) {
@@ -507,22 +533,54 @@ class RecruitmentManagementController extends Controller
             $data['about'] = 'Oxford Suites Makati is a premier all-suite hotel in the heart of Makati\'s business district, known for warm Filipino hospitality and dependable service.';
         }
 
-        // Vocab grounding report: which generated skills already exist in the
-        // screening vocabulary vs. which are new (one-click-add candidates).
+        // Vocab grounding report: which vocabulary terms the generated prose
+        // reuses (so HR sees what will actually match resumes). Skills are no
+        // longer generated — they come from the requirement template — so the
+        // report scans the generated responsibility / qualification /
+        // additional lines for known terms. Shape kept for compatibility.
         $known = [];
         foreach ($skillsMap as $canonical => $aliases) {
-            $known[mb_strtolower(trim((string) $canonical))] = true;
+            $known[mb_strtolower(trim((string) $canonical))] = $canonical;
             foreach ((array) $aliases as $alias) {
-                $known[mb_strtolower(trim((string) $alias))] = true;
+                $k = mb_strtolower(trim((string) $alias));
+                if ($k !== '' && ! isset($known[$k])) {
+                    $known[$k] = $canonical;
+                }
             }
         }
         $matched = [];
+        $seenMatched = [];
+        foreach (['responsibilities', 'qualifications', 'additional'] as $field) {
+            $lines = $data[$field] ?? [];
+            if (is_string($lines)) {
+                $lines = preg_split('/\r?\n/', $lines) ?: [];
+            }
+            foreach ((array) $lines as $line) {
+                $norm = mb_strtolower(trim((string) $line));
+                if ($norm === '') {
+                    continue;
+                }
+                if (isset($known[$norm]) && ! isset($seenMatched[$known[$norm]])) {
+                    $matched[] = $known[$norm];
+                    $seenMatched[$known[$norm]] = true;
+                    continue;
+                }
+                $padded = ' ' . preg_replace('/\s+/', ' ', $norm) . ' ';
+                foreach ($known as $key => $canonical) {
+                    if (strlen($key) >= 4 && str_contains($padded, ' ' . $key . ' ')) {
+                        if (! isset($seenMatched[$canonical])) {
+                            $matched[] = $canonical;
+                            $seenMatched[$canonical] = true;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
         $fresh = [];
         foreach ((array) ($data['skills'] ?? []) as $skill) {
             $key = mb_strtolower(trim((string) $skill));
-            if ($key !== '' && isset($known[$key])) {
-                $matched[] = $skill;
-            } elseif ($key !== '') {
+            if ($key !== '' && ! isset($known[$key])) {
                 $fresh[] = $skill;
             }
         }

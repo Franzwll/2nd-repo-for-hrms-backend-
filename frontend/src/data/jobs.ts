@@ -3,6 +3,13 @@ export type JobStatus = "Open" | "Closed" | "Draft";
 export type Job = {
   id: string;
   dbId?: number;
+  /**
+   * Core HCM `positions.position_id` this post belongs to. Two positions can
+   * share a title in one department (e.g. a front-line and a supervisory
+   * "Front Desk Receptionist" on different salary bands), so the title alone
+   * cannot identify which role a post was built for.
+   */
+  positionId?: number | null;
   title: string;
   department: string;
   employmentType: "Full-time" | "Part-time" | "Contract" | "Seasonal";
@@ -21,11 +28,22 @@ export type Job = {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
+  additional?: string[];
+  instructions?: string;
+  about?: string;
   benefits: string[];
   applicants: number;
   platforms: string[];
+  /**
+   * Builder canvas arrangement — the ordered block ids the recruiter dragged
+   * into place. Absent on mock/seed data, in which case the default order wins.
+   */
+  blocks?: string[] | null;
   /** Uploaded hiring-poster picture (API url) */
   picture?: string;
+  /** Assessment / practical test requirement flags (API-owned, optional on mocks). */
+  requires_assessment?: boolean;
+  requires_practical?: boolean;
 };
 
 export const jobs: Job[] = [

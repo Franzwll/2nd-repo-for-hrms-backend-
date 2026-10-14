@@ -23,8 +23,10 @@ import {
   Download,
   Eye,
   Facebook,
-  FileCheck,
   FilePlus2,
+  FileCheck,
+  Check,
+  ChevronDown,
   FileText,
   Flag,
   Lock,
@@ -32,7 +34,6 @@ import {
   GraduationCap,
   GripVertical,
   Heart,
-  Image as ImageIcon,
   Info,
   Instagram,
   LayoutGrid,
@@ -43,6 +44,7 @@ import {
   MoreHorizontal,
   PencilRuler,
   Plus,
+  Printer,
   Repeat,
   ScanLine,
   Search,
@@ -59,8 +61,6 @@ import {
   UserPlus,
   Users,
   X,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useBlocker } from "@tanstack/react-router";
@@ -98,7 +98,7 @@ import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { ListBody } from "@/components/portal/ListBody";
 import { DEFAULT_PAGE_SIZE } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
-import { peso, type Job } from "@/data/jobs";
+import { peso, type Job, type JobStatus } from "@/data/jobs";
 import { departments, positions, type Department, type Position } from "@/data/hr";
 import {
   requisitionStore,
@@ -111,14 +111,18 @@ import {
   interviewers,
   screeningCriteria,
   statusMeta,
-  VERIFICATION_DOC_TYPES,
   type ApplicantStatus,
   type VerificationDocType,
 } from "@/data/applicants";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useSort } from "@/components/portal/sortable";
-import { cn } from "@/lib/utils";
+import {
+  UnifiedDocumentsUploader,
+  pickResumeDoc,
+  type UnifiedDoc,
+} from "@/components/documents/UnifiedDocumentsUploader";
+import { cn, downloadTextFile } from "@/lib/utils";
 import {
   API_BASE_URL,
   applicantDocumentsApi,
@@ -133,6 +137,7 @@ import {
   type ApiScreeningReference,
   type JobAiUsage,
   type JobDraftErrorPayload,
+  type RequirementTemplatePayload,
   type ScreeningConfiguration,
   type ScreeningRequirementEntityType,
 } from "@/lib/api";
@@ -156,15 +161,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  describeExport,
-  exportReport,
   type ReportData,
-  type ReportFormat,
 } from "@/lib/report-export";
-import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
+import { ReportMenu } from "@/components/ui/report-menu";
 import {
   RequirementMatchPanel,
   ResumeInfoPanel,
@@ -187,6 +190,7 @@ function transformApiJob(j: ApiJobPost): Job {
   const job: Job = {
     id: j.slug || String(j.job_post_id),
     dbId: j.job_post_id,
+    positionId: j.position_id ?? null,
     title: j.title,
     department: j.department || "Front Office",
     employmentType: j.employment_type,
@@ -205,9 +209,13 @@ function transformApiJob(j: ApiJobPost): Job {
     responsibilities: j.responsibilities || [],
     qualifications: j.qualifications || [],
     skills: j.skills || [],
+    additional: j.additional || [],
+    instructions: j.instructions || "",
+    about: j.about || "",
     benefits: [],
     applicants: Number(j.applicants_count) || 0,
     platforms: j.platforms && j.platforms.length > 0 ? j.platforms : ["Website"],
+    blocks: j.blocks ?? null,
   };
   if (j.picture_url) job.picture = resolveStorageUrl(j.picture_url) ?? "";
   return job;
@@ -276,7 +284,7 @@ const REQUIREMENT_ENTITY_META: {
     value: "skill",
     label: "Skill",
     className: "border-primary/40 bg-primary/10 text-primary",
-    appliesTo: "Required Skills block",
+    appliesTo: "Screening Requirements panel",
   },
   {
     value: "certification",
@@ -490,9 +498,38 @@ export function ReportedEntitiesManager() {
 /* ------------------------------------------------------------------ */
 
 type BuilderEntityMapping = Record<
-  "skills" | "job_roles" | "certifications",
+  "skills" | "job_roles" | "certifications" | "education" | "experience",
   Record<string, string[]>
 >;
+
+/**
+ * Education / experience levels the Job Info selects offer.
+ *
+ * These used to be hard-coded lists, which meant HR could not require a level
+ * the screening model did not know about. They are now derived from the
+ * screening reference data (data_type education / experience), so the select,
+ * the requirement templates and the NLP vocabulary stay in step. The static
+ * lists are only a fallback for the moment before that reference data loads.
+ */
+const FALLBACK_EDUCATION_LEVELS = [
+  "High School Graduate",
+  "Vocational / TESDA",
+  "College Level",
+  "Bachelor's Degree",
+] as const;
+const FALLBACK_EXPERIENCE_LEVELS = ["No Experience", "1-2 Years", "3-5 Years", "5+ Years"] as const;
+
+/** Reference-data levels, ordered so the broad qualifications read first and
+ *  the narrower ones (degree specialisations) follow alphabetically. */
+function levelsFromReference(
+  mapping: BuilderEntityMapping | null,
+  group: "education" | "experience",
+  fallback: readonly string[],
+): string[] {
+  const fromRef = Object.keys(mapping?.[group] ?? {});
+  if (fromRef.length === 0) return [...fallback];
+  return [...fromRef].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
 
 function normalizeEntityText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -706,6 +743,620 @@ function BuilderEntityGroup({
   );
 }
 
+/** Screening Requirements panel — replaces the old Required Skills textarea.
+ *  Position picker drives the requirement template; skills edit as
+ *  vocabulary-backed chips writing to the same draft.skills string so
+ *  skills_json, ScreeningService and the careers page are untouched.
+ *  Education / Experience stay editable in Job Info (source of truth) and
+ *  render here read-only. Certifications are derived from Qualifications. */
+function ScreeningRequirementsPanel({
+  draft,
+  mapping,
+  loading,
+  error,
+  addingTerm,
+  scoring,
+  positions,
+  templateName,
+  templateSkillCount,
+  templateCertCount,
+  hasTemplateForPosition,
+  onPickPosition,
+  onLevelsChange,
+  onSkillsChange,
+  onCertificationsChange,
+  onAdd,
+  onRetry,
+  onCreateTemplate,
+  creatingTemplate,
+}: {
+  draft: Draft;
+  mapping: BuilderEntityMapping | null;
+  loading: boolean;
+  error: string | null;
+  addingTerm: boolean;
+  scoring: BuilderScoringRef;
+  positions: {
+    dbId?: number | null | undefined;
+    title: string;
+    department: string;
+    level?: string | undefined;
+    salaryBand?: string | undefined;
+  }[];
+  templateName: string | null;
+  templateSkillCount: number;
+  templateCertCount: number;
+  hasTemplateForPosition: boolean;
+  onPickPosition: (
+    department: string,
+    title: string,
+    positionDbId?: number | null | undefined,
+  ) => void;
+  /** Education / experience live here now — the two fields NLP scores against. */
+  onLevelsChange: (levels: {
+    educationLevel: Job["education"];
+    experienceLevel: Job["experience"];
+  }) => void;
+  onSkillsChange: (next: string) => void;
+  /** Adds a certification line to Qualifications, where the panel reads them. */
+  onCertificationsChange: (next: string) => void;
+  onAdd: (term: string, type: "skill" | "job_role" | "certification") => void;
+  onRetry: () => void;
+  /** Saves a requirement template for this position straight from the panel. */
+  onCreateTemplate: () => void;
+  creatingTemplate: boolean;
+}) {
+  const [comboOpen, setComboOpen] = useState(false);
+  const [comboQuery, setComboQuery] = useState("");
+  const [certComboOpen, setCertComboOpen] = useState(false);
+  const [certQuery, setCertQuery] = useState("");
+  /* Options come from screening reference data so the dropdown, the
+     requirement templates and the NLP vocabulary never drift apart. */
+  const educationLevels = levelsFromReference(
+    mapping,
+    "education",
+    FALLBACK_EDUCATION_LEVELS,
+  );
+  const experienceLevels = levelsFromReference(
+    mapping,
+    "experience",
+    FALLBACK_EXPERIENCE_LEVELS,
+  );
+  const splitLines = (s: string) =>
+    s
+      .split("\n")
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+  const skillsIndex = useMemo(
+    () => buildBuilderEntityIndex(mapping?.skills ?? {}),
+    [mapping],
+  );
+  const certsIndex = useMemo(
+    () => buildBuilderEntityIndex(mapping?.certifications ?? {}),
+    [mapping],
+  );
+  const skillsResult = useMemo(
+    () => analyzeBuilderEntityLines(splitLines(draft.skills), skillsIndex),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [draft.skills, skillsIndex],
+  );
+  const certCandidateLines = useMemo(
+    () =>
+      [...splitLines(draft.qualifications), ...splitLines(draft.skills)].filter((line) =>
+        /nc\s*(i{1,3}|iv|1-4)|tesda|certificate|certification|license|licence|food handler/i.test(
+          line,
+        ),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [draft.qualifications, draft.skills],
+  );
+  const certResult = useMemo(
+    () => analyzeBuilderEntityLines(certCandidateLines, certsIndex),
+    [certCandidateLines, certsIndex],
+  );
+
+  const perSkill =
+    skillsResult.recognized.length > 0
+      ? (scoring.weights.skills * 0.7) / skillsResult.recognized.length
+      : null;
+
+  const skillOptions = useMemo(() => {
+    const all = Object.keys(mapping?.skills ?? {});
+    const used = new Set(splitLines(draft.skills).map((s) => s.toLowerCase()));
+    const q = comboQuery.trim().toLowerCase();
+    return all
+      .filter((s) => !used.has(s.toLowerCase()))
+      .filter((s) => !q || s.toLowerCase().includes(q))
+      .slice(0, 40);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapping, draft.skills, comboQuery]);
+
+  /* Certifications are read out of the Qualifications block, so adding one
+     means adding a line there — and registering the term in the screening
+     vocabulary when it is new, otherwise resumes would never match it. */
+  const certOptions = useMemo(() => {
+    const all = Object.keys(mapping?.certifications ?? {});
+    const used = new Set(
+      splitLines(draft.qualifications)
+        .concat(splitLines(draft.skills))
+        .map((s) => s.toLowerCase()),
+    );
+    const q = certQuery.trim().toLowerCase();
+    return all
+      .filter((c) => !used.has(c.toLowerCase()))
+      .filter((c) => !q || c.toLowerCase().includes(q))
+      .slice(0, 40);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapping, draft.qualifications, draft.skills, certQuery]);
+
+  const addCertification = (term: string) => {
+    const value = term.trim();
+    if (!value) return;
+    const known = Boolean(canonicalizeBuilderEntity(value, certsIndex));
+    onCertificationsChange([...splitLines(draft.qualifications), value].join("\n"));
+    // New terms only — picking an existing one must not create a duplicate row.
+    if (!known) void onAdd(value, "certification");
+    setCertComboOpen(false);
+    setCertQuery("");
+  };
+
+  const removeSkill = (term: string) => {    const next = splitLines(draft.skills).filter(
+      (s) => s.toLowerCase() !== term.toLowerCase(),
+    );
+    onSkillsChange(next.join("\n"));
+  };
+  const addSkill = (term: string) => {
+    const t = term.trim();
+    if (!t) return;
+    const have = new Set(splitLines(draft.skills).map((s) => s.toLowerCase()));
+    if (have.has(t.toLowerCase())) {
+      setComboOpen(false);
+      setComboQuery("");
+      return;
+    }
+    onSkillsChange([...splitLines(draft.skills), t].join("\n"));
+    setComboOpen(false);
+    setComboQuery("");
+  };
+
+  /* Positions are keyed by their Core HCM id, never by name: Front Office
+     holds a Rank & File (POS-001) and a Staff (POS-018) "Front Desk
+     Receptionist", and a name-only key collapses them into one. The label
+     gains its level + band so those two read differently in the list. */
+  const positionKey = (p: {
+    dbId?: number | null | undefined;
+    title: string;
+    department: string;
+  }) =>
+    p.dbId !== undefined && p.dbId !== null
+      ? `id:${p.dbId}`
+      : `name:${p.department}|||${p.title}`;
+
+  const titleDuplicates = positions.filter(
+    (p) => p.department === draft.department && p.title === draft.title,
+  ).length > 1;
+
+  const positionLabel = (p: {
+    title: string;
+    department: string;
+    level?: string | undefined;
+    salaryBand?: string | undefined;
+  }) => {
+    const base = `${p.title} — ${p.department}`;
+    return titleDuplicates && (p.level || p.salaryBand)
+      ? `${base} · ${[p.level, p.salaryBand].filter(Boolean).join(" · ")}`
+      : base;
+  };
+
+  const currentValue =
+    draft.positionDbId !== null && draft.positionDbId !== undefined
+      ? `id:${draft.positionDbId}`
+      : draft.title && draft.department
+        ? `name:${draft.department}|||${draft.title}`
+        : "";
+
+  if (loading) {
+    return (
+      <p className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-4 text-xs text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading screening vocabulary…
+      </p>
+    );
+  }
+  if (error) {
+    return (
+      <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+        <p className="text-xs text-destructive">{error}</p>
+        <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {/* Position picker — the control that resolves template + skills + certs */}
+      <div className="flex items-center gap-2 border-b border-border/70 pb-2">
+        <Label className="shrink-0 text-[0.7rem]">Position</Label>
+        <Select
+          value={currentValue}
+          onValueChange={(v) => {
+            const picked = positions.find((p) => positionKey(p) === v);
+            if (picked?.title && picked.department) {
+              onPickPosition(picked.department, picked.title, picked.dbId ?? null);
+            }
+          }}
+        >
+          <SelectTrigger className="h-8 max-w-[360px] flex-1 text-xs">
+            <SelectValue placeholder="Select a position from Core HR" />
+          </SelectTrigger>
+          <SelectContent>
+            {positions.map((p) => (
+              <SelectItem key={positionKey(p)} value={positionKey(p)}>
+                {positionLabel(p)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Template provenance banner */}
+      {templateName ? (
+        <p className="rounded-md bg-secondary/40 px-2.5 py-1.5 text-[0.65rem] leading-relaxed text-muted-foreground">
+          From template <span className="font-medium text-foreground">{templateName}</span> ·{" "}
+          {templateSkillCount} skill{templateSkillCount === 1 ? "" : "s"},{" "}
+          {templateCertCount} certification{templateCertCount === 1 ? "" : "s"} · every
+          future posting of this role reuses it.
+        </p>
+      ) : (
+        <div className="rounded-md border border-warning/40 bg-warning/10 p-2.5">
+          <p className="text-[0.7rem] font-medium">
+            {hasTemplateForPosition
+              ? "No requirement template applied yet."
+              : `No requirement template for ${draft.title || "this position"}.`}
+          </p>
+          <p className="mt-0.5 text-[0.65rem] text-muted-foreground">
+            Screening will have no skills to match against. Pick from the vocabulary below, or
+            save them as this position&apos;s requirement template.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="mt-1.5 h-7 text-[0.7rem]"
+            disabled={creatingTemplate}
+            onClick={onCreateTemplate}
+          >
+            {creatingTemplate ? (
+              <>
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Saving…
+              </>
+            ) : (
+              <>
+                <Plus className="mr-1 h-3 w-3" /> Create requirements for this position
+              </>
+            )}
+          </Button>
+        </div>
+      )}
+
+      {/* Skills — editable chips backed by draft.skills */}
+      <section className="rounded-lg border border-border/60 p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold">Skills</p>
+            <p className="mt-0.5 text-[0.68rem] text-muted-foreground">
+              From this position&apos;s requirement template
+            </p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="shrink-0 text-right">
+              <span className="block text-[0.7rem] font-semibold text-foreground">
+                {scoring.weights.skills} pts ·{" "}
+                {perSkill !== null
+                  ? `≈${perSkill.toFixed(2)} pts each`
+                  : "add recognized skills to score"}
+              </span>
+              <span className="block text-[0.68rem] font-medium text-muted-foreground">
+                {skillsResult.recognized.length} recognized · {skillsResult.unrecognized.length}{" "}
+                to review
+              </span>
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 shrink-0 text-[0.7rem]"
+              onClick={() => setComboOpen((o) => !o)}
+            >
+              <Plus className="mr-1 h-3 w-3" /> Add skill
+            </Button>
+          </div>
+        </div>
+        {skillsResult.recognized.length === 0 && skillsResult.unrecognized.length === 0 ? (
+          <p className="mt-2 text-xs italic text-muted-foreground">
+            No skills yet — pick from the vocabulary or apply a requirement template.
+          </p>
+        ) : (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {skillsResult.recognized.map(({ canonical, sample }) => (
+              <Badge
+                key={canonical}
+                variant="secondary"
+                className="gap-1 py-1 pl-2 pr-1 text-xs"
+              >
+                <span title={sample !== canonical ? `From: ${sample}` : undefined}>
+                  {canonical}
+                </span>
+                <span className="text-[0.6rem] text-success" title="Recognized by the screening model">
+                  ✓
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${canonical}`}
+                  className="rounded-sm px-0.5 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+                  onClick={() => removeSkill(sample)}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+            {skillsResult.unrecognized.map((term) => (
+              <Badge key={term} variant="outline" className="gap-1 py-1 pl-2 pr-1 text-xs">
+                {term}
+                <button
+                  type="button"
+                  disabled={addingTerm}
+                  title={`Add "${term}" to the screening vocabulary so the model recognizes it in resumes`}
+                  className="rounded-sm px-0.5 text-[0.65rem] font-bold text-primary transition-colors hover:bg-primary/15 disabled:opacity-50"
+                  onClick={() => onAdd(term, "skill")}
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Remove ${term}`}
+                  className="rounded-sm px-0.5 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+                  onClick={() => removeSkill(term)}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
+        {comboOpen && (
+          <div className="relative mt-2">
+            <Input
+              autoFocus
+              className="h-8 text-xs"
+              placeholder="Type to search the screening vocabulary…"
+              value={comboQuery}
+              onChange={(e) => setComboQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setComboOpen(false);
+                  setComboQuery("");
+                }
+                if (e.key === "Enter" && comboQuery.trim()) {
+                  const first = skillOptions[0];
+                  addSkill(first ?? comboQuery.trim());
+                }
+              }}
+            />
+            <div className="absolute z-30 mt-1 max-h-52 w-full overflow-auto rounded-md border border-border bg-popover shadow-lg">
+              {skillOptions.length === 0 && !comboQuery.trim() ? (
+                <p className="px-3 py-2 text-xs text-muted-foreground">
+                  Every vocabulary skill is already on this post.
+                </p>
+              ) : skillOptions.length === 0 ? (
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-muted"
+                  onClick={() => addSkill(comboQuery.trim())}
+                >
+                  <span>
+                    Add <span className="font-medium">“{comboQuery.trim()}”</span> to this post
+                  </span>
+                </button>
+              ) : (
+                skillOptions.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-muted"
+                    onClick={() => addSkill(s)}
+                  >
+                    <span>{s}</span>
+                    <span className="text-[0.65rem] font-medium text-success">in vocabulary</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Certifications — derived from Qualifications (+ skills), read-only here */}
+      <section className="rounded-lg border border-border/60 p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold">Certifications</p>
+            <p className="mt-0.5 text-[0.68rem] text-muted-foreground">
+              Matched against the certification vocabulary · added here or written in Qualifications
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            <span className="text-right">
+              <span className="block text-[0.7rem] font-semibold text-foreground">
+                {scoring.weights.certifications} pts
+              </span>
+              <span className="block text-[0.68rem] font-medium text-muted-foreground">
+                {certResult.recognized.length} recognized · {certResult.unrecognized.length} to
+                review
+              </span>
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 text-[0.7rem]"
+              onClick={() => setCertComboOpen((o) => !o)}
+            >
+              <Plus className="mr-1 h-3 w-3" /> Add certification
+            </Button>
+          </div>
+        </div>
+        {certResult.recognized.length === 0 && certResult.unrecognized.length === 0 ? (
+          <p className="mt-2 text-xs italic text-muted-foreground">
+            None detected yet — certification-like lines in Qualifications appear here.
+          </p>
+        ) : (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {certResult.recognized.map(({ canonical, sample }) => (
+              <Badge
+                key={canonical}
+                variant="secondary"
+                className="gap-1 py-1 pl-2 pr-1 text-xs"
+              >
+                <span title={sample !== canonical ? `From: ${sample}` : undefined}>
+                  {canonical}
+                </span>
+                <span className="text-[0.6rem] text-success" title="Recognized by the screening model">
+                  ✓
+                </span>
+              </Badge>
+            ))}
+            {certResult.unrecognized.map((term) => (
+              <Badge key={term} variant="outline" className="gap-1 py-1 pl-2 pr-1 text-xs">
+                {term}
+                <button
+                  type="button"
+                  disabled={addingTerm}
+                  title={`Add "${term}" to the screening vocabulary`}
+                  className="rounded-sm px-0.5 text-[0.65rem] font-bold text-primary transition-colors hover:bg-primary/15 disabled:opacity-50"
+                  onClick={() => onAdd(term, "certification")}
+                >
+                  +
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
+        {certComboOpen && (
+          <div className="relative mt-2">
+            <Input
+              autoFocus
+              className="h-8 text-xs"
+              placeholder="Type to search certifications…"
+              value={certQuery}
+              onChange={(e) => setCertQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setCertComboOpen(false);
+                  setCertQuery("");
+                }
+                if (e.key === "Enter" && certQuery.trim()) {
+                  const first = certOptions[0];
+                  addCertification(first ?? certQuery.trim());
+                }
+              }}
+            />
+            <div className="absolute z-30 mt-1 max-h-52 w-full overflow-auto rounded-md border border-border bg-popover shadow-lg">
+              {certOptions.length === 0 && !certQuery.trim() ? (
+                <p className="px-3 py-2 text-xs text-muted-foreground">
+                  Every certification in the vocabulary is already on this post.
+                </p>
+              ) : certOptions.length === 0 ? (
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-muted"
+                  onClick={() => addCertification(certQuery.trim())}
+                >
+                  <span>
+                    Add{" "}
+                    <span className="font-medium">“{certQuery.trim()}”</span> to this post
+                  </span>
+                  <span className="text-[0.65rem] text-muted-foreground">new vocabulary term</span>
+                </button>
+              ) : (
+                certOptions.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-muted"
+                    onClick={() => addCertification(c)}
+                  >
+                    <span>{c}</span>
+                    <span className="text-[0.65rem] font-medium text-success">in vocabulary</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Education / Experience — editable right here, because all four scoring
+          inputs (skills, certifications, education, experience) belong together
+          in one place instead of being split across Job Info and this panel. */}
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label className="text-[0.7rem]">
+            Education level · {scoring.weights.education} pts
+          </Label>
+          <Select
+            value={draft.educationLevel}
+            onValueChange={(v) =>
+              onLevelsChange({
+                educationLevel: v as Job["education"],
+                experienceLevel: draft.experienceLevel,
+              })
+            }
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Select education level" />
+            </SelectTrigger>
+            <SelectContent>
+              {educationLevels.map((level) => (
+                <SelectItem key={level} value={level}>
+                  {level}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[0.7rem]">
+            Experience level · {scoring.weights.experience} pts
+          </Label>
+          <Select
+            value={draft.experienceLevel}
+            onValueChange={(v) =>
+              onLevelsChange({
+                educationLevel: draft.educationLevel,
+                experienceLevel: v as Job["experience"],
+              })
+            }
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Select experience level" />
+            </SelectTrigger>
+            <SelectContent>
+              {experienceLevels.map((level) => (
+                <SelectItem key={level} value={level}>
+                  {level}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Back face content: every filled builder field indicated as entities. */
 function BuilderEntitiesCard({
   draft,
@@ -840,7 +1491,7 @@ function BuilderEntitiesCard({
           <BuilderEntityGroup
             icon={<Briefcase className="h-3.5 w-3.5 text-primary" />}
             title="Skills"
-            hint="From the Required Skills block"
+            hint="From the Screening Requirements panel"
             scoreLine={
               perSkill !== null
                 ? `${scoring.weights.skills} pts · ≈${perSkill.toFixed(2)} pts each`
@@ -851,7 +1502,7 @@ function BuilderEntitiesCard({
             addType={() => "skill"}
             addingTerm={addingTerm}
             onAdd={onAdd}
-            emptyText="No skills filled in the Required Skills block yet."
+            emptyText="No skills filled in Screening Requirements yet."
           />
 
           <BuilderEntityGroup
@@ -883,7 +1534,7 @@ function BuilderEntitiesCard({
           <BuilderEntityGroup
             icon={<GraduationCap className="h-3.5 w-3.5 text-primary" />}
             title="Certifications"
-            hint="Certification-like lines from the Qualifications and Required Skills blocks"
+            hint="Certification-like lines from the Qualifications block and Screening Requirements panel"
             scoreLine={
               perCert !== null
                 ? `${scoring.weights.certifications} pts · ≈${perCert.toFixed(2)} pts each`
@@ -977,6 +1628,39 @@ const platformMeta = [
   { key: "Indeed", icon: Briefcase },
 ];
 
+/** Channels a brand-new post is offered by default. */
+const DEFAULT_PLATFORM_TOGGLES: Record<string, boolean> = {
+  Website: true,
+  Facebook: true,
+  Instagram: false,
+  Indeed: true,
+};
+
+/**
+ * Publish To toggles for a post's stored channel list.
+ *
+ * The row used to keep one hard-coded set for every post, so opening a live
+ * ad showed channels it was never published to while hiding ones it was —
+ * and saving then wrote that fiction to the database. Seeding the toggles
+ * from the post makes the row truthful, which is also what lets a plain save
+ * keep the existing channels instead of wiping them.
+ *
+ * "Company Website" is the label older seed rows carry for the same channel;
+ * it maps onto "Website" so a legacy post does not read as unpublished.
+ */
+function platformTogglesFrom(stored?: string[] | null): Record<string, boolean> {
+  const list = Array.isArray(stored) ? stored : [];
+  const on = (name: string) =>
+    list.some((p) => p === name || (name === "Website" && p === "Company Website"));
+  if (list.length === 0) return { ...DEFAULT_PLATFORM_TOGGLES };
+  return {
+    Website: on("Website"),
+    Facebook: on("Facebook"),
+    Instagram: on("Instagram"),
+    Indeed: on("Indeed"),
+  };
+}
+
 type BlockId =
   | "title"
   | "info"
@@ -985,16 +1669,20 @@ type BlockId =
   | "responsibilities"
   | "qualifications"
   | "skills"
+  | "additional"
   | "instructions"
   | "about";
 
 const blockLibrary: { id: BlockId; label: string; hint: string }[] = [
   { id: "title", label: "Job Title", hint: "Headline + department" },
   { id: "info", label: "Job Info", hint: "Type, schedule, vacancies, salary" },
+  /* Requirements sit above the prose: what the screener matches against is the
+     first thing HR should settle, before writing the ad around it. */
+  { id: "skills", label: "Screening Requirements", hint: "Skills, certifications, education and experience the resume screener matches" },
   { id: "description", label: "Job Description", hint: "Short role pitch" },
   { id: "responsibilities", label: "Key Responsibilities", hint: "Bulleted duties" },
   { id: "qualifications", label: "Qualifications", hint: "Bulleted requirements" },
-  { id: "skills", label: "Required Skills", hint: "Bulleted skill tags" },
+  { id: "additional", label: "Additional Info", hint: "Perks, shift details, dress code" },
   { id: "instructions", label: "Application Instruction", hint: "How to apply" },
   { id: "about", label: "About Company", hint: "Company blurb" },
   { id: "picture", label: "Picture of Hiring", hint: "Template or uploaded image" },
@@ -1002,12 +1690,28 @@ const blockLibrary: { id: BlockId; label: string; hint: string }[] = [
 
 const fullBlocks: BlockId[] = blockLibrary.map((b) => b.id);
 
-/** The 6 AI-fillable content blocks (description → about). */
+/**
+ * Resolves a post's saved canvas arrangement into a usable block order.
+ *
+ * A stored list can go stale — a block id removed from the library, or a block
+ * added since the post was saved. Unknown ids are dropped and anything missing
+ * is appended in default order, so opening an old post never leaves the canvas
+ * with a missing component.
+ */
+function blocksForJob(saved?: string[] | null): BlockId[] {
+  if (!Array.isArray(saved) || saved.length === 0) return fullBlocks;
+  const known = new Set<string>(fullBlocks);
+  const ordered = saved.filter((id): id is BlockId => known.has(id));
+  const seen = new Set(ordered);
+  return [...ordered, ...fullBlocks.filter((id) => !seen.has(id))];
+}
+
+/** The 6 AI-fillable content blocks — the prose blocks the checklist modal writes. Skills come from the requirement template, not the AI. */
 const AI_CONTENT_BLOCKS: BlockId[] = [
   "description",
   "responsibilities",
   "qualifications",
-  "skills",
+  "additional",
   "instructions",
   "about",
 ];
@@ -1023,6 +1727,8 @@ function blockText(d: Draft, id: BlockId): string {
       return d.qualifications;
     case "skills":
       return d.skills;
+    case "additional":
+      return d.additional;
     case "instructions":
       return d.instructions;
     case "about":
@@ -1088,6 +1794,14 @@ const WORK_SCHEDULE_OPTIONS = [
 type Draft = {
   title: string;
   department: string;
+  /**
+   * Core HCM `positions.position_id` behind this draft. Titles are NOT unique
+   * per department — Front Office has both a Rank & File (POS-001, SG-05) and a
+   * Staff (POS-018, SG-10) "Front Desk Receptionist" — so every position
+   * lookup resolves through this id first and only falls back to the title when
+   * a post predates it (position_id null) or the draft is brand new.
+   */
+  positionDbId: number | null;
   employmentType: string;
   schedule: string;
   /** "" = follow the position's assigned grade; otherwise a salary_grade_id. */
@@ -1099,16 +1813,22 @@ type Draft = {
   responsibilities: string;
   qualifications: string;
   skills: string;
+  additional: string;
   instructions: string;
   about: string;
   /** Structured screening levels — the exact fields the NLP match scoring reads. */
   educationLevel: Job["education"];
   experienceLevel: Job["experience"];
+  /** Assessment test requirement for this position. */
+  requiresAssessment: boolean;
+  /** Practical assessment requirement for this position. */
+  requiresPractical: boolean;
 };
 
 const blankDraft: Draft = {
   title: "",
   department: "",
+  positionDbId: null,
   employmentType: "Full-time",
   schedule: "Shifting Schedule",
   salaryGradeId: "",
@@ -1119,10 +1839,13 @@ const blankDraft: Draft = {
   responsibilities: "",
   qualifications: "",
   skills: "",
+  additional: "",
   instructions: "",
   about: "",
   educationLevel: "High School Graduate",
   experienceLevel: "1-2 Years",
+  requiresAssessment: false,
+  requiresPractical: false,
 };
 
 const defaultAbout =
@@ -1134,6 +1857,7 @@ function jobToDraft(j: Job): Draft {
   return {
     title: j.title,
     department: j.department,
+    positionDbId: j.positionId ?? null,
     employmentType: j.employmentType,
     schedule: j.schedule,
     salaryGradeId: "",
@@ -1147,10 +1871,13 @@ function jobToDraft(j: Job): Draft {
     responsibilities: j.responsibilities.join("\n"),
     qualifications: j.qualifications.join("\n"),
     skills: j.skills.join("\n"),
-    instructions: defaultInstructions,
-    about: defaultAbout,
+    additional: (j.additional ?? []).join("\n"),
+    instructions: j.instructions?.trim() ? j.instructions : defaultInstructions,
+    about: j.about?.trim() ? j.about : defaultAbout,
     educationLevel: j.education,
     experienceLevel: j.experience,
+    requiresAssessment: j.requires_assessment ?? false,
+    requiresPractical: j.requires_practical ?? false,
   };
 }
 
@@ -1173,6 +1900,8 @@ function hasContentFor(id: BlockId, d: Draft): boolean {
       return d.qualifications.trim() !== "";
     case "skills":
       return d.skills.trim() !== "";
+    case "additional":
+      return d.additional.trim() !== "";
     case "instructions":
       return d.instructions.trim() !== "";
     case "about":
@@ -1213,15 +1942,88 @@ const blankRequirementForm: RequirementTemplateForm = {
  * HR defines, per position entity, the requirement entities a resume must
  * satisfy (skill, job role, certification, education, experience) and applies
  * a template to a job post — "Use in job post" merges it into the Job Post
- * Builder draft (Required Skills, Qualifications and the structured education
+ * Builder draft (Screening Requirements, Qualifications and the structured education
  * / experience levels the NLP screening scores against).
  */
+const REQUIREMENT_TEMPLATE_ENTITY_TYPES: ScreeningRequirementEntityType[] = [
+  "skill",
+  "certification",
+  "job_role",
+  "education",
+  "experience",
+];
+
+/** Requirement templates bulk-upload — mirrors the Reference Data bulk
+ *  format so HR already knows it. Two shapes are accepted:
+ *  1) entity lines appended to the open template: entity_type,value
+ *  2) template lines that create/update whole templates:
+ *     template_name,position_title_or_id,entity_type,value
+ *  Lines starting with # are comments. entity_type is one of
+ *  skill, certification, job_role, education, experience. */
+type RequirementTemplateBulkRow = {
+  templateName: string | null;
+  positionRef: string | null;
+  entityType: ScreeningRequirementEntityType;
+  value: string;
+};
+
+function parseRequirementTemplateBulk(
+  text: string,
+): { rows: RequirementTemplateBulkRow[]; templateMode: boolean } {
+  const rows: RequirementTemplateBulkRow[] = [];
+  let templateMode = false;
+  text.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return;
+    const parts = trimmed.split(",").map((p) => p.trim());
+    if (parts.length >= 4) {
+      const [rawTemplate, rawPosition, rawType, ...rest] = parts;
+      const entityType = (rawType ?? "").toLowerCase().replace(/\s+/g, "_") as ScreeningRequirementEntityType;
+      const value = rest.join(",").trim();
+      if (!rawTemplate || !value || !REQUIREMENT_TEMPLATE_ENTITY_TYPES.includes(entityType)) return;
+      templateMode = true;
+      rows.push({ templateName: rawTemplate, positionRef: rawPosition || null, entityType, value });
+      return;
+    }
+    if (parts.length === 2) {
+      const [rawType, ...rest] = parts;
+      const entityType = (rawType ?? "").toLowerCase().replace(/\s+/g, "_") as ScreeningRequirementEntityType;
+      const value = rest.join(",").trim();
+      if (!value || !REQUIREMENT_TEMPLATE_ENTITY_TYPES.includes(entityType)) return;
+      rows.push({ templateName: null, positionRef: null, entityType, value });
+    }
+  });
+  return { rows, templateMode: templateMode && rows.some((r) => r.templateName) };
+}
+
+function downloadRequirementTemplateSample() {
+  downloadTextFile(
+    "requirement-templates-sample.csv",
+    [
+      "# Requirement templates bulk upload — one entry per line.",
+      "# Mode A (entities for the open template): entity_type,value",
+      "# Mode B (whole templates): template_name,position_title_or_id,entity_type,value",
+      "# entity_type is one of: skill, certification, job_role, education, experience",
+      "# position can be a title (e.g. Front Desk Receptionist) or position_id, or empty for Any position.",
+      "skill,Guest Relations",
+      "skill,Check-in / Check-out",
+      "certification,TESDA Front Office NC II",
+      "education,Bachelor's Degree",
+      "experience,1-2 Years",
+      "Front Desk Core,Front Desk Receptionist,skill,Reservations",
+      "Front Desk Core,Front Desk Receptionist,certification,TESDA Front Office NC II",
+      "Front Desk Core,Front Desk Receptionist,education,Bachelor's Degree",
+    ].join("\n"),
+  );
+}
+
 export function RequirementTemplateManager({
   templates,
   loading,
   error,
   positions,
   refValues,
+  refOptions,
   busyId,
   onReload,
   onToggleActive,
@@ -1233,6 +2035,7 @@ export function RequirementTemplateManager({
   error: string | null;
   positions: Position[];
   refValues: Set<string>;
+  refOptions: Record<ScreeningRequirementEntityType, { value: string; label: string }[]>;
   busyId: number | null;
   onReload: () => void;
   onToggleActive: (template: ApiRequirementTemplate) => void;
@@ -1249,6 +2052,10 @@ export function RequirementTemplateManager({
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ApiRequirementTemplate | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkDragActive, setBulkDragActive] = useState(false);
+  const bulkInputRef = useRef<HTMLInputElement>(null);
+  const customInputRef = useRef<HTMLInputElement>(null);
 
   const isRecognized = (value: string) => refValues.has(value.trim().toLowerCase());
 
@@ -1315,6 +2122,117 @@ export function RequirementTemplateManager({
 
   const removeItem = (index: number) =>
     setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== index) }));
+
+  /** Resolves a bulk position cell (title or id) to a position_id, or null
+   *  for Any position. Unknown titles stay null so the row is never lost. */
+  const resolveBulkPositionId = (ref: string | null): number | null => {
+    if (!ref || !ref.trim()) return null;
+    const cleaned = ref.trim();
+    if (/^\d+$/.test(cleaned)) {
+      const byId = positions.find((p) => String(p.dbId) === cleaned);
+      if (byId?.dbId !== undefined) return byId.dbId;
+      return Number(cleaned);
+    }
+    const byTitle = positions.find((p) => p.title.toLowerCase() === cleaned.toLowerCase());
+    return byTitle?.dbId ?? null;
+  };
+
+  /** Bulk-uploads a CSV/TXT file. Entity-only rows append to the open form;
+   *  template rows create missing templates (matched by name + position) and
+   *  append new entities, then reload the manager list. */
+  const handleTemplateBulkUpload = async (file: File | null | undefined) => {
+    if (!file || bulkSaving) return;
+    setBulkSaving(true);
+    try {
+      const { rows, templateMode } = parseRequirementTemplateBulk(await file.text());
+      if (rows.length === 0) {
+        toast.error("No valid rows found in the file.", {
+          description:
+            "Expected per line: entity_type,value — or template_name,position,entity_type,value. Download the sample for the exact format.",
+        });
+        return;
+      }
+      if (!templateMode || rows.every((r) => !r.templateName)) {
+        let added = 0;
+        let dupes = 0;
+        setForm((f) => {
+          const next = [...f.items];
+          for (const row of rows) {
+            const exists = next.some(
+              (i) => i.entity_type === row.entityType && i.value.toLowerCase() === row.value.toLowerCase(),
+            );
+            if (exists) {
+              dupes += 1;
+              continue;
+            }
+            next.push({ entity_type: row.entityType, value: row.value });
+            added += 1;
+          }
+          return { ...f, items: next };
+        });
+        toast.success(`${added} entit${added === 1 ? "y" : "ies"} added to this template`, {
+          description:
+            dupes > 0 ? `${dupes} duplicate(s) skipped.` : "Review the list below, then press Create template.",
+        });
+        return;
+      }
+      const groups = new Map<string, RequirementTemplateBulkRow[]>();
+      for (const row of rows) {
+        if (!row.templateName) continue;
+        const key = `${row.templateName.toLowerCase()}|${(row.positionRef ?? "").toLowerCase()}`;
+        groups.set(key, [...(groups.get(key) ?? []), row]);
+      }
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+      for (const group of groups.values()) {
+        const templateName = group[0]!.templateName!.trim();
+        const positionId = resolveBulkPositionId(group[0]!.positionRef);
+        const items = group.map((r) => ({ entity_type: r.entityType, value: r.value, required: true }));
+        try {
+          const existing = templates.find(
+            (t) => t.name.toLowerCase() === templateName.toLowerCase() && (t.position_id ?? null) === positionId,
+          );
+          if (existing) {
+            const known = new Set(existing.items.map((i) => `${i.entity_type}|${i.value.toLowerCase()}`));
+            const fresh = items.filter((i) => !known.has(`${i.entity_type}|${i.value.toLowerCase()}`));
+            if (fresh.length === 0) {
+              skipped += 1;
+              continue;
+            }
+            await screeningApi.requirementTemplates.update(existing.template_id, {
+              name: existing.name,
+              position_id: existing.position_id,
+              description: existing.description ?? null,
+              active: existing.active,
+              items: [...existing.items.map((i) => ({ entity_type: i.entity_type, value: i.value, required: true })), ...fresh],
+            });
+            updated += 1;
+          } else {
+            await screeningApi.requirementTemplates.create({
+              name: templateName,
+              position_id: positionId,
+              description: null,
+              active: true,
+              items,
+            });
+            created += 1;
+          }
+        } catch {
+          skipped += 1;
+        }
+      }
+      toast.success(`${created} template(s) created${updated > 0 ? `, ${updated} updated` : ""}`, {
+        description: skipped > 0 ? `${skipped} group(s) skipped (duplicate or invalid).` : undefined,
+      });
+      setEditorOpen(false);
+      onReload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not read the bulk file.");
+    } finally {
+      setBulkSaving(false);
+    }
+  };
 
   /** Curated starter keywords for the selected position (screening keyword library). */
   const suggestions = useMemo(() => {
@@ -1391,7 +2309,7 @@ export function RequirementTemplateManager({
           <p className="text-xs text-muted-foreground">
             What to <span className="font-medium text-foreground">require</span> for a role. Each
             template lists screening entities — skill, job role, certification, education,
-            experience — and can be applied to a job post, seeding Required Skills, Qualifications
+            experience — and can be applied to a job post, seeding Screening Requirements, Qualifications
             and the education / experience levels.
           </p>
         </div>
@@ -1572,7 +2490,7 @@ export function RequirementTemplateManager({
             </DialogTitle>
             <DialogDescription>
               Pick the position this template belongs to, then add the requirement entities a resume
-              must satisfy. Applying the template to a job post seeds the Required Skills block, the
+              must satisfy. Applying the template to a job post seeds the Screening Requirements panel, the
               Qualifications block and the structured education / experience levels the screening
               scores against.
             </DialogDescription>
@@ -1633,7 +2551,10 @@ export function RequirementTemplateManager({
               <div className="flex flex-wrap items-center gap-2">
                 <Select
                   value={itemType}
-                  onValueChange={(v) => setItemType(v as ScreeningRequirementEntityType)}
+                  onValueChange={(v) => {
+                    setItemType(v as ScreeningRequirementEntityType);
+                    setItemValue("");
+                  }}
                 >
                   <SelectTrigger className="h-9 w-40 text-xs">
                     <SelectValue />
@@ -1641,34 +2562,39 @@ export function RequirementTemplateManager({
                   <SelectContent>
                     {REQUIREMENT_ENTITY_META.map((m) => (
                       <SelectItem key={m.value} value={m.value}>
-                        {m.label}
+                        {m.label} ({refOptions[m.value]?.length ?? 0})
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <Input
-                  className="h-9 min-w-0 flex-1 text-xs"
-                  placeholder={
-                    itemType === "skill"
-                      ? "e.g. Guest Relations"
-                      : itemType === "job_role"
-                        ? "e.g. Front Desk Receptionist"
-                        : itemType === "certification"
-                          ? "e.g. TESDA Cookery NC II"
-                          : itemType === "education"
-                            ? "e.g. Bachelor's Degree"
-                            : "e.g. 1-2 Years"
-                  }
-                  value={itemValue}
-                  onChange={(e) => setItemValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && itemValue.trim()) {
-                      e.preventDefault();
-                      addItem(itemType, itemValue);
-                      setItemValue("");
+                <Select
+                  value=""
+                  onValueChange={(v) => {
+                    if (v === "__custom__") {
+                      customInputRef.current?.focus();
+                      return;
                     }
+                    addItem(itemType, v);
                   }}
-                />
+                >
+                  <SelectTrigger className="h-9 min-w-0 flex-1 text-xs">
+                    <SelectValue
+                      placeholder={
+                        (refOptions[itemType] ?? []).length > 0
+                          ? `Pick from Reference Data — ${(refOptions[itemType] ?? []).length} available, or type below`
+                          : "No vocabulary for this type yet — type a custom value below"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    {(refOptions[itemType] ?? []).map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="__custom__">+ Type a custom value below…</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button
                   size="sm"
                   variant="outline"
@@ -1681,6 +2607,32 @@ export function RequirementTemplateManager({
                 >
                   <Plus className="mr-1.5 h-3.5 w-3.5" /> Add entity
                 </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  ref={customInputRef}
+                  className="h-9 min-w-0 flex-1 text-xs"
+                  placeholder={
+                    itemType === "skill"
+                      ? "Or type a custom skill, e.g. Guest Recovery"
+                      : itemType === "job_role"
+                        ? "Or type a custom role, e.g. Night Auditor"
+                        : itemType === "certification"
+                          ? "Or type a custom cert, e.g. Barista NC II"
+                          : itemType === "education"
+                            ? "Or type a custom education, e.g. BS HRM"
+                            : "Or type a custom experience, e.g. 2+ Years"
+                  }
+                  value={itemValue}
+                  onChange={(e) => setItemValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && itemValue.trim()) {
+                      e.preventDefault();
+                      addItem(itemType, itemValue);
+                      setItemValue("");
+                    }
+                  }}
+                />
               </div>
 
               <p className="text-[0.7rem] text-muted-foreground">
@@ -1761,6 +2713,67 @@ export function RequirementTemplateManager({
                 </div>
               )}
             </div>
+            <div
+              className={cn(
+                "space-y-2 rounded-md border border-dashed p-3 transition-colors",
+                bulkDragActive ? "border-primary bg-primary/10" : "border-border bg-muted/30",
+              )}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setBulkDragActive(true);
+              }}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                setBulkDragActive(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                setBulkDragActive(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setBulkDragActive(false);
+                void handleTemplateBulkUpload(e.dataTransfer.files?.[0]);
+              }}
+            >
+              <Label className="flex items-center gap-1.5 text-xs">
+                <Upload className="h-3.5 w-3.5" /> Bulk upload entities
+                {bulkSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+              </Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  ref={bulkInputRef}
+                  type="file"
+                  accept=".csv,.txt"
+                  disabled={bulkSaving}
+                  className="h-9 w-full cursor-pointer text-xs sm:w-52"
+                  onChange={(e) => {
+                    void handleTemplateBulkUpload(e.target.files?.[0]);
+                    e.target.value = "";
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-9 cursor-pointer"
+                  disabled={bulkSaving}
+                  onClick={() => {
+                    downloadRequirementTemplateSample();
+                    toast.success("Sample bulk-upload file downloaded");
+                  }}
+                >
+                  <Download className="mr-1.5 h-3.5 w-3.5" /> Download sample
+                </Button>
+              </div>
+              <p className="text-[0.7rem] leading-relaxed text-muted-foreground">
+                Drag &amp; drop a <code className="rounded bg-muted px-1">.csv / .txt</code> file here, or
+                pick one. Entity lines (<code className="rounded bg-muted px-1">entity_type,value</code>)
+                append to this template; template lines (
+                <code className="rounded bg-muted px-1">template_name,position,entity_type,value</code>)
+                create whole templates. Download the sample for the exact format.
+              </p>
+            </div>
           </div>
 
           <DialogFooter>
@@ -1836,7 +2849,14 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         setJobList((res?.data ?? []).map(transformApiJob));
       })
       .catch((err) => {
-        console.warn("Could not fetch jobs from API:", err);
+        // 401 (expired token) is handled globally (redirect to /login);
+        // NetworkError (CORS/offline) and SyntaxError (proxy returned HTML,
+        // e.g. stale-Vite/SSR fallback) both fall back to mock data, so only
+        // log unexpected failures.
+        const status = (err as { status?: number } | null)?.status;
+        if (status !== 401 && !(err instanceof TypeError) && !(err instanceof SyntaxError)) {
+          console.warn("Could not fetch jobs from API:", err);
+        }
       })
       .finally(() => setJobsLoading(false));
   }, []);
@@ -1902,6 +2922,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 level: (p.level as Position["level"]) || "Rank & File",
                 headcount: p.headcount,
                 filled: p.filled_count,
+                /* Open slots from Core HCM (headcount - filled). Kept so the
+                   builder can align the posting's vacancies with the request. */
+                vacancies: Math.max(0, (p.vacancies ?? p.headcount - p.filled_count)),
                 salaryBand: band,
                 dbId: p.position_id,
                 departmentId: p.department_id,
@@ -1929,14 +2952,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
   const [tab, setTab] = useState("postings");
   const [mode, setMode] = useState<"template" | "custom">("custom");
-  /** Predefined reports dialog + password-protected export flow (asked on every export). */
-  const [reportsOpen, setReportsOpen] = useState(false);
-  const [csvOpen, setCsvOpen] = useState(false);
-  const [csvBusy, setCsvBusy] = useState(false);
-  const [csvPending, setCsvPending] = useState<{
-    id: RecruitmentReportId;
-    format: ReportFormat;
-  } | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [blocks, setBlocks] = useState<BlockId[]>([]);
   const [dragging, setDragging] = useState<BlockId | null>(null);
@@ -1965,23 +2980,29 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   /* ------------------------------------------------------------------ */
 
   const [addOpen, setAddOpen] = useState(false);
-  const [addStep, setAddStep] = useState<1 | 2 | 3>(1);
-  const [addMethod, setAddMethod] = useState<"file" | "image">("file");
-  const [addFileName, setAddFileName] = useState("");
-  const [addResumeFile, setAddResumeFile] = useState<File | null>(null);
+  const [addStep, setAddStep] = useState<1 | 2>(1);
   /**
-   * Verification documents uploaded with the applicant (COE, certificates,
-   * credentials, others) — used to verify the content of the resume/CV.
+   * Single smart upload box (Step 1): resume + supporting docs in any order.
+   * Each file is recognized by content (rule + filename + content check);
+   * the highest Resume-score file becomes the resume pick, the rest are
+   * supporting docs. First upload is expected to be the resume.
+   * Derived bridges keep every downstream consumer (auto-fill, screening,
+   * save, replace-confirm) working unchanged.
    */
-  const [verificationDocs, setVerificationDocs] = useState<
-    { docType: VerificationDocType; title: string; originalCopy: boolean; file: File }[]
-  >([]);
-  /** True while a file is being dragged over the resume drop zone. */
-  const [resumeDragActive, setResumeDragActive] = useState(false);
-  /** Which verification row is currently being dragged over (for drop highlight). */
-  const [verificationDragType, setVerificationDragType] = useState<VerificationDocType | null>(
-    null,
-  );
+  const [unifiedDocs, setUnifiedDocs] = useState<UnifiedDoc[]>([]);
+  const unifiedResumePick = pickResumeDoc(unifiedDocs);
+  const addResumeFile = unifiedResumePick?.file ?? null;
+  const addFileName = addResumeFile?.name ?? "";
+  const verificationDocs = unifiedDocs
+    .filter((d) => unifiedResumePick?.id !== d.id)
+    .map((d) => {
+      const raw = d.manualType ?? d.result?.predicted_type ?? "Others";
+      // screen-resume + applicant-documents only accept COE | Certificate | Credential | Others —
+      // anything else (Resume leftovers, unexpected strings) becomes Others so validation never 422s.
+      const docType: VerificationDocType =
+        raw === "COE" || raw === "Certificate" || raw === "Credential" ? raw : "Others";
+      return { docType, title: d.file.name, originalCopy: false, file: d.file };
+    });
   /** Pending upload awaiting user confirmation to replace existing details. */
   const [pendingResume, setPendingResume] = useState<File | null>(null);
   const [replaceOpen, setReplaceOpen] = useState(false);
@@ -1995,11 +3016,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     address: "",
     position: "",
   });
-  /** Confirmation when Step 2 has unsaved fill-up and user tries to Back/X */
+  /** Confirmation when Step 1 has unsaved fill-up and user tries to X */
   const [confirmStep2ExitOpen, setConfirmStep2ExitOpen] = useState(false);
-  const [pendingStep2ExitAction, setPendingStep2ExitAction] = useState<"back" | "close" | null>(
-    null,
-  );
   const hasStep2Data =
     [addForm.name, addForm.email, addForm.phone, addForm.address].some(
       (v) => v.trim().length > 0,
@@ -2032,6 +3050,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   /** Vocabulary (Reference Data) lookup so template chips can show which
    *  terms the model already recognizes — loaded when the dialog opens. */
   const [refValues, setRefValues] = useState<Set<string>>(new Set());
+  /** Grouped vocabulary options powering the template entity picker, so HR
+   *  adds entities straight from Reference Data instead of free-typing. */
+  const [refOptions, setRefOptions] = useState<
+    Record<ScreeningRequirementEntityType, { value: string; label: string }[]>
+  >({ skill: [], certification: [], job_role: [], education: [], experience: [] });
   const [addingTerm, setAddingTerm] = useState(false);
   /** Requirement templates (Screening Setup) — shared by the manager and the
    *  Job Post Builder picker. */
@@ -2078,11 +3101,29 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       .list()
       .then((res) => {
         const set = new Set<string>();
-        (res.data ?? []).forEach((r) =>
+        const grouped: Record<ScreeningRequirementEntityType, { value: string; label: string }[]> = {
+          skill: [],
+          certification: [],
+          job_role: [],
+          education: [],
+          experience: [],
+        };
+        (res.data ?? []).forEach((r) => {
           (r.aliases_json ?? [])
             .concat(r.canonical_value)
-            .forEach((v) => set.add(v.trim().toLowerCase())),
+            .forEach((v) => set.add(v.trim().toLowerCase()));
+          // Only active vocabulary is offered as a pick; inactive rows stay
+          // hidden so templates never require a term the model ignores.
+          if (!r.active) return;
+          const bucket = grouped[r.data_type as ScreeningRequirementEntityType];
+          if (!bucket) return;
+          if (bucket.some((o) => o.value.toLowerCase() === r.canonical_value.trim().toLowerCase())) return;
+          bucket.push({ value: r.canonical_value, label: r.canonical_value });
+        });
+        (Object.keys(grouped) as ScreeningRequirementEntityType[]).forEach((k) =>
+          grouped[k].sort((a, b) => a.label.localeCompare(b.label)),
         );
+        setRefOptions(grouped);
         setRefValues(set);
       })
       .catch((e) => console.warn("Could not load reference data for templates:", e));
@@ -2164,7 +3205,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   };
 
   /** Applies a requirement template to the Job Post Builder draft: skills seed
-   *  Required Skills, certifications / job roles seed Qualifications (roles as
+   *  Screening Requirements, certifications / job roles seed Qualifications (roles as
    *  an "Experience as …" line) and education / experience entities fill the
    *  structured levels the NLP screening scores against. Non-standard education
    *  / experience values become qualification lines instead of being lost. */
@@ -2217,6 +3258,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       ...(educationLevel ? { educationLevel } : {}),
       ...(experienceLevel ? { experienceLevel } : {}),
     }));
+    setAppliedTemplate(template);
     // Make sure the seeded blocks sit on the builder canvas and are active.
     setBlocks((b) => {
       const needed = (["skills", "qualifications"] as BlockId[]).filter((id) => !b.includes(id));
@@ -2295,45 +3337,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     }
   };
 
-  /** Validates type/size, then routes through the replacement-confirmation
-   *  rules: if the form already holds any applicant details (typed or
-   *  extracted from a previous resume), a confirm modal protects them;
-   *  an empty form accepts the new resume silently. */
-  const handleResumeFile = (file: File | null | undefined) => {
-    if (!file) return;
-    const isImage = addMethod === "image";
-    const name = file.name.toLowerCase();
-    const okType = isImage
-      ? /\.(jpe?g|png)$/.test(name) || file.type === "image/jpeg" || file.type === "image/png"
-      : /\.(pdf|docx?)$/.test(name);
-    if (!okType) {
-      toast.error(
-        isImage
-          ? "Unsupported image — please use a JPG or PNG file."
-          : "Unsupported file — please use a PDF or DOCX resume.",
-      );
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("File is larger than the 10 MB limit.");
-      return;
-    }
-    const hasExistingDetails = [addForm.name, addForm.email, addForm.phone, addForm.address].some(
-      (v) => v.trim().length > 0,
-    );
-    if (hasExistingDetails) {
-      setPendingResume(file);
-      setReplaceOpen(true);
-      return;
-    }
-    applyResumeFile(file);
-  };
-
   /** Applies the file unconditionally and runs the extraction auto-fill
    *  in replace mode (values overwrite whatever the form held). */
   const applyResumeFile = (file: File) => {
-    setAddResumeFile(file);
-    setAddFileName(file.name);
     void autofillFromResume(file, { overwrite: true });
   };
 
@@ -2403,37 +3409,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     }
   };
 
-  /** Blob URL for previewing the selected resume; revoked on change/unmount. */
-  const [resumePreviewUrl, setResumePreviewUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!addResumeFile) {
-      setResumePreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(addResumeFile);
-    setResumePreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [addResumeFile]);
-
-  /** Zoom level for the resume preview (50—300%, reset on file change). */
-  const [addPreviewZoom, setAddPreviewZoom] = useState(100);
-  useEffect(() => setAddPreviewZoom(100), [addResumeFile]);
-
-  /** Opens the selected resume in a new tab (images/PDFs render natively). */
-  const openResumePreview = () => {
-    if (resumePreviewUrl) window.open(resumePreviewUrl, "_blank", "noopener");
-  };
-
-  /** True only for natively previewable resumes (images + PDFs). DOCX/DOC
-   *  files have no inline preview — Step 3 hides the preview panel for them
-   *  instead of showing a "not available" placeholder. */
-  const isPreviewableResume = addResumeFile
-    ? /\.(jpe?g|png)$/i.test(addResumeFile.name) ||
-      addResumeFile.type.startsWith("image/") ||
-      /\.pdf$/i.test(addResumeFile.name) ||
-      addResumeFile.type === "application/pdf"
-    : false;
-
   /** Opens any staged local file (resume or verification doc) in a new tab. */
   const openLocalFile = (file: File) => {
     const url = URL.createObjectURL(file);
@@ -2482,6 +3457,26 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const isPairTaken = (dept: string, positionTitle: string) =>
     positionTitle !== "" && jobList.some((j) => j.department === dept && j.title === positionTitle);
 
+  /**
+   * Duplicate-post guard for the "new post" picker. Matched on position_id so
+   * the supervisory "Front Desk Receptionist" (POS-018) is not reported as
+   * taken just because the front-line one (POS-001) is posted. Posts that carry
+   * no position_id at all fall back to the dept + title check, since there is
+   * nothing better to compare them on.
+   */
+  const isPairTakenFor = (dept: string, positionDbId?: number | null) => {
+    if (positionDbId === undefined || positionDbId === null) {
+      return isPairTaken(dept, pendingPosition);
+    }
+    return jobList.some(
+      (j) =>
+        j.department === dept &&
+        (j.positionId !== undefined && j.positionId !== null
+          ? j.positionId === positionDbId
+          : j.title === pendingPosition),
+    );
+  };
+
   /** True when the selected department/position pair has an available job post. */
   const postingIndicator = useCallback(
     (dept: string, positionTitle?: string) =>
@@ -2499,11 +3494,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const resetAddWizard = () => {
     setAddStep(1);
     setScreenResult(null);
-    setAddResumeFile(null);
-    setVerificationDocs([]);
+    setUnifiedDocs([]);
     setPendingResume(null);
     setReplaceOpen(false);
-    setAddFileName("");
     setAddForm({ name: "", email: "", phone: "", address: "", position: "" });
   };
 
@@ -2512,47 +3505,21 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     resetAddWizard();
   };
 
-  const clearStep2Fields = () => {
-    setAddForm((prev) => ({ ...prev, name: "", email: "", phone: "", address: "" }));
-    setAddFileName("");
-    setAddResumeFile(null);
-    setPendingResume(null);
-    setReplaceOpen(false);
-  };
-
   const requestCloseWizard = () => {
-    if (addStep === 2 && hasStep2Data) {
-      setPendingStep2ExitAction("close");
+    if (addStep === 1 && hasStep2Data) {
       setConfirmStep2ExitOpen(true);
     } else {
       closeAddWizard();
-    }
-  };
-
-  const requestBackToStep1 = () => {
-    if (hasStep2Data) {
-      setPendingStep2ExitAction("back");
-      setConfirmStep2ExitOpen(true);
-    } else {
-      setAddStep(1);
     }
   };
 
   const handleConfirmStep2Discard = () => {
-    const action = pendingStep2ExitAction;
     setConfirmStep2ExitOpen(false);
-    setPendingStep2ExitAction(null);
-    if (action === "close") {
-      closeAddWizard();
-    } else if (action === "back") {
-      clearStep2Fields();
-      setAddStep(1);
-    }
+    closeAddWizard();
   };
 
   const handleConfirmStep2Stay = () => {
     setConfirmStep2ExitOpen(false);
-    setPendingStep2ExitAction(null);
   };
 
   /** Admin flow — locked to the clicked job post (department + position auto-set). */
@@ -2562,8 +3529,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setAddForm({ name: "", email: "", phone: "", address: "", position: job.title });
     setAddStep(1);
     setScreenResult(null);
-    setAddResumeFile(null);
-    setAddFileName("");
+    setUnifiedDocs([]);
     setPendingResume(null);
     setReplaceOpen(false);
     setAddOpen(true);
@@ -2578,8 +3544,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setAddForm({ name: "", email: "", phone: "", address: "", position: firstPos });
     setAddStep(1);
     setScreenResult(null);
-    setAddResumeFile(null);
-    setAddFileName("");
+    setUnifiedDocs([]);
     setPendingResume(null);
     setReplaceOpen(false);
     setAddOpen(true);
@@ -2648,6 +3613,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       const fd = new FormData();
       fd.append("resume", addResumeFile);
       fd.append("job_post_id", String(id));
+      // Staged supporting documents (Step 2) — verified in-memory against the
+      // resume profile so Step 3 shows the real Resume vs Documents breakdown
+      // and blended percentage instead of "No proof papers".
+      verificationDocs.forEach((doc) => {
+        fd.append("documents[]", doc.file);
+        fd.append("doc_types[]", doc.docType);
+      });
       const result = await applicantsApi.screenResume(fd);
       if (!result.success) {
         throw new Error(result.error_message || "The resume could not be processed.");
@@ -2672,7 +3644,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       toast.success(
         `Screening complete — ${result.match_score ?? 0}% (${statusMeta[toUiStatus(result.screening_status)].label})`,
       );
-      setAddStep(3);
+      setAddStep(2);
     } catch (e) {
       console.warn("Resume screening failed:", e);
       toast.error(
@@ -2715,13 +3687,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       const jobPostId = addPresetJob?.dbId ?? (await resolveJobPostId());
       if (!jobPostId) return;
 
+      const isImageResume =
+        Boolean(addResumeFile) &&
+        (/\.(jpe?g|png|webp|heic|heif|bmp|gif|tiff?|avif|svg)$/i.test(addResumeFile?.name ?? "") ||
+          (addResumeFile?.type ?? "").startsWith("image/"));
       const base = {
         job_post_id: jobPostId,
         name: addForm.name.trim(),
         email: addForm.email.trim(),
         phone: addForm.phone.trim(),
-        source: addMethod === "image" ? "Walk-in" : "Online Portal",
-        summary: `Added via ${addMethod === "image" ? "image (OCR)" : "document"} screening — ${addFileName || "uploaded resume"}, scored ${res.score}%.`,
+        source: isImageResume ? "Walk-in" : "Online Portal",
+        summary: `Added via ${isImageResume ? "image (OCR)" : "document"} screening — ${addFileName || "uploaded resume"}, scored ${res.score}%.`,
         status: res.status,
         stage: "Screened",
         flags_json: res.status === "credential" ? ["Manual credential verification required"] : [],
@@ -2798,10 +3774,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   }, [requirementTemplates, draft.title, knownPositions]);
 
   const [platforms, setPlatforms] = useState<Record<string, boolean>>({
-    Website: true,
-    Facebook: true,
-    Instagram: false,
-    Indeed: true,
+    ...DEFAULT_PLATFORM_TOGGLES,
   });
   const [preview, setPreview] = useState("Website");
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
@@ -2815,6 +3788,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const [deptDialogOpen, setDeptDialogOpen] = useState(false);
   const [pendingDept, setPendingDept] = useState("");
   const [pendingPosition, setPendingPosition] = useState("");
+  /** Core HCM position id behind `pendingPosition` — titles are not unique. */
+  const [pendingPositionDbId, setPendingPositionDbId] = useState<number | null>(null);
   /** False shows the "create a job posting" entry card instead of the builder canvas. */
   const [builderStarted, setBuilderStarted] = useState(false);
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
@@ -2830,7 +3805,42 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   /** Checkbox state inside the remove-confirm dialog. */
   const [removeForAll, setRemoveForAll] = useState(false);
   const [templateSearch, setTemplateSearch] = useState("");
+  /** Content Templates opens with the builder — the saved-post list is the
+   *  offline fallback when the AI usage limit is spent, so hiding it behind a
+   *  click hid the exact path HR needs. Collapsing is still available. */
+  const [templatesOpen, setTemplatesOpen] = useState(true);
   const [savedSnapshot, setSavedSnapshot] = useState<string>(snapshotOf(blankDraft, []));
+  /** Template the screening requirements on this post actually came from (provenance for the panel banner). Null when hand-typed or carried over. */
+  const [appliedTemplate, setAppliedTemplate] = useState<ApiRequirementTemplate | null>(null);
+  /** In flight for the panel's one-click "Create requirements for this position". */
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
+  /** Template awaiting confirm-before-overwrite when switching positions with existing skills. */
+  const [pendingTemplate, setPendingTemplate] = useState<{
+    template: ApiRequirementTemplate;
+    positionLabel: string;
+  } | null>(null);
+  /** AI checklist modal — the six prose blocks + per-block notes. */
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [aiChecked, setAiChecked] = useState<Record<string, boolean>>({
+    description: true,
+    responsibilities: true,
+    qualifications: true,
+    additional: true,
+    instructions: true,
+    about: true,
+  });
+  const [aiNotes, setAiNotes] = useState<Record<string, string>>({
+    description: "",
+    responsibilities: "",
+    qualifications: "",
+    additional: "",
+    instructions: "",
+    about: "",
+  });
+  /** Per-block write report shown inside the AI modal after generation. */
+  const [aiReport, setAiReport] = useState<
+    { block: string; label: string; detail: string; reused: string[] }[]
+  >([]);
   /** Entities view: false shows the builder canvas, true shows Entities Indicated. */
   const [builderFlipped, setBuilderFlipped] = useState(false);
   /** Screening vocabulary for entity indication — lazy-loaded on first flip. */
@@ -2872,6 +3882,14 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setBuilderFlipped(next);
     if (next && !entityMapping && !entityLoading) loadEntityMapping();
   };
+
+  /* The Screening Requirements panel shows live ✓ marks, so the vocabulary
+     must load when the builder opens — not only on card flip. */
+  useEffect(() => {
+    if (tab === "builder" && builderStarted && !entityMapping && !entityLoading && !entityError) {
+      loadEntityMapping();
+    }
+  }, [tab, builderStarted, entityMapping, entityLoading, entityError, loadEntityMapping]);
 
   /**
    * Refreshes the AI usage/limit snapshot shown beside Generate with AI.
@@ -2922,6 +3940,142 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     );
   };
 
+  /**
+   * "Create requirements for this position" — writes the requirement template
+   * for the draft's position straight away, instead of dropping HR into the
+   * Screening Setup dialog with an empty form.
+   *
+   * It seeds the template from what the draft already requires (skills plus the
+   * certification-like qualification lines, canonicalised against the screening
+   * vocabulary), so the click is loss-free: the post keeps its requirements and
+   * the template becomes the reusable copy for the next posting of the role. An
+   * existing template for the same position is merged into rather than
+   * duplicated, and terms it already holds are kept as-is.
+   */
+  const createTemplateForDraftPosition = async () => {
+    const title = draft.title.trim();
+    if (!title) {
+      toast.error("Select a job position first — requirement templates are per position.");
+      return;
+    }
+    const positionId = draft.positionDbId ?? null;
+    const skillsIdx = buildBuilderEntityIndex(entityMapping?.skills ?? {});
+    const certsIdx = buildBuilderEntityIndex(entityMapping?.certifications ?? {});
+    const toLines = (s: string) =>
+      s
+        .split("\n")
+        .map((x) => x.trim())
+        .filter(Boolean);
+
+    const items: RequirementTemplatePayload["items"] = [];
+    const seen = new Set<string>();
+    const push = (entity_type: "skill" | "certification", value: string) => {
+      const key = `${entity_type}|${value.toLowerCase()}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      items.push({ entity_type, value, required: true });
+    };
+
+    toLines(draft.skills).forEach((line) => {
+      const canonical = canonicalizeBuilderEntity(line, skillsIdx);
+      // Unrecognized lines are deliberately skipped: a template that carries a
+      // typo would score every future applicant against a term nothing matches.
+      if (canonical) push("skill", canonical);
+    });
+    [...toLines(draft.qualifications), ...toLines(draft.skills)]
+      .filter((line) =>
+        /nc\s*(i{1,3}|iv|1-4)|tesda|certificate|certification|license|licence|food handler/i.test(
+          line,
+        ),
+      )
+      .forEach((line) => {
+        const canonical = canonicalizeBuilderEntity(line, certsIdx);
+        if (canonical) push("certification", canonical);
+      });
+
+    if (items.length === 0) {
+      toast.error("Nothing to save yet", {
+        description:
+          "Add at least one skill from the vocabulary (or a certification) before creating the template.",
+      });
+      return;
+    }
+
+    const name = `${title} Requirements`;
+    /* One template per position is the model the builder applies from, so a
+       position that already has one is extended rather than given a second.
+       An exact name match wins; otherwise the position's existing active
+       template is merged into. */
+    const forPosition = requirementTemplates.filter(
+      (t) => t.active && (t.position_id ?? null) === positionId,
+    );
+    const existing =
+      forPosition.find((t) => t.name.trim().toLowerCase() === name.toLowerCase()) ??
+      forPosition[0];
+
+    setCreatingTemplate(true);
+    try {
+      let saved: ApiRequirementTemplate;
+      if (existing) {
+        const known = new Set(existing.items.map((i) => `${i.entity_type}|${i.value.toLowerCase()}`));
+        const fresh = items.filter((i) => !known.has(`${i.entity_type}|${i.value.toLowerCase()}`));
+        if (fresh.length === 0) {
+          // Nothing new to fold in — re-saving would only bump updated_at.
+          setAppliedTemplate(existing);
+          toast.success(`“${existing.name}” already covers this position`, {
+            description: "Nothing changed — every requirement is already saved on the template.",
+          });
+          setScreeningOpen(true);
+          setScreeningTab("templates");
+          return;
+        }
+        const merged = [
+          ...existing.items.map((i) => ({
+            entity_type: i.entity_type,
+            value: i.value,
+            required: true,
+          })),
+          ...fresh,
+        ];
+        const res = await screeningApi.requirementTemplates.update(existing.template_id, {
+          name: existing.name,
+          position_id: existing.position_id,
+          description: existing.description ?? null,
+          active: existing.active,
+          items: merged,
+        });
+        saved = res.data;
+        setAppliedTemplate(saved);
+        toast.success(`Added ${fresh.length} requirement${fresh.length === 1 ? "" : "s"} to “${saved.name}”`, {
+          description: "The existing template for this position was extended, not replaced.",
+        });
+      } else {
+        const res = await screeningApi.requirementTemplates.create({
+          name,
+          position_id: positionId,
+          description: `Screening requirements for ${title}.`,
+          active: true,
+          items,
+        });
+        saved = res.data;
+        setAppliedTemplate(saved);
+        toast.success(`Requirement template “${saved.name}” created`, {
+          description: `${items.length} requirement${items.length === 1 ? "" : "s"} saved for ${title}. Every future posting of this role starts from them.`,
+        });
+      }
+      loadRequirementTemplates();
+      setScreeningOpen(true);
+      setScreeningTab("templates");
+    } catch (e) {
+      console.warn("Could not create requirement template:", e);
+      toast.error("The requirement template could not be saved.", {
+        description: e instanceof Error && e.message ? e.message : undefined,
+      });
+    } finally {
+      setCreatingTemplate(false);
+    }
+  };
+
   const canSaveDraft = useMemo(
     () => blocks.some((id) => hasContentFor(id, draft)),
     [blocks, draft],
@@ -2940,13 +4094,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const aiIndicator = useMemo(() => {
     const used = aiUsage?.used_today ?? 0;
     const limit = aiUsage?.daily_limit ?? 0;
-    const usage = limit > 0 ? `${used}/${limit}` : `${used}`;
+    /* daily_limit 0 (or a null remaining) means unlimited, so there is no meter
+       to fill — show the plain count instead of a misleading 0%. */
+    const capped = limit > 0;
+    const percent = capped ? Math.min(100, Math.round((used / limit) * 100)) : null;
 
     if (generatingDraft) {
       return {
         tone: "busy" as const,
         label: "Generating…",
-        title: "The AI is writing the 6 content blocks now.",
+        title: "The AI is writing the content blocks now.",
+        percent: null as number | null,
         limited: false,
       };
     }
@@ -2955,6 +4113,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         tone: "muted" as const,
         label: "AI status…",
         title: "Checking the AI usage and limits.",
+        percent: null as number | null,
         limited: false,
       };
     }
@@ -2964,26 +4123,35 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         label: "AI not configured",
         title:
           "No GEMINI_API_KEY / OPENROUTER_API_KEY is set on the API server — ask an admin to configure one.",
+        percent: null as number | null,
         limited: false,
       };
     }
     if (aiBlockedSeconds > 0) {
       return {
         tone: "limit" as const,
-        label: `AI limit · resets in ${aiCountdown(aiBlockedSeconds)}`,
+        label: `AI limit · ${aiCountdown(aiBlockedSeconds)}`,
         title: `${aiFailureLabel(aiUsage.blocked_code)} — ${
           aiUsage.blocked_reason ?? "the AI usage is used up."
         } Use a Content Template meanwhile.`,
+        percent: 100 as number | null,
         limited: true,
       };
     }
 
+    const tokens = aiUsage.tokens_today ?? 0;
+    const failures = aiUsage.failures_today ?? 0;
     return {
       tone: "ready" as const,
-      label: `AI · ${usage} today`,
-      title: `Ready — ${used} AI draft(s) today${
-        limit > 0 ? ` of ${limit}` : ""
-      } via ${aiUsage.primary_model}.`,
+      label: capped ? `${used}/${limit} drafts today` : `${used} drafts today`,
+      title: [
+        `Ready — ${used} AI draft(s) today${capped ? ` of the ${limit} allowed` : " (no daily cap set)"} via ${aiUsage.primary_model}.`,
+        tokens > 0 ? `${tokens.toLocaleString()} tokens spent today.` : null,
+        failures > 0 ? `${failures} failed attempt(s) today.` : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
+      percent,
       limited: false,
     };
   }, [aiUsage, aiBlockedSeconds, generatingDraft]);
@@ -3009,6 +4177,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       editingJobId ??
       `draft-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now().toString().slice(-4)}`;
     const existing = jobList.find((j) => j.id === draftId);
+    /* Saving must not change what is live. A brand-new post becomes a draft;
+       an existing one keeps the status, active flag and channels it already
+       has, so editing a published ad through Save cannot quietly pull it off
+       the careers page. Publishing is the only thing that changes that, and
+       it is what the primary button does. */
+    const keepPublished = Boolean(existing?.dbId);
+    const liveStatus: JobStatus = keepPublished
+      ? (existing?.status ?? "Draft")
+      : "Draft";
+    const liveActive = keepPublished ? (existing?.active ?? false) : false;
+    const livePlatforms = Object.keys(platforms).filter((k) => platforms[k]);
     // One posting per position + department — refuse a new draft that
     // duplicates another posting's pair (updates to the same post are fine).
     const draftClash = jobList.find(
@@ -3022,6 +4201,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     }
     const payload: Job = {
       id: draftId,
+      /* Keep the database id across optimistic updates — losing it makes the
+         next save of the same card take the create branch and the backend
+         rejects it as DUPLICATE_JOB_POST. */
+      ...(existing?.dbId !== undefined ? { dbId: existing.dbId } : {}),
       title,
       department: draft.department,
       employmentType: draft.employmentType as Job["employmentType"],
@@ -3031,18 +4214,24 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       vacancies: Number(draft.vacancies) || 1,
       filled: existing?.filled ?? 0,
       posted: existing?.posted ?? new Date().toISOString().slice(0, 10),
-      status: "Draft",
-      active: false,
-      experience: existing?.experience ?? "1-2 Years",
-      education: existing?.education ?? "High School Graduate",
+      status: liveStatus,
+      active: liveActive,
+      /* Levels come from the Screening Requirements panel, so a save keeps
+         whatever was picked there rather than falling back to a default. */
+      experience: (draft.experienceLevel || existing?.experience || "1-2 Years") as Job["experience"],
+      education: (draft.educationLevel || existing?.education || "High School Graduate") as Job["education"],
       summary: draft.description,
       description: draft.description,
       responsibilities: lines(draft.responsibilities),
       qualifications: lines(draft.qualifications),
       skills: lines(draft.skills),
+      additional: lines(draft.additional),
+      instructions: draft.instructions,
+      about: draft.about,
       applicants: existing?.applicants ?? 0,
       benefits: [],
-      platforms: [],
+      platforms: livePlatforms,
+      blocks: blocks,
     };
     setJobList((prev) =>
       prev.some((j) => j.id === draftId)
@@ -3054,20 +4243,39 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
     // Persist the draft to the database so it survives reloads
     try {
-      let positionId = positionsForDepartment(draft.department).find(
-        (p) => p.title === title,
-      )?.dbId;
+      let positionId =
+        draft.positionDbId ??
+        positionsForDepartment(draft.department).find((p) => p.title === title)?.dbId;
       let departmentId = knownDepartments.find((d) => d.name === draft.department)?.dbId;
       if (!departmentId) {
         const created = await coreHcmApi.createDepartment({ name: draft.department });
         departmentId = created.department_id;
       }
       if (!positionId) {
+        // Positions require a salary grade (StorePositionRequest marks it
+        // required) — reuse the publish handler's resolution: the draft's
+        // grade, else the band whose range fits, else the lowest grade.
+        const gradesRes = await coreHcmApi.salaryGrades.list({ per_page: 200 });
+        const grades = gradesRes?.data ?? [];
+        const draftMin = Number(draft.salaryMin) || 0;
+        const byMin = [...grades].sort((a, b) => Number(a.min_salary) - Number(b.min_salary));
+        const inRange = byMin.find((g) => {
+          const lo = Number(g.min_salary) || 0;
+          const hi =
+            g.max_salary === null || g.max_salary === undefined ? Infinity : Number(g.max_salary);
+          return draftMin >= lo && draftMin <= hi;
+        });
+        const gradePick =
+          grades.find((g) => String(g.salary_grade_id) === draft.salaryGradeId) ?? inRange ?? byMin[0];
+        if (!gradePick) {
+          throw new Error("No salary grade exists — create one in Core HCM → Salary Grades first.");
+        }
         const created = await coreHcmApi.createPosition({
           title,
           department_id: departmentId,
+          salary_grade_id: gradePick.salary_grade_id,
           level: "Rank & File",
-          headcount: 1,
+          headcount: Number(draft.vacancies) || 1,
         });
         positionId = created.position_id;
       }
@@ -3081,14 +4289,27 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         salary_min: payload.salaryMin,
         salary_max: payload.salaryMax,
         vacancies: payload.vacancies,
-        status: "Draft",
-        active: false,
+        /* The post's current publish state travels with the save — a draft
+           toggle that ignored it is what used to unpublish a live ad. */
+        status: liveStatus,
+        active: liveActive,
+        /* Structured screening levels — the NLP match scoring reads them, so
+           a save has to carry them or they silently revert to the old value. */
+        experience_level: payload.experience,
+        education_level: payload.education,
         summary: payload.summary,
         description: payload.description,
         responsibilities: payload.responsibilities,
         qualifications: payload.qualifications,
         skills: payload.skills,
-        platforms: [],
+        additional: payload.additional,
+        instructions: payload.instructions,
+        about: payload.about,
+        platforms: livePlatforms,
+        /* Canvas arrangement, so the recruiter's drag order survives the save. */
+        blocks: payload.blocks ?? [],
+        requires_assessment: draft.requiresAssessment,
+        requires_practical: draft.requiresPractical,
       };
 
       if (existing?.dbId) {
@@ -3099,7 +4320,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           prev.map((j) => (j.id === draftId ? { ...j, dbId: created.job_post_id } : j)),
         );
       }
-      toast.success(`Draft saved — “${title}” is in your postings as a draft`);
+      toast.success(
+        keepPublished
+          ? `“${title}” saved${liveStatus === "Open" ? " — still live on " + (livePlatforms.join(", ") || "no channel") : ""}`
+          : `Draft saved — “${title}” is in your postings as a draft`,
+      );
     } catch (e) {
       console.warn("Could not persist draft to database API:", e);
       toast.error(`“${title}” was kept locally, but could not be saved to the database.`);
@@ -3157,27 +4382,36 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   };
 
   /**
-   * One-click AI fill for the 6 builder content blocks (description,
-   * responsibilities, qualifications, skills, instructions, about).
-   * The backend grounds skills/qualifications in the screening vocabulary so
-   * applicant match scores stay meaningful. Nothing is published — HR reviews
-   * the filled draft in the builder first.
+   * Checklist-driven AI fill for the 6 prose blocks (description,
+   * responsibilities, qualifications, additional, instructions, about).
+   * Skills come from the requirement template, never the AI. The backend
+   * grounds prose in the screening vocabulary so matches stay meaningful.
+   * Nothing is published — HR reviews the filled draft in the builder first.
    */
   const generateDraftWithAI = () => {
     if (!draft.title.trim()) {
       toast.error("Select a job position first — the AI needs a role to write about.");
       return;
     }
-    // Filled blocks would be overwritten — confirm in the app's own dialog
-    // instead of the browser's native alert so it matches the design system.
-    if (AI_CONTENT_BLOCKS.some((id) => hasContentFor(id, draft))) {
-      setConfirmGenerateOpen(true);
-      return;
-    }
-    void runGenerateDraft();
+    setAiReport([]);
+    setAiModalOpen(true);
   };
 
+  /** Punctuation-insensitive line key so regenerated bullets dedupe cleanly. */
+  const aiLineKey = (s: string) =>
+    s.toLowerCase().trim().replace(/\s+/g, " ").replace(/[.;,]+$/, "");
+
   const runGenerateDraft = async () => {
+    const wanted = (Object.keys(aiChecked) as BlockId[]).filter((b) => aiChecked[b]);
+    if (wanted.length === 0) {
+      toast.error("Tick at least one block to generate.");
+      return;
+    }
+    const notes: Record<string, string> = {};
+    wanted.forEach((b) => {
+      const v = (aiNotes[b] ?? "").trim();
+      if (v) notes[b] = v;
+    });
     setGeneratingDraft(true);
     try {
       const res = await jobPostsApi.generateDraft({
@@ -3186,29 +4420,130 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         employment_type: draft.employmentType || undefined,
         schedule: draft.schedule || undefined,
         vacancies: Number(draft.vacancies) || 1,
+        experience_level: draft.experienceLevel || undefined,
+        education_level: draft.educationLevel || undefined,
+        blocks: wanted,
+        notes,
       });
       const generated = res.data;
-      setDraft((d) => ({
-        ...d,
-        description: generated.description || d.description,
-        responsibilities: (generated.responsibilities || []).join("\n"),
-        qualifications: (generated.qualifications || []).join("\n"),
-        skills: (generated.skills || []).join("\n"),
-        instructions: generated.instructions || d.instructions,
-        about: generated.about || d.about,
-      }));
-      // Make sure all 6 AI-filled blocks are on the canvas and visible.
-      setBlocks((b) => [...b, ...AI_CONTENT_BLOCKS.filter((id) => !b.includes(id))]);
-      setActiveBlock("description");
+      const report: { block: string; label: string; detail: string; reused: string[] }[] = [];
+      /* Computed OUTSIDE the setDraft updater on purpose: pushing into `report`
+         from inside an updater is a side effect, and React StrictMode invokes
+         updaters twice in development — which duplicated every report row
+         ("two children with the same key: description"). */
+      const mergeLines = (current: string, incoming: string[]) => {
+        const have = new Set(
+          current
+            .split("\n")
+            .map((l) => aiLineKey(l))
+            .filter(Boolean),
+        );
+        const fresh = incoming
+          .map((l) => l.trim())
+          .filter(Boolean)
+          .filter((l) => !have.has(aiLineKey(l)));
+        return {
+          text: [...current.split("\n").map((l) => l.trim()).filter(Boolean), ...fresh].join(
+            "\n",
+          ),
+          added: fresh.length,
+          total: incoming.filter(Boolean).length,
+        };
+      };
+      const vocabHits = (lines: string[]): string[] => {
+        if (!entityMapping) return [];
+        const idx = buildBuilderEntityIndex(entityMapping.skills ?? {});
+        const out: string[] = [];
+        const seen = new Set<string>();
+        lines.forEach((l) => {
+          const c = canonicalizeBuilderEntity(l, idx);
+          if (c && !seen.has(c)) {
+            seen.add(c);
+            out.push(c);
+          }
+        });
+        return out;
+      };
+      const next: Draft = { ...draft };
+      if (wanted.includes("description" as BlockId) && generated.description) {
+        const replaced = next.description.trim() !== "";
+        next.description = generated.description;
+        report.push({
+          block: "description",
+          label: "Job Description",
+          detail: replaced
+            ? "replaced (your previous paragraph was overwritten)"
+            : "written",
+          reused: [],
+        });
+      }
+      if (
+        wanted.includes("responsibilities" as BlockId) &&
+        generated.responsibilities?.length
+      ) {
+        const m = mergeLines(next.responsibilities, generated.responsibilities);
+        next.responsibilities = m.text;
+        report.push({
+          block: "responsibilities",
+          label: "Key Responsibilities",
+          detail: m.added === 0 ? "nothing new — already matches" : `${m.added} line(s) written`,
+          reused: vocabHits(generated.responsibilities),
+        });
+      }
+      if (wanted.includes("qualifications" as BlockId) && generated.qualifications?.length) {
+        const m = mergeLines(next.qualifications, generated.qualifications);
+        next.qualifications = m.text;
+        report.push({
+          block: "qualifications",
+          label: "Qualifications",
+          detail: m.added === 0 ? "nothing new — already matches" : `${m.added} line(s) written`,
+          reused: vocabHits(generated.qualifications),
+        });
+      }
+      if (wanted.includes("additional" as BlockId) && (generated.additional ?? []).length) {
+        const m = mergeLines(next.additional, generated.additional ?? []);
+        next.additional = m.text;
+        report.push({
+          block: "additional",
+          label: "Additional Info",
+          detail: m.added === 0 ? "nothing new — already matches" : `${m.added} line(s) written`,
+          reused: [],
+        });
+      }
+      if (wanted.includes("instructions" as BlockId) && generated.instructions) {
+        const replaced = next.instructions.trim() !== "";
+        next.instructions = generated.instructions;
+        report.push({
+          block: "instructions",
+          label: "Application Instruction",
+          detail: replaced ? "replaced (your previous paragraph was overwritten)" : "written",
+          reused: [],
+        });
+      }
+      if (wanted.includes("about" as BlockId) && generated.about) {
+        const replaced = next.about.trim() !== "";
+        next.about = generated.about;
+        report.push({
+          block: "about",
+          label: "About Company",
+          detail: replaced ? "replaced (your previous paragraph was overwritten)" : "written",
+          reused: [],
+        });
+      }
+      setDraft(next);
+      // Make sure generated blocks sit on the canvas and are visible.
+      setBlocks((b) => [...b, ...wanted.filter((id) => !b.includes(id))]);
+      setActiveBlock(wanted[0] ?? "description");
+      setAiReport(report);
       if (res.meta?.usage) setAiUsage(res.meta.usage);
-      const fresh = res.meta?.skills_new ?? [];
+      const matched = res.meta?.skills_matched ?? [];
       const via = res.meta?.generated_via;
       const viaNote = via ? ` via ${via.service}${via.free ? " (free model)" : ""}` : "";
       const usageNote = res.meta?.usage ? ` · ${res.meta.usage.used_today} AI draft(s) today` : "";
-      toast.success(`AI draft ready for “${draft.title}” — 6 components filled${viaNote}`, {
+      toast.success(`AI draft ready for “${draft.title}” — ${report.length} block(s) written${viaNote}`, {
         description:
-          fresh.length > 0
-            ? `${fresh.length} new skill(s) not in your vocabulary — add them via Screening setup.${usageNote}`
+          matched.length > 0
+            ? `Reused ${matched.length} vocabulary term(s): ${matched.slice(0, 4).join(", ")}${matched.length > 4 ? "…" : ""}.${usageNote}`
             : `Review each block, then Save draft or Publish.${usageNote}`,
       });
     } catch (e) {
@@ -3306,13 +4641,43 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       });
       return;
     }
+    /* Screening requirements must be matchable: at least one recognised skill.
+       When the vocabulary hasn't loaded yet, fall back to requiring any skill
+       line so publishing is never blocked by a slow network. */
+    const skillLines = lines(draft.skills);
+    if (skillLines.length === 0) {
+      setBlocks((b) => (b.includes("skills") ? b : [...b, "skills"]));
+      setActiveBlock("skills");
+      toast.error(`Add at least one skill in Screening Requirements before ${verb}.`, {
+        description: "Skills come from the position's requirement template or the vocabulary picker.",
+      });
+      return;
+    }
+    if (entityMapping) {
+      const idx = buildBuilderEntityIndex(entityMapping.skills ?? {});
+      const res = analyzeBuilderEntityLines(skillLines, idx);
+      if (res.recognized.length === 0) {
+        setBlocks((b) => (b.includes("skills") ? b : [...b, "skills"]));
+        setActiveBlock("skills");
+        toast.error(`Add at least one skill the screener recognises before ${verb}.`, {
+          description:
+            "Unrecognised terms score 0 — pick from the vocabulary or add the term with +.",
+        });
+        return;
+      }
+    }
     const editingFilled = editingJobId ? (jobList.find((j) => j.id === editingJobId)?.filled ?? 0) : 0;
+    const editingDbId = editingJobId ? jobList.find((j) => j.id === editingJobId)?.dbId : undefined;
     const jobPayload: Job = {
       id:
         editingJobId ??
         `${draft.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()
           .toString()
           .slice(-4)}`,
+      /* Keep the database id across optimistic updates — losing it makes the
+         next save of the same card take the create branch and the backend
+         rejects it as DUPLICATE_JOB_POST. */
+      ...(editingDbId !== undefined ? { dbId: editingDbId } : {}),
       title: draft.title,
       department: draft.department,
       employmentType: draft.employmentType as Job["employmentType"],
@@ -3334,9 +4699,14 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       responsibilities: lines(draft.responsibilities),
       qualifications: lines(draft.qualifications),
       skills: lines(draft.skills),
+      additional: lines(draft.additional),
+      instructions: draft.instructions,
+      about: draft.about,
       applicants: editingJobId ? (jobList.find((j) => j.id === editingJobId)?.applicants ?? 0) : 0,
       benefits: [],
       platforms: chosen,
+      /* Canvas arrangement, so the recruiter's drag order survives the save. */
+      blocks,
     };
     const posterUrl = customPosterUrl ?? jobList.find((j) => j.id === editingJobId)?.picture;
     if (posterUrl) jobPayload.picture = posterUrl;
@@ -3371,11 +4741,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         .replace(/[^A-Z0-9]/g, "");
       return (initials || "DEPT").slice(0, 20);
     };
-    let positionId = positionsForDepartment(draft.department).find(
-      (p) => p.title === draft.title,
-    )?.dbId;
+    let positionId =
+      draft.positionDbId ??
+      positionsForDepartment(draft.department).find((p) => p.title === draft.title)?.dbId;
     let departmentId = knownDepartments.find((d) => d.name === draft.department)?.dbId;
 
+    // Hoisted so the DUPLICATE_JOB_POST self-heal in catch can resend it.
+    let payload: Record<string, any> | FormData = {};
     try {
       if (!departmentId) {
         let code = deptCodeFor(draft.department);
@@ -3448,10 +4820,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         responsibilities: jobPayload.responsibilities,
         qualifications: jobPayload.qualifications,
         skills: jobPayload.skills,
+        additional: jobPayload.additional,
+        instructions: jobPayload.instructions,
+        about: jobPayload.about,
         platforms: chosen,
+        /* Builder canvas arrangement, so the recruiter's drag order survives. */
+        blocks: jobPayload.blocks ?? [],
+        requires_assessment: draft.requiresAssessment,
+        requires_practical: draft.requiresPractical,
       };
       // Uploaded poster picture rides along as multipart/form-data
-      let payload: Record<string, any> | FormData = basePayload;
+      payload = basePayload;
       if (posterFile) {
         const fd = new FormData();
         Object.entries(basePayload).forEach(([k, v]) => {
@@ -3512,7 +4891,32 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       );
     } catch (e) {
       console.warn("Could not persist job post to database API:", e);
-      const err = e as { status?: number; code?: string; message?: string };
+      const err = e as {
+        status?: number;
+        code?: string;
+        message?: string;
+        payload?: { existing_job_post_id?: number };
+      };
+      const dupId = err?.payload?.existing_job_post_id;
+      // Self-heal a mistaken create: we were editing (Edit Template) but the
+      // local entry had no dbId, so the save took the create branch. The
+      // backend names the conflicting post — update it instead of failing.
+      if ((err?.code === "DUPLICATE_JOB_POST" || err?.status === 409) && editingJobId && dupId) {
+        try {
+          await jobPostsApi.update(dupId, payload);
+          setJobList((prev) =>
+            prev.map((j) => (j.id === jobPayload.id ? { ...j, dbId: dupId } : j)),
+          );
+          toast.success(`“${jobPayload.title}” template updated`);
+        } catch (retryErr) {
+          console.warn("Retry-as-update for duplicate job post failed:", retryErr);
+          toast.error(
+            err?.message ||
+              `A job post already exists for “${jobPayload.title}” — edit the existing post instead of creating a duplicate.`,
+          );
+        }
+        return;
+      }
       if (err?.code === "DUPLICATE_JOB_POST" || err?.status === 409) {
         toast.error(
           err?.message ||
@@ -3527,20 +4931,33 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   };
 
   /** Seed salary grade/band + salary range from a Core HCM position. */
-  const seedFromPosition = (department: string, title: string, base: Draft): Draft => {
+  const seedFromPosition = (
+    department: string,
+    title: string,
+    base: Draft,
+    positionDbId?: number | null,
+  ): Draft => {
     const departmentId = knownDepartments.find((d) => d.name === department)?.dbId;
-    const position = knownPositions.find(
-      (p) =>
-        (((departmentId !== undefined && p.departmentId === departmentId) ||
-          (p.departmentId === undefined && p.department === department)) &&
-          p.title === title),
-    );
+    /* Resolve by id when the picker supplied one — Front Office has two
+       "Front Desk Receptionist" rows on different salary bands, and a
+       name-only match would seed the wrong one. */
+    const position =
+      (positionDbId !== undefined && positionDbId !== null
+        ? knownPositions.find((p) => p.dbId === positionDbId)
+        : null) ??
+      knownPositions.find(
+        (p) =>
+          (((departmentId !== undefined && p.departmentId === departmentId) ||
+            (p.departmentId === undefined && p.department === department)) &&
+            p.title === title),
+      );
     if (!position) return base;
     const grade = position.salaryGradeId
       ? salaryGrades.find((g) => g.salary_grade_id === position.salaryGradeId)
       : null;
     return {
       ...base,
+      positionDbId: position.dbId ?? base.positionDbId,
       salaryGradeId: position.salaryGradeId ? String(position.salaryGradeId) : base.salaryGradeId,
       salaryMin:
         base.salaryMin ||
@@ -3553,50 +4970,78 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     };
   };
 
-  const startNewPost = (department: string, position?: string) => {
+  const startNewPost = (department: string, position?: string, positionDbId?: number | null) => {
     const seeded: Draft = seedFromPosition(
       department,
       position ?? "",
-      { ...blankDraft, department, title: position ?? "" },
+      { ...blankDraft, department, title: position ?? "", positionDbId: positionDbId ?? null },
+      positionDbId,
     );
     setDraft(seeded);
-    setBlocks(position ? ["title"] : []);
+    /* A new post opens with the full canvas rather than a lone Job Title block:
+       the whole structure is then visible and HR writes into sections instead of
+       hunting for which components to add. Blocks they never touch are simply
+       empty, and the publish gate says which ones matter. */
+    const order = position ? fullBlocks : [];
+    setBlocks(order);
     setBuilderStarted(true);
+    setActiveBlock("skills");
     setEditingJobId(null);
     setSourceReqId(null);
     setLinkedReqId(null);
+    /* Nothing is live yet — offer the default channel set, not whatever the
+       previously opened post happened to be on. */
+    setPlatforms({ ...DEFAULT_PLATFORM_TOGGLES });
+    /* Brand-new post: follow Core HCM for salary band and open slots. */
+    setSalaryLocked(false);
+    setVacanciesLocked(false);
     setMode("custom");
     setNewOpen(false);
     setDeptDialogOpen(false);
-    setSavedSnapshot(snapshotOf(seeded, position ? ["title"] : []));
+    setSavedSnapshot(snapshotOf(seeded, order));
     setTab("builder");
     setPendingTab(null);
   };
 
   const editTemplate = (job: Job) => {
     const seeded = jobToDraft(job);
+    /* Restore the recruiter's own block arrangement, not the default order. */
+    const order = blocksForJob(job.blocks);
     setDraft(seeded);
-    setBlocks(fullBlocks);
+    setBlocks(order);
+    /* Same for the channels: show what this post is actually live on. */
+    setPlatforms(platformTogglesFrom(job.platforms));
     setEditingJobId(job.id);
     setSourceReqId(null);
     setLinkedReqId(null);
     setMode("template");
     setBuilderStarted(true);
-    setSavedSnapshot(snapshotOf(seeded, fullBlocks));
+    /* The saved figures win while editing — don't let the Core HCM auto-fill
+       overwrite what is already published. A grade change re-arms it. */
+    setSalaryLocked(true);
+    setVacanciesLocked(true);
+    setSavedSnapshot(snapshotOf(seeded, order));
     setTab("builder");
     toast.message(`Editing template for “${job.title}”`);
   };
 
   const copyAndUseTemplate = (job: Job) => {
     const seeded = jobToDraft(job);
+    const order = blocksForJob(job.blocks);
     setDraft(seeded);
-    setBlocks(fullBlocks);
+    setBlocks(order);
+    /* A copy becomes a brand-new posting, so it starts on the default
+       channels rather than inheriting the source post's live ones. */
+    setPlatforms({ ...DEFAULT_PLATFORM_TOGGLES });
     setEditingJobId(null);
     setSourceReqId(null);
     setLinkedReqId(null);
     setMode("template");
     setBuilderStarted(true);
-    setSavedSnapshot(snapshotOf(seeded, fullBlocks));
+    /* A copy starts from Core HCM truth: salary band + open slots re-apply. */
+    setSalaryLocked(false);
+    setVacanciesLocked(false);
+    setSavedSnapshot(snapshotOf(seeded, order));
     setTab("builder");
     toast.message(`Copied “${job.title}” — publish as a new posting`);
   };
@@ -3620,6 +5065,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setEditingJobId(null);
     setSourceReqId(reqId);
     setLinkedReqId(null);
+    /* Nothing is live until it is published. */
+    setPlatforms({ ...DEFAULT_PLATFORM_TOGGLES });
     setMode("template");
     setBuilderStarted(true);
     setSavedSnapshot(snapshotOf(seeded, fullBlocks));
@@ -3651,6 +5098,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         responsibilities: id === "responsibilities" ? "" : d.responsibilities,
         qualifications: id === "qualifications" ? "" : d.qualifications,
         skills: id === "skills" ? "" : d.skills,
+        additional: id === "additional" ? "" : d.additional,
         instructions: id === "instructions" ? "" : d.instructions,
         about: id === "about" ? "" : d.about,
       }));
@@ -3963,6 +5411,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       department: request.department,
       vacancies: String(request.count),
     }));
+    /* Linking a request after the fact is a new source of truth — re-arm both
+       auto-fills so vacancies and the salary band follow Core HCM again. */
+    setVacanciesLocked(false);
+    setSalaryLocked(false);
   }, [linkedReqId, sourceReqId, requisitions]);
 
   /** Predefined recruitment reports — the only reports this module exports. */
@@ -3991,40 +5443,57 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     return Math.max(0, Math.round((Date.now() - t) / 86_400_000));
   };
 
-  const buildPostingsReport = (): ReportData => ({
-    title: "Recruitment Management Report",
-    subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: Vacancies & Postings`,
-    columns: [
-      { header: "Job title", key: "title" },
-      { header: "Department", key: "department" },
-      { header: "Status", key: "status" },
-      { header: "Vacancies", key: "vacancies" },
-      { header: "Filled", key: "filled" },
-      { header: "Applicants", key: "applicants" },
-      { header: "Posted", key: "posted" },
-    ],
-    rows: [
-      ...jobList.map((job) => ({ ...job })),
-      ...pendingRequisitions.map((request) => ({
-        title: `${request.position} (requisition ${request.id})`,
-        department: request.department,
-        status: request.status,
-        vacancies: request.count,
-        filled: "-",
-        applicants: "-",
-        posted: request.requestedAt,
-      })),
-    ],
-    summary: [
-      { label: "Active postings", value: openCount },
-      { label: "Total vacancies", value: totalVacancies },
-      { label: "Pending requisitions", value: pendingRequisitions.length },
-    ],
-  });
+  const buildPostingsReport = (): ReportData => {
+    // Org-chart arrangement: Position immediately followed by Department,
+    // rows ordered Department → Position (same hierarchy as the org chart).
+    // Department names resolve against the Core HCM master so postings can
+    // never drift from the org chart's Department ↔ Position mapping.
+    const deptOfJob = (title: string, fallback: string) =>
+      knownPositions.find((p) => p.title === title)?.department ?? fallback;
+    const postRows = filteredJobs
+      .map((job) => ({ ...job, department: deptOfJob(job.title, job.department) }))
+      .sort(
+        (a, b) =>
+          a.department.localeCompare(b.department) || a.title.localeCompare(b.title),
+      );
+    const deptCount = new Set(postRows.map((j) => j.department)).size;
+    return {
+      title: "Recruitment Management Report",
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: Vacancies & Postings · Department: ${deptFilter} | Status: ${statusFilter}`,
+      columns: [
+        { header: "Position", key: "title" },
+        { header: "Department", key: "department" },
+        { header: "Status", key: "status" },
+        { header: "Vacancies", key: "vacancies" },
+        { header: "Filled", key: "filled" },
+        { header: "Applicants", key: "applicants" },
+        { header: "Posted", key: "posted" },
+      ],
+      rows: [
+        ...postRows,
+        ...pendingRequisitions.map((request) => ({
+          title: `${request.position} (requisition ${request.id})`,
+          department: request.department,
+          status: request.status,
+          vacancies: request.count,
+          filled: "-",
+          applicants: "-",
+          posted: request.requestedAt,
+        })),
+      ],
+      summary: [
+        { label: "Active postings", value: openCount },
+        { label: "Total vacancies", value: totalVacancies },
+        { label: "Pending requisitions", value: pendingRequisitions.length },
+        { label: "Departments covered", value: deptCount },
+        { label: "Rows in report", value: postRows.length },
+      ],
+    };
+  };
 
   const buildRequisitionsReport = (): ReportData => ({
     title: "Vacancy Requisitions Report",
-    subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: Vacancy Requisitions (pending from Core HCM)`,
+    subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: Vacancy Requisitions (pending from Core HCM) · Department: ${reqDept} | Status: ${reqStatus} | Urgency: ${reqUrgency}`,
     columns: [
       { header: "Reference", key: "id" },
       { header: "Position", key: "position" },
@@ -4034,7 +5503,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       { header: "Status", key: "status" },
       { header: "Requested", key: "requestedAt" },
     ],
-    rows: filteredRequisitions.map((request) => ({ ...request })),
+    rows: [...filteredRequisitions]
+      .map((request) => ({ ...request }))
+      .sort(
+        (a, b) =>
+          String(a.department).localeCompare(String(b.department)) ||
+          String(a.position).localeCompare(String(b.position)),
+      ),
     summary: [
       { label: "Pending requisitions", value: pendingRequisitions.length },
       { label: "High urgency", value: highUrgencyCount },
@@ -4043,35 +5518,47 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   });
 
   const buildFunnelReport = (): ReportData => {
-    const rows = jobList.map((job) => {
-      const daysOpen = daysOpenOf(job.posted);
-      const remaining = Math.max(0, job.vacancies - job.filled);
-      const fillRate = job.vacancies > 0 ? Math.round((job.filled / job.vacancies) * 100) : 0;
-      const perVacancy = job.vacancies > 0 ? (job.applicants / job.vacancies).toFixed(1) : "—";
-      return {
-        title: job.title,
-        department: job.department,
-        status: job.status,
-        posted: job.posted,
-        daysOpen,
-        vacancies: job.vacancies,
-        filled: job.filled,
-        remaining,
-        fillRate: `${fillRate}%`,
-        applicants: job.applicants,
-        perVacancy,
-      };
-    });
+    const deptOfJob = (title: string, fallback: string) =>
+      knownPositions.find((p) => p.title === title)?.department ?? fallback;
+    const scopedJobs = filteredJobs.map((job) => ({
+      ...job,
+      department: deptOfJob(job.title, job.department),
+    }));
+    const rows = scopedJobs
+      .map((job) => {
+        const daysOpen = daysOpenOf(job.posted);
+        const remaining = Math.max(0, job.vacancies - job.filled);
+        const fillRate = job.vacancies > 0 ? Math.round((job.filled / job.vacancies) * 100) : 0;
+        const perVacancy = job.vacancies > 0 ? (job.applicants / job.vacancies).toFixed(1) : "—";
+        return {
+          title: job.title,
+          department: job.department,
+          status: job.status,
+          posted: job.posted,
+          daysOpen,
+          vacancies: job.vacancies,
+          filled: job.filled,
+          remaining,
+          fillRate: `${fillRate}%`,
+          applicants: job.applicants,
+          perVacancy,
+        };
+      })
+      .sort(
+        (a, b) =>
+          String(a.department).localeCompare(String(b.department)) ||
+          String(a.title).localeCompare(String(b.title)),
+      );
     const avgDays = rows.length
       ? Math.round(rows.reduce((t, r) => t + (r.daysOpen as number), 0) / rows.length)
       : 0;
-    const totalFilled = jobList.reduce((t, j) => t + j.filled, 0);
-    const totalApplicants = jobList.reduce((t, j) => t + j.applicants, 0);
+    const totalFilled = scopedJobs.reduce((t, j) => t + j.filled, 0);
+    const totalApplicants = scopedJobs.reduce((t, j) => t + j.applicants, 0);
     return {
       title: "Recruitment Time-to-Fill & Funnel Report",
-      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: Time-to-Fill & Funnel`,
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Predefined report: Time-to-Fill & Funnel · Department: ${deptFilter} | Status: ${statusFilter}`,
       columns: [
-        { header: "Job title", key: "title" },
+        { header: "Position", key: "title" },
         { header: "Department", key: "department" },
         { header: "Status", key: "status" },
         { header: "Posted", key: "posted" },
@@ -4100,78 +5587,15 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     return buildPostingsReport();
   };
 
-  const recruitmentReport = buildPostingsReport();
-  const requisitionReport = buildRequisitionsReport();
-
-  /** Every format is password-protected: picking one opens the password gate. */
-  const handleExportRecruitmentReport = (id: RecruitmentReportId, format: ReportFormat) => {
-    if (buildRecruitmentReport(id).rows.length === 0) {
-      toast.error("No records to export for the current filters.");
-      return;
-    }
-    setCsvPending({ id, format });
-    setCsvOpen(true);
-  };
-
-  const confirmRecruitmentCsv = async (password: string) => {
-    if (!csvPending) return;
-    setCsvBusy(true);
-    try {
-      const data = buildRecruitmentReport(csvPending.id);
-      await exportReport(data, csvPending.format, { password });
-      const { zipName } = describeExport(data, csvPending.format);
-      toast.success(
-        `${data.title} exported as password-protected ${csvPending.format.toUpperCase()} (${zipName}).`,
-      );
-      setCsvOpen(false);
-      setCsvPending(null);
-    } catch (e) {
-      console.error("Protected export failed:", e);
-      toast.error(e instanceof Error ? e.message : "Protected export failed.");
-    } finally {
-      setCsvBusy(false);
-    }
-  };
-
-  const ReportMenu = ({
-    report,
-    reportId,
-    buttonClassName,
-  }: {
-    report: ReportData;
-    reportId?: RecruitmentReportId;
-    buttonClassName?: string;
-  }) => {
-    const id: RecruitmentReportId =
-      reportId ?? (report.title.includes("Requisition") ? "requisitions" : "postings");
-    return (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" className={cn("gap-2", buttonClassName)}>
-            <Download className="h-4 w-4" /> Generate report
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64">
-          {(["pdf", "docx", "excel", "csv"] as ReportFormat[]).map((format) => (
-            <DropdownMenuItem
-              key={format}
-              onClick={() => handleExportRecruitmentReport(id, format)}
-            >
-              <FileText className="mr-2 h-4 w-4" />
-              <span className="flex items-center gap-1.5">
-                Export as {format.toUpperCase()}
-                <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-              </span>
-            </DropdownMenuItem>
-          ))}
-          <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-            Every file is sealed in a password-protected ZIP (AES-256). You will be asked for a file
-            password.
-          </p>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    );
-  };
+  /** Shared-menu options — SAME locked-ZIP program, titles stay page-relevant. */
+  const recruitmentMenuOptions = recruitmentReportOptions.map((option) => ({
+    id: option.id,
+    title: option.title,
+    description: option.description,
+    build: () => buildRecruitmentReport(option.id),
+    recordCount:
+      option.id === "requisitions" ? filteredRequisitions.length : filteredJobs.length,
+  }));
 
   const salaryLine =
     draft.salaryMin || draft.salaryMax
@@ -4215,16 +5639,41 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     );
   };
 
-  /** The Core HCM position behind the current draft (department + title). */
-  const draftPosition = useMemo(
-    () =>
-      positionsForDepartment(draft.department).find((p) => p.title === draft.title) ?? null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [draft.department, draft.title, knownPositions, knownDepartments],
-  );
+  /* Options in the Job Title block are identified by the Core HCM position id,
+     never by the title: Front Office holds a Rank & File (POS-001) and a Staff
+     (POS-018) "Front Desk Receptionist", and a title-only value makes both
+     options indistinguishable. When that happens the level is appended so HR
+     can tell the two bands apart at a glance. */
+  const titleBlockKey = (p: { dbId?: number | null; title?: string }) =>
+    p.dbId !== undefined && p.dbId !== null ? `id:${p.dbId}` : `name:${p.title ?? ""}`;
+  const deptPositions = positionsForDepartment(draft.department);
+  const titleBlockDuplicates = deptPositions.filter((p) => p.title === draft.title).length > 1;
+  /** How many positions in a department share this exact title. */
+  const pendingDeptTitleCount = (title: string) =>
+    positionsForDepartment(pendingDept).filter((p) => p.title === title).length;
 
-  /** Salary grade object currently selected in Job Info ("") = position grade. */
-  const draftGrade = useMemo(() => {
+  /**
+   * The Core HCM position behind the current draft (department + title).
+   * Read through a ref so the salary/vacancy auto-fill effects do not need it
+   * in their dependency arrays (it is a new object on every position change).
+   */
+  const draftPositionRef = useRef<Position | null>(null);
+
+  const draftPosition = useMemo(() => {
+    const deptPositions = positionsForDepartment(draft.department);
+    /* The id identifies the exact role; the title is only a fallback for posts
+       whose position_id is missing or no longer in Core HCM. */
+    return (
+      (draft.positionDbId !== null && draft.positionDbId !== undefined
+        ? deptPositions.find((p) => p.dbId === draft.positionDbId)
+        : null) ??
+      deptPositions.find((p) => p.title === draft.title) ??
+      null
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.department, draft.title, draft.positionDbId, knownPositions, knownDepartments]);
+
+  /** Salary grade object currently selected in Job Info ("") = position grade. */  const draftGrade = useMemo(() => {
     if (draft.salaryGradeId) {
       return salaryGrades.find((g) => String(g.salary_grade_id) === draft.salaryGradeId) ?? null;
     }
@@ -4236,6 +5685,100 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     return null;
   }, [draft.salaryGradeId, draftPosition, salaryGrades]);
 
+  /** Core HCM band the draft should follow — the selected grade, else the position's. */
+  const draftBand = useMemo(() => {
+    const min = draftGrade?.min_salary ?? draftPosition?.salaryGradeMin ?? null;
+    const max = draftGrade?.max_salary ?? draftPosition?.salaryGradeMax ?? null;
+    if (min === null || min === undefined || max === null || max === undefined) return null;
+    return { min: Number(min), max: Number(max) };
+  }, [draftGrade, draftPosition]);
+
+  /**
+   * Salary fields the recruiter has deliberately typed, so an auto-sync from
+   * Core HCM never overwrites their numbers. Reset whenever the band changes.
+   */
+  const [salaryLocked, setSalaryLocked] = useState(false);
+
+  /**
+   * Auto-fetch salary from Core HCM — no button, no click.
+   *
+   * Runs whenever the draft's band changes (grade picked, position chosen, or
+   * requisition converted). A manual edit wins only until the band changes
+   * again; picking a different band re-arms the sync automatically.
+   */
+  useEffect(() => {
+    if (!draftBand || salaryLocked) return;
+    setDraft((d) => {
+      const min = String(draftBand.min);
+      const max = String(draftBand.max);
+      if (d.salaryMin === min && d.salaryMax === max) return d;
+      return { ...d, salaryMin: min, salaryMax: max };
+    });
+  }, [draftBand, salaryLocked]);
+
+  /* A different grade/position is a new source of truth — re-arm the auto-fill
+     so a stale manual override does not stick. */
+  const bandSourceRef = useRef(
+    draftBand ? `${draftBand.min}-${draftBand.max}` : null,
+  );
+  useEffect(() => {
+    const source = draftBand ? `${draftBand.min}-${draftBand.max}` : null;
+    if (source !== bandSourceRef.current) {
+      bandSourceRef.current = source;
+      setSalaryLocked(false);
+    }
+  }, [draftBand]);
+
+  /** Hires already recorded on the post being edited — vacancies can never drop below it. */
+  const editingFilledRef = useRef(0);
+  editingFilledRef.current = editingJobId
+    ? (jobList.find((j) => j.id === editingJobId)?.filled ?? 0)
+    : 0;
+
+  /**
+   * Vacancies the draft should align to, in priority order:
+   *   1. the requested count of a linked staffing requisition,
+   *   2. the Core HCM position's open slots (headcount - filled).
+   * A post can never advertise fewer slots than the hires it already recorded.
+   */
+  const coreHcmVacancies = useMemo(() => {
+    const req = sourceReqId ? requisitions.find((r) => r.id === sourceReqId) : undefined;
+    if (req) {
+      return { count: Math.max(1, Number(req.count) || 1), source: `requisition ${req.id}` as const };
+    }
+    if (draftPosition) {
+      const open = Math.max(0, draftPosition.vacancies ?? 0);
+      return {
+        count: Math.max(1, open),
+        source: `Core HCM position (${draftPosition.headcount} headcount − ${draftPosition.filled} filled)` as const,
+      };
+    }
+    return null;
+  }, [sourceReqId, requisitions, draftPosition]);
+
+  const [vacanciesLocked, setVacanciesLocked] = useState(false);
+
+  /** Align vacancies with Core HCM whenever the source or position changes. */
+  useEffect(() => {
+    if (!coreHcmVacancies || vacanciesLocked) return;
+    setDraft((d) => {
+      const next = String(Math.max(coreHcmVacancies.count, editingFilledRef.current));
+      if (d.vacancies === next) return d;
+      return { ...d, vacancies: next };
+    });
+  }, [coreHcmVacancies, vacanciesLocked]);
+
+  /* A different requisition/position is a new source of truth — re-arm the
+     auto-fill so the stale manual override does not stick. */
+  const vacancySourceRef = useRef(coreHcmVacancies?.source ?? null);
+  useEffect(() => {
+    const source = coreHcmVacancies?.source ?? null;
+    if (source !== vacancySourceRef.current) {
+      vacancySourceRef.current = source;
+      setVacanciesLocked(false);
+    }
+  }, [coreHcmVacancies]);
+
   /**
    * Applies a Core HCM position's assigned salary grade/band to the Job Info
    * draft, filling salary min/max from the band. Explicit salary edits are
@@ -4245,19 +5788,31 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const applyPositionToDraft = (
     department: string,
     title: string,
-    opts: { forceSalary?: boolean } = {},
+    opts: { forceSalary?: boolean; positionDbId?: number | null | undefined } = {},
   ) => {
+    /* Prefer the explicit position id. Two positions can share a title inside
+       one department, so a name-only match would silently attach the wrong
+       salary band, headcount and requirement template. */
     const position =
+      (opts.positionDbId !== undefined && opts.positionDbId !== null
+        ? knownPositions.find((p) => p.dbId === opts.positionDbId)
+        : null) ??
       knownPositions.find((p) => {
         const departmentId = knownDepartments.find((d) => d.name === department)?.dbId;
         const sameDept =
           (departmentId !== undefined && p.departmentId === departmentId) ||
           (p.departmentId === undefined && p.department === department);
         return sameDept && p.title === title;
-      }) ?? null;
+      }) ??
+      null;
 
     setDraft((d) => {
-      const next: Draft = { ...d, department, title };
+      const next: Draft = {
+        ...d,
+        department,
+        title,
+        positionDbId: position?.dbId ?? opts.positionDbId ?? d.positionDbId,
+      };
       if (position?.salaryGradeId) {
         next.salaryGradeId = String(position.salaryGradeId);
       }
@@ -4285,6 +5840,25 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
           description: `${grade.code} (${peso(Number(grade.min_salary ?? 0))} – ${peso(Number(grade.max_salary ?? 0))})`,
         });
       }
+    }
+
+    /* Position-driven requirements: resolve the active template for this
+       position and auto-apply it on a clean draft, or ask first when the
+       draft already holds skills so hand-typed requirements are never wiped
+       silently. Templates with position_id = null ("any position") never
+       auto-apply. */
+    const tpl =
+      position?.dbId !== undefined && position?.dbId !== null
+        ? requirementTemplates.find(
+            (t) => t.active && t.position_id !== null && t.position_id === position!.dbId,
+          ) ?? null
+        : null;
+    if (!tpl) {
+      setAppliedTemplate(null);
+    } else if (draft.skills.trim() === "") {
+      applyRequirementTemplateToDraft(tpl);
+    } else {
+      setPendingTemplate({ template: tpl, positionLabel: `${title} — ${department}` });
     }
   };
 
@@ -4437,6 +6011,25 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               </li>
             ))}
           </ul>
+        </div>
+      )}
+      {has("additional") && lines(draft.additional).length > 0 && (
+        <div>
+          <p className="font-display text-lg font-semibold">Additional Info</p>
+          <ul className="mt-1.5 space-y-1.5">
+            {lines(draft.additional).map((r) => (
+              <li key={r} className="flex items-start gap-2 text-muted-foreground">
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold" />
+                <span>{r}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {has("instructions") && draft.instructions && (
+        <div>
+          <p className="font-display text-lg font-semibold">How to Apply</p>
+          <p className="mt-1.5 text-muted-foreground">{draft.instructions}</p>
         </div>
       )}
       {has("about") && draft.about && (
@@ -4621,11 +6214,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     <div>
       <PageHeader
         title="Recruitment Management"
+        description="Job post builder with multi-platform previews, vacancy status and posting list."
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" className="gap-2" onClick={() => setReportsOpen(true)}>
-              <Download className="h-4 w-4" /> Generate Report
-            </Button>
+            <ReportMenu reports={recruitmentMenuOptions} />
             <Button
               size="icon"
               variant="outline"
@@ -4960,6 +6552,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                               }
                               alt={`${j.title} hiring poster`}
                               className="mb-3 aspect-video w-full rounded-md border border-border object-cover"
+                              onError={(e) => {
+                                // A stale picture path 404s — fall back to the
+                                // composed template poster instead of a broken icon.
+                                const el = e.currentTarget;
+                                const fallback = `${API_BASE_URL}/job-posts/template-picture?title=${encodeURIComponent(j.title)}`;
+                                if (el.src !== fallback) el.src = fallback;
+                              }}
                             />
                             <div className="flex items-start justify-between gap-2">
                               <div>
@@ -5153,8 +6752,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     </SelectContent>
                   </Select>
                   <ReportMenu
-                    report={requisitionReport}
-                    reportId="requisitions"
+                    report={() => buildRequisitionsReport()}
+                    recordCount={filteredRequisitions.length}
                     buttonClassName="h-10 whitespace-nowrap"
                   />
                 </div>
@@ -5326,6 +6925,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               onClick={() => {
                 setPendingDept(draft.department || (knownDepartments[0]?.name ?? ""));
                 setPendingPosition("");
+                setPendingPositionDbId(null);
                 setDeptDialogOpen(true);
               }}
               className="group flex min-h-[520px] w-full flex-col items-center justify-center gap-5 rounded-2xl border-2 border-dashed border-border bg-muted/20 p-12 text-center transition-all hover:border-primary/60 hover:bg-primary/5 active:scale-[0.995]"
@@ -5361,7 +6961,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   type="button"
                   onClick={() => {
                     setPendingDept(draft.department || (knownDepartments[0]?.name ?? ""));
-                    setPendingPosition(draft.title);
+                    setPendingPosition("");
+                    setPendingPositionDbId(null);
                     setDeptDialogOpen(true);
                   }}
                   className="underline-offset-4 hover:text-primary hover:underline"
@@ -5374,6 +6975,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   onClick={() => {
                     setPendingDept(draft.department || (knownDepartments[0]?.name ?? ""));
                     setPendingPosition(draft.title);
+                    setPendingPositionDbId(draft.positionDbId);
                     setDeptDialogOpen(true);
                   }}
                   className="font-medium text-primary underline-offset-4 hover:underline"
@@ -5417,10 +7019,12 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 </div>
               </div>
 
-              <div className="grid gap-4 xl:grid-cols-[190px_minmax(0,1fr)_360px]">
+              {/* All three columns stretch to the tallest one so the palette,
+                  canvas and preview share a top and bottom edge. */}
+              <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)_minmax(340px,420px)] 2xl:grid-cols-[240px_minmax(0,1fr)_480px]">
                 {/* Component palette */}
-                <Card className="border-border/70" ref={templatesCardRef}>
-                  <CardContent className="p-3">
+                <Card className="flex h-full flex-col border-border/70" ref={templatesCardRef}>
+                  <CardContent className="flex h-full flex-col p-3">
                     <p className="eyebrow mb-2 font-bold">Add Components</p>
                     <div className="space-y-1.5">
                       {blockLibrary.map((b) => (
@@ -5432,21 +7036,44 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                           onClick={() => addBlock(b.id)}
                           className={`flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-[0.7rem] transition ${
                             has(b.id)
-                              ? "border-primary/30 bg-secondary/60"
+                              ? "border-success/30 bg-success/5 opacity-60"
                               : "border-border hover:border-primary/40"
                           }`}
                         >
-                          <Plus className="h-3 w-3 shrink-0 text-muted-foreground" />
+                          {has(b.id) ? (
+                            <Check
+                              className="h-3 w-3 shrink-0 text-success"
+                              aria-label="Already on the canvas"
+                            />
+                          ) : (
+                            <Plus className="h-3 w-3 shrink-0 text-muted-foreground" />
+                          )}
                           <span className="font-semibold">{b.label}</span>
                         </div>
                       ))}
                     </div>
                     <p className="mt-3 text-[0.65rem] text-muted-foreground">
-                      Drag onto the canvas to reorder, click to add.
+                      Drag onto the canvas to reorder — the arrangement is saved with the post. Click
+                      to add a block you removed.
                     </p>
 
-                    <div className="mt-4 space-y-3 border-t border-border pt-3">
-                      <p className="eyebrow font-bold">Content Templates</p>
+                    <div className="mt-4 flex min-h-0 flex-1 flex-col border-t border-border pt-3">
+                      <button
+                        type="button"
+                        onClick={() => setTemplatesOpen((v) => !v)}
+                        className="flex w-full items-center justify-between gap-2 text-left"
+                        aria-expanded={templatesOpen}
+                      >
+                        <span className="eyebrow font-bold">Content Templates</span>
+                        <span className="flex items-center gap-1 text-[0.65rem] text-muted-foreground">
+                          {jobList.length} saved
+                          <ChevronDown
+                            className={`h-3.5 w-3.5 transition-transform ${templatesOpen ? "rotate-180" : ""}`}
+                          />
+                        </span>
+                      </button>
+                      {templatesOpen && (
+                    <div className="mt-3 flex min-h-0 flex-1 flex-col space-y-3">
                       <div className="relative">
                         <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                         <Input
@@ -5456,7 +7083,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                           className="h-7 pl-7 text-xs"
                         />
                       </div>
-                      <div className="h-64 overflow-y-auto pr-1 space-y-3">
+                      {/* Capped so a long list scrolls instead of stretching the
+                          palette column and shoving the canvas down the page. */}
+                      <div className="max-h-64 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
                         {(() => {
                           const q = templateSearch.trim().toLowerCase();
                           const filtered = q
@@ -5518,11 +7147,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                         })()}
                       </div>
                     </div>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
 
                 {/* Canvas / composer — toggles to Entities Indicated via the header button */}
-                <Card className="border-border/70">
+                <Card className="flex h-full flex-col border-border/70">
                   {builderFlipped ? (
                     <CardContent className="space-y-3 p-4">
                       <BuilderEntitiesCard
@@ -5565,7 +7196,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                               aiIndicator.limited
                                 ? aiIndicator.title
                                 : draft.title.trim()
-                                  ? "Auto-fill description, responsibilities, qualifications, skills, instructions and about with Google AI (grounded in your screening vocabulary)"
+                                  ? "Auto-fill description, responsibilities, qualifications, additional info, instructions and about with Google AI (grounded in your screening vocabulary)"
                                   : "Select a job position first"
                             }
                           >
@@ -5576,9 +7207,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                             )}
                             {generatingDraft ? "Generating…" : "Generate with AI"}
                           </Button>
-                          {/* Usage/limit indicator — ready · used today · limit reset countdown */}
+                          {/* Usage indicator — drafts spent today against the daily
+                              cap, with a meter whenever a cap is configured. */}
                           <span
-                            className={`hidden items-center gap-1.5 rounded-full border px-2 py-0.5 text-[0.65rem] font-medium sm:inline-flex ${AI_TONE_CLASS[aiIndicator.tone]}`}
+                            className={`hidden items-center gap-2 rounded-full border px-2.5 py-1 text-[0.65rem] font-medium sm:inline-flex ${AI_TONE_CLASS[aiIndicator.tone]}`}
                             title={aiIndicator.title}
                           >
                             <span
@@ -5586,6 +7218,17 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                               aria-hidden="true"
                             />
                             {aiIndicator.label}
+                            {aiIndicator.percent !== null && (
+                              <span
+                                className="h-1 w-10 overflow-hidden rounded-full bg-current/25"
+                                aria-hidden="true"
+                              >
+                                <span
+                                  className="block h-full rounded-full bg-current"
+                                  style={{ width: `${aiIndicator.percent}%` }}
+                                />
+                              </span>
+                            )}
                           </span>
                           <Popover>
                             <PopoverTrigger asChild>
@@ -5744,11 +7387,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                   : "border-border hover:border-primary/40"
                               }`}
                             >
-                              <div className="flex items-center justify-between">
+                              <div className="flex items-center justify-between gap-2">
                                 <span className="flex items-center gap-2 text-xs font-medium">
-                                  <GripVertical className="h-3 w-3 cursor-grab text-muted-foreground" />
+                                  <GripVertical className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground" />
                                   {meta.label}
-                                  <span className="text-[0.65rem] font-normal text-muted-foreground">
+                                  <span className="hidden text-[0.65rem] font-normal text-muted-foreground sm:inline">
                                     {meta.hint}
                                   </span>
                                 </span>
@@ -5779,9 +7422,15 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                             if (firstPosition) {
                                               applyPositionToDraft(department, firstPosition.title, {
                                                 forceSalary: true,
+                                                positionDbId: firstPosition.dbId,
                                               });
                                             } else {
-                                              setDraft({ ...draft, department, title: "" });
+                                              setDraft({
+                                                ...draft,
+                                                department,
+                                                title: "",
+                                                positionDbId: null,
+                                              });
                                             }
                                           }}
                                         >
@@ -5800,20 +7449,39 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                       <div className="space-y-1">
                                         <Label className="text-[0.7rem]">Job title</Label>
                                         <Select
-                                          value={draft.title}
-                                          onValueChange={(v) =>
-                                            applyPositionToDraft(draft.department, v, {
-                                              forceSalary: true,
-                                            })
+                                          value={
+                                            draft.positionDbId != null
+                                              ? titleBlockKey({ dbId: draft.positionDbId })
+                                              : draft.title
+                                                ? titleBlockKey({ dbId: null, title: draft.title })
+                                                : ""
                                           }
+                                          onValueChange={(v) => {
+                                            const picked = deptPositions.find(
+                                              (p) => titleBlockKey(p) === v,
+                                            );
+                                            if (picked) {
+                                              applyPositionToDraft(
+                                                draft.department,
+                                                picked.title,
+                                                {
+                                                  forceSalary: true,
+                                                  positionDbId: picked.dbId,
+                                                },
+                                              );
+                                            }
+                                          }}
                                         >
                                           <SelectTrigger className="h-8 text-xs">
                                             <SelectValue placeholder="Select a position from Core HR" />
                                           </SelectTrigger>
                                           <SelectContent>
-                                            {positionsForDepartment(draft.department).map((p) => (
-                                              <SelectItem key={p.id} value={p.title}>
-                                                {p.title}
+                                            {deptPositions.map((p) => (
+                                              <SelectItem
+                                                key={titleBlockKey(p)}
+                                                value={titleBlockKey(p)}
+                                              >
+                                                {titleBlockDuplicates ? `${p.title} · ${p.level}` : p.title}
                                               </SelectItem>
                                             ))}
                                           </SelectContent>
@@ -5829,75 +7497,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                   )}
                                   {id === "info" && (
                                     <div className="space-y-2">
-                                    <div className="grid gap-2 sm:grid-cols-3">
-                                        <div className="space-y-1 sm:col-span-1">
-                                          <Label className="text-[0.7rem]">Salary grade / band</Label>
-                                          <Select
-                                            value={draft.salaryGradeId || (draftPosition?.salaryGradeId ? String(draftPosition.salaryGradeId) : "position")}
-                                            onValueChange={(v) => {
-                                              if (v === "position") {
-                                                const posGrade = draftPosition?.salaryGradeId
-                                                  ? salaryGrades.find((g) => g.salary_grade_id === draftPosition.salaryGradeId)
-                                                  : null;
-                                                setDraft((d) => ({
-                                                  ...d,
-                                                  salaryGradeId: "",
-                                                  salaryMin: posGrade?.min_salary !== null && posGrade?.min_salary !== undefined ? String(posGrade.min_salary) : d.salaryMin,
-                                                  salaryMax: posGrade?.max_salary !== null && posGrade?.max_salary !== undefined ? String(posGrade.max_salary) : d.salaryMax,
-                                                }));
-                                              } else {
-                                                const grade = salaryGrades.find((g) => String(g.salary_grade_id) === v);
-                                                setDraft((d) => ({
-                                                  ...d,
-                                                  salaryGradeId: v,
-                                                  salaryMin: grade?.min_salary !== null && grade?.min_salary !== undefined ? String(grade.min_salary) : d.salaryMin,
-                                                  salaryMax: grade?.max_salary !== null && grade?.max_salary !== undefined ? String(grade.max_salary) : d.salaryMax,
-                                                }));
-                                              }
-                                            }}
-                                          >
-                                            <SelectTrigger className="h-8 text-xs">
-                                              <SelectValue placeholder="From position" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              <SelectItem value="position">
-                                                From position{draftPosition?.salaryBand ? ` — ${draftPosition.salaryBand}` : ""}
-                                              </SelectItem>
-                                              {salaryGrades.map((g) => (
-                                                <SelectItem key={g.salary_grade_id} value={String(g.salary_grade_id)}>
-                                                  {g.code} — {g.title} (₱{Number(g.min_salary ?? 0).toLocaleString()} – ₱{Number(g.max_salary ?? 0).toLocaleString()})
-                                                </SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                        <div className="space-y-1 sm:col-span-2">
-                                          <Label className="text-[0.7rem]">Band range</Label>
-                                          <div className="flex h-8 items-center justify-between gap-2 rounded-md border border-border bg-secondary/30 px-2.5 text-[0.7rem]">
-                                            <span className="truncate font-medium">
-                                              {draftGrade
-                                                ? `${draftGrade.code} · ${peso(Number(draftGrade.min_salary ?? 0))} – ${peso(Number(draftGrade.max_salary ?? 0))}`
-                                                : "No band — pick a grade or position"}
-                                            </span>
-                                            {draftGrade && (
-                                              <button
-                                                type="button"
-                                                className="shrink-0 font-medium text-primary hover:underline"
-                                                onClick={() =>
-                                                  setDraft((d) => ({
-                                                    ...d,
-                                                    salaryMin: draftGrade.min_salary !== null && draftGrade.min_salary !== undefined ? String(draftGrade.min_salary) : d.salaryMin,
-                                                    salaryMax: draftGrade.max_salary !== null && draftGrade.max_salary !== undefined ? String(draftGrade.max_salary) : d.salaryMax,
-                                                  }))
-                                                }
-                                              >
-                                                Apply band
-                                              </button>
-                                            )}
-                                          </div>
-                                        </div>
-                                        <div className="space-y-1">
-                                          <Label className="text-[0.7rem]">Type</Label>
+                                     <div className="grid gap-2 sm:grid-cols-3">
+                                         <div className="space-y-1">
+                                           <Label className="text-[0.7rem]">Type</Label>
                                           <Select
                                             value={draft.employmentType}
                                             onValueChange={(v) =>
@@ -5949,13 +7551,33 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                             className="h-8 text-xs"
                                             value={draft.vacancies}
                                             disabled={role === "admin" && Boolean(sourceReqId)}
-                                            onChange={(e) =>
+                                            onChange={(e) => {
+                                              setVacanciesLocked(true);
                                               setDraft({
                                                 ...draft,
                                                 vacancies: sanitizeDigitsOnly(e.target.value),
-                                              })
-                                            }
+                                              });
+                                            }}
                                           />
+                                          {/* Escape hatch for a custom headcount: hand the
+                                          vacancies back to Core HCM open slots. */}
+                                          {coreHcmVacancies && vacanciesLocked && (
+                                            <button
+                                              type="button"
+                                              className="text-[0.7rem] font-medium text-primary hover:underline"
+                                              onClick={() => {
+                                                setVacanciesLocked(false);
+                                                setDraft((d) => ({
+                                                  ...d,
+                                                  vacancies: String(
+                                                    Math.max(coreHcmVacancies.count, editingFilledRef.current),
+                                                  ),
+                                                }));
+                                              }}
+                                            >
+                                              Reset vacancies
+                                            </button>
+                                          )}
                                         </div>
                                         <div className="space-y-1">
                                           <Label className="text-[0.7rem]">Salary min (₱)</Label>
@@ -5964,12 +7586,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                             min={0}
                                             className="h-8 text-xs"
                                             value={draft.salaryMin}
-                                            onChange={(e) =>
+                                            onChange={(e) => {
+                                              setSalaryLocked(true);
                                               setDraft({
                                                 ...draft,
                                                 salaryMin: sanitizeDecimalString(e.target.value),
-                                              })
-                                            }
+                                              });
+                                            }}
                                           />
                                         </div>
                                         <div className="space-y-1">
@@ -5979,66 +7602,55 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                             min={0}
                                             className="h-8 text-xs"
                                             value={draft.salaryMax}
-                                            onChange={(e) =>
+                                            onChange={(e) => {
+                                              setSalaryLocked(true);
                                               setDraft({
                                                 ...draft,
                                                 salaryMax: sanitizeDecimalString(e.target.value),
-                                              })
-                                            }
+                                              });
+                                            }}
                                           />
+                                          {/* Escape hatch for custom figures: hand the salary back
+                                          to the Core HCM band. Lives inside this cell so it
+                                          never claims a grid row of its own. */}
+                                          {draftBand && salaryLocked && (
+                                            <button
+                                              type="button"
+                                              className="block text-[0.7rem] font-medium text-primary hover:underline"
+                                              onClick={() => setSalaryLocked(false)}
+                                            >
+                                              Reset to band
+                                            </button>
+                                          )}
                                         </div>
-                                        {/* Structured screening levels — filled by requirement
-                                        templates and scored by the NLP match analysis. */}
-                                        <div className="space-y-1">
-                                          <Label className="text-[0.7rem]">Education level</Label>
-                                          <Select
-                                            value={draft.educationLevel}
-                                            onValueChange={(v) =>
-                                              setDraft({
-                                                ...draft,
-                                                educationLevel: v as Job["education"],
-                                              })
-                                            }
-                                          >
-                                            <SelectTrigger className="h-8 text-xs">
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              {EDUCATION_LEVEL_OPTIONS.map((level) => (
-                                                <SelectItem key={level} value={level}>
-                                                  {level}
-                                                </SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
+                                      </div>
+
+                                      {/* Assessment / Practical toggles */}
+                                      <div className="space-y-2 pt-2 border-t border-border/50">
+                                        <div className="flex items-center gap-2">
+                                          <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                            <Switch
+                                              checked={draft.requiresAssessment}
+                                              onCheckedChange={(v) => setDraft({ ...draft, requiresAssessment: v })}
+                                            />
+                                            <span className="font-medium">Requires Assessment Test</span>
+                                          </label>
+                                          <span className="text-[0.65rem] text-muted-foreground">Enables the post-interview assessment test for this position</span>
                                         </div>
-                                        <div className="space-y-1">
-                                          <Label className="text-[0.7rem]">Experience level</Label>
-                                          <Select
-                                            value={draft.experienceLevel}
-                                            onValueChange={(v) =>
-                                              setDraft({
-                                                ...draft,
-                                                experienceLevel: v as Job["experience"],
-                                              })
-                                            }
-                                          >
-                                            <SelectTrigger className="h-8 text-xs">
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              {EXPERIENCE_LEVEL_OPTIONS.map((level) => (
-                                                <SelectItem key={level} value={level}>
-                                                  {level}
-                                                </SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
+                                        <div className="flex items-center gap-2">
+                                          <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                            <Switch
+                                              checked={draft.requiresPractical}
+                                              onCheckedChange={(v) => setDraft({ ...draft, requiresPractical: v })}
+                                            />
+                                            <span className="font-medium">Requires Practical Test</span>
+                                          </label>
+                                          <span className="text-[0.65rem] text-muted-foreground">Enables the hands-on practical assessment for designated positions</span>
                                         </div>
                                       </div>
                                     </div>
-                                    )}
-                                  {id === "description" && (
+                                     )}
+                                   {id === "description" && (
                                     <Textarea
                                       autoFocus
                                       rows={2}
@@ -6081,15 +7693,81 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                     />
                                   )}
                                   {id === "skills" && (
+                                    <ScreeningRequirementsPanel
+                                      draft={draft}
+                                      mapping={entityMapping}
+                                      loading={entityLoading}
+                                      error={entityError}
+                                      addingTerm={addingTerm}
+                                      scoring={entityScoring}
+                                      positions={knownPositions.map((p) => ({
+                                        dbId: p.dbId,
+                                        title: p.title,
+                                        department: p.department,
+                                        level: p.level,
+                                        salaryBand: p.salaryBand,
+                                      }))}
+                                      templateName={appliedTemplate?.name ?? null}
+                                      templateSkillCount={
+                                        appliedTemplate
+                                          ? appliedTemplate.items.filter(
+                                              (i) => i.entity_type === "skill",
+                                            ).length
+                                          : 0
+                                      }
+                                      templateCertCount={
+                                        appliedTemplate
+                                          ? appliedTemplate.items.filter(
+                                              (i) => i.entity_type === "certification",
+                                            ).length
+                                          : 0
+                                      }
+                                      hasTemplateForPosition={(() => {
+                                        const pid = draft.positionDbId;
+                                        return requirementTemplates.some(
+                                          (t) =>
+                                            t.active &&
+                                            t.position_id !== null &&
+                                            pid !== undefined &&
+                                            pid !== null &&
+                                            t.position_id === pid,
+                                        );
+                                      })()}
+                                      onPickPosition={(dept, title, positionDbId) =>
+                                        applyPositionToDraft(dept, title, {
+                                          forceSalary: true,
+                                          positionDbId,
+                                        })
+                                      }
+                                      onSkillsChange={(next) =>
+                                        setDraft({ ...draft, skills: next })
+                                      }
+                                      onCertificationsChange={(next) =>
+                                        setDraft({ ...draft, qualifications: next })
+                                      }
+                                      onAdd={addEntityTerm}
+                                      onRetry={loadEntityMapping}
+                                      onLevelsChange={(levels) =>
+                                        setDraft((d) => ({
+                                          ...d,
+                                          educationLevel: levels.educationLevel,
+                                          experienceLevel: levels.experienceLevel,
+                                        }))
+                                      }
+                                      onCreateTemplate={createTemplateForDraftPosition}
+                                      creatingTemplate={creatingTemplate}
+                                    />
+                                  )}
+                                  {id === "additional" && (
                                     <Textarea
                                       autoFocus
-                                      rows={2}
+                                      rows={3}
                                       className="text-xs"
-                                      value={draft.skills}
+                                      value={draft.additional}
                                       onChange={(e) =>
-                                        setDraft({ ...draft, skills: e.target.value })
+                                        setDraft({ ...draft, additional: e.target.value })
                                       }
-                                      placeholder="One skill per line…"
+                                      placeholder="One item per line…"
                                     />
                                   )}
                                   {id === "instructions" && (
@@ -6134,15 +7812,20 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                         <p className="eyebrow mb-2">Publish To</p>
                         <div className="grid gap-2 sm:grid-cols-2">
                           {platformMeta.map((p) => (
-                            <div key={p.key} className="flex items-center justify-between">
+                            <label
+                              key={p.key}
+                              className="flex cursor-pointer items-center justify-between gap-2 rounded-md border border-border/70 px-2.5 py-2 transition-colors hover:border-primary/40"
+                            >
                               <span className="flex items-center gap-2 text-xs">
                                 <p.icon className="h-3.5 w-3.5 text-muted-foreground" /> {p.key}
                               </span>
                               <Switch
                                 checked={platforms[p.key] ?? false}
-                                onCheckedChange={(v) => setPlatforms({ ...platforms, [p.key]: v })}
+                                onCheckedChange={(v) =>
+                                  setPlatforms({ ...platforms, [p.key]: v })
+                                }
                               />
-                            </div>
+                            </label>
                           ))}
                         </div>
                       </div>
@@ -6154,7 +7837,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                           disabled={!canSaveDraft}
                           onClick={saveDraftAction}
                         >
-                          Save draft
+                          {/* Naming it "Save draft" on a post that is already
+                              live would promise an unpublish that no longer
+                              happens. */}
+                          {editingJobId ? "Save changes" : "Save draft"}
                         </Button>
                         <Button size="sm" onClick={publish}>
                           <Send className="mr-2 h-4 w-4" />
@@ -6166,8 +7852,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 </Card>
 
                 {/* Preview */}
-                <Card className="border-border/70">
-                  <CardContent className="space-y-4 p-4">
+                <Card className="flex h-full flex-col border-border/70">
+                  <CardContent className="flex h-full flex-col gap-4 p-4">
                     <div>
                       <h2 className="font-display text-lg font-semibold">Requested Note</h2>
                       {!sourceReqId && (
@@ -6303,6 +7989,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 onValueChange={(v) => {
                   setPendingDept(v);
                   setPendingPosition("");
+                  setPendingPositionDbId(null);
                 }}
               >
                 <SelectTrigger className="h-9 text-sm">
@@ -6319,14 +8006,33 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Job position</Label>
-              <Select value={pendingPosition} onValueChange={setPendingPosition}>
+              <Select
+                value={
+                  pendingPositionDbId !== null
+                    ? titleBlockKey({ dbId: pendingPositionDbId })
+                    : pendingPosition
+                      ? titleBlockKey({ dbId: null, title: pendingPosition })
+                      : ""
+                }
+                onValueChange={(v) => {
+                  const picked = positionsForDepartment(pendingDept).find(
+                    (p) => titleBlockKey(p) === v,
+                  );
+                  if (picked) {
+                    setPendingPosition(picked.title);
+                    setPendingPositionDbId(picked.dbId ?? null);
+                  }
+                }}
+              >
                 <SelectTrigger className="h-9 text-sm">
                   <SelectValue placeholder="Select a position" />
                 </SelectTrigger>
                 <SelectContent>
                   {positionsForDepartment(pendingDept).map((p) => (
-                    <SelectItem key={p.id} value={p.title}>
-                      {p.title}
+                    <SelectItem key={titleBlockKey(p)} value={titleBlockKey(p)}>
+                      {pendingDeptTitleCount(p.title) > 1
+                        ? `${p.title} · ${p.level}`
+                        : p.title}
                     </SelectItem>
                   ))}
                   {positionsForDepartment(pendingDept).length === 0 && (
@@ -6336,7 +8042,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   )}
                 </SelectContent>
               </Select>
-              {isPairTaken(pendingDept, pendingPosition) && (
+              {isPairTakenFor(pendingDept, pendingPositionDbId) && (
                 <p className="flex items-start gap-1.5 text-xs font-medium text-destructive">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>
@@ -6358,13 +8064,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               <X className="mr-2 h-4 w-4" /> Cancel
             </Button>
             <Button
-              disabled={!pendingPosition || isPairTaken(pendingDept, pendingPosition)}
+              disabled={!pendingPosition || isPairTakenFor(pendingDept, pendingPositionDbId)}
               title={
-                isPairTaken(pendingDept, pendingPosition)
+                isPairTakenFor(pendingDept, pendingPositionDbId)
                   ? "A job post already exists for this position and department"
                   : "Start a new job post"
               }
-              onClick={() => startNewPost(pendingDept, pendingPosition)}
+              onClick={() => startNewPost(pendingDept, pendingPosition, pendingPositionDbId)}
             >
               <PencilRuler className="mr-2 h-4 w-4" /> Start job post
             </Button>
@@ -6439,57 +8145,15 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             <DialogTitle className="font-display text-2xl">Add Applicant</DialogTitle>
             <DialogDescription>
               {addPresetJob
-                ? `${addPresetJob.department} · Step ${addStep} of 3 — `
-                : `Step ${addStep} of 3 — `}
+                ? `${addPresetJob.department} · Step ${addStep} of 2 — `
+                : `Step ${addStep} of 2 — `}
               {addStep === 1
-                ? "choose how the resume will be screened"
-                : addStep === 2
-                  ? "upload the resume and enter applicant details"
-                  : "review the screening result"}
+                ? "upload documents and enter applicant details"
+                : "review the screening result"}
             </DialogDescription>
           </DialogHeader>
 
           {addStep === 1 && (
-            <div className="space-y-3">
-              {[
-                {
-                  id: "file" as const,
-                  icon: FileText,
-                  title: "Through file",
-                  body: "PDF or DOCX resume — text is parsed directly by the NER model.",
-                },
-                {
-                  id: "image" as const,
-                  icon: ImageIcon,
-                  title: "Through image",
-                  body: "Photo or scan of a walk-in resume — OCR first, then NER screening.",
-                },
-              ].map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setAddMethod(m.id)}
-                  className={cn(
-                    "flex w-full items-start gap-3 rounded-md border p-4 text-left transition-colors",
-                    addMethod === m.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/40",
-                  )}
-                >
-                  <m.icon className="mt-0.5 h-5 w-5 text-primary" />
-                  <span>
-                    <span className="block text-sm font-medium">{m.title}</span>
-                    <span className="block text-xs text-muted-foreground">{m.body}</span>
-                  </span>
-                </button>
-              ))}
-              <DialogFooter>
-                <Button onClick={() => setAddStep(2)}>Continue</Button>
-              </DialogFooter>
-            </div>
-          )}
-
-          {addStep === 2 && (
             <div className="space-y-4">
               {/* Department — locked to the clicked job post for admins,
                   free choice of every department for the super admin. */}
@@ -6623,235 +8287,45 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 </div>
               </div>
 
-              <label
-                className={cn(
-                  "flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed p-8 text-center transition-colors",
-                  resumeDragActive
-                    ? "border-primary bg-primary/10"
-                    : "border-border bg-muted/40 hover:bg-muted/60",
-                )}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setResumeDragActive(true);
-                }}
-                onDragEnter={(e) => {
-                  e.preventDefault();
-                  setResumeDragActive(true);
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault();
-                  setResumeDragActive(false);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setResumeDragActive(false);
-                  handleResumeFile(e.dataTransfer.files?.[0]);
-                }}
-              >
-                {addMethod === "image" ? (
-                  <ImageIcon
-                    className={cn(
-                      "h-9 w-9",
-                      resumeDragActive ? "text-primary" : "text-muted-foreground",
-                    )}
-                  />
-                ) : (
-                  <FileText
-                    className={cn(
-                      "h-9 w-9",
-                      resumeDragActive ? "text-primary" : "text-muted-foreground",
-                    )}
-                  />
-                )}
-                {addFileName ? (
-                  <span
-                    className="mt-3 inline-flex max-w-full flex-wrap items-center gap-1.5 break-words text-sm font-medium text-primary underline underline-offset-2"
-                    style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                    title="Click to open a preview of this file"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      openResumePreview();
-                    }}
-                  >
-                    <span
-                      className="min-w-0 flex-1"
-                      style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                    >
-                      {addFileName}
-                    </span>
-                    <Eye className="h-3.5 w-3.5 shrink-0" />
-                  </span>
-                ) : (
-                  <span className="mt-3 text-sm font-medium">
-                    {`Choose resume ${addMethod === "image" ? "photo / scan" : "file"}`}
-                  </span>
-                )}
-                <span className="text-xs text-muted-foreground">
-                  {resumeAutofilling
-                    ? "Reading resume — filling contact fields…"
-                    : addMethod === "image"
-                      ? "JPG or PNG up to 10 MB — click to browse or drag & drop here"
-                      : "PDF or DOCX up to 10 MB — click to browse or drag & drop here"}
-                </span>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept={
-                    addMethod === "image"
-                      ? ".jpg,.jpeg,.png,image/jpeg,image/png"
-                      : ".pdf,.doc,.docx"
+              <UnifiedDocumentsUploader
+                docs={unifiedDocs}
+                onChange={(next) => {
+                  // Route each newly added file through the replace-confirm
+                  // guard (protects typed / previously extracted details).
+                  // Files are always kept — only the auto-fill waits for confirm,
+                  // so the staged resume is never lost.
+                  const prevIds = new Set(unifiedDocs.map((d) => d.id));
+                  const added = next.filter((d) => !prevIds.has(d.id));
+                  setUnifiedDocs(next);
+                  if (added.length === 0) {
+                    return;
                   }
-                  onChange={(e) => {
-                    handleResumeFile(e.target.files?.[0]);
-                    // allow re-selecting the same file after a failed pick
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-
-              {/* VERIFICATION DOCUMENTS — prove the content claimed in the resume */}
-              <div className="space-y-2 rounded-md border border-border/70 bg-muted/20 p-4">
-                <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground">
-                  <FileCheck className="h-3.5 w-3.5" /> VERIFICATION OF RESUME (OPTIONAL)
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Upload proof of the content claimed in the resume/CV. Requirements needed to
-                  verify: COE (work experience), Certificates (trainings), Credentials (diploma,
-                  license, TOR), and Others (awards, portfolio). Original copies are prioritized.
-                </p>
-                <div className="space-y-2">
-                  {VERIFICATION_DOC_TYPES.map((t) => {
-                    const existing = verificationDocs.filter((d) => d.docType === t.type);
-                    const isDragging = verificationDragType === t.type;
-                    const addVerificationFiles = (files: File[]) => {
-                      if (!files.length) return;
-                      setVerificationDocs((prev) => [
-                        ...prev,
-                        ...files.map((file) => ({
-                          docType: t.type,
-                          title: file.name,
-                          originalCopy: false,
-                          file,
-                        })),
-                      ]);
-                    };
-                    return (
-                      <div
-                        key={t.type}
-                        onDragEnter={(e) => {
-                          e.preventDefault();
-                          setVerificationDragType(t.type);
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          if (verificationDragType !== t.type) setVerificationDragType(t.type);
-                        }}
-                        onDragLeave={(e) => {
-                          e.preventDefault();
-                          if (!e.currentTarget.contains(e.relatedTarget as Node))
-                            setVerificationDragType(null);
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          setVerificationDragType(null);
-                          addVerificationFiles(Array.from(e.dataTransfer.files ?? []));
-                        }}
-                        className={cn(
-                          "rounded-md border bg-background px-3 py-2 transition-colors",
-                          isDragging
-                            ? "border-dashed border-primary bg-primary/5 ring-1 ring-primary"
-                            : "border-border/70",
-                        )}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-xs font-medium">{t.label}</p>
-                            <p className="text-[0.7rem] text-muted-foreground">{t.verifies}</p>
-                          </div>
-                          <label className="cursor-pointer text-xs font-medium text-primary hover:underline">
-                            <Upload className="mr-1 inline h-3 w-3" />
-                            {isDragging ? "Drop files here" : "Upload"}
-                            <input
-                              type="file"
-                              className="hidden"
-                              accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-                              multiple
-                              onChange={(e) => {
-                                addVerificationFiles(Array.from(e.target.files ?? []));
-                                e.target.value = "";
-                              }}
-                            />
-                          </label>
-                        </div>
-                        <p
-                          className={cn(
-                            "mt-1.5 rounded border border-dashed px-2 py-1.5 text-center text-[0.7rem]",
-                            isDragging
-                              ? "border-primary bg-primary/10 font-medium text-primary"
-                              : "border-border/60 text-muted-foreground",
-                          )}
-                        >
-                          {isDragging
-                            ? `Drop to attach to ${t.label}`
-                            : "Drag & drop files here or click Upload"}
-                        </p>
-                        {existing.map((d, i) => {
-                          const globalIdx = verificationDocs.indexOf(d);
-                          return (
-                            <div
-                              key={`${t.type}-${i}`}
-                              className="mt-1.5 flex items-center justify-between gap-2 rounded border border-border/60 bg-muted/30 px-2 py-1"
-                            >
-                              <span className="min-w-0 flex-1 truncate text-xs">
-                                {d.title}
-                                {d.originalCopy && (
-                                  <Badge className="ml-1.5 bg-gold text-gold-foreground">
-                                    Original
-                                  </Badge>
-                                )}
-                              </span>
-                              <label className="flex shrink-0 items-center gap-1 text-[0.7rem] text-muted-foreground">
-                                <input
-                                  type="checkbox"
-                                  className="accent-primary"
-                                  checked={d.originalCopy}
-                                  onChange={(e) =>
-                                    setVerificationDocs((prev) =>
-                                      prev.map((x, xi) =>
-                                        xi === globalIdx
-                                          ? { ...x, originalCopy: e.target.checked }
-                                          : x,
-                                      ),
-                                    )
-                                  }
-                                />
-                                Original copy
-                              </label>
-                              <button
-                                type="button"
-                                className="shrink-0 text-destructive hover:underline"
-                                onClick={() =>
-                                  setVerificationDocs((prev) =>
-                                    prev.filter((_, xi) => xi !== globalIdx),
-                                  )
-                                }
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+                  const hasExistingDetails = [addForm.name, addForm.email, addForm.phone, addForm.address].some(
+                    (v) => v.trim().length > 0,
+                  );
+                  const firstAdded = added[0];
+                  if (hasExistingDetails && firstAdded) {
+                    setPendingResume(firstAdded.file);
+                    setReplaceOpen(true);
+                    return;
+                  }
+                  const pick = pickResumeDoc(next);
+                  if (pick) void autofillFromResume(pick.file, { overwrite: false });
+                }}
+                onResumePick={(file) => {
+                  if (file) void autofillFromResume(file, { overwrite: false });
+                }}
+                title="Resume + supporting documents"
+                hint="Drop the resume + COE + certificates in any order — first file is expected to be the resume, but every file is recognized by content. Press Recognize files, then Run resume screening."
+              />
+              {resumeAutofilling && (
+                <p className="text-xs text-muted-foreground">Reading resume — filling contact fields…</p>
+              )}
+              {/* OLD_RESUME_DROPZONE_REMOVED */}
+              {/* Supporting docs auto-split inside the unified box above — no
+                  separate verification panel (files persist via verificationDocs). */}
 
               <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={requestBackToStep1}>
-                  Back
-                </Button>
                 <Button
                   disabled={
                     screeningLoading ||
@@ -6926,7 +8400,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             </div>
           )}
 
-          {addStep === 3 && screenResult && (
+          {addStep === 2 && screenResult && (
             <div className="space-y-4">
               {/* Applicant strip — mirrors the Review dialog header */}
               <div className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-card p-4">
@@ -6990,119 +8464,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 )}
               </div>
 
-              <div
-                className={cn(
-                  "grid gap-6 lg:items-start",
-                  isPreviewableResume && "lg:grid-cols-[460px_1fr]",
-                )}
-              >
-                {isPreviewableResume && (
-                  <div className="flex h-full flex-col overflow-hidden rounded-md border border-border bg-card lg:sticky lg:top-0">
-                    <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2">
-                      <span
-                        className="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-medium"
-                        style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                      >
-                        {addMethod === "image" ? (
-                          <ImageIcon className="h-3.5 w-3.5 shrink-0 text-primary" />
-                        ) : (
-                          <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
-                        )}
-                        <span
-                          className="min-w-0 flex-1 break-words whitespace-normal text-primary underline underline-offset-2"
-                          style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                          title={addFileName || `${addForm.name || "applicant"}_Resume`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            openResumePreview();
-                          }}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              openResumePreview();
-                            }
-                          }}
-                        >
-                          {addFileName || `${addForm.name || "applicant"}_Resume`}
-                        </span>
-                      </span>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6"
-                          onClick={() => setAddPreviewZoom((z) => Math.max(50, z - 10))}
-                          disabled={addPreviewZoom <= 50}
-                          aria-label="Zoom out"
-                        >
-                          <ZoomOut className="h-3.5 w-3.5" />
-                        </Button>
-                        <span className="w-8 text-center text-[0.65rem] text-muted-foreground">
-                          {addPreviewZoom}%
-                        </span>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6"
-                          onClick={() => setAddPreviewZoom((z) => Math.min(300, z + 10))}
-                          disabled={addPreviewZoom >= 300}
-                          aria-label="Zoom in"
-                        >
-                          <ZoomIn className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="relative flex-1 min-h-[420px] overflow-auto bg-muted/30 p-3">
-                      {(() => {
-                        if (!resumePreviewUrl || !addResumeFile) return null;
-                        const name = addResumeFile.name;
-                        const isImage =
-                          /\.(jpe?g|png)$/i.test(name) || addResumeFile.type.startsWith("image/");
-                        if (isImage) {
-                          return (
-                            <div className="flex h-full w-full items-center justify-center">
-                              <img
-                                src={resumePreviewUrl}
-                                alt={`Uploaded resume: ${addFileName}`}
-                                className="max-h-full max-w-full rounded-sm border border-border object-contain shadow-sm transition-transform"
-                                style={{
-                                  transform: `scale(${addPreviewZoom / 100})`,
-                                  transformOrigin: "center center",
-                                }}
-                              />
-                            </div>
-                          );
-                        }
-                        return (
-                          <div className="h-full w-full overflow-auto">
-                            <div
-                              style={{
-                                transform: `scale(${addPreviewZoom / 100})`,
-                                transformOrigin: "top center",
-                                height:
-                                  addPreviewZoom !== 100
-                                    ? `${(100 / addPreviewZoom) * 100}%`
-                                    : "100%",
-                              }}
-                              className="h-full w-full"
-                            >
-                              <iframe
-                                src={resumePreviewUrl}
-                                title={`Uploaded resume: ${addFileName}`}
-                                className="h-full w-full rounded-sm border border-border bg-white"
-                              />
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-4 lg:overflow-y-auto lg:pr-2">
+              <div>
+                <div className="space-y-4">
                   {(() => {
                     const detail = screenResult.detail;
                     const breakdown = detail?.score_breakdown;
@@ -7279,8 +8642,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                           />
                           <RequirementMatchPanel rows={rows} experienceMinYears={expMinYears} />
                           <ScreeningResumeDocsMatchDetail
-                            docs={[]}
-                            loading={false}
+                            docs={detail?.preview_documents ?? []}
+                            loading={screeningLoading}
                             resumeName={personalInfo.name ?? addForm.name}
                             resumeEducation={education}
                             resumeCertifications={certifications}
@@ -7303,8 +8666,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                             </Badge>
                           </div>
                           <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
-                            Proofs staged with this application — they will be verified against the
-                            resume after the applicant is saved.
+                            {detail?.preview_documents && detail.preview_documents.length > 0
+                              ? `Checked against the resume in this preview — the ${screenResult.score}% score already includes this evidence. They will be re-verified after the applicant is saved.`
+                              : "Proofs staged with this application — they will be verified against the resume after the applicant is saved."}
                           </p>
                           {verificationDocs.length === 0 ? (
                             <p className="mt-3 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
@@ -7313,7 +8677,31 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                             </p>
                           ) : (
                             <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                              {verificationDocs.map((d, i) => (
+                              {verificationDocs.map((d, i) => {
+                                const preview =
+                                  detail?.preview_documents?.[i] ?? null;
+                                const status = preview?.verification_status
+                                  ? String(preview.verification_status)
+                                  : null;
+                                const badgeLabel =
+                                  status === "VERIFIED"
+                                    ? "Verified"
+                                    : status === "DISCREPANCY_FOUND"
+                                      ? "Discrepancy"
+                                      : status === "PENDING" || status === "PROCESSING"
+                                        ? status === "PENDING"
+                                          ? "Pending"
+                                          : "Checking"
+                                        : status === "UNABLE_TO_VERIFY"
+                                          ? "Unable to verify"
+                                          : "Staged";
+                                const badgeClass =
+                                  status === "VERIFIED"
+                                    ? "border-success/25 bg-success/10 text-success"
+                                    : status === "DISCREPANCY_FOUND"
+                                      ? "border-warning/30 bg-warning/10 text-warning-foreground"
+                                      : "border-border bg-secondary text-muted-foreground";
+                                return (
                                 <div
                                   key={`${d.docType}-${d.file.name}-${i}`}
                                   className="rounded-lg border border-border/70 p-3"
@@ -7324,9 +8712,13 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                     </span>
                                     <Badge
                                       variant="outline"
-                                      className="border-border bg-secondary text-[0.65rem] text-muted-foreground"
+                                      className={`text-[0.65rem] ${badgeClass}`}
+                                      title={
+                                        preview?.verification_result?.summary ??
+                                        "Staged with this application"
+                                      }
                                     >
-                                      Staged
+                                      {badgeLabel}
                                     </Badge>
                                   </div>
                                   <p
@@ -7357,7 +8749,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                     </Button>
                                   </div>
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>
@@ -7417,7 +8810,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               </div>
 
               <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={() => setAddStep(2)}>
+                <Button variant="outline" onClick={() => setAddStep(1)}>
                   Back
                 </Button>
                 <Button onClick={saveNewApplicant}>Save applicant</Button>
@@ -7474,7 +8867,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             <DialogTitle>Generate with AI?</DialogTitle>
             <DialogDescription>
               This will replace the current Job Description, Key Responsibilities, Qualifications,
-              Required Skills, Application Instruction and About Company with AI-generated content
+              Additional Info, Application Instruction and About Company with AI-generated content
               grounded in your screening vocabulary. Continue?
             </DialogDescription>
           </DialogHeader>
@@ -7495,6 +8888,222 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 <Sparkles className="mr-2 h-4 w-4" />
               )}
               Generate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* CONFIRM-BEFORE-OVERWRITE — switching positions with existing skills asks first */}
+      <Dialog
+        open={pendingTemplate !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingTemplate(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Replace the requirements already on this post?</DialogTitle>
+            <DialogDescription>
+              This draft already has screening requirements. Applying “
+              {pendingTemplate?.template.name}” for {pendingTemplate?.positionLabel} will
+              replace them.
+            </DialogDescription>
+          </DialogHeader>
+          {pendingTemplate && (
+            <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs leading-relaxed">
+              {(() => {
+                const cur = draft.skills
+                  .split("\n")
+                  .map((l) => l.trim())
+                  .filter(Boolean);
+                const curSet = new Set(cur.map((c) => c.toLowerCase()));
+                const incoming = pendingTemplate.template.items
+                  .filter((i) => i.entity_type === "skill")
+                  .map((i) => i.value);
+                const incSet = new Set(incoming.map((c) => c.trim().toLowerCase()));
+                const add = incoming.filter((s) => !curSet.has(s.trim().toLowerCase()));
+                const rem = cur.filter((s) => !incSet.has(s.toLowerCase()));
+                return (
+                  <>
+                    <p>
+                      <span className="font-medium">+ will add:</span>{" "}
+                      {add.length ? add.join(", ") : "nothing"}
+                    </p>
+                    <p className="mt-1">
+                      <span className="font-medium">− will remove:</span>{" "}
+                      {rem.length ? rem.join(", ") : "nothing"}
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPendingTemplate(null)}>
+              Keep what I have
+            </Button>
+            <Button
+              onClick={() => {
+                if (pendingTemplate) applyRequirementTemplateToDraft(pendingTemplate.template);
+                setPendingTemplate(null);
+              }}
+            >
+              Replace with template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* GENERATE WITH AI — checklist modal: context read-only, blocks checkable */}
+      <Dialog
+        open={aiModalOpen}
+        onOpenChange={(open) => {
+          if (!open) setAiModalOpen(false);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Generate with AI</DialogTitle>
+            <DialogDescription>
+              Tick only what you want written. The six values below are always sent as
+              context — the AI never writes them, it only writes the prose, grounded on
+              them.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border border-border/60 bg-secondary/30 p-3">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+              Always sent to the AI
+            </p>
+            <div className="mt-2 grid grid-cols-[96px_1fr] gap-x-3 gap-y-1.5 text-xs">
+              <span className="text-muted-foreground">Position</span>
+              <span className="font-medium">{draft.title || "—"}</span>
+              <span className="text-muted-foreground">Department</span>
+              <span className="font-medium">{draft.department || "—"}</span>
+              <span className="text-muted-foreground">Skills</span>
+              <span>
+                {lines(draft.skills).length ? (
+                  <span className="flex flex-wrap gap-1">
+                    {lines(draft.skills).map((s) => (
+                      <Badge key={s} variant="secondary" className="text-[0.65rem]">
+                        {s}
+                      </Badge>
+                    ))}
+                  </span>
+                ) : (
+                  <span className="italic text-muted-foreground">none</span>
+                )}
+              </span>
+              <span className="text-muted-foreground">Certificate</span>
+              <span>
+                {(() => {
+                  const certs = lines(draft.qualifications).filter((l) =>
+                    /nc\s*(i{1,3}|iv|1-4)|tesda|certificate|certification|license|licence|food handler/i.test(
+                      l,
+                    ),
+                  );
+                  return certs.length ? (
+                    <span className="flex flex-wrap gap-1">
+                      {certs.map((c) => (
+                        <Badge key={c} variant="secondary" className="text-[0.65rem]">
+                          {c}
+                        </Badge>
+                      ))}
+                    </span>
+                  ) : (
+                    <span className="italic text-muted-foreground">none</span>
+                  );
+                })()}
+              </span>
+              <span className="text-muted-foreground">Education</span>
+              <span className="font-medium">{draft.educationLevel || "—"}</span>
+              <span className="text-muted-foreground">Experience</span>
+              <span className="font-medium">{draft.experienceLevel || "—"}</span>
+            </div>
+          </div>
+          <p className="mt-3 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+            Choose what to generate
+          </p>
+          <div className="space-y-2">
+            {(
+              [
+                ["description", "Job Description", "e.g. warm and service-led, not corporate"],
+                ["responsibilities", "Key Responsibilities", "e.g. keep duties to guest-facing work, 6 lines"],
+                ["qualifications", "Qualifications", "e.g. repeat the required certificates verbatim"],
+                ["additional", "Additional Info", "e.g. list perks and shift details, skip anything we cannot promise"],
+                ["instructions", "Application Instruction", "e.g. mention walk-in at the HR Office"],
+                ["about", "About Company", "e.g. two sentences, no history lecture"],
+              ] as const
+            ).map(([key, label, ph]) => (
+              <div
+                key={key}
+                className={`grid grid-cols-[170px_1fr] items-center gap-2 ${aiChecked[key] ? "" : "opacity-50"}`}
+              >
+                <label className="flex cursor-pointer items-center gap-2 text-xs font-medium">
+                  <Checkbox
+                    checked={aiChecked[key] ?? false}
+                    onCheckedChange={(v) => setAiChecked((p) => ({ ...p, [key]: v === true }))}
+                  />
+                  {label}
+                </label>
+                <Input
+                  className="h-8 text-xs"
+                  placeholder={ph}
+                  value={aiNotes[key] ?? ""}
+                  onChange={(e) => setAiNotes((p) => ({ ...p, [key]: e.target.value }))}
+                />
+              </div>
+            ))}
+          </div>
+          {aiReport.length > 0 && (
+            <div className="mt-3 space-y-1.5 rounded-lg border border-border/60 p-3">
+              {aiReport.map((r) => (
+                <div key={r.block} className="flex items-baseline gap-2 text-xs">
+                  <span className="w-36 shrink-0 text-muted-foreground">{r.label}</span>
+                  <span>
+                    {r.detail}
+                    {r.reused.length > 0 && (
+                      <ul className="mt-0.5 list-disc pl-4 text-[0.7rem] text-muted-foreground">
+                        {r.reused.map((t) => (
+                          <li key={t}>
+                            ✓ reused a term from your skills →{" "}
+                            <span className="font-medium text-foreground">{t}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </span>
+                </div>
+              ))}
+              <div className="flex items-baseline gap-2 pt-1 text-xs">
+                <span className="w-36 shrink-0 text-muted-foreground">Left alone</span>
+                <span className="text-muted-foreground">
+                  {AI_CONTENT_BLOCKS.filter((b) => !aiChecked[b])
+                    .map((b) => blockLibrary.find((x) => x.id === b)?.label ?? b)
+                    .join(", ") || "nothing"}
+                </span>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <span className="mr-auto text-[0.65rem] text-muted-foreground">
+              Grounded in your vocabulary
+              {aiUsage ? ` · ${aiUsage.used_today} draft(s) today` : ""}
+            </span>
+            <Button variant="outline" onClick={() => setAiModalOpen(false)}>
+              Close
+            </Button>
+            <Button
+              disabled={
+                generatingDraft || !AI_CONTENT_BLOCKS.some((b) => aiChecked[b])
+              }
+              onClick={() => void runGenerateDraft()}
+            >
+              {generatingDraft ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-4 w-4" />
+              )}
+              {generatingDraft ? "Generating…" : "Generate"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -7612,9 +9221,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             <DialogTitle>Discard filled information?</DialogTitle>
             <DialogDescription>
               You have unsaved information in Full name, Email, Contact number or Address
-              {addFileName ? ` (file "${addFileName}")` : ""}. If you{" "}
-              {pendingStep2ExitAction === "back" ? "go back" : "exit"}, your fill-up will be
-              removed. Stay will keep your data and stay in Step 2.
+              {addFileName ? ` (file "${addFileName}")` : ""}. If you exit, your fill-up will be
+              removed. Stay will keep your data and stay in Step 1.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -7622,7 +9230,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               Stay
             </Button>
             <Button variant="destructive" onClick={handleConfirmStep2Discard}>
-              {pendingStep2ExitAction === "back" ? "Discard & Back" : "Discard & Exit"}
+              Discard & Exit
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -7871,6 +9479,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   error={templatesError}
                   positions={knownPositions}
                   refValues={refValues}
+                  refOptions={refOptions}
                   busyId={templateBusyId}
                   onReload={loadRequirementTemplates}
                   onToggleActive={toggleRequirementTemplate}
@@ -7925,96 +9534,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         </DialogContent>
       </Dialog>
 
-      {/* PREDEFINED REPORTS DIALOG */}
-      <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Generate Report</DialogTitle>
-            <DialogDescription>
-              Predefined reports — every format is password-protected (sealed in an AES-256 ZIP; you
-              will be asked for a file password on every export).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            {recruitmentReportOptions.map((r) => (
-              <div
-                key={r.id}
-                className="flex items-center justify-between gap-3 rounded-md border border-border p-3"
-              >
-                <div>
-                  <p className="text-sm font-medium">{r.title}</p>
-                  <p className="text-xs text-muted-foreground">{r.description}</p>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline">
-                      <Download className="mr-2 h-4 w-4" /> Generate
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-60">
-                    <DropdownMenuItem onClick={() => handleExportRecruitmentReport(r.id, "pdf")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExportRecruitmentReport(r.id, "docx")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExportRecruitmentReport(r.id, "excel")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExportRecruitmentReport(r.id, "csv")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-                      Password-protected ZIP — password asked on every export.
-                    </p>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <SecureExportDialog
-        open={csvOpen}
-        onOpenChange={(o) => {
-          if (!csvBusy) {
-            setCsvOpen(o);
-            if (!o) setCsvPending(null);
-          }
-        }}
-        reportTitle={
-          csvPending
-            ? (recruitmentReportOptions.find((o) => o.id === csvPending.id)?.title ??
-              "Recruitment report")
-            : "Recruitment report"
-        }
-        formatLabel={
-          !csvPending
-            ? ""
-            : csvPending.format === "pdf"
-              ? "PDF"
-              : csvPending.format === "docx"
-                ? "DOCX"
-                : csvPending.format === "excel"
-                  ? "Excel"
-                  : "CSV"
-        }
-        busy={csvBusy}
-        onConfirm={confirmRecruitmentCsv}
-      />
     </div>
   );
 }

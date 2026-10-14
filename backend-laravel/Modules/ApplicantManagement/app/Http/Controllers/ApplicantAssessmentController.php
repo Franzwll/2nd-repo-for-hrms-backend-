@@ -79,14 +79,8 @@ class ApplicantAssessmentController extends Controller
                 " — overall evaluation: {$assessment->outcome}."
         );
 
-        \App\Services\NotificationService::send(
-            title: "Assessment completed: {$model->name}",
-            body: "Scored {$assessment->total_score}% — Outcome: {$assessment->outcome}.",
-            module: 'Applicant Management',
-            type: 'info',
-            targetType: 'Assessment',
-            targetId: (string) $assessment->assessment_id
-        );
+        // Helpful-only: intermediate interview assessment scores are audit-only
+        // (audit log above) + email to applicant. No bell to avoid spam.
 
         return response()->json(new AssessmentResource($assessment), 201);
     }

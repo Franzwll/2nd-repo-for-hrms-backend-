@@ -3,10 +3,13 @@
 namespace Modules\ApplicantManagement\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Mail\AssessmentTestResultMail;
 use App\Services\AuditLogger;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Modules\ApplicantManagement\Models\Applicant;
 use Modules\ApplicantManagement\Models\AssessmentInvite;
@@ -37,7 +40,21 @@ class AssessmentInviteController extends Controller
      * interview assessment must be recorded and marked Passed first. */
     public function store(Request $request, int $applicant): JsonResponse
     {
+        if (! \Modules\ApplicantManagement\Services\AssessmentConfig::assessmentTestEnabled()) {
+            return response()->json([
+                'message' => 'Assessment tests are disabled in Core HCM settings. Enable them in Core HCM to generate test links.',
+            ], 422);
+        }
+
         $model = Applicant::with('jobPost')->findOrFail($applicant);
+
+        // Position gate: only candidates for positions requiring assessment test
+        // may take the assessment test.
+        if (! \Modules\ApplicantManagement\Services\AssessmentRequirement::required($model->jobPost, null, $model->jobPost?->position)) {
+            return response()->json([
+                'message' => 'This position does not require an assessment test. Enable "Requires Assessment" in the job post, position, or configure the position in AssessmentRequirement.',
+            ], 422);
+        }
 
         $assessment = $model->assessment()->first();
         if (! $assessment || $assessment->result !== 'Passed') {
@@ -209,14 +226,25 @@ class AssessmentInviteController extends Controller
             details: "Applicant {$name} submitted assessment test \"{$invite->test_title}\" via a secure link with score {$total}% and result {$result}."
         );
 
-        NotificationService::send(
-            title: "Assessment test submitted: {$name}",
-            body: "Scored {$total}% — Result: {$result}.",
-            module: 'Applicant Management',
-            type: 'info',
-            targetType: 'Assessment Test',
-            targetId: (string) $invite->assessment_invite_id
-        );
+        // Helpful-only: applicant link submissions stay in audit log + email.
+        // No bell for intermediate steps.
+
+        // Email the applicant their score right after they submit the test.
+        if ($applicant?->email) {
+            try {
+                Mail::to($applicant->email)->send(new AssessmentTestResultMail(
+                    recipientEmail: $applicant->email,
+                    applicantName: $applicant->name,
+                    position: $applicant->jobPost?->title ?? 'Position',
+                    testTitle: $invite->test_title,
+                    totalScore: (float) $total,
+                    result: $result,
+                    passingScore: (float) $invite->passing_score,
+                ));
+            } catch (\Throwable $e) {
+                Log::warning("Failed to send assessment test score to {$applicant->email}: ".$e->getMessage());
+            }
+        }
 
         return response()->json([
             'message'     => 'Your assessment test was submitted successfully.',

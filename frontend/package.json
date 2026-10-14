@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
-    "build:dev": "vite build --mode development",
+    "build": "npm run build:zoom-embed && vite build",
+    "build:dev": "npm run build:zoom-embed && vite build --mode development",
+    "build:zoom-embed": "node scripts/build-zoom-embed.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write ."
@@ -44,7 +45,8 @@
     "@tanstack/react-router": "^1.170.18",
     "@tanstack/react-start": "^1.168.32",
     "@tanstack/router-plugin": "^1.168.23",
-    "@zip.js/zip.js": "^2.22.0",
+    "@zip.js/zip.js": "^2.23.0",
+    "@zoom/meetingsdk": "^6.5.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

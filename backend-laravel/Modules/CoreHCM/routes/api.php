@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Modules\CoreHCM\Http\Controllers\DashboardController;
 use Modules\CoreHCM\Http\Controllers\GlobalSearchController;
+use Modules\CoreHCM\Http\Controllers\UnifiedSearchController;
 use Modules\CoreHCM\Http\Controllers\DepartmentController;
 use Modules\CoreHCM\Http\Controllers\EmployeeController;
 use Modules\CoreHCM\Http\Controllers\HR3RecommendationController;
@@ -18,6 +19,7 @@ Route::middleware(['auth:sanctum', 'permission:Dashboard'])->prefix('v1')->group
 /* Unified site search — auth only; employees group is gated inside the controller. */
 Route::middleware(['auth:sanctum', 'throttle:30,1'])->prefix('v1')->group(function () {
     Route::get('search', GlobalSearchController::class);
+    Route::get('search/unified', UnifiedSearchController::class);
 });
 
 Route::middleware(['auth:sanctum', 'permission:Core HCM'])->prefix('v1')->group(function () {

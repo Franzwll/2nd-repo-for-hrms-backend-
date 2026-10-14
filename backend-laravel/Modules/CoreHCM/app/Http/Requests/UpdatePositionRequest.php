@@ -23,6 +23,8 @@ class UpdatePositionRequest extends FormRequest
             'salary_grade_id' => ['required', 'integer', 'exists:salary_grades,salary_grade_id'],
             'level' => ['nullable', 'string', 'max:50'],
             'headcount' => ['required', 'integer', 'min:1'],
+            'requires_assessment' => ['boolean'],
+            'requires_practical' => ['boolean'],
         ];
     }
 }

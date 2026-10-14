@@ -242,6 +242,38 @@ class NlpService
     }
 
     /**
+     * Content-based single-dropzone classifier: predicts
+     * Resume | COE | Certificate | Credential | Others from CONTENT.
+     * $isFirst marks the first upload (expected resume slot): a small +2
+     * resume prior that never overrules strong document phrasing.
+     * Returns ['ok' => bool, 'data' => ?array, 'error' => ?string].
+     */
+    public function classifyDocument(string $filePath, string $originalName, bool $isFirst = false, int $timeoutSeconds = 60): array
+    {
+        if (!is_file($filePath)) {
+            return ['ok' => false, 'data' => null, 'error' => "Document file not found at {$filePath}"];
+        }
+
+        try {
+            $response = Http::timeout($timeoutSeconds)
+                ->attach('file', file_get_contents($filePath), $originalName)
+                ->post("{$this->baseUrl}/classify-document", [
+                    'is_first' => $isFirst ? 'true' : 'false',
+                ]);
+
+            if ($response->successful()) {
+                return ['ok' => true, 'data' => $response->json(), 'error' => null];
+            }
+
+            return ['ok' => false, 'data' => null, 'error' => "NLP service returned status {$response->status()}"];
+        } catch (\Throwable $e) {
+            Log::error("Failed to connect to NLP classify service: " . $e->getMessage());
+
+            return ['ok' => false, 'data' => null, 'error' => 'Could not reach the NLP document classifier: ' . $e->getMessage()];
+        }
+    }
+
+    /**
      * Liveness probe used by the frontend to warn before running screening offline.
      */
     public function healthy(): bool

@@ -39,6 +39,9 @@ class FinalEvaluationScoreService
     /**
      * Calculate the overall score + transparent breakdown.
      *
+     * Disabled stages (Core HCM global switches) are excluded and the
+     * remaining weights are normalized — a disabled stage is never zero.
+     *
      * @param float|null $screening  0-100 or null when unavailable
      * @param float|null $interview  0-100
      * @param float|null $assessment 0-100
@@ -49,9 +52,12 @@ class FinalEvaluationScoreService
         ?float $interview,
         ?float $assessment,
         ?float $practical,
-        bool $practicalRequired
+        bool $practicalRequired,
+        ?bool $assessmentRequired = null
     ): array {
         $weights = self::weights();
+        $assessmentRequired ??= AssessmentConfig::assessmentTestEnabled();
+        $practicalRequired = $practicalRequired && AssessmentConfig::practicalTestEnabled();
 
         $components = [];
         $weightedSum = 0.0;
@@ -99,7 +105,7 @@ class FinalEvaluationScoreService
 
         $add('screening', 'Screening / Role Fit', $screening, $weights['screening'], true);
         $add('interview', 'Interview', $interview, $weights['interview'], true);
-        $add('assessment', 'Assessment Test', $assessment, $weights['assessment'], true);
+        $add('assessment', 'Assessment Test', $assessment, $weights['assessment'], $assessmentRequired);
         $add('practical', 'Practical Test', $practical, $weights['practical'], $practicalRequired);
 
         // Any applicable component missing → incomplete, no overall.

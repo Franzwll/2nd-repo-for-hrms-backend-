@@ -58,6 +58,11 @@ class SettingsDatabaseSeeder extends Seeder
             'default_password' => [
                 'password' => 'Oxford@2026',
             ],
+
+            // Probationary day threshold consumed by New Hire Onboarding
+            // auto-regularization (admin ticker + employee countdown).
+            // Scalar on purpose — readers do Number(setting_value).
+            'onboarding.auto_regularize_days' => 180,
         ];
 
         foreach ($defaults as $key => $value) {

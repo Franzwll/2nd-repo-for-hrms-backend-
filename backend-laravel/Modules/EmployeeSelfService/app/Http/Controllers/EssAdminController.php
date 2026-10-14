@@ -292,6 +292,110 @@ class EssAdminController extends Controller
     }
 
     /**
+     * GET /api/v1/ess/admin/learning
+     * Company-wide learning records (Admin/Superadmin read-only oversight).
+     */
+    public function getLearning(Request $request): JsonResponse
+    {
+        $records = DB::table('employee_learning as el')
+            ->join('employees as e', 'e.employee_id', '=', 'el.employee_id')
+            ->join('learning_courses as lc', 'lc.course_id', '=', 'el.course_id')
+            ->leftJoin('departments as d', 'd.department_id', '=', 'e.department_id')
+            ->orderByDesc('el.employee_learning_id')
+            ->get([
+                'el.employee_learning_id',
+                'el.status',
+                'el.score',
+                'el.assigned_date',
+                'el.completed_date',
+                'e.employee_id',
+                'e.first_name',
+                'e.last_name',
+                'e.email',
+                'd.name as department',
+                'lc.course_id',
+                'lc.course_code',
+                'lc.title as course_title',
+                'lc.category as course_category',
+            ])
+            ->map(fn ($r) => [
+                'id' => $r->employee_learning_id,
+                'employee_id' => $r->employee_id,
+                'employee_name' => trim(($r->first_name ?? '').' '.($r->last_name ?? '')),
+                'email' => $r->email,
+                'department' => $r->department ?? '—',
+                'course_id' => $r->course_id,
+                'course_code' => $r->course_code,
+                'course_title' => $r->course_title,
+                'course_category' => $r->course_category ?? 'General',
+                'status' => $r->status,
+                'score' => $r->score !== null ? (float) $r->score : null,
+                'assigned_date' => $r->assigned_date,
+                'completed_date' => $r->completed_date,
+            ]);
+
+        return response()->json([
+            'records' => $records,
+            'summary' => [
+                'total' => $records->count(),
+                'assigned' => $records->where('status', 'Assigned')->count(),
+                'in_progress' => $records->where('status', 'In Progress')->count(),
+                'completed' => $records->where('status', 'Completed')->count(),
+            ],
+        ]);
+    }
+
+    /**
+     * PATCH /api/v1/ess/admin/learning/{id}/status
+     * HR verifies a learning record (e.g. marks Completed with a score).
+     * Reopening (non-Completed) clears the completion date.
+     */
+    public function verifyLearning(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'status' => 'required|in:Assigned,In Progress,Completed',
+            'score' => 'nullable|numeric|min:0|max:100',
+        ]);
+
+        $row = DB::table('employee_learning')->where('employee_learning_id', (int) $id)->first();
+        if (! $row) {
+            return response()->json(['message' => 'Learning record not found.'], 404);
+        }
+
+        $update = ['status' => $validated['status']];
+        if ($validated['status'] === 'Completed') {
+            $update['completed_date'] = Carbon::today()->toDateString();
+        } else {
+            $update['completed_date'] = null;
+        }
+        if ($validated['score'] !== null) {
+            $update['score'] = $validated['score'];
+        }
+
+        DB::table('employee_learning')
+            ->where('employee_learning_id', (int) $id)
+            ->update($update);
+
+        $record = DB::table('employee_learning')->where('employee_learning_id', (int) $id)->first();
+
+        AuditLogger::log(
+            action: 'LMS Record Verified',
+            module: 'Learning Management',
+            severity: 'Info',
+            targetType: 'EmployeeLearning',
+            targetId: (string) $id,
+            details: "Learning record #{$id} set to {$validated['status']}" .
+                ($validated['score'] !== null ? " (score {$validated['score']})" : ''),
+            request: $request
+        );
+
+        return response()->json([
+            'message' => "Learning record marked as {$validated['status']}.",
+            'record' => $record,
+        ]);
+    }
+
+    /**
      * GET /api/v1/ess/admin/audit-logs
      */
     public function getAuditLogs(Request $request): JsonResponse

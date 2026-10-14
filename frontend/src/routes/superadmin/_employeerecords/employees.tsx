@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { EmployeeRecords } from "@/components/modules/EmployeeRecords";
 export const Route = createFileRoute("/superadmin/_employeerecords/employees")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    highlight: typeof search.highlight === "string" ? search.highlight : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Employee Records — Oxford Suites Makati HRMS" },

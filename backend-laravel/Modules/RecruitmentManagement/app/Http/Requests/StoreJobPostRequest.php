@@ -29,6 +29,8 @@ class StoreJobPostRequest extends FormRequest
             /* Designated hands-on positions take a practical exam after the
                assessment test (Applicant Management). */
             'requires_practical' => ['boolean'],
+            /* Assessment test requirement for this position. */
+            'requires_assessment' => ['boolean'],
             'experience_level' => ['nullable', 'string', 'in:No Experience,1-2 Years,3-5 Years,5+ Years'],
             'education_level' => ['nullable', 'string', 'in:High School Graduate,Vocational / TESDA,College Level,Bachelor\'s Degree'],
             'summary' => ['nullable', 'string'],
@@ -36,8 +38,14 @@ class StoreJobPostRequest extends FormRequest
             'responsibilities' => ['nullable', 'array'],
             'qualifications' => ['nullable', 'array'],
             'skills' => ['nullable', 'array'],
+            'additional' => ['nullable', 'array'],
+            'instructions' => ['nullable', 'string'],
+            'about' => ['nullable', 'string'],
             'platforms' => ['nullable', 'array'],
             'platforms.*' => ['string', 'in:Website,Facebook,Instagram,Indeed'],
+            /* The recruiter's drag-and-drop block order on the builder canvas. */
+            'blocks' => ['nullable', 'array'],
+            'blocks.*' => ['string', 'in:title,info,picture,description,responsibilities,qualifications,skills,additional,instructions,about'],
             'picture' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ];
     }

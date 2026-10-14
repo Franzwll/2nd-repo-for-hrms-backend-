@@ -34,43 +34,16 @@ const GREETING: Msg = {
 };
 
 /* ------------------------------------------------------------------ */
-/* Persistence                                                         */
+/* Session (NOT persisted) — a browser refresh always starts a fresh      */
+/* conversation: new greeting, new session id, no restored history.      */
 /* ------------------------------------------------------------------ */
 
-const STORAGE_KEY = "hrms-chatbot-history";
-const SESSION_KEY = "hrms-chatbot-session";
-
-function loadMessages(): Msg[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function newSessionId(): string {
+  return `cbt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function saveMessages(messages: Msg[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-  } catch {
-    /* storage unavailable — ignore */
-  }
-}
-
-function getSessionId(): string {
-  try {
-    let id = localStorage.getItem(SESSION_KEY);
-    if (!id) {
-      id = `cbt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-      localStorage.setItem(SESSION_KEY, id);
-    }
-    return id;
-  } catch {
-    return "";
-  }
-}
+const LEGACY_STORAGE_KEY = "hrms-chatbot-history";
+const LEGACY_SESSION_KEY = "hrms-chatbot-session";
 
 /* ------------------------------------------------------------------ */
 /* Component                                                           */
@@ -91,21 +64,16 @@ export function Chatbot() {
 
   useEffect(() => {
     setMounted(true);
-    const saved = loadMessages();
-    if (saved.length) {
-      setMessages(saved);
-      const last = saved[saved.length - 1];
-      if (saved.length > 1 && last?.from === "bot") {
-        setUnread(true);
-      }
+    // Fresh conversation on every page load: mint a new in-memory session id
+    // and drop any conversation persisted by older versions.
+    sessionRef.current = newSessionId();
+    try {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+      localStorage.removeItem(LEGACY_SESSION_KEY);
+    } catch {
+      /* storage unavailable — ignore */
     }
-    sessionRef.current = getSessionId();
   }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
-    saveMessages(messages);
-  }, [messages, mounted]);
 
   useEffect(() => {
     if (open) setUnread(false);
@@ -125,8 +93,11 @@ export function Chatbot() {
       ),
     );
     // Optimistic — the stored vote is only used for quality analytics.
+    // The backend ownership guard requires our session_id for guest rows.
     const current = messages.find((m) => m.id === messageId)?.feedback ?? null;
-    chatbotFaqApi.messageFeedback(messageId, current === value ? 0 : value).catch(() => {});
+    chatbotFaqApi
+      .messageFeedback(messageId, current === value ? 0 : value, sessionRef.current || null)
+      .catch(() => {});
   };
 
   const send = async (text: string) => {

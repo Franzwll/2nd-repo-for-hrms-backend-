@@ -3,6 +3,7 @@
 namespace Modules\Landing\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Landing\Http\Controllers\LandingController;
 
 class JobApplicationRequest extends FormRequest
 {
@@ -20,7 +21,13 @@ class JobApplicationRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:40'],
             'source' => ['nullable', 'string', 'max:60'],
             'summary' => ['nullable', 'string', 'max:255'],
-            'resume' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp,heic,heif,bmp,gif,tiff,tif,avif,svg', 'max:20480'],
+            'resume' => ['nullable', 'file', LandingController::uploadExtensionRule(), 'max:20480'],
+            // Supporting docs from the unified 1-box uploader (recognized types
+            // sent alongside each file: COE | Certificate | Credential | Others).
+            'verification_docs' => ['sometimes', 'array', 'max:10'],
+            'verification_docs.*' => ['file', LandingController::uploadExtensionRule(), 'max:20480'],
+            'verification_doc_types' => ['sometimes', 'array'],
+            'verification_doc_types.*' => ['string', 'in:COE,Certificate,Credential,Others'],
         ];
     }
 }

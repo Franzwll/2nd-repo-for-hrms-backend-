@@ -83,11 +83,24 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
           Route::post('new-hires/{new_hire}/promote-stage', [NewHireController::class, 'promoteStage'])
                ->name('new-hire.promote-stage');
 
+           /* ------------------------------------------------------------------ */
+           /* Checklist Templates                                                  */
+           /* ------------------------------------------------------------------ */
+           Route::apiResource('checklist-templates', ChecklistTemplateController::class)
+                ->parameters(['checklist-templates' => 'template'])
+                ->names('checklist-template');
+
            Route::post('new-hires/{new_hire}/onboarding-items/bulk', [EmployeeOnboardingItemController::class, 'bulkCreate'])
                 ->name('new-hires.onboarding-items.bulk');
 
            Route::patch('onboarding-items/{item}/toggle', [EmployeeOnboardingItemController::class, 'toggle'])
                ->name('onboarding-items.toggle');
+
+          Route::post('onboarding-items/{item}/return', [EmployeeOnboardingItemController::class, 'returnItem'])
+               ->name('onboarding-items.return');
+
+          Route::get('onboarding-submissions', [EmployeeOnboardingItemController::class, 'pendingReview'])
+               ->name('onboarding-items.submissions');
 
           Route::post('checklist-templates', [ChecklistTemplateController::class, 'store'])
                ->name('checklist-template.store');

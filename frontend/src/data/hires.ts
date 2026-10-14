@@ -8,6 +8,7 @@ import {
   type ApiNewHire,
   type ApiChecklistTemplate,
 } from "@/lib/api";
+import { getUser } from "@/lib/auth";
 
 /** Draft handed over from Applicant Management when an assessment is accepted. */
 export type PendingHire = {
@@ -119,7 +120,10 @@ const emit = () => listeners.forEach((l) => l());
 
 const subscribe = (listener: () => void) => {
   listeners.add(listener);
-  if (!hasFetched) fetchHiresFromApi();
+  // The module-scope fetch fires pre-login (no session → syncFromApi no-ops
+  // but still flips hasFetched). Retry on mount while the cache is empty so
+  // the pipeline never sits blank right after login.
+  if (!hasFetched || hires.length === 0) fetchHiresFromApi();
   return () => listeners.delete(listener);
 };
 
@@ -129,7 +133,10 @@ let hasFetched = false;
 /// refetches (15s interval, window focus) never flash loaders. */
 let hiresFetching = true;
 async function fetchHiresFromApi() {
-  if (hasFetched) return;
+  // Skip only when rows are already cached. A poisoned hasFetched flag with
+  // an empty cache (pre-login no-op fetch, or a failed first attempt) must
+  // still retry — otherwise the pipeline stays empty until the 15s poll.
+  if (hasFetched && hires.length > 0) return;
   hasFetched = true;
   hiresFetching = true;
   emit();
@@ -144,9 +151,14 @@ const SYNC_INTERVAL_MS = 15000;
 let syncing = false;
 
 /** Refetches new hires + checklist templates from the API and replaces local
- *  data. Safe to call repeatedly — API rows win over local cache. */
+ *  data. Safe to call repeatedly — API rows win over local cache.
+ *  Employees skip staff-only lists (they 403: Core HCM=None / NHO=View);
+ *  the employee portal loads its own checklist via /ess/my-checklist. */
 async function syncFromApi() {
   if (syncing) return;
+  const role = (getUser()?.role ?? "").toLowerCase();
+  const isStaff = role === "admin" || role === "superadmin";
+  if (!isStaff) return;
   syncing = true;
   try {
     const [hiresRes, tmplRes] = await Promise.allSettled([

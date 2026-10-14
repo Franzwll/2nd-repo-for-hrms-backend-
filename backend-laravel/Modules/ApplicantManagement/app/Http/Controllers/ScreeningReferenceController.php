@@ -30,7 +30,7 @@ class ScreeningReferenceController extends Controller
             'meta' => [
                 'source' => 'database',
                 'fallback' => 'nlp-service/app/data/*.json (used when the table is empty or the API is unreachable)',
-                'types' => ['skill', 'job_role', 'certification'],
+                'types' => ['skill', 'job_role', 'certification', 'education', 'experience'],
                 'counts' => array_map('count', $data),
             ],
         ]);

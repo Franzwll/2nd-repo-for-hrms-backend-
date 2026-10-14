@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Clock,
+  ClipboardList,
   FileText,
   TrendingUp,
   FileCheck,
@@ -11,6 +12,8 @@ import {
   CheckCircle2,
   Award,
   Bot,
+  HeartHandshake,
+  Shield,
   Share2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,8 +30,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   essApi,
-  newHiresApi,
-  onboardingItemsApi,
   type ApiEssOverview,
   type ApiRecognitionItem,
 } from "@/lib/api";
@@ -39,7 +40,13 @@ export const Route = createFileRoute("/employee/")({
 });
 
 function EmployeeDashboard() {
-  const user = getUser();
+  // getUser() reads browser storage, which is absent during server render —
+  // resolving it after mount keeps server and client HTML identical.
+  const [authUser, setAuthUser] = useState<ReturnType<typeof getUser>>(null);
+  useEffect(() => {
+    setAuthUser(getUser());
+  }, []);
+  const user = authUser;
   const [overview, setOverview] = useState<ApiEssOverview | null>(null);
   const [recognitions, setRecognitions] = useState<ApiRecognitionItem[]>([]);
   const [pendingTasks, setPendingTasks] = useState<string[]>([]);
@@ -80,35 +87,24 @@ function EmployeeDashboard() {
       .catch(() => { })
       .finally(() => setLoadingRecognitions(false));
 
-    // 3. Fetch Onboarding Tasks
-    newHiresApi
-      .list({ per_page: 100 })
+    // 3. Fetch Onboarding Tasks — ESS-safe: the employee's OWN checklist
+    // only. (The staff /new-hires list needs the New Hire Onboarding module
+    // permission, which employees don't have, so it 403s here. my-checklist
+    // resolves the hire server-side from the auth session instead of fragile
+    // name/email matching.)
+    essApi
+      .myChecklist()
       .then((res) => {
-        const mine =
-          res.data.find(
-            (h) =>
-              (user?.employee_id && h.employee_id === user.employee_id) ||
-              h.name.toLowerCase() === employeeName.toLowerCase() ||
-              h.email === user?.email
-          ) ??
-          res.data[0] ??
-          null;
-
-        if (!mine) {
-          setPendingTasks(["Acknowledge Company Policies", "Accept Employment Agreement"]);
-          return;
-        }
-
-        return onboardingItemsApi.listForNewHire(mine.new_hire_id).then((items) => {
-          const uncompleted = items.filter((i) => !i.done).map((i) => i.item_text);
-          setPendingTasks(uncompleted);
-        });
+        const uncompleted = (res?.data ?? [])
+          .filter((i) => !i.done)
+          .map((i) => i.item_text);
+        setPendingTasks(uncompleted);
       })
       .catch(() => {
-        setPendingTasks(["Acknowledge Company Policies", "Accept Employment Agreement"]);
+        setPendingTasks([]);
       })
       .finally(() => setLoadingOnboarding(false));
-  }, [employeeName, user?.employee_id, user?.email]);
+  }, [user?.employee_id, user?.email]);
 
   const shiftBadgeText = overview?.today_schedule?.is_rest_day
     ? "Rest Day (Off Duty)"
@@ -147,15 +143,6 @@ function EmployeeDashboard() {
   return (
     <div>
       <PageHeader
-        eyebrow={
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold uppercase tracking-wider">{position} · {department}</span>
-            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[11px] py-0">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block mr-1.5 animate-pulse" />
-              {shiftBadgeText}
-            </Badge>
-          </div>
-        }
         title={`${greeting}, ${firstName}`}
         description="Here's what's happening with your employment today."
       />
@@ -200,7 +187,7 @@ function EmployeeDashboard() {
             </div>
 
             <Button asChild size="sm" variant="outline" className="border-amber-500/40 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 shrink-0 text-xs h-8">
-              <Link to="/employee/ess" search={{ category: "Documents" }}>
+              <Link to="/employee/onboarding">
                 Complete Onboarding <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
               </Link>
             </Button>
@@ -218,6 +205,7 @@ function EmployeeDashboard() {
           hint="Available paid leave credits"
           icon={Clock}
           tone="primary"
+          to="/employee/ess?category=Attendance"
         />
         <StatCard
           label="Take-Home Pay"
@@ -225,6 +213,7 @@ function EmployeeDashboard() {
           hint={`Next payout ${nextPayoutDate}`}
           icon={FileText}
           tone="success"
+          to="/employee/ess?category=Payroll"
         />
         <StatCard
           label="LMS Training"
@@ -232,8 +221,9 @@ function EmployeeDashboard() {
           hint={`${overview?.performance_summary?.competency_level ?? "Proficient"} competency`}
           icon={TrendingUp}
           tone="primary"
+          to="/employee/ess?category=Performance"
         />
-        <StatCard label="Position" value={position} hint={employmentType} icon={ClipboardCheck} tone="gold" />
+        <StatCard label="Position" value={position} hint={employmentType} icon={ClipboardCheck} tone="gold" to="/employee/ess" />
         </div>
       )}
 
@@ -314,6 +304,7 @@ function EmployeeDashboard() {
                   Recognition
                 </span>
               </Link>
+
 
               {/* 6: HR AI Concierge */}
               <Link

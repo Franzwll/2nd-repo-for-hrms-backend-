@@ -81,8 +81,9 @@ import {
   printReport,
   type ReportFormat,
 } from "@/lib/report-export";
-import { usePasswordGate } from "@/components/ui/report-menu";
+import { usePasswordGate, ReportMenu } from "@/components/ui/report-menu";
 import { usePagination } from "@/hooks/usePagination";
+import { useHighlightId, highlightRowClass } from "@/hooks/useHighlight";
 
 const documentTypes = [
   "Certificate of Employment (COE)",
@@ -286,6 +287,7 @@ const emptyEmployee = {
 
 export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const isSuper = role === "superadmin";
+  const { id: highlightId } = useHighlightId();
 
   const roster = useRoster();
   const [list, setList] = useState<Employee[]>([]);
@@ -301,7 +303,6 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [profileId, setProfileId] = useState<string | null>(null);
   const recordDetail = useRecordDetail(profileId);
-  const [bulkOpen, setBulkOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [docType, setDocType] = useState(documentTypes[0]!);
   const [generatedDocs, setGeneratedDocs] = useState<GeneratedDoc[]>([]);
@@ -712,29 +713,27 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     };
   };
 
-  /** EXPORT path only — downloads the company report, never prints. */
-  const exportCompanyReport = (reportName: string, format: ReportFormat) => {
-    gateSensitive({ sensitive: true }, () => {
-      exportReport(buildCompanyReport(reportName), format);
-      toast.success(`${reportName} exported as ${format.toUpperCase()}.`);
-    });
-  };
+  /** Company-wide reports for the shared ReportMenu picker — one option per
+   *  predefined report, all exporting through the SAME locked-ZIP flow. */
+  const companyReportOptions = reportTypes.map((reportName) => ({
+    id: reportName,
+    title: reportName,
+    build: () => buildCompanyReport(reportName),
+    recordCount: list.length,
+  }));
 
   return (
     <div>
       {gateDialog}
       <PageHeader
-        eyebrow={isSuper ? "Super Admin · Core HR" : "Admin · Core HR"}
         title="Employee Records"
-        description="201 files, employment details, records analytics and document generation."
+        description="201 files, employment details, certificate and report generation."
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <span className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-[0.7rem] text-muted-foreground">
               <ShieldCheck className="h-3.5 w-3.5" /> Password-protected records
             </span>
-            <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>
-              <FileText className="mr-2 h-4 w-4" /> Generate reports
-            </Button>
+            <ReportMenu size="sm" reports={companyReportOptions} />
           </div>
         }
       />
@@ -800,13 +799,16 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                   <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                     <Users className="h-5 w-5 text-primary" /> Employee List
                   </h2>
-                  <p className="text-xs text-muted-foreground">
-                    {listView === "archived"
-                      ? "Records inactive/unmodified for 10+ years (DOLE/BIR retention). Hidden from the default list."
-                      : selected.length > 0
-                        ? `${selected.length} selected for bulk generation.`
-                        : "Select employees to generate documents in bulk."}
-                  </p>
+                  {listView === "archived" ? (
+                    <p className="text-xs text-muted-foreground">
+                      Records inactive/unmodified for 10+ years (DOLE/BIR retention). Hidden
+                      from the default list.
+                    </p>
+                  ) : selected.length > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {selected.length} selected for bulk generation.
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <div className="relative">
@@ -934,7 +936,11 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                       {!roster.loaded && <TableRowsSkeleton cols={8} rows={6} />}
                       {roster.loaded &&
                         employeePage.pageItems.map((e) => (
-                        <TableRow key={e.id}>
+                        <TableRow
+                          key={e.id}
+                          data-highlight-id={e.id}
+                          className={highlightRowClass(!!highlightId && e.id === highlightId)}
+                        >
                           <TableCell>
                             <Checkbox
                               checked={selected.includes(e.id)}
@@ -1025,6 +1031,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                 to={employeePage.to}
                 total={employeePage.total}
                 label="employees"
+                showRangeLabel={false}
                 onPageChange={employeePage.setPage}
               />
             </CardContent>
@@ -1039,9 +1046,6 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                   <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                     <History className="h-5 w-5 text-primary" /> Record History
                   </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Log of who added, edited, or deleted employee records and files.
-                  </p>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <div className="relative">
@@ -1151,6 +1155,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                 to={logPage.to}
                 total={logPage.total}
                 label="log entries"
+                showRangeLabel={false}
                 onPageChange={logPage.setPage}
               />
             </CardContent>
@@ -1163,10 +1168,6 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display text-xl">Auto-archive settings</DialogTitle>
-            <DialogDescription>
-              Records left unmodified for the retention period below are moved to the Archived list
-              automatically. Manually archived records stay archived.
-            </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             <Label htmlFor="archive-years">Auto-archive after (years)</Label>
@@ -1811,41 +1812,8 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
         </DialogContent>
       </Dialog>
 
-      {/* BULK REPORTS */}
-
-      <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Generate Reports</DialogTitle>
-            <DialogDescription>
-              Company-wide HR reports across all employee records. Reports are confidential and
-              require password confirmation before downloading.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            {reportTypes.map((r) => (
-              <div
-                key={r}
-                className="flex items-center justify-between rounded-md border border-border p-3"
-              >
-                <span className="text-sm">{r}</span>
-                <div className="flex gap-1.5">
-                  {(["pdf", "excel"] as ReportFormat[]).map((format) => (
-                    <Button
-                      key={format}
-                      size="sm"
-                      variant="outline"
-                      onClick={() => exportCompanyReport(r, format)}
-                    >
-                      <Download className="mr-1.5 h-3.5 w-3.5" /> {format.toUpperCase()}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* BULK REPORTS — now handled by the shared ReportMenu picker in the
+          PageHeader (same locked-ZIP flow as every module). */}
 
       {/* EDIT PERSONAL DATA */}
       {/* ADD / EDIT DOCUMENT */}

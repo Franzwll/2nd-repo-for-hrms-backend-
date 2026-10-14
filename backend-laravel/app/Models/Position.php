@@ -19,6 +19,8 @@ class Position extends Model
         'level',
         'headcount',
         'filled_count',
+        'requires_assessment',
+        'requires_practical',
     ];
 
     public function department(): BelongsTo
@@ -35,4 +37,9 @@ class Position extends Model
     {
         return $this->hasMany(Employee::class, 'position_id', 'position_id');
     }
+
+    protected $casts = [
+        'requires_assessment' => 'boolean',
+        'requires_practical' => 'boolean',
+    ];
 }

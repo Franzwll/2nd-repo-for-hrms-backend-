@@ -5,9 +5,11 @@ import {
   Briefcase,
   Building2,
   CheckCircle2,
+  ClipboardList,
   DollarSign,
   Eye,
   GitBranch,
+  Hammer,
   History,
   Info,
   Pencil,
@@ -72,6 +74,7 @@ import { TablePagination } from "@/components/ui/table-pagination";
 import { SortHead, useSort } from "@/components/portal/sortable";
 import { usePagination } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   type Department,
   type OrgNode,
@@ -317,23 +320,38 @@ function setHcmFetching(v: boolean) {
   emitHcm();
 }
 
-async function fetchHcmData() {
+async function fetchHcmData(options: { includeEmployees?: boolean } = {}) {
   setHcmFetching(true);
   try {
+    // Dept-pos only needs departments/positions/salaryGrades/orgChart.
+    // Employees (per_page=500) is the heaviest slice and is only used for
+    // the department-head dropdown — skip it on the initial mount so the
+    // page paints fast, then lazy-load it in the background / on demand.
+    const includeEmployees = options.includeEmployees ?? hcmData.employees.length > 0;
     const [emp, dep, pos, sg, org] = await Promise.all([
-      hcmApi.employees.list({ per_page: 500 }),
+      includeEmployees ? hcmApi.employees.list({ per_page: 500 }) : Promise.resolve(null),
       hcmApi.departments.list({ per_page: 500 }),
       hcmApi.positions.list({ per_page: 500 }),
       hcmApi.salaryGrades.list({ per_page: 500 }),
       hcmApi.orgChart.list(),
     ]);
     hcmData = {
-      employees: emp.data ?? [],
+      employees: emp?.data ?? hcmData.employees,
       departments: dep.data ?? [],
       positions: pos.data ?? [],
       salaryGrades: sg.data ?? [],
       orgChart: org.data ?? [],
     };
+    // Backfill employees without blocking first paint.
+    if (!includeEmployees) {
+      hcmApi.employees
+        .list({ per_page: 500 })
+        .then((res) => {
+          hcmData = { ...hcmData, employees: res.data ?? [] };
+          emitHcm();
+        })
+        .catch((err) => console.warn('Could not backfill Core HCM employees.', err));
+    }
   } catch (err) {
     console.warn("Could not load Core HCM data.", err);
   } finally {
@@ -483,6 +501,8 @@ function toUiPosition(p: ApiPosition, sGrades: ApiSalaryGrade[]): Position {
     salaryBand: sg
       ? `${sg.code} (${formatMoney(Number(sg.min_salary))} – ${formatMoney(Number(sg.max_salary))})`
       : p.salary_grade || "",
+    requires_assessment: p.requires_assessment ?? false,
+    requires_practical: p.requires_practical ?? false,
   };
 }
 
@@ -529,15 +549,19 @@ function buildOrgTree(orgNodes: ApiOrgNode[], employees: ApiEmployee[]): OrgNode
    ========================================================================= */
 
 export function OrgChartModule({ role = "admin" }: { role?: Role }) {
-  const [activeTab, setActiveTab] = useState<"org" | "employees" | "promotions" | "logs">(() => {
-    const saved =
-      typeof window !== "undefined" ? window.sessionStorage.getItem("hcm-org-tab") : null;
+  // SSR-safe: constant initial tab so server and first client render match.
+  // The persisted tab is restored after mount (sessionStorage is client-only).
+  const [activeTab, setActiveTab] = useState<"org" | "employees" | "promotions" | "logs">("org");
+
+  useEffect(() => {
+    const saved = window.sessionStorage.getItem("hcm-org-tab");
     const valid =
       saved === "org" || saved === "employees" || saved === "promotions" || saved === "logs"
         ? saved
         : "org";
-    return role !== "superadmin" && valid === "logs" ? "employees" : valid;
-  });
+    setActiveTab(role !== "superadmin" && valid === "logs" ? "employees" : valid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [empSearch, setEmpSearch] = useState("");
   /** Slot each tab portals its Generate Report control into (page header). */
   const [headerActionsEl, setHeaderActionsEl] = useState<HTMLDivElement | null>(null);
@@ -554,9 +578,8 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Core HCM · Human Capital Management"
         title="Organizational Structure & Employee Roster"
-        description="Visualize reporting hierarchy, manage employee regularization & promotions, and track lifecycle transitions."
+        description="Hierarchy chart, employee roster, lifecycle actions and status transition logs."
         actions={<div ref={setHeaderActionsEl} className="flex flex-wrap items-center gap-2" />}
       />
 
@@ -660,7 +683,6 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
   const displayOverview = isGeneralManagerNode
     ? {
       name: "Executive Management",
-      description: "Hotel Executive Leadership, Department Directorship & Operational Governance.",
       head: employees.find((e) => e.position?.includes("General Manager"))?.name || "Ricardo A. Villanueva",
       headPosition: "General Manager",
       members: departments
@@ -673,7 +695,6 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
     : selectedDepartment
       ? {
         name: selectedDepartment.name,
-        description: selectedDepartment.description,
         head: selectedDepartment.head,
         headPosition: headEmployee?.position ?? "Department Head",
         members: employees
@@ -757,9 +778,6 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
             <SystemLogo />
             Hierarchy Chart
           </h2>
-          <p className="text-xs text-muted-foreground">
-            Property reporting lines from General Management to department staff.
-          </p>
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
@@ -862,9 +880,6 @@ function OrgChartVisualizer({ onViewEmployee }: { onViewEmployee: (name: string)
                 <h3 className="mt-1 font-display text-2xl font-semibold">
                   {displayOverview.name}
                 </h3>
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  {displayOverview.description}
-                </p>
 
                 <div className="mt-4 w-full rounded-xl border border-primary/30 bg-card p-3 shadow-xs">
                   <div className="flex items-start justify-between gap-2">
@@ -1461,23 +1476,19 @@ function EmployeeListManager({
                 <CardTitle className="font-display text-lg font-semibold">
                   Performance & Development Handoff (HR3 Evaluations)
                 </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Prerequisites for employee Regularization and Promotion based on recent
-                  performance scores.
-                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <Badge
                 variant="outline"
-                className="border-gold/50 bg-gold/10 text-gold-foreground text-xs"
+                className="border-gold/50 bg-gold/10 text-gold-foreground text-xs dark:text-gold"
               >
                 HR3 Evaluation Sync Active
               </Badge>
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 text-xs border-gold/50 text-gold-foreground hover:bg-gold/10"
+                className="h-7 text-xs border-gold/50 text-gold-foreground hover:bg-gold/10 dark:text-gold"
                 onClick={() => setShowViewAllRecs(true)}
               >
                 View All
@@ -1508,7 +1519,7 @@ function EmployeeListManager({
                       className={
                         rec.recommendationType === "Regularization"
                           ? "border-primary/40 bg-primary/10 text-primary text-[10px]"
-                          : "border-gold/50 bg-gold/10 text-gold-foreground text-[10px]"
+                          : "border-gold/50 bg-gold/10 text-gold-foreground text-[10px] dark:text-gold"
                       }
                     >
                       {rec.recommendationType}
@@ -1533,7 +1544,7 @@ function EmployeeListManager({
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 text-xs border-gold/50 text-gold-foreground hover:bg-gold/10"
+                      className="h-7 text-xs border-gold/50 text-gold-foreground hover:bg-gold/10 dark:text-gold"
                       onClick={async () => {
                         try {
                           await hcmApi.hr3Recommendations.acknowledge(rec.recommendationId);
@@ -1569,9 +1580,6 @@ function EmployeeListManager({
               <Sparkles className="h-5 w-5 text-gold" />
               All Performance & Development Handoff Requests
             </DialogTitle>
-            <DialogDescription>
-              Full list of HR3 evaluation recommendations sent to Core HCM for action.
-            </DialogDescription>
           </DialogHeader>
           <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
             <div className="relative min-w-[14rem] flex-1 sm:max-w-xs">
@@ -1653,7 +1661,7 @@ function EmployeeListManager({
                         className={
                           rec.recommendationType === "Regularization"
                             ? "border-primary/40 bg-primary/10 text-primary text-[10px]"
-                            : "border-gold/50 bg-gold/10 text-gold-foreground text-[10px]"
+                            : "border-gold/50 bg-gold/10 text-gold-foreground text-[10px] dark:text-gold"
                         }
                       >
                         {rec.recommendationType}
@@ -1694,6 +1702,7 @@ function EmployeeListManager({
               to={recPage.to}
               total={recPage.total}
               label="recommendations"
+              showRangeLabel={false}
               onPageChange={recPage.setPage}
             />
           </div>
@@ -1731,9 +1740,6 @@ function EmployeeListManager({
               <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
                 <Users className="h-5 w-5 text-primary" /> Employee Roster
               </h2>
-              <p className="text-xs text-muted-foreground">
-                {filteredEmployees.length} record{filteredEmployees.length !== 1 ? "s" : ""} found
-              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative min-w-[14rem]">
@@ -1961,6 +1967,7 @@ function EmployeeListManager({
             to={empPage.to}
             total={empPage.total}
             label="employees"
+            showRangeLabel={false}
             onPageChange={empPage.setPage}
           />
         </CardContent>
@@ -2077,9 +2084,6 @@ function EmployeeListManager({
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="h-5 w-5 text-primary" /> Edit Employee — {editingEmp?.name}
             </DialogTitle>
-            <DialogDescription>
-              Update all employee profile information in Core HCM.
-            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-5 py-2 text-xs">
@@ -2653,9 +2657,6 @@ function EmployeeListManager({
             <DialogTitle className="flex items-center gap-2 text-destructive">
               <UserX className="h-5 w-5" /> Process Exit Status — {selectedEmp?.name}
             </DialogTitle>
-            <DialogDescription>
-              Mark exit status in HCM. This will automatically deactivate user account.
-            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
@@ -2902,11 +2903,6 @@ function PromotionRequestsManager() {
                   </Badge>
                 )}
               </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                Filed by employees via ESS. Forward to HR3 for evaluation, then
-                decide (promote / terminate) once the HR3 score is back — or
-                approve directly for non-HR3 cases.
-              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative min-w-[12rem]">
@@ -3058,6 +3054,7 @@ function PromotionRequestsManager() {
                   to={page.to}
                   total={page.total}
                   label="promotion requests"
+                  showRangeLabel={false}
                   onPageChange={page.setPage}
                 />
               </div>
@@ -3473,6 +3470,7 @@ function LifecycleLogsViewer() {
           to={page.to}
           total={page.total}
           label="lifecycle logs"
+          showRangeLabel={false}
           onPageChange={page.setPage}
         />
       </CardContent>
@@ -3486,14 +3484,21 @@ function LifecycleLogsViewer() {
    ========================================================================= */
 
 export function DeptPosModule({ role = "admin" }: { role?: Role }) {
-  const [activeTab, setActiveTab] = useState<"depts" | "positions" | "salary" | "reqs">(() => {
-    const saved =
-      typeof window !== "undefined" ? window.sessionStorage.getItem("hcm-deptpos-tab") : null;
-    if (saved === "deptpos") return "depts" as const;
-    return (saved === "depts" || saved === "positions" || saved === "salary" || saved === "reqs"
-      ? saved
-      : "depts") as "depts" | "positions" | "salary" | "reqs";
-  });
+  // SSR-safe: constant initial tab so server and first client render match.
+  // The persisted tab is restored after mount (sessionStorage is client-only).
+  const [activeTab, setActiveTab] = useState<"depts" | "positions" | "salary" | "reqs">("depts");
+
+  useEffect(() => {
+    const saved = window.sessionStorage.getItem("hcm-deptpos-tab");
+    if (
+      saved === "depts" ||
+      saved === "positions" ||
+      saved === "salary" ||
+      saved === "reqs"
+    ) {
+      setActiveTab(saved);
+    }
+  }, []);
 
   useEffect(() => {
     window.sessionStorage.setItem("hcm-deptpos-tab", activeTab);
@@ -3505,9 +3510,8 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Core HCM · Organization Setup"
         title="Department, Position & Salary Grade Management"
-        description="Configure property departments, define position headcounts, manage salary grade structures, and approve requisitions."
+        description="Departments, position master list, salary grade management and vacancy requisitions."
         actions={<div ref={setHeaderActionsEl} className="flex flex-wrap items-center gap-2" />}
       />
 
@@ -3658,6 +3662,8 @@ function DepartmentAndPositionManager({
   const [posTarget, setPosTarget] = useState("5");
   const [posFilled, setPosFilled] = useState("3");
   const [posSGrade, setPosSGrade] = useState("SG-05");
+  const [posRequiresAssessment, setPosRequiresAssessment] = useState(false);
+  const [posRequiresPractical, setPosRequiresPractical] = useState(false);
 
   const [pendingConfirmSave, setPendingConfirmSave] = useState<{ type: "dept" | "pos" } | null>(
     null,
@@ -3769,6 +3775,8 @@ function DepartmentAndPositionManager({
   const [origPosLevel, setOrigPosLevel] = useState<Position["level"]>("Rank & File");
   const [origPosTarget, setOrigPosTarget] = useState("");
   const [origPosSGrade, setOrigPosSGrade] = useState("");
+  const [origPosRequiresAssessment, setOrigPosRequiresAssessment] = useState(false);
+  const [origPosRequiresPractical, setOrigPosRequiresPractical] = useState(false);
 
   const deptHasChanges =
     deptCode !== origDeptCode || deptName !== origDeptName || deptHead !== origDeptHead;
@@ -3777,7 +3785,9 @@ function DepartmentAndPositionManager({
     posDept !== origPosDept ||
     posLevel !== origPosLevel ||
     posTarget !== origPosTarget ||
-    posSGrade !== origPosSGrade;
+    posSGrade !== origPosSGrade ||
+    posRequiresAssessment !== origPosRequiresAssessment ||
+    posRequiresPractical !== origPosRequiresPractical;
 
   const getDerivedStaffCount = (deptName: string) => {
     return posList
@@ -3872,6 +3882,8 @@ function DepartmentAndPositionManager({
           salary_grade_id: sgDbId,
           level: posLevel,
           headcount: Number(posTarget) || 1,
+          requires_assessment: posRequiresAssessment,
+          requires_practical: posRequiresPractical,
         });
         toast.success(`Position ${posTitle} added to ${posDept}.`);
       } else if (editingPos) {
@@ -3889,6 +3901,8 @@ function DepartmentAndPositionManager({
           salary_grade_id: sgDbId,
           level: posLevel,
           headcount: Number(posTarget),
+          requires_assessment: posRequiresAssessment,
+          requires_practical: posRequiresPractical,
         });
         toast.success(`Position ${posTitle} updated.`);
       }
@@ -3940,9 +3954,6 @@ function DepartmentAndPositionManager({
               <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold">
                 <Building2 className="h-4 w-4 text-primary" /> Hotel & Restaurant Departments
               </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                {filteredDepts.length} department{filteredDepts.length !== 1 ? "s" : ""} found
-              </p>
             </div>
             <div className="flex items-center gap-2">
               <div className="relative min-w-[14rem]">
@@ -4069,6 +4080,7 @@ function DepartmentAndPositionManager({
               to={deptPage.to}
               total={deptPage.total}
               label="departments"
+              showRangeLabel={false}
               onPageChange={deptPage.setPage}
             />
           </div>
@@ -4108,9 +4120,6 @@ function DepartmentAndPositionManager({
               <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold">
                 <Briefcase className="h-4 w-4 text-primary" /> Job Positions & Salary Bands
               </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                {filteredPositions.length} position{filteredPositions.length !== 1 ? "s" : ""} found
-              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative min-w-[14rem]">
@@ -4145,6 +4154,8 @@ function DepartmentAndPositionManager({
                     setPosTarget("5");
                     setPosFilled("3");
                     setPosSGrade("SG-05");
+                    setPosRequiresAssessment(false);
+                    setPosRequiresPractical(false);
                     setIsNewPos(true);
                     setEditingPos({
                       id: "",
@@ -4229,11 +4240,15 @@ function DepartmentAndPositionManager({
                               setPosTarget(String(p.headcount));
                               setPosFilled(String(p.filled));
                               setPosSGrade(p.salaryBand.split(" ")[0] || "SG-05");
+                              setPosRequiresAssessment(p.requires_assessment ?? false);
+                              setPosRequiresPractical(p.requires_practical ?? false);
                               setOrigPosTitle(p.title);
                               setOrigPosDept(p.department);
                               setOrigPosLevel(p.level);
                               setOrigPosTarget(String(p.headcount));
                               setOrigPosSGrade(p.salaryBand.split(" ")[0] || "SG-05");
+                              setOrigPosRequiresAssessment(p.requires_assessment ?? false);
+                              setOrigPosRequiresPractical(p.requires_practical ?? false);
                               setIsNewPos(false);
                             }}
                           >
@@ -4266,6 +4281,7 @@ function DepartmentAndPositionManager({
               to={posPage.to}
               total={posPage.total}
               label="positions"
+              showRangeLabel={false}
               onPageChange={posPage.setPage}
             />
           </div>
@@ -4505,11 +4521,41 @@ function DepartmentAndPositionManager({
                     </SelectItem>
                   ))}
                 </SelectContent>
-              </Select>
-            </div>
-          </div>
+</Select>
+             </div>
+           </div>
 
-          <DialogFooter>
+           {/* Assessment Test & Practical Test toggles */}
+           <div className="space-y-3 pt-2 border-t border-border/50">
+             <div className="flex items-center justify-between">
+               <div className="flex items-center gap-2">
+                 <ClipboardList className="h-4 w-4 text-primary" />
+                 <div>
+                   <p className="text-xs font-medium">Assessment Test</p>
+                   <p className="text-[10px] text-muted-foreground">Written test + applicant self-service links in Applicant Management.</p>
+                 </div>
+               </div>
+               <Switch
+                 checked={posRequiresAssessment}
+                 onCheckedChange={(v) => setPosRequiresAssessment(v)}
+               />
+             </div>
+             <div className="flex items-center justify-between">
+               <div className="flex items-center gap-2">
+                 <Hammer className="h-4 w-4 text-primary" />
+                 <div>
+                   <p className="text-xs font-medium">Practical Test</p>
+                   <p className="text-[10px] text-muted-foreground">Hands-on exam for designated positions. Per-job flags still apply when enabled.</p>
+                 </div>
+               </div>
+               <Switch
+                 checked={posRequiresPractical}
+                 onCheckedChange={(v) => setPosRequiresPractical(v)}
+               />
+             </div>
+           </div>
+
+           <DialogFooter>
             <Button
               variant="outline"
               onClick={() => {
@@ -4894,9 +4940,6 @@ function SalaryGradeManager() {
             <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold">
               <DollarSign className="h-4 w-4 text-primary" /> Salary Grade & Compensation Management
             </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              {filteredGrades.length} grade structure{filteredGrades.length !== 1 ? "s" : ""} found
-            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-[14rem]">
@@ -5000,6 +5043,7 @@ function SalaryGradeManager() {
             to={sgPage.to}
             total={sgPage.total}
             label="salary grades"
+            showRangeLabel={false}
             onPageChange={sgPage.setPage}
           />
         </div>
@@ -5010,9 +5054,6 @@ function SalaryGradeManager() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editingSg ? `Edit Salary Grade — ${editingSg.code}` : "Add Salary Grade"}</DialogTitle>
-            <DialogDescription>
-              Define the compensation band (minimum and maximum salary) for this grade.
-            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2 text-xs">
             <div className="grid grid-cols-2 gap-3">
@@ -5182,9 +5223,6 @@ function RequisitionManager({ role = "admin" }: { role?: Role }) {
             <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold">
               <Send className="h-4 w-4 text-primary" /> Vacancy Requisitions
             </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              {filteredReqs.length} requisition{filteredReqs.length !== 1 ? "s" : ""} found
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -5369,6 +5407,7 @@ function RequisitionManager({ role = "admin" }: { role?: Role }) {
             to={reqPage.to}
             total={reqPage.total}
             label="requisitions"
+            showRangeLabel={false}
             onPageChange={reqPage.setPage}
           />
         </div>
@@ -5380,10 +5419,6 @@ function RequisitionManager({ role = "admin" }: { role?: Role }) {
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Edit requisition {editing?.id}</DialogTitle>
-          <DialogDescription>
-            {editing?.position} · {editing?.department}. Changes apply immediately after you
-            confirm.
-          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-1">
           <div className="space-y-1.5">
@@ -5490,9 +5525,6 @@ function RequisitionManager({ role = "admin" }: { role?: Role }) {
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>History — {historyFor?.id}</DialogTitle>
-          <DialogDescription>
-            Created / updated / converted / deleted actions for this requisition.
-          </DialogDescription>
         </DialogHeader>
         {historyLoading ? (
           <ListSkeleton items={4} />

@@ -167,6 +167,26 @@ class ChatbotFaqController extends Controller
         $value = (int) $request->input('value', 0);
         abort_unless(in_array($value, [1, -1, 0], true), 422, 'Invalid feedback value.');
 
+        // Ownership guard (IDOR fix): a vote is only accepted from the owner.
+        // Authenticated exchanges require the same user; guest exchanges
+        // require the same session_id the chat was stored under.
+        $userId = $request->user()?->getAuthIdentifier();
+        if ($message->user_id) {
+            abort_unless($userId && (int) $userId === (int) $message->user_id, 403, 'You can only rate your own conversation.');
+        } elseif ($userId) {
+            abort_unless((int) $message->user_id === 0 || $message->user_id === null, 403, 'You can only rate your own conversation.');
+            // Logged-in voter on a guest row: still require matching session.
+            $sessionId = (string) $request->input('session_id', '');
+            abort_unless($sessionId !== '' && $sessionId === (string) $message->session_id, 403, 'You can only rate your own conversation.');
+        } else {
+            $sessionId = (string) $request->input('session_id', '');
+            abort_unless(
+                $message->session_id && $sessionId !== '' && hash_equals((string) $message->session_id, $sessionId),
+                403,
+                'You can only rate your own conversation.'
+            );
+        }
+
         try {
             $message->update(['feedback' => $value === 0 ? null : $value]);
         } catch (\Throwable $e) {

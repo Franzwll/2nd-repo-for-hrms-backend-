@@ -8,15 +8,14 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
- * Generates job-post draft content with a Google Generative Language model
- * (Gemini), grounded in the HR screening vocabulary.
+ * Generates job-post draft content grounded in the HR screening vocabulary.
  *
  * Resilience chain (first success wins):
- *   1. Google Gemini with GEMINI_API_KEY
- *   2. Google Gemini again with GEMINI_FALLBACK_API_KEY (and optionally
- *      GEMINI_FALLBACK_MODEL) — survives a dead/quota-hit primary key
- *   3. The same Gemini model family through OpenRouter with
- *      OPENROUTER_API_KEY / OPENROUTER_MODEL — survives a Google-side outage
+ *   1. Groq with JOB_GROQ_API_KEY / JOB_GROQ_MODEL (openai/gpt-oss-20b)
+ *   2. OpenRouter with JOB_OPENROUTER_API_KEY / JOB_OPENROUTER_MODEL
+ *      (nvidia/nemotron-3-super-120b-a12b:free) — survives a Groq-side outage
+ *   3. Shared Google Gemini with GEMINI_API_KEY (+ optional
+ *      GEMINI_FALLBACK_API_KEY / GEMINI_FALLBACK_MODEL)
  *
  * The vocabulary (skills / certifications from screening_reference_data) is
  * injected into the prompt so generated "skills" and "qualifications" reuse
@@ -36,6 +35,14 @@ class JobContentGenerator
     /** Failure codes that mean "the AI usage/limit is used up" (UI shows the limit state). */
     public const LIMIT_CODES = ['quota_day', 'rate_minute', 'quota', 'daily_limit'];
 
+    protected ?string $groqKey;
+
+    protected string $groqModel;
+
+    protected ?string $openrouterKey;
+
+    protected string $openrouterModel;
+
     protected ?string $apiKey;
 
     protected string $model;
@@ -43,10 +50,6 @@ class JobContentGenerator
     protected ?string $fallbackModel;
 
     protected ?string $fallbackApiKey;
-
-    protected ?string $openrouterKey;
-
-    protected string $openrouterModel;
 
     protected int $timeout;
 
@@ -77,12 +80,15 @@ class JobContentGenerator
 
     public function __construct()
     {
+        // Job Builder has its own Groq/OpenRouter keys; Gemini is the shared key.
+        $this->groqKey = config('services.job_groq.key') ?: env('JOB_GROQ_API_KEY') ?: config('services.chat_groq.key') ?: null;
+        $this->groqModel = (string) (config('services.job_groq.model') ?: env('JOB_GROQ_MODEL', 'openai/gpt-oss-20b'));
+        $this->openrouterKey = config('services.job_openrouter.key') ?: env('JOB_OPENROUTER_API_KEY') ?: config('services.openrouter.key') ?: env('OPENROUTER_API_KEY') ?: null;
+        $this->openrouterModel = (string) (config('services.job_openrouter.model') ?: env('JOB_OPENROUTER_MODEL', env('OPENROUTER_MODEL', 'nvidia/nemotron-3-super-120b-a12b:free')));
         $this->apiKey = config('services.gemini.key') ?: env('GEMINI_API_KEY') ?: null;
         $this->model = (string) (config('services.gemini.model') ?: env('GEMINI_MODEL', 'gemini-3.5-flash-lite'));
         $this->fallbackModel = config('services.gemini.fallback_model') ?: env('GEMINI_FALLBACK_MODEL') ?: null;
         $this->fallbackApiKey = config('services.gemini.fallback_key') ?: env('GEMINI_FALLBACK_API_KEY') ?: null;
-        $this->openrouterKey = config('services.openrouter.key') ?: env('OPENROUTER_API_KEY') ?: null;
-        $this->openrouterModel = (string) (config('services.openrouter.model') ?: env('OPENROUTER_MODEL', 'openrouter/free'));
         $this->timeout = (int) (config('services.gemini.timeout') ?: env('GEMINI_TIMEOUT', 30));
         $this->dailyLimit = max(0, (int) (config('services.job_ai.daily_limit') ?? env('JOB_AI_DAILY_LIMIT', 0)));
     }
@@ -109,27 +115,32 @@ class JobContentGenerator
             $chain[] = ['kind' => $kind, 'model' => trim($model), 'key' => trim($key), 'label' => $label];
         };
 
+        $add('groq', $this->groqModel, $this->groqKey, 'Groq');
+        $add('openrouter', $this->openrouterModel, $this->openrouterKey, 'OpenRouter');
         $add('gemini', $this->model, $this->apiKey, 'Google Gemini');
         $add('gemini', $this->fallbackModel ?: $this->model, $this->fallbackApiKey ?: $this->apiKey, 'Google Gemini (second key)');
-        $add('openrouter', $this->openrouterModel, $this->openrouterKey, 'OpenRouter');
 
         return $chain;
     }
 
-    /** True when at least one provider key is configured (Gemini or OpenRouter). */
+    /** True when at least one provider key is configured (Groq, OpenRouter or Gemini). */
     public function isConfigured(): bool
     {
         return $this->providers() !== [];
     }
 
     /**
-     * Primary model configured for this server — Gemini's when a Gemini key
-     * exists, otherwise the OpenRouter model. Shown in the API meta and in the
-     * builder's AI usage indicator.
+     * Primary model configured for this server — Groq's when a Groq key
+     * exists, otherwise OpenRouter's, otherwise Gemini's. Shown in the API
+     * meta and in the builder's AI usage indicator.
      */
     public function modelName(): string
     {
-        return $this->apiKey ? $this->model : $this->openrouterModel;
+        if ($this->groqKey) {
+            return $this->groqModel;
+        }
+
+        return $this->openrouterKey ? $this->openrouterModel : $this->model;
     }
 
     /**
@@ -141,7 +152,7 @@ class JobContentGenerator
     {
         if (! $this->isConfigured()) {
             return $this->failure(
-                'The AI generator is not configured. Set GEMINI_API_KEY (or OPENROUTER_API_KEY) on the API server.',
+                'The AI generator is not configured. Set JOB_GROQ_API_KEY (or a fallback key) on the API server.',
                 'not_configured',
             );
         }
@@ -158,13 +169,13 @@ class JobContentGenerator
 
         $prompt = $this->buildPrompt($job, $vocabulary);
 
-        // Walk the provider chain (Gemini key 1 → Gemini key 2 → OpenRouter);
+        // Walk the provider chain (Groq -> OpenRouter -> Gemini);
         // first success wins. Each provider gets several attempts because
-        // Google often answers 503/overloaded on the first try.
+        // providers often answer 503/overloaded on the first try.
         $providers = $this->providers();
         if ($providers === []) {
             return $this->failure(
-                'The AI generator is not configured. Set GEMINI_API_KEY (or OPENROUTER_API_KEY) on the API server.',
+                'The AI generator is not configured. Set JOB_GROQ_API_KEY (or a fallback key) on the API server.',
                 'not_configured',
             );
         }
@@ -194,9 +205,11 @@ class JobContentGenerator
 
             for ($attempt = 1; $attempt <= $this->maxAttempts; $attempt++) {
                 try {
-                    $response = $provider['kind'] === 'openrouter'
-                        ? $this->postOpenRouter($provider, $prompt)
-                        : $this->postGemini($provider, $prompt);
+                    $response = match ($provider['kind']) {
+                        'groq' => $this->postGroq($provider, $prompt),
+                        'openrouter' => $this->postOpenRouter($provider, $prompt),
+                        default => $this->postGemini($provider, $prompt),
+                    };
                 } catch (\Throwable $e) {
                     // Connection/timeout — always retryable.
                     Log::warning('AI draft generation connection error', [
@@ -310,6 +323,24 @@ class JobContentGenerator
             ]);
     }
 
+    /** Single chat-completions call routed through Groq. */
+    protected function postGroq(array $provider, string $prompt): \Illuminate\Http\Client\Response
+    {
+        return Http::timeout($this->timeout)
+            ->acceptJson()
+            ->withHeaders([
+                'Authorization' => 'Bearer ' . $provider['key'],
+            ])
+            ->post('https://api.groq.com/openai/v1/chat/completions', [
+                'model' => $provider['model'],
+                'messages' => [
+                    ['role' => 'user', 'content' => $prompt],
+                ],
+                'max_tokens' => 2048,
+                'response_format' => ['type' => 'json_object'],
+            ]);
+    }
+
     /** Single chat-completions call routed through OpenRouter. */
     protected function postOpenRouter(array $provider, string $prompt): \Illuminate\Http\Client\Response
     {
@@ -330,14 +361,15 @@ class JobContentGenerator
             ]);
     }
 
-    /** Extracts the model text from either provider's success envelope. */
+    /** Extracts the model text from any provider's success envelope. */
     protected function responseText(array $provider, \Illuminate\Http\Client\Response $response): string
     {
-        if ($provider['kind'] === 'openrouter') {
-            return (string) data_get($response->json(), 'choices.0.message.content', '');
+        if ($provider['kind'] === 'gemini') {
+            return (string) data_get($response->json(), 'candidates.0.content.parts.0.text', '');
         }
 
-        return (string) data_get($response->json(), 'candidates.0.content.parts.0.text', '');
+        // Groq + OpenRouter both use the OpenAI chat-completions envelope.
+        return (string) data_get($response->json(), 'choices.0.message.content', '');
     }
 
     /**
@@ -350,9 +382,16 @@ class JobContentGenerator
     protected function classifyFailure(int $status, string $body, array $provider): array
     {
         $via = $provider['label'];
-        $isOpenRouter = $provider['kind'] === 'openrouter';
-        $keyHint = $isOpenRouter ? 'OPENROUTER_API_KEY' : 'GEMINI_API_KEY';
-        $modelHint = $isOpenRouter ? 'OPENROUTER_MODEL' : 'GEMINI_MODEL';
+        $keyHint = match ($provider['kind']) {
+            'groq' => 'JOB_GROQ_API_KEY',
+            'openrouter' => 'JOB_OPENROUTER_API_KEY',
+            default => 'GEMINI_API_KEY',
+        };
+        $modelHint = match ($provider['kind']) {
+            'groq' => 'JOB_GROQ_MODEL',
+            'openrouter' => 'JOB_OPENROUTER_MODEL',
+            default => 'GEMINI_MODEL',
+        };
         $haystack = Str::lower($body);
         $retryAfter = $this->retryDelayFromBody($body);
 
@@ -733,9 +772,10 @@ class JobContentGenerator
     }
 
     /**
-     * Vocab-preferred prompt: the model must reuse vocabulary terms verbatim
-     * for skills (and certifications inside qualifications) and may introduce
-     * at most 2 new terms when nothing fits.
+     * Vocab-preferred prompt: the model reuses vocabulary terms verbatim
+     * inside qualifications (and certifications) and writes only the
+     * requested prose blocks. Skills are NOT generated — they come from the
+     * position's requirement template.
      */
     protected function buildPrompt(array $job, array $vocabulary): string
     {
@@ -746,9 +786,24 @@ class JobContentGenerator
         $skills = array_slice($skills, 0, 150);
         $certs = array_slice($certs, 0, 60);
 
+        $blocks = $job['blocks'] ?? ['description', 'responsibilities', 'qualifications', 'additional', 'instructions', 'about'];
+        $blocks = array_values(array_intersect(
+            array_map('strval', (array) $blocks),
+            ['description', 'responsibilities', 'qualifications', 'additional', 'instructions', 'about'],
+        ));
+        if ($blocks === []) {
+            $blocks = ['description', 'responsibilities', 'qualifications', 'additional', 'instructions', 'about'];
+        }
+        $notes = isset($job['notes']) && is_array($job['notes']) ? $job['notes'] : [];
+        $noteFor = function (string $key) use ($notes): string {
+            $v = trim((string) ($notes[$key] ?? ''));
+            return $v !== '' ? " Extra guidance: {$v}" : '';
+        };
+
+        $keys = implode(', ', $blocks);
         $lines = [
             'You are an HR copywriter for Oxford Suites Makati, a premier all-suite hotel in Makati\'s business district known for warm Filipino hospitality.',
-            'Write a job-post draft for this role. Return ONLY a JSON object with exactly these keys: description, responsibilities, qualifications, skills, instructions, about.',
+            "Write a job-post draft for this role. Return ONLY a JSON object with exactly these keys: {$keys}.",
             '',
             'Role context:',
             '- Position: ' . ($job['position_title'] ?? 'Staff'),
@@ -764,21 +819,87 @@ class JobContentGenerator
             '- CERTIFICATIONS: ' . ($certs ? implode('; ', $certs) : '(none)'),
             '',
             'Rules:',
-            '1. description: 2-3 sentences pitching the role at Oxford Suites Makati.',
-            '2. responsibilities: 5-7 bullets, each under 120 characters, plain text, no numbering.',
-            '3. qualifications: 4-6 bullets; mention a CERTIFICATION from the list above when relevant (e.g. TESDA NC II, Food Handler).',
-            '4. skills: 6-10 items; PREFER the SKILLS vocabulary verbatim (exact spelling). You may add at most 2 new terms only when nothing in the list fits.',
-            '5. instructions: 1-2 sentences telling applicants to send their updated resume through the posting or walk in at the HR Office, Oxford Suites Makati.',
-            '6. about: 1-2 sentences about Oxford Suites Makati as a premier all-suite hotel in Makati.',
-            '7. Keep language professional, hotel-appropriate, Philippine English. No markdown, no numbering, no extra keys.',
         ];
+        if (in_array('description', $blocks, true)) {
+            $lines[] = '1. description: 2-3 sentences pitching the role at Oxford Suites Makati.' . $noteFor('description');
+        }
+        if (in_array('responsibilities', $blocks, true)) {
+            $lines[] = '2. responsibilities: 5-7 bullets, each under 120 characters, plain text, no numbering. Prefer SKILLS vocabulary wording where it fits naturally.' . $noteFor('responsibilities');
+        }
+        if (in_array('qualifications', $blocks, true)) {
+            $lines[] = '3. qualifications: 4-6 bullets; reuse SKILLS terms verbatim where relevant and mention a CERTIFICATION from the list above when relevant (e.g. TESDA NC II, Food Handler).' . $noteFor('qualifications');
+        }
+        if (in_array('additional', $blocks, true)) {
+            $lines[] = '4. additional: 3-5 bullets of perks / shift details / dress code — only promise what is standard for a Makati hotel posting, plain text, no numbering.' . $noteFor('additional');
+        }
+        if (in_array('instructions', $blocks, true)) {
+            $lines[] = '5. instructions: 1-2 sentences telling applicants to send their updated resume through the posting or walk in at the HR Office, Oxford Suites Makati.' . $noteFor('instructions');
+        }
+        if (in_array('about', $blocks, true)) {
+            $lines[] = '6. about: 1-2 sentences about Oxford Suites Makati as a premier all-suite hotel in Makati.' . $noteFor('about');
+        }
+        $lines[] = '7. Keep language professional, hotel-appropriate, Philippine English. No markdown, no numbering, no extra keys.';
 
         return implode("\n", $lines);
     }
 
+    /**
+     * Forces a string to well-formed UTF-8 with no illegal control bytes.
+     *
+     * Providers occasionally emit a stray byte sequence — a smart quote or dash
+     * saved in Windows-1252, or a truncated multi-byte character. That breaks
+     * two separate things downstream: json_decode rejects a raw control byte
+     * with "Control character error", and JsonResponse's own json_encode throws
+     * "Malformed UTF-8 characters" once the value is already decoded. Either one
+     * turned an otherwise usable draft into a 500, so both are scrubbed here —
+     * one bad character should never fail a whole generation.
+     *
+     * \t \n \r survive: they are legal JSON whitespace and meaningful content in
+     * the decoded values.
+     */
+    protected function scrubUtf8(string $value): string
+    {
+        if ($value === '') {
+            return $value;
+        }
+
+        if (! mb_check_encoding($value, 'UTF-8')) {
+            // mb_scrub (PHP 8) replaces invalid sequences; the mb_convert_encoding
+            // fallback covers older runtimes by re-interpreting the bytes as UTF-8.
+            $value = function_exists('mb_scrub')
+                ? mb_scrub($value, 'UTF-8')
+                : (string) mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+        }
+
+        // A half-decoded sequence can leave a lone control byte behind (the
+        // trailing 0x09 of a cut-off 0xE2 0x80 0x09), so drop those explicitly.
+        // preg_replace returns null on invalid UTF-8; the scrub above guarantees
+        // valid input, and the ?? keeps a surprise from blanking the draft.
+        return (string) (preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/u', '', $value) ?? $value);
+    }
+
+    /**
+     * Scrubs model output that is still raw JSON text, before it is decoded.
+     *
+     * Same as scrubUtf8(), but \t \n \r also become spaces: they are fine as
+     * JSON whitespace between tokens yet illegal *inside* a string, which is
+     * where a truncated character leaves them. A space is valid in both places,
+     * so pretty-printed JSON still parses and a stray control byte no longer
+     * fails the whole payload.
+     */
+    protected function scrubJsonText(string $value): string
+    {
+        $clean = $this->scrubUtf8($value);
+        if ($clean === '') {
+            return $clean;
+        }
+
+        return str_replace(["\t", "\n", "\r"], ' ', $clean);
+    }
+
     protected function parseJsonPayload(string $text): ?array
     {
-        $clean = trim($text);
+        $clean = trim($this->scrubJsonText($text));
         // Strip ```json fences some models add despite responseMimeType.
         if (str_starts_with($clean, '```')) {
             $clean = (string) preg_replace('/^```(?:json)?\s*/i', '', $clean);
@@ -793,7 +914,9 @@ class JobContentGenerator
     /** Normalizes model output into the builder's shape (arrays capped, strings trimmed). */
     protected function normalize(array $raw): array
     {
-        $toList = function ($value, int $max): array {
+        $scrub = fn ($value) => $this->scrubUtf8((string) $value);
+
+        $toList = function ($value, int $max) use ($scrub): array {
             if (is_string($value)) {
                 $value = preg_split('/\r?\n/', $value) ?: [];
             }
@@ -802,7 +925,7 @@ class JobContentGenerator
             }
             $out = [];
             foreach ($value as $item) {
-                $item = trim((string) $item, " \t\n\r\0\x0B-•*1234567890.() ");
+                $item = trim($scrub($item), " \t\n\r\0\x0B-•*1234567890.() ");
                 if ($item !== '' && ! in_array($item, $out, true)) {
                     $out[] = mb_substr($item, 0, 280);
                 }
@@ -815,12 +938,13 @@ class JobContentGenerator
         };
 
         return [
-            'description' => mb_substr(trim((string) ($raw['description'] ?? '')), 0, 1200),
+            'description' => mb_substr(trim($scrub($raw['description'] ?? '')), 0, 1200),
             'responsibilities' => $toList($raw['responsibilities'] ?? [], 8),
             'qualifications' => $toList($raw['qualifications'] ?? [], 8),
             'skills' => $toList($raw['skills'] ?? [], 12),
-            'instructions' => mb_substr(trim((string) ($raw['instructions'] ?? '')), 0, 600),
-            'about' => mb_substr(trim((string) ($raw['about'] ?? '')), 0, 600),
+            'additional' => $toList($raw['additional'] ?? [], 8),
+            'instructions' => mb_substr(trim($scrub($raw['instructions'] ?? '')), 0, 600),
+            'about' => mb_substr(trim($scrub($raw['about'] ?? '')), 0, 600),
         ];
     }
 }

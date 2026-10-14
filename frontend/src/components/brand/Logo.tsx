@@ -24,16 +24,39 @@ export function Logo({
       ? oxfordMarkWhite
       : oxfordMarkMaroon;
 
-  const text = tone === "invert" ? "text-sidebar-foreground" : "text-primary";
+  // The maroon mark + crimson wordmark vanish on dark surfaces (org chart,
+  // dialogs, dark cards). Swap to the white mark + ivory wordmark under
+  // `.dark`, but keep print output on white paper unchanged.
+  const maroonChosen = chosenMark === oxfordMarkMaroon;
+
+  const text =
+    tone === "invert" ? "text-sidebar-foreground" : "text-primary dark:text-primary-foreground print:text-primary";
 
   return (
     <span className={cn("inline-flex items-center gap-2.5", className)}>
-      <img
-        src={chosenMark}
-        alt=""
-        aria-hidden="true"
-        className="h-9 w-auto shrink-0 object-contain"
-      />
+      {maroonChosen ? (
+        <>
+          <img
+            src={oxfordMarkMaroon}
+            alt=""
+            aria-hidden="true"
+            className="h-9 w-auto shrink-0 object-contain dark:hidden print:block"
+          />
+          <img
+            src={oxfordMarkWhite}
+            alt=""
+            aria-hidden="true"
+            className="hidden h-9 w-auto shrink-0 object-contain dark:block print:hidden"
+          />
+        </>
+      ) : (
+        <img
+          src={chosenMark}
+          alt=""
+          aria-hidden="true"
+          className="h-9 w-auto shrink-0 object-contain"
+        />
+      )}
       {variant === "full" && (
         <span className="flex flex-col leading-none">
           <span

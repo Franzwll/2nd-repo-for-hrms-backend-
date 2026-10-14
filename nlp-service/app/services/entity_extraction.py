@@ -126,7 +126,7 @@ DEGREE_PATTERNS = [
     re.compile(r"\b(master(?:'s)?(?:\s+of\s+science|\s+of\s+arts)?(?:\s+degree)?|m\.?s\.?|mba)\s+(?:in|of)\s+[^,\n;]{3,60}", re.I),
     re.compile(r"\b(bachelor\s+of\s+[a-z\s&/]{3,60})", re.I),
     re.compile(r"\b(b\.?s\.?\s+in\s+[a-z\s&/]{3,60}|b\.?a\.?\s+in\s+[a-z\s&/]{3,60})", re.I),
-    re.compile(r"\b(vocational(?:\s*/\s*tesda)?(?:\s+[a-z\s&/,-]{3,50})?|tesda(?:\s+[a-z\s&/,-]{3,50})?)\b", re.I),
+    re.compile(r"\b(vocational(?:\s*(?:course|diploma|training|program))(?:\s+(?:in|of)\s+[a-z\s&/,-]{3,50})?)\b", re.I),
     re.compile(r"\b(college\s+level(?:\s*,\s*[a-z\s&/,-]{3,50})?|college\s+undergraduate)\b", re.I),
     re.compile(r"\b(diploma\s+(?:in|of)\s+[a-z\s,&-]{3,60})", re.I),
     re.compile(r"\b(vocational\s+diploma\s+(?:in|of)\s+[a-z\s,&-]{3,60})", re.I),
@@ -140,7 +140,11 @@ DEGREE_PATTERNS = [
 ]
 
 CERT_HINT_RE = re.compile(
-    r"\b(tesda[a-z\s]*nc\s*(?:i{1,3}|iv|1-4)|[a-z][a-z\s'\-&/()]{2,60}(?:certificate|certification|license|licence|training|workshop)|nc\s*(?:i{1,3}|iv)\b)",
+    r"\b(tesda[a-z\s]*national\s+certificate\s*(?:i{1,3}|iv|1-4)(?:\s+(?:in|of)\s+[^,\n;()]+)?(?:\s*\([^)]+\))?"
+    r"|tesda[a-z\s]*nc\s*(?:i{1,3}|iv|1-4)(?:\s+(?:in|of)\s+[^,\n;()]+)?"
+    r"|national\s+certificate\s*(?:i{1,3}|iv|1-4)(?:\s+(?:in|of)\s+[^,\n;()]+)?(?:\s*\([^)]+\))?"
+    r"|[a-z][a-z\s'\-&/()]{2,60}(?:certificate|certification|license|licence|training|workshop)(?:\s+(?:in|of|for)\s+[^,\n;()]+)?"
+    r"|nc\s*(?:i{1,3}|iv)\b)",
     re.I,
 )
 
@@ -218,6 +222,70 @@ _PH_CITIES = [
     "Novaliches", "Cubao", "Ermita", "Malate", "Bgc", "Ortigas",
     "Silang", "Trece Martires", "Tanauan", "San Pablo", "Kawit",
 ]
+
+# Base forms of duty verbs that open responsibility bullets rather than
+# entity names ("Maintained pristine bar sanitation ...", "Delivered
+# engaging guest interactions ..."). Shared by the work-history, skills and
+# certification filters so a duty sentence is never filed as a title, a
+# skill, or a credential.
+_DUTY_VERB_BASES = frozenset({
+    "coordinate", "monitor", "review", "help", "assist",
+    "provide", "prepare", "maintain", "ensure", "handle", "support",
+    "train", "take", "set", "upsell", "conduct", "operate", "process",
+    "resolve", "manage", "deliver", "perform", "create", "develop",
+    "achieve", "recognize", "contribute", "work", "collaborate", "lead",
+    "led", "oversee", "oversaw", "greet", "design", "improve", "reduce",
+    "increase", "track", "supervise", "direct", "accommodate", "mentor",
+    "reconcile", "serve", "clean", "sterilize", "comply", "engage",
+    "sanitize", "stock", "restock", "pour", "mix", "craft", "cook",
+    "bake", "plate", "answer", "attend", "welcome", "seat", "escort",
+    "inspect", "audit",
+})
+
+
+def _duty_verb_base(word: str) -> str:
+    """Reduces an inflected verb to its base form for bullet checks."""
+    w = word.lower().strip(".,;:!?\"'()").rstrip("s")
+    for suffix in ("ied", "ing", "ed", "es", "s"):
+        if w.endswith(suffix) and len(w) > len(suffix) + 2:
+            stem = w[: -len(suffix)]
+            if suffix == "ied":
+                return stem + "y"
+            if suffix == "ing" and len(stem) > 2 and stem[-1] == stem[-2]:
+                return stem[:-1]
+            return stem
+    return w
+
+
+def _is_duty_verb(word: str, bases: Optional[frozenset] = None) -> bool:
+    """True when a word is an inflected duty verb.
+
+    English -ed stripping drops a silent -e ("prepared" -> "prepar"), so the
+    stem is also tried with the -e restored ("prepare").
+    """
+    bases = _DUTY_VERB_BASES if bases is None else bases
+    base = _duty_verb_base(word)
+    return base in bases or (base + "e") in bases
+
+
+# OCR frequently merges the degree line with the following certification
+# line ("... Restaurant Management TESDA National Certificate I") — the
+# greedy degree patterns swallow the tail, so matches are truncated here.
+_DEGREE_TAIL_CUT_RE = re.compile(
+    r"\s+(TESDA|National\s+Certificate|NC\s*(?:I{1,3}|IV|1-4)|"
+    r"Food\s+Handler|Training\s+Certificate|Certificate\s+of)\b.*$",
+    re.I,
+)
+
+# Duty prose merged onto an education row by column interleave
+# ("... Restaurant . Assisted head bartenders with liquor ...").
+_DUTY_CONTINUATION_RE = re.compile(
+    r"\b(assisted|ensured|prepared|maintained|delivered|managed|"
+    r"conducted|oversaw|oversee|worked|served|handled|provided|"
+    r"supported|coordinated|cooked|baked|cleaned|welcomed|greeted)\b",
+    re.I,
+)
+
 
 # Words that mark a token sequence as an organization rather than a person.
 _ORG_SUFFIX_WORDS = {
@@ -397,14 +465,37 @@ class EntityExtractor:
 
         if name:
             name_low = name.lower()
+            name_tokens = [t for t in re.findall(r"[a-z]+", name_low) if len(t) > 1]
 
             def _not_the_name(value: str) -> bool:
                 vlow = value.lower()
-                return vlow != name_low and vlow not in name_low and name_low not in vlow
+                if vlow == name_low or vlow in name_low or name_low in vlow:
+                    return False
+                # OCR-tolerant variant ("Marco Antonio Renes" vs "Marco
+                # Antonio Reyes"): most name tokens approximately present in
+                # a short value means the value IS the applicant's name
+                # leaking in from an interleaved column — never a title,
+                # skill, or credential.
+                if len(name_tokens) >= 2:
+                    value_tokens = [t for t in re.findall(r"[a-z]+", vlow) if len(t) > 1]
+                    if 2 <= len(value_tokens) <= 4:
+                        hits = sum(
+                            1 for nt in name_tokens
+                            if any(
+                                difflib.SequenceMatcher(None, nt, vt).ratio() >= 0.8
+                                for vt in value_tokens
+                            )
+                        )
+                        if hits / max(len(name_tokens), len(value_tokens)) >= 0.66:
+                            return False
+                return True
 
             titles = [t for t in titles if _not_the_name(t)]
             if isinstance(orgs, list):
                 orgs = [o for o in orgs if _not_the_name(o)]
+            certifications = [c for c in certifications if _not_the_name(c)]
+            skills = [s for s in skills if _not_the_name(s)]
+            education = [e for e in education if _not_the_name(e)]
 
         entities: List[Dict] = []
         if name:
@@ -1203,6 +1294,23 @@ class EntityExtractor:
 
         def add(value: str, source: str):
             value = value.strip(" .,-;|•·")
+            # Cut a trailing duty sentence off the education claim, keeping
+            # the degree/institution head ("Bachelor ... Restaurant .
+            # Assisted head bartenders ..." -> "Bachelor ... Restaurant").
+            # The cut only fires when the tail really reads as a second
+            # sentence, so abbreviations ("St. Mary's College") survive.
+            sentence_cut = re.split(r"\.\s+(?=[A-Z])", value, maxsplit=1)
+            if len(sentence_cut) == 2:
+                head, tail = sentence_cut[0].strip(), sentence_cut[1].strip()
+                tail_words = tail.split()
+                if (
+                    len(head) >= 10
+                    and (
+                        _DUTY_CONTINUATION_RE.search(" ".join(tail_words[:4]))
+                        or len(tail_words) >= 6
+                    )
+                ):
+                    value = head.strip(" .,-;|•·")
             lowv = value.lower()
             if not value or len(value) < 10 or lowv in _EDU_NOISE_VALUES:
                 return
@@ -1222,24 +1330,44 @@ class EntityExtractor:
 
         edu_section = sections.get("education", "")
         if edu_section:
-            for line in edu_section.split("\n"):
-                line = line.strip(" •·,;:-–—")
-                if not line or len(line) < 10:
+            raw_lines = [l.strip(" •·,;:-–—") for l in edu_section.split("\n") if l.strip(" •·,;:-–—")]
+            edu_lines: List[str] = []
+            for line in raw_lines:
+                if (
+                    edu_lines
+                    and (line[0].islower() or (len(line.split()) <= 3 and not re.search(r"\b(university|college|institute|school|academy|class\s+of|graduated|(?:19|20)\d{2})\b", line, re.I)))
+                    and any(p.search(edu_lines[-1]) for p in DEGREE_PATTERNS)
+                ):
+                    edu_lines[-1] = f"{edu_lines[-1]} {line}".strip()
+                else:
+                    edu_lines.append(line)
+
+            for line in edu_lines:
+                if not line or len(line) < 4:
                     continue
                 if re.match(r"^(certifications?|trainings?|skills?|experience|work|languages?)\b", line, re.I):
                     break
+                matched_deg = False
                 for pattern in DEGREE_PATTERNS:
                     m = pattern.search(line)
                     if m:
                         clean_deg = m.group(0).strip(" ,-–—")
+                        clean_deg = _DEGREE_TAIL_CUT_RE.sub("", clean_deg).strip(" ,-–—")
                         add(clean_deg, "section_rule")
+                        matched_deg = True
                         break
+                if not matched_deg:
+                    if re.search(r"\b(university|college|institute|academy|school|ceu|ateneo|ust|dlsu|up)\b", line, re.I):
+                        if not any(bad in line.lower() for bad in ("education", "educational background")):
+                            clean_inst = re.sub(r"[\u2010-\u2015\u2212]", "-", line).strip(" •·,;:-–—")
+                            add(clean_inst, "section_rule")
 
         if not results:
             for pattern in DEGREE_PATTERNS:
                 m = pattern.search(text)
                 if m:
-                    add(m.group(0).strip(" ,-–—"), "section_rule")
+                    clean_deg = _DEGREE_TAIL_CUT_RE.sub("", m.group(0).strip(" ,-–—")).strip(" ,-–—")
+                    add(clean_deg, "section_rule")
                     break
 
         return results[:6]
@@ -1270,6 +1398,35 @@ class EntityExtractor:
             "discrepancies", "shrinkage", "fundamentals", "transactions",
             "prepare and serve", "up to", "per shift", "daily", "guests",
             "customers", "including", "across", "contributing",
+            # Duty-tails and OCR soup that survive chunking.
+            "techniques", "patrons", "mentions", "revenue", "accuracy",
+            "tripadvisor", "sheets",
+        }
+        # Section-header leaks ("Restaurant WORK EXPERIENCE") are never skills.
+        _HEADER_LEAK_RE = re.compile(
+            r"\b(work experience|professional experience|employment history|"
+            r"work history|educational background|certifications?|trainings?|"
+            r"professional summary|career objective)\b",
+            re.I,
+        )
+        # OCR garbage characters inside a raw fragment.
+        _GARBAGE_CHARS_RE = re.compile(r"[{}\[\]@#*_=|\\<>]")
+        # Lone generic words ("Assessment", "Handling") carry no skill meaning
+        # on their own — the canonical check above already rescued real ones.
+        _SINGLE_GENERIC = {
+            "assessment", "development", "service", "services",
+            "management", "operations", "support", "handling",
+            "techniques", "protocols", "processing", "settlement",
+            "staging", "flow", "execution", "beverage", "food",
+            "guest", "bar",
+        }
+
+        # Interleaved two-column text drops stray headers/contact words into
+        # the skills body ("PHONE CORE COMPETENCIES & SKILLS") — never skills.
+        _SECTION_NOISE_CHUNKS = {
+            "skills", "skill", "competencies", "competency",
+            "core competencies", "phone", "email", "address", "contact",
+            "linkedin",
         }
 
         def clean_raw_skill(cand: str) -> Optional[str]:
@@ -1278,6 +1435,17 @@ class EntityExtractor:
             if not cand or len(cand) < 3 or len(cand) > 50:
                 return None
             low = cand.lower()
+            if low in _SECTION_NOISE_CHUNKS:
+                return None
+            # Duty-sentence heads ("Delivered engaging ...", "Maintained
+            # pristine ...") are responsibilities, never skills.
+            first_word = low.split()[0].strip(".,;:!?\"'()") if low.split() else ""
+            if first_word and _is_duty_verb(first_word):
+                return None
+            if _HEADER_LEAK_RE.search(cand):
+                return None
+            if _GARBAGE_CHARS_RE.search(cand):
+                return None
             if low.startswith(("in ", "to ", "for ", "and ", "with ", "from ", "by ", "& ")):
                 return None
             if low.endswith((" in", " to", " for", " and", " with", " from", " by", " &", " late", " basic", " fast")):
@@ -1289,6 +1457,25 @@ class EntityExtractor:
                 return None
             return cand
 
+        # Reference scan FIRST: canonical skills are high-precision evidence.
+        # Multi-word skills are routinely split across PDF line breaks
+        # ("Cash\nHandling & Tab Settlement"), which defeats whole-phrase
+        # matching — so the scan runs on whitespace-flattened text with
+        # flexible intra-phrase spacing.
+        flat_text = re.sub(r"\s+", " ", text)
+        for canonical, aliases in skills_ref.items():
+            for variant in [canonical] + aliases:
+                pattern = r"\b" + r"\s+".join(re.escape(part) for part in variant.split()) + r"\b"
+                if re.search(pattern, flat_text, re.I):
+                    add(canonical, "reference_scan")
+                    break
+
+        def _covered(cleaned: str) -> bool:
+            """True when a section fragment adds nothing over an already
+            recorded skill ("Cash"/"Handling" vs "Cash Handling")."""
+            low = cleaned.lower()
+            return any(low in r.lower() or r.lower() in low for r in results)
+
         skills_section = sections.get("skills", "")
         for line in skills_section.split("\n"):
             line = line.strip(" •·,;:-–—")
@@ -1296,21 +1483,17 @@ class EntityExtractor:
                 continue
             if re.match(r"^(languages?|awards?|experience|work|education|certifications?)\b", line, re.I):
                 break
-            for chunk in re.split(r"[,;/•|·]|\band\b", line):
+            for chunk in re.split(r"[,;/•|·]|\band\b|&", line):
                 cleaned = clean_raw_skill(chunk)
-                if not cleaned:
+                if not cleaned or _covered(cleaned):
                     continue
                 canonical = refdata.canonicalize(cleaned, skills_ref)
                 if canonical:
                     add(canonical, "section_rule")
                 elif len(cleaned.split()) <= 4 and not (set(re.findall(r"\w+", cleaned.lower())) & noise_words):
+                    if len(cleaned.split()) == 1 and cleaned.lower() in _SINGLE_GENERIC:
+                        continue
                     add(cleaned, "section_rule")
-
-        for canonical, aliases in skills_ref.items():
-            for variant in [canonical] + aliases:
-                if re.search(rf"\b{re.escape(variant)}\b", text, re.I):
-                    add(canonical, "reference_scan")
-                    break
 
         return results[:30]
 
@@ -1322,6 +1505,21 @@ class EntityExtractor:
         self.cert_sources = {}
         results: List[str] = []
 
+        _CERT_KEEP_RE = re.compile(
+            r"\b(certificat|licen[cs]e|training|nc\s*(?:i{1,3}|iv|1-4)|tesda|"
+            r"specialist|course|diploma|competency|workshop|seminar|accredited)\b",
+            re.I,
+        )
+        _SENTENCE_VERBS = {
+            "oversee", "develop", "conduct", "manage", "maintain", "deliver",
+            "prepare", "assist", "ensure", "handle", "mentor", "increase",
+            "achieve", "create", "perform", "provide", "coordinate",
+        }
+        _ACHIEVEMENT_RE = re.compile(
+            r"(%|revenue|increas|tripadvisor|patrons|months?|accuracy|mentions)",
+            re.I,
+        )
+
         def add(canonical: str, source: str):
             clean = canonical.strip(" .,-;:|–—✓▸◆►▹●•·")
             low = clean.lower()
@@ -1330,6 +1528,51 @@ class EntityExtractor:
             # Dates are entry metadata ("(October 2020)"), not credential names.
             if is_date_only_fragment(clean):
                 return
+            # Duty/achievement sentences that leak in from neighbouring
+            # sections ("Oversee nightly bar operations ...", "Developed 8
+            # signature cocktails, increasing revenue ...") are never
+            # credential names — unless they carry credential vocabulary.
+            if not _CERT_KEEP_RE.search(clean):
+                words = clean.split()
+                if len(clean) > 70 or len(words) > 8:
+                    return
+                if canonical.strip().endswith((".", ";")):
+                    return
+                if words and _is_duty_verb(words[0], _SENTENCE_VERBS):
+                    return
+                if _ACHIEVEMENT_RE.search(clean):
+                    return
+                # Job titles, school names and addresses ("Lead Bartender &
+                # Mixologist Makati City ...", "Centro Escolar University ...")
+                # leak in from adjacent lines — credential names never name
+                # a city, an employer, a month, or a role.
+                if any(re.search(rf"\b{re.escape(c)}\b", clean, re.I) for c in _PH_CITIES):
+                    return
+                if re.search(
+                    r"\b(bartender|mixologist|barback|bar attendant|receptionist|"
+                    r"manager|supervisor|clerk|server|cook|chef|hotel|resort|"
+                    r"restaurant|suites|inn|company|garden|grand|peninsula|"
+                    r"primea|manila|january|february|march|april|may|june|"
+                    r"july|august|september|october|november|december)\b",
+                    clean,
+                    re.I,
+                ):
+                    return
+                # Lone fragments ("Graduated", "November") carry no credential
+                # meaning — unless reference data recognizes them (e.g. an
+                # acronym like "ServSafe" listed as an alias).
+                if len(words) < 2 and not refdata.canonicalize(clean, certs_ref):
+                    return
+                # Administrative metadata rows ("Graduated: 2019", "Serial
+                # Registration Number: ...") describe a credential; they are
+                # not its name.
+                if re.search(
+                    r"\b(graduated|conferred|issued|dated|valid|serial|"
+                    r"registration|reg\.?\s*no|cert\.?\s*no|license\s*no)\b",
+                    clean,
+                    re.I,
+                ):
+                    return
             if low in {
                 "& training", "and training", "and seminars", "& seminars",
                 "languages", "additional information", "references", "nc ii",
@@ -1346,7 +1589,37 @@ class EntityExtractor:
                 self.cert_sources.setdefault(clean, source)
 
         certs_section = sections.get("certifications", "")
-        for line in certs_section.split("\n"):
+        raw_lines = [l.strip(" •·,;:-–—") for l in certs_section.split("\n") if l.strip(" •·,;:-–—")]
+
+        issuer_keywords = re.compile(
+            r"\b(authority|council|center|centre|commission|board|department|tesda|philippine\s+food|hospitality\s+development)\b",
+            re.I,
+        )
+
+        merged_lines: List[str] = []
+        for line in raw_lines:
+            if not line:
+                continue
+            if (
+                merged_lines
+                and (
+                    line[0].islower()
+                    or line.startswith(("II)", "III)", "IV)", "I)"))
+                    or (
+                        len(line.split()) <= 2
+                        and not issuer_keywords.search(line)
+                        and not line.startswith("(")
+                        and not re.search(r"\b(?:19|20)\d{2}\b", line)
+                    )
+                )
+                and not issuer_keywords.search(line)
+                and not line.startswith("(")
+            ):
+                merged_lines[-1] += " " + line
+            else:
+                merged_lines.append(line)
+
+        for line in merged_lines:
             line = line.strip(" •·,;:-–—")
             if len(line) < 4:
                 continue
@@ -1354,16 +1627,23 @@ class EntityExtractor:
                 break
             if DATE_RANGE_RE.match(line):
                 break
+            if line.startswith("(") and line.endswith(")"):
+                continue
 
             clean_cert = re.sub(r"\s*(?:—|–|-)\s*[^,\n]+\s*(?:\((?:19|20)\d{2}\)|\b(?:19|20)\d{2}\b)?$", "", line).strip(" ,;-–—")
+            clean_cert = re.sub(r"\s*\([^)]*(?:19|20)\d{2}[^)]*\)", "", clean_cert).strip()
             clean_cert = re.sub(r"[,;\s]+(?:(?:19|20)\d{2})\s*$", "", clean_cert).strip(" ,;-–—")
+
+            # Skip lines that are only issuing organizations
+            if issuer_keywords.search(clean_cert) and not re.search(r"\b(nc\s*(?:i{1,3}|iv|1-4)|certificate|certification|specialist|course|training|license|licence)\b", clean_cert, re.I):
+                continue
 
             canonical = refdata.canonicalize(clean_cert, certs_ref) or refdata.canonicalize(line, certs_ref)
             if canonical:
                 add(canonical, "section_rule")
                 continue
 
-            m = CERT_HINT_RE.search(line)
+            m = CERT_HINT_RE.search(clean_cert) or CERT_HINT_RE.search(line)
             if m:
                 raw = m.group(0).strip()
                 add(refdata.canonicalize(raw, certs_ref) or raw.title(), "hint_pattern")
@@ -1415,34 +1695,136 @@ class EntityExtractor:
             "present", "current", "2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025",
         }
         # Verb openings that mark a duty bullet rather than a title line.
+        # Covers base / third-person / past / -ing forms seen in hospitality
+        # duty sentences ("Maintained pristine bar sanitation ...",
+        # "Delivered engaging guest interactions ...", "Assisted head
+        # bartenders ...", "Ensured continuous supply ..."). The first-word
+        # check below normalises conjugations, so only base forms are listed.
         bullet_verbs = (
             "coordinate", "monitor", "review", "help", "assist", "provide",
-            "prepare", "maintain", "ensure", "handle", "support", "trained",
-            "took", "set", "upsold", "handled", "supported", "assisted",
-            "conducted", "operated", "processed", "resolved", "managed",
-            "delivered", "performed", "created", "developed", "achieved",
-            "recognized", "contributed", "worked", "collaborated", "led",
-            "oversee", "oversaw", "greeted", "supported", "coordinated", "designed",
-            "improved", "reduced", "increased", "tracked", "supervised", "directed",
+            "prepare", "maintain", "ensure", "handle", "support", "train",
+            "take", "set", "upsell", "conduct", "operate", "process",
+            "resolve", "manage", "deliver", "perform", "create", "develop",
+            "achieve", "recognize", "contribute", "work", "collaborate",
+            "lead", "oversee", "greet", "design", "improve", "reduce",
+            "increase", "track", "supervise", "direct", "accommodate",
+            "mentor", "reconcile", "serve", "clean", "sterilize", "comply",
+            "engage", "accommodate", "sanitize", "stock", "restock", "pour",
+            "mix", "craft", "cook", "bake", "plate", "answer", "attend",
+            "welcome", "seat", "escort", "inspect", "audit",
+            # NOTE: "lead" is deliberately absent — it opens the legitimate
+            # title "Lead Bartender / Lead Mixologist". Past-tense duty use
+            # ("Led a team of 5 ...") is still caught via "led" below.
+            "led",
         )
+
+        def _verb_base(word: str) -> str:
+            """Reduces an inflected verb to its base form for bullet checks."""
+            w = word.lower().strip(".,;:!?\"'()").rstrip("s")
+            for suffix, base in (
+                ("ied", "y"), ("ing", ""), ("ed", ""), ("es", ""), ("s", ""),
+            ):
+                if w.endswith(suffix) and len(w) > len(suffix) + 2:
+                    stem = w[: -len(suffix)]
+                    if suffix == "ied":
+                        return stem + base
+                    if suffix == "ing" and len(stem) > 2 and stem[-1] == stem[-2]:
+                        return stem[:-1]
+                    return stem
+            return w
+
+        _BULLET_VERB_BASES = {_verb_base(v) for v in bullet_verbs}
+
+        def _starts_with_bullet_verb(line: str) -> bool:
+            """True when the line opens with a duty verb (any conjugation).
+
+            Leading bullets / numbering / quotes are stripped first so
+            "- Maintained ..." and "2. Delivered ..." are caught too.
+            """
+            stripped = re.sub(
+                r"^[\u2022\u25cf\u25aa\u2023\u2043\u25b8\u25b9\u25ba\u25c6\u25c7"
+                r"\u25a0\u25a1\u25cb\u25b6o\-–—*●•✓▸◆►▹\d.)\s]+",
+                "",
+                line.strip(),
+            )
+            if not stripped:
+                return False
+            # A recognizable role ("Lead Bartender & Mixologist") is a title
+            # row even when its first word is verb-shaped ("Lead ...").
+            if refdata.canonicalize(stripped, roles_ref):
+                return False
+            first = _verb_base(stripped.split()[0])
+            return first in _BULLET_VERB_BASES or (first + "e") in _BULLET_VERB_BASES
 
         def is_clean_title(candidate: str) -> bool:
             if not candidate or len(candidate) < 3 or len(candidate) > 50:
                 return False
-            low = candidate.lower().strip()
+            cleaned = candidate.strip(" .,-–—;:|•·")
+            if not cleaned:
+                return False
+            low = cleaned.lower()
             # Reject obvious non-titles: sentences starting with and/or, containing review channels, key achievements, or ending with period
             if low.startswith(("and ", "or ", "the ", "a ", "an ")) or low.startswith("and through") or "online review" in low or "key achievements" in low or "professional summary" in low:
                 return False
-            if candidate.strip().endswith(".") and len(candidate.split()) > 6:
+            if cleaned.endswith(".") and len(cleaned.split()) > 6:
                 return False
-            if refdata.canonicalize(candidate, roles_ref):
+            words = cleaned.split()
+            # If single word, it must be recognized in roles_ref (never single English words like "techniques", "codes", "replenishment")
+            if len(words) == 1:
+                return bool(refdata.canonicalize(cleaned, roles_ref))
+            if not cleaned[0].isupper():
+                return False
+            if refdata.canonicalize(cleaned, roles_ref):
                 return True
-            words = set(re.findall(r"\w+", low))
-            if words and words.issubset(city_or_place_words):
+            low_word_set = set(re.findall(r"\w+", low))
+            if low_word_set and low_word_set.issubset(city_or_place_words):
                 return False
-            if words and words.issubset(date_words):
+            if low_word_set and low_word_set.issubset(date_words):
                 return False
-            if any(bad in low for bad in ["increasing", "variances", "supporting", "chain", "restaurant —", "hotel —", "resort —", "deliver", "coordinate", "manage", "assist", "through online", "review channels", "guest relations across", "key achievements"]):
+            # Skill phrases joined by & or / ("Responsible Alcohol Service &
+            # Guest Intoxication Assessment", "TESDA Bartending Standards &
+            # Bar Station Turnover Flow") leak in from interleaved columns —
+            # without a concrete role noun they are never titles.
+            if "&" in cleaned or "/" in cleaned:
+                _ROLE_NOUNS = {
+                    "bartender", "mixologist", "barback", "attendant",
+                    "receptionist", "concierge", "manager", "supervisor",
+                    "chef", "cook", "server", "clerk", "steward", "barista",
+                    "cashier", "host", "hostess", "agent", "officer",
+                    "coordinator", "director", "executive", "leader",
+                    "captain", "sommelier", "butler", "porter", "bellhop",
+                    "doorman", "technician", "engineer", "accountant",
+                    "auditor", "controller", "analyst",
+                }
+                if not (low_word_set & _ROLE_NOUNS):
+                    return False
+            # OCR debris ("Tab Settlement . . oe oo", "Beverage Staging e
+            # i") — two or more ≤2-letter non-acronym tokens means a
+            # corrupted fragment, never a title. Uppercase acronyms ("HR",
+            # "IT", "F&B") are explicitly allowed.
+            words_raw = cleaned.split()
+            debris = 0
+            for w in words_raw:
+                core = re.sub(r"[^A-Za-z]", "", w)
+                if core and len(core) <= 2 and not core.isupper():
+                    debris += 1
+            if debris >= 2:
+                return False
+            # A bare location ("Makati City, Metro Manila") is never a title.
+            if any(re.search(rf"\b{re.escape(c)}\b", cleaned, re.I) for c in _PH_CITIES):
+                if not refdata.canonicalize(cleaned, roles_ref):
+                    return False
+            # Trailing fragments of duty sentences ("food safety codes",
+            # "bar station replenishment", "speed-pour techniques",
+            # "beverage service", "180+ nightly patrons") are never titles.
+            _DUTY_FRAGMENT_WORDS = {
+                "codes", "techniques", "replenishment", "patrons",
+                "garnishes", "garnish", "towels", "glassware", "sheets",
+                "mentions", "revenue", "recipel", "recipes", "duties",
+            }
+            if low_word_set & _DUTY_FRAGMENT_WORDS and not refdata.canonicalize(cleaned, roles_ref):
+                return False
+            if any(bad in low for bad in ["increasing", "variances", "supporting", "chain", "restaurant —", "hotel —", "resort —", "deliver", "coordinate", "manage", "assist", "through online", "review channels", "guest relations across", "key achievements", "replenishment", "techniques", "patrons", "beverage service", "food safety", "glass sterilization", "tripadvisor"]):
                 return False
             return True
 
@@ -1462,13 +1844,15 @@ class EntityExtractor:
             if seg.endswith((".", ";", ",")):
                 return False
             low = seg.lower()
-            if low.split()[0] in bullet_verbs:
+            if _starts_with_bullet_verb(seg):
                 return False
             return is_clean_title(seg)
 
         def looks_like_company(seg: str) -> bool:
             seg = seg.strip(" .,;-–—|•·")
-            if not seg or len(seg) > 60 or "," in seg and len(seg.split(",")) > 2:
+            if not seg or len(seg) > 60 or ("," in seg and len(seg.split(",")) > 2):
+                return False
+            if not seg[0].isupper():
                 return False
             # Reject known headers that look like capitalized companies
             if seg.upper() in [h.upper() for h in ["PROFESSIONAL SUMMARY","WORK EXPERIENCE","CORE SKILLS","EDUCATION","CERTIFICATIONS","KEY ACHIEVEMENTS","PROFESSIONAL EXPERIENCE"]] or seg.lower() in ["key achievements","professional summary","work experience"]:
@@ -1481,11 +1865,30 @@ class EntityExtractor:
                 return False
             if low_words & (city_or_place_words | date_words) and len(low_words) <= 2:
                 return False
+            # Duty-sentence fragments ("beverage service", "food safety
+            # codes", "positive TripAdvisor mentions") are never employers.
+            # A real company carrying a generic word ("Seaside Food Services
+            # Inc") always carries a strong org anchor too, so fragments
+            # without one are vetoed while anchored names still pass.
+            _GENERIC_COMPANY_WORDS = {
+                "beverage", "cocktail", "speed", "food", "guest", "safety",
+                "codes", "sanitation", "hygiene", "service", "services",
+                "mentions", "tripadvisor", "techniques", "replenishment",
+                "patrons", "recipes", "sheets",
+            }
+            _STRONG_ORG_ANCHORS = {
+                "hotel", "hotels", "resort", "resorts", "restaurant",
+                "restaurants", "company", "corp", "inc", "group", "suites",
+                "inn", "corporation",
+            }
             if low_words & _ORG_SUFFIX_WORDS:
+                if (low_words & _GENERIC_COMPANY_WORDS) and not (low_words & _STRONG_ORG_ANCHORS):
+                    return False
                 return True
+            if low_words & _GENERIC_COMPANY_WORDS:
+                return False
             cap_words = [w for w in seg.split() if w[:1].isalpha()]
             if len(cap_words) >= 2 and all(w[0].isupper() or not w[:1].isalpha() for w in cap_words):
-                # But reject if it's clearly a sentence fragment like "and through online review"
                 if seg.lower().startswith("and through") or "online review" in seg.lower():
                     return False
                 return True
@@ -1515,25 +1918,72 @@ class EntityExtractor:
             return tail or None
 
         exp_section = sections.get("experience", "")
-        exp_lines = [l.strip() for l in exp_section.split("\n") if l.strip()]
+        raw_exp_lines = [l.strip() for l in exp_section.split("\n") if l.strip()]
+        exp_lines: List[str] = []
+        for line in raw_exp_lines:
+            if exp_lines and (line[0].islower() or (line[0].isdigit() and not re.match(r"^\d+\.", line))):
+                exp_lines[-1] += " " + line
+            else:
+                exp_lines.append(line)
 
         pending_title: Optional[str] = None
         pending_date: Optional[str] = None
         pending_company: Optional[str] = None
         pending_location: Optional[str] = None
+        skip_next = False
+
+        def _is_location_only(value: str) -> bool:
+            """Pure location rows ("Makati City, Metro Manila") belong to
+            pending_location, never to title/company slots."""
+            if refdata.canonicalize(value, roles_ref):
+                return False
+            if not any(re.search(rf"\b{re.escape(c)}\b", value, re.I) for c in _PH_CITIES):
+                return False
+            words = re.findall(r"[A-Za-z\u00f1\u00d1]+", value)
+            if not words:
+                return False
+            non_place = [
+                w for w in words
+                if w.lower() not in city_or_place_words
+                and w.lower() not in {"metro", "ncr"}
+            ]
+            return len(non_place) == 0
+
+        def _flush_pending(raw_line: str) -> None:
+            """Emits a complete pending title+company set, if any."""
+            nonlocal pending_title, pending_company, pending_location, pending_date
+            if pending_title and (pending_company or pending_date):
+                key = (pending_title.lower(), (pending_company or "").lower(), pending_date or "")
+                if key not in history_keys:
+                    history_keys.add(key)
+                    history.append({
+                        "job_title": pending_title,
+                        "company": pending_company,
+                        "location": pending_location,
+                        "recognized_role": bool(refdata.canonicalize(pending_title, roles_ref)),
+                        "period": pending_date,
+                        "raw_line": (raw_line or "")[:160],
+                    })
+                pending_title = None
+                pending_company = None
+                pending_location = None
+                pending_date = None
 
         for i, line in enumerate(exp_lines):
-            # --- Labeled format support (new dataset: "Job Title:", "Employer:", "Location:", "Employment Dates:") ---
-            low_labeled = line.strip().lower()
-            if low_labeled.startswith("job title:"):
-                val = line.split(":", 1)[1].strip()
-                if val:
-                    can = refdata.canonicalize(val, roles_ref)
-                    pending_title = can or val
-                    add_title(pending_title, "section_rule")
+            if skip_next:
+                skip_next = False
                 continue
-            if low_labeled.startswith("employer:"):
-                val = line.split(":", 1)[1].strip()
+
+            # --- Labeled format support ("1. Employer:", "Job Title:", "Location:", "Duration:", "Employment Dates:") ---
+            low_labeled = re.sub(r"^\d+\.\s*", "", line.strip()).lower()
+            if low_labeled.startswith("job title:"):
+                val = re.sub(r"^\d+\.\s*", "", line.split(":", 1)[1]).strip()
+                if val:
+                    pending_title = val
+                    add_title(val, "section_rule")
+                continue
+            if low_labeled.startswith("employer:") or low_labeled.startswith("company:"):
+                val = re.sub(r"^\d+\.\s*", "", line.split(":", 1)[1]).strip()
                 if val:
                     pending_company = val
                 continue
@@ -1542,14 +1992,18 @@ class EntityExtractor:
                 if val:
                     pending_location = val
                 continue
-            if low_labeled.startswith("employment dates:") or low_labeled.startswith("employment date:"):
+            if (
+                low_labeled.startswith("employment dates:")
+                or low_labeled.startswith("employment date:")
+                or low_labeled.startswith("duration:")
+                or low_labeled.startswith("period:")
+            ):
                 val = line.split(":", 1)[1].strip()
                 dm = DATE_RANGE_RE.search(val)
                 effective = dm.group(0) if dm else val
                 if pending_title:
                     job_title = pending_title
                     company, loc = (pending_company, pending_location)
-                    # If company line had " - Location" suffix, split it
                     if company and " - " in company:
                         parts = company.split(" - ", 1)
                         company = parts[0].strip()
@@ -1566,57 +2020,75 @@ class EntityExtractor:
                             "period": effective,
                             "raw_line": line.strip()[:160],
                         })
-                    # Clear for next entry, but keep pending_title cleared; company/location cleared as well
                     pending_title = None
                     pending_company = None
                     pending_location = None
                     pending_date = None
                     continue
                 else:
-                    # No title yet, store date for next title
                     pending_date = effective
                     continue
+
             line_clean = re.sub(r"^[\u2022\u25cf\u25aa\u2023\u2043\u25b8\u25b9\u25ba\u25c6\u25c7\u25a0\u25a1\u25cb\u25b6o\-–—*●•✓▸◆►▹\s]+", "", line).strip()
             if not line_clean or len(line_clean) < 4:
+                continue
+
+            if _starts_with_bullet_verb(line_clean):
                 continue
 
             range_match = DATE_RANGE_RE.search(line_clean)
             segs = segments_without_date(line_clean, bool(range_match))
 
-            # Unlabeled 3-line pattern: Title (pending) -> Company -> Date
-            # If current line is a date and we have a pending title, complete the history now
-            if range_match and pending_title:
-                effective_date = range_match.group(0)
-                job_title = pending_title
-                company = pending_company
-                location = pending_location
-                if not company:
-                    tail = after_date_tail(line_clean, range_match)
-                    if tail:
-                        company, location = split_company_location(tail)
-                if company and " - " in company and not location:
-                    parts = company.split(" - ", 1)
-                    company = parts[0].strip()
-                    location = parts[1].strip()
-                canonical = refdata.canonicalize(job_title, roles_ref)
-                job_title = canonical or job_title
-                add_title(job_title, "section_rule")
-                key = (job_title.lower(), (company or "").lower(), effective_date or "")
-                if key not in history_keys:
-                    history_keys.add(key)
-                    history.append({
-                        "job_title": job_title,
-                        "company": company,
-                        "location": location,
-                        "recognized_role": bool(canonical),
-                        "period": effective_date,
-                        "raw_line": line_clean[:160],
-                    })
-                pending_title = None
-                pending_company = None
-                pending_location = None
-                pending_date = None
+            # Pure location rows never join the date logic — a stale
+            # pending_date from a previous entry must not drag them in.
+            if not range_match and _is_location_only(line_clean):
+                if not pending_location:
+                    pending_location = line_clean
                 continue
+
+            # Unlabeled 3-line pattern: Title (pending) -> Company -> Date
+            if range_match and pending_title:
+                new_range = range_match.group(0)
+                if (pending_date and pending_company
+                        and re.sub(r"\s+", " ", new_range).strip().lower()
+                        != re.sub(r"\s+", " ", pending_date).strip().lower()):
+                    # A new entry's date line arrived while the previous
+                    # stacked entry (company/date/title/location on separate
+                    # rows) is still open — close it first so periods never
+                    # cross-pair, then let this line flow through the normal
+                    # path below with a clean slate.
+                    _flush_pending(line_clean)
+                else:
+                    effective_date = new_range
+                    job_title = pending_title
+                    company = pending_company
+                    location = pending_location
+                    if not company:
+                        tail = after_date_tail(line_clean, range_match)
+                        if tail:
+                            company, location = split_company_location(tail)
+                    if company and " - " in company and not location:
+                        parts = company.split(" - ", 1)
+                        company = parts[0].strip()
+                        location = parts[1].strip()
+                    canonical = refdata.canonicalize(job_title, roles_ref)
+                    add_title(job_title, "section_rule")
+                    key = (job_title.lower(), (company or "").lower(), effective_date or "")
+                    if key not in history_keys:
+                        history_keys.add(key)
+                        history.append({
+                            "job_title": job_title,
+                            "company": company,
+                            "location": location,
+                            "recognized_role": bool(canonical),
+                            "period": effective_date,
+                            "raw_line": line_clean[:160],
+                        })
+                    pending_title = None
+                    pending_company = None
+                    pending_location = None
+                    pending_date = None
+                    continue
 
             # Standalone date line preceding title/company
             if range_match and not segs:
@@ -1625,20 +2097,57 @@ class EntityExtractor:
 
             if range_match or pending_date:
                 effective_date = range_match.group(0) if range_match else pending_date
+                title_segs = [s for s in segs if looks_like_title(s)]
+                company_segs = [s for s in segs if looks_like_company(s)]
                 title_seg = None
                 company_seg = None
                 location_seg = None
 
-                company_segs = [s for s in segs if looks_like_company(s)]
-                title_segs = [s for s in segs if looks_like_title(s) and s not in company_segs]
+                next_l = exp_lines[i + 1] if i + 1 < len(exp_lines) else None
+                next_has_role = False
+                cand_title = None
+                cand_loc = None
+                # The lookahead only serves inline "Company DATE" rows whose
+                # title follows on the next line. With a stashed stacked
+                # company the title belongs to the pending assembly — peeking
+                # would emit early with company=None and swallow the title.
+                if next_l and not pending_title and not pending_company:
+                    next_clean = re.sub(r"^[\u2022\u25cf\u25aa\u2023\u2043\u25b8\u25b9\u25ba\u25c6\u25c7\u25a0\u25a1\u25cb\u25b6o\-–—*●•✓▸◆►▹\s]+", "", next_l).strip()
+                    if not _starts_with_bullet_verb(next_clean):
+                        city_m = None
+                        for c in _PH_CITIES:
+                            m = re.search(rf"\b{re.escape(c)}\b.*$", next_clean, re.I)
+                            if m:
+                                city_m = m
+                                break
+                        if city_m:
+                            cand_title = next_clean[:city_m.start()].strip(" ,-–—|•·")
+                            cand_loc = next_clean[city_m.start():].strip(" ,-–—|•·")
+                        else:
+                            cand_title = next_clean
+                            cand_loc = None
+                        if cand_title and refdata.canonicalize(cand_title, roles_ref):
+                            next_has_role = True
 
-                if pending_title:
+                if next_has_role and cand_title:
+                    title_seg = cand_title
+                    company_seg = segs[0] if segs else None
+                    if cand_loc and not location_seg:
+                        location_seg = cand_loc
+                    skip_next = True
+                elif pending_title:
                     title_seg = pending_title
                     pending_title = None
                     if company_segs:
                         company_seg = company_segs[0]
                     elif segs:
                         company_seg = segs[0]
+                    elif pending_company:
+                        # Stacked rows: the company arrived on an earlier
+                        # line than the date/title being combined here.
+                        company_seg = pending_company
+                    if pending_location and not location_seg:
+                        location_seg = pending_location
                 else:
                     if title_segs:
                         title_seg = title_segs[0]
@@ -1658,7 +2167,7 @@ class EntityExtractor:
 
                 if title_seg:
                     canonical = refdata.canonicalize(title_seg, roles_ref)
-                    job_title = canonical or title_seg
+                    job_title = title_seg
                     add_title(job_title, "section_rule")
 
                     company = None
@@ -1669,14 +2178,27 @@ class EntityExtractor:
                         tail = after_date_tail(line_clean, range_match)
                         if tail:
                             company, location = split_company_location(tail)
-                    if company is None and i + 1 < len(exp_lines):
+                    if company is None and pending_company:
+                        # Stacked rows: company stashed on an earlier line.
+                        company, location = pending_company, pending_location or location
+                    if company is None and i + 1 < len(exp_lines) and not skip_next:
                         next_l = exp_lines[i + 1]
                         if " — " in next_l or " - " in next_l:
                             parts = re.split(r" — | - ", next_l, maxsplit=1)
                             company = parts[0].strip()
                             location = parts[1].strip()
                         elif not DATE_RANGE_RE.search(next_l) and len(next_l) < 60 and not next_l.startswith(("•", "-", "*", "—")):
-                            company = next_l.strip()
+                            peeked = next_l.strip()
+                            if _is_location_only(peeked):
+                                # A location row peeked as the next line is
+                                # consumed here, so skip it next round instead
+                                # of letting it orphan into a later entry.
+                                location = peeked
+                                skip_next = True
+                            else:
+                                company = peeked
+                    if location_seg and not location:
+                        location = location_seg
 
                     key = (job_title.lower(), (company or "").lower(), effective_date or "")
                     if key not in history_keys:
@@ -1689,14 +2211,58 @@ class EntityExtractor:
                             "period": effective_date,
                             "raw_line": line_clean[:160],
                         })
+                    # The whole pending assembly is consumed by this entry —
+                    # anything left would leak into the next one.
+                    pending_title = None
+                    pending_company = None
+                    pending_location = None
                     pending_date = None
                     continue
 
             # No date range on this line.
             if segs:
                 first = segs[0]
+
+                if _is_location_only(first):
+                    if not pending_location:
+                        pending_location = first
+                    continue
+                # Stacked vertical layout (Company / Date / Title rows each on
+                # their own line, as DOCX exports produce): a company-looking
+                # line with no pending title starts a new entry — flushing a
+                # complete previous one first so entries never cross-pair.
                 # Pending title + company line should be treated as company before title check
-                if pending_title and (looks_like_company(first) or any(re.search(rf"\b{re.escape(c)}\b", first, re.I) for c in _PH_CITIES)):
+                if looks_like_company(first) or any(re.search(rf"\b{re.escape(c)}\b", first, re.I) for c in _PH_CITIES):
+                    if not pending_title:
+                        # Title+location single rows ("Lead Bartender &
+                        # Mixologist Makati City, Metro Manila", "Bartender
+                        # Makati City, Metro Manila") contain a city but LEAD
+                        # with a known role — split them instead of filing
+                        # the whole row as a company.
+                        title_part: Optional[str] = None
+                        loc_part: Optional[str] = None
+                        earliest: Optional[int] = None
+                        for c in _PH_CITIES:
+                            m = re.search(rf"\b{re.escape(c)}\b", first, re.I)
+                            if m and (earliest is None or m.start() < earliest):
+                                earliest = m.start()
+                        if earliest:
+                            prefix = first[:earliest].strip(" ,-–—|•·")
+                            if prefix and refdata.canonicalize(prefix, roles_ref):
+                                title_part, loc_part = prefix, first[earliest:].strip(" ,-–—|•·")
+                        if title_part:
+                            add_title(title_part, "section_rule")
+                            pending_title = title_part
+                            if loc_part and not pending_location:
+                                pending_location = loc_part
+                            continue
+                        company, location = split_company_location(first)
+                        pending_company = company
+                        if location or not pending_location:
+                            pending_location = location or pending_location
+                        continue
+                    if pending_company and (pending_date or pending_location):
+                        _flush_pending(line_clean)
                     company, location = split_company_location(first)
                     pending_company = company
                     pending_location = location
@@ -1719,8 +2285,8 @@ class EntityExtractor:
                         pending_company = None
                         pending_location = None
                         pending_date = None
-                    add_title(canonical, "section_rule")
-                    pending_title = canonical
+                    add_title(first, "section_rule")
+                    pending_title = first
                     continue
                 words = first.split()
                 ends_sentence = first.endswith((".", ";", ",", ":"))

@@ -1,13 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Mail, MapPin, Menu, Phone, X } from "lucide-react";
 
 import { Logo } from "@/components/brand/Logo";
 import { Chatbot } from "@/components/public/Chatbot";
 import { Button } from "@/components/ui/button";
 import { useCompany } from "@/lib/landing";
-import { useLightOnly } from "@/lib/theme";
+import { applyInitialTheme } from "@/lib/theme";
 
 const links = [
   { label: "Home", to: "/" },
@@ -24,10 +24,30 @@ const legalLinks = [
   { label: "Cookie Preferences", to: "/cookies" },
 ];
 
-export function PublicShell({ children }: { children: ReactNode }) {
-  useLightOnly();
+export function PublicShell({ children, bare = false }: { children: ReactNode; bare?: boolean }) {
   const { company } = useCompany();
+  useEffect(() => {
+    applyInitialTheme();
+  }, []);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // Bare mode: logo + content only (e.g. assessment test link).
+  // Hides nav links, Login, footer, and chatbot.
+  if (bare) {
+    return (
+      <div className="flex min-h-screen flex-col bg-background">
+        <header className="border-b border-border bg-background/90 backdrop-blur">
+          <div className="mx-auto flex h-18 max-w-7xl items-center justify-center px-4 py-3 md:px-8">
+            <Link to="/" className="shrink-0" aria-label="Oxford Suites Makati home">
+              <Logo mark="maroon" />
+            </Link>
+          </div>
+        </header>
+
+        <main className="flex flex-1 justify-center">{children}</main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background">

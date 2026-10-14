@@ -13,21 +13,8 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
-import {
-  Area,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ComposedChart,
-  Legend,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-
 import { AnnouncementsCard } from "@/components/portal/AnnouncementsCard";
+import { DashboardList } from "@/components/portal/DashboardList";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { StatCard } from "@/components/portal/StatCard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -166,7 +153,6 @@ function SuperAdminDashboard() {
         <StatCard
           label="Total Employees"
           value={stats?.employees.total ?? 0}
-          hint={`${stats?.departments.length ?? 0} departments`}
           icon={Building2}
           tone="primary"
           to="/superadmin/employees"
@@ -205,9 +191,6 @@ function SuperAdminDashboard() {
                 <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                   <TrendingUp className="h-5 w-5 text-primary" /> Headcount &amp; Movement
                 </h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Rolling property headcount with hires and exits breakdown.
-                </p>
               </div>
               <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
                 {(["6M", "YTD"] as const).map((p) => (
@@ -261,119 +244,53 @@ function SuperAdminDashboard() {
             </div>
             )}
 
-            {/* Revamped Composed Chart with Area Fill & Rounded Bars */}
+            {/* Monthly movement ledger — ledger rows instead of line/bar chart */}
             {loading ? (
               <Skeleton className="mt-5 h-68 w-full rounded-xl" aria-busy="true" aria-label="Loading headcount chart" />
             ) : (
-            <div className="mt-5 h-68">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart
-                  data={activeTrend ?? []}
-                  margin={{ top: 12, right: 12, left: -12, bottom: 0 }}
-                >
-                  <defs>
-                    <linearGradient id="headcountAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="var(--color-border)"
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="month"
-                    fontSize={12}
-                    stroke="var(--color-muted-foreground)"
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    yAxisId="left"
-                    fontSize={12}
-                    stroke="var(--color-muted-foreground)"
-                    tickLine={false}
-                    axisLine={false}
-                    domain={[0, "dataMax + 6"]}
-                  />
-                  <YAxis
-                    yAxisId="right"
-                    orientation="right"
-                    fontSize={12}
-                    stroke="var(--color-muted-foreground)"
-                    tickLine={false}
-                    axisLine={false}
-                    allowDecimals={false}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "var(--color-muted)", opacity: 0.3 }}
-                    content={({ active, payload, label }) => {
-                      if (!active || !payload?.length) return null;
-                      return (
-                        <div className="rounded-xl border border-border bg-card p-3 shadow-xl text-xs space-y-1.5 min-w-36">
-                          <p className="font-display font-semibold text-foreground border-b border-border pb-1">
-                            {label} Summary
-                          </p>
-                          <div className="flex items-center justify-between text-primary font-medium">
-                            <span>Headcount:</span>
-                            <span className="font-bold">
-                              {payload.find((p) => p.dataKey === "headcount")?.value}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between text-emerald-600 font-medium">
-                            <span>New Hires:</span>
-                            <span className="font-bold">
-                              +{payload.find((p) => p.dataKey === "hires")?.value}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between text-amber-600 font-medium">
-                            <span>Exits:</span>
-                            <span className="font-bold">
-                              -{payload.find((p) => p.dataKey === "exits")?.value}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                  <Bar
-                    yAxisId="right"
-                    dataKey="hires"
-                    name="New hires"
-                    fill="#10B981"
-                    barSize={18}
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Bar
-                    yAxisId="right"
-                    dataKey="exits"
-                    name="Exits"
-                    fill="#F59E0B"
-                    barSize={18}
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Area
-                    yAxisId="left"
-                    type="monotone"
-                    dataKey="headcount"
-                    fill="url(#headcountAreaGrad)"
-                    stroke="none"
-                  />
-                  <Line
-                    yAxisId="left"
-                    type="monotone"
-                    dataKey="headcount"
-                    name="Total headcount"
-                    stroke="var(--color-primary)"
-                    strokeWidth={3}
-                    dot={{ r: 4, fill: "var(--color-primary)", strokeWidth: 2, stroke: "#fff" }}
-                    activeDot={{ r: 6, fill: "var(--color-gold)" }}
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
+            <DashboardList
+              rowHeight={60}
+              visibleRows={5}
+              className="mt-5 divide-y divide-border/70 rounded-xl border border-border/70"
+            >
+              {(activeTrend ?? []).map((m) => {
+                const net = m.hires - m.exits;
+                return (
+                  <div key={m.month} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">{m.month}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Headcount{" "}
+                        <span className="font-display text-sm font-bold text-primary">{m.headcount}</span>
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5 text-xs">
+                      <Badge variant="outline" className="border-success/40 bg-success/10 font-semibold text-success">
+                        +{m.hires} hires
+                      </Badge>
+                      <Badge variant="outline" className="border-warning/40 bg-warning/20 font-semibold text-warning-foreground">
+                        −{m.exits} exits
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className={
+                          net >= 0
+                            ? "border-primary/40 bg-primary/10 font-semibold text-primary"
+                            : "border-destructive/40 bg-destructive/10 font-semibold text-destructive"
+                        }
+                      >
+                        {net >= 0 ? `+${net}` : net} net
+                      </Badge>
+                    </div>
+                  </div>
+                );
+              })}
+              {(activeTrend ?? []).length === 0 && (
+                <div className="px-4 py-8 text-center text-xs text-muted-foreground">
+                  No movement recorded for this period.
+                </div>
+              )}
+            </DashboardList>
             )}
           </CardContent>
         </Card>
@@ -385,9 +302,6 @@ function SuperAdminDashboard() {
                 <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                   <KeyRound className="h-5 w-5 text-primary" /> Portal Accounts
                 </h2>
-                <p className="text-xs text-muted-foreground">
-                  System access by role and account status.
-                </p>
               </div>
               <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
                 {stats?.system_users.total ?? 0} accounts
@@ -488,11 +402,8 @@ function SuperAdminDashboard() {
                 <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                   <Building2 className="h-5 w-5 text-primary" /> Staffing by Department
                 </h2>
-                <p className="text-xs text-muted-foreground">
-                  Filled staff versus open roles across the property.
-                </p>
               </div>
-              <Badge variant="outline" className="border-gold/40 bg-gold/10 text-gold-foreground">
+              <Badge variant="outline" className="border-gold/40 bg-gold/10 text-gold-foreground dark:text-gold">
                 {deptData.reduce((sum, item) => sum + item.open, 0)} open roles
               </Badge>
             </div>
@@ -503,85 +414,43 @@ function SuperAdminDashboard() {
                 <ListSkeleton items={5} />
               </div>
             ) : (
-            <div className="mt-4 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartDepts} layout="vertical" margin={{ left: 24, right: 12 }} barCategoryGap="26%">
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
-                    <XAxis type="number" fontSize={12} stroke="var(--color-muted-foreground)" allowDecimals={false} />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={150}
-                      fontSize={11}
-                      stroke="var(--color-muted-foreground)"
-                      tickLine={false}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: "var(--color-card)",
-                        border: "1px solid var(--color-border)",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                      formatter={(value: any, name: any, props: any) => {
-                        if (name === "Filled staff") return [`${value} filled`, name];
-                        if (name === "Open roles") return [`${value} open`, name];
-                        return [value, name];
-                      }}
-                      labelFormatter={(label) => {
-                        const d = chartDepts.find((x) => x.name === label);
-                        return d ? `${label} · ${d.staff}/${d.total} filled` : label;
-                      }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar
-                      dataKey="staff"
-                      name="Filled staff"
-                      fill="var(--color-primary)"
-                      radius={[0, 4, 4, 0]}
-                    />
-                    <Bar
-                      dataKey="open"
-                      name="Open roles"
-                      fill="var(--color-gold)"
-                      radius={[0, 4, 4, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="flex max-h-72 flex-col gap-3 overflow-y-auto pr-1">
-                {chartDepts.map((d) => {
-                  const pct = d.total > 0 ? Math.round((d.staff / d.total) * 100) : 0;
-                  return (
-                    <div key={d.name}>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-medium">{d.name}</span>
-                        <span className="text-muted-foreground">
-                          {d.staff}/{d.total} · {pct}% filled
+            <div className="mt-4 max-h-72 space-y-3 overflow-y-auto pr-1">
+              {chartDepts.map((d, i) => {
+                const pct = d.total > 0 ? Math.round((d.staff / d.total) * 100) : 0;
+                return (
+                  <div key={d.name} className="rounded-xl border border-border/70 bg-card p-3 shadow-xs">
+                    <div className="flex items-center justify-between gap-3 text-xs">
+                      <span className="flex min-w-0 items-center gap-2 font-semibold">
+                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-primary/10 text-[11px] font-bold text-primary">
+                          {i + 1}
                         </span>
-                      </div>
-                      <div className="mt-1 flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-l-full bg-primary"
-                          style={{ width: `${pct}%` }}
-                        />
-                        <div
-                          className="h-full rounded-r-full bg-gold"
-                          style={{ width: `${100 - pct}%` }}
-                        />
-                      </div>
+                        <span className="truncate text-sm">{d.name}</span>
+                      </span>
+                      <span className="shrink-0 text-muted-foreground">
+                        <span className="font-display text-base font-bold text-foreground">{d.staff}</span>
+                        {"/"}{d.total} · {pct}% ·{" "}
+                        <span className="font-semibold text-gold-foreground dark:text-gold">{d.open} open</span>
+                      </span>
                     </div>
-                  );
-                })}
-                {emptyDepts.length > 0 && (
-                  <p className="text-[11px] text-muted-foreground">
-                    {emptyDepts.length} department{emptyDepts.length !== 1 ? "s" : ""} with no
-                    staffing yet: {emptyDepts.map((d) => d.name).join(", ")}.
-                  </p>
-                )}
-              </div>
+                    <div className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-l-full bg-primary"
+                        style={{ width: `${pct}%` }}
+                      />
+                      <div
+                        className="h-full rounded-r-full bg-gold"
+                        style={{ width: `${100 - pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              {emptyDepts.length > 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  {emptyDepts.length} department{emptyDepts.length !== 1 ? "s" : ""} with no
+                  staffing yet: {emptyDepts.map((d) => d.name).join(", ")}.
+                </p>
+              )}
             </div>
             )}
           </CardContent>

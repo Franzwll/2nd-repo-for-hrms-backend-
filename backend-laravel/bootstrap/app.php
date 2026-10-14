@@ -17,6 +17,17 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'permission' => \App\Http\Middleware\PermissionMiddleware::class,
         ]);
+
+        // Unauthenticated API calls must return JSON 401 (with CORS headers),
+        // never a 302 redirect to /login — redirects strip CORS and Firefox
+        // reports them as "CORS header missing" instead of the real 401.
+        $middleware->redirectGuestsTo(function (Request $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                abort(response()->json(['message' => 'Unauthenticated.'], 401));
+            }
+
+            return '/login';
+        });
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (NotFoundHttpException $e, Request $request) {

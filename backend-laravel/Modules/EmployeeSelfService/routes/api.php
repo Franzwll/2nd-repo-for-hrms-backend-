@@ -20,20 +20,29 @@ Route::middleware(['auth:sanctum', 'permission:ESS Management'])->prefix('v1/ess
     Route::get('recognitions', [EssPortalController::class, 'getRecognitions']);
     Route::post('recognitions', [EssPortalController::class, 'postKudos']);
     Route::post('recognitions/{id}/react', [EssPortalController::class, 'reactKudos']);
+    Route::post('recognitions/{id}/share', [EssPortalController::class, 'shareKudos']);
+    Route::post('my-learning/progress', [EssPortalController::class, 'updateLearningProgress']);
+    Route::get('my-learning/certificate/{courseCode}', [EssPortalController::class, 'learningCertificate']);
     Route::post('requests', [EssPortalController::class, 'createRequest']);
     Route::post('clock', [EssPortalController::class, 'clock']);
     Route::get('my-promotion-requests', [EssPortalController::class, 'myPromotionRequests']);
     Route::post('my-promotion-requests', [EssPortalController::class, 'createPromotionRequest']);
+    // ESS-safe promotion position options (id/title/department only — no HCM permission needed).
+    Route::get('promotion-positions', [EssPortalController::class, 'promotionPositions']);
+    // ESS-safe view of the employee's OWN onboarding checklist.
+    Route::get('my-checklist', [EssPortalController::class, 'myChecklist']);
 
     // Admin & Super Admin Read Endpoints (View access)
     Route::get('admin/requests', [EssAdminController::class, 'getRequests']);
     Route::get('admin/categories', [EssAdminController::class, 'getCategories']);
     Route::get('admin/audit-logs', [EssAdminController::class, 'getAuditLogs']);
+    Route::get('admin/learning', [EssAdminController::class, 'getLearning']);
 
     // Admin & Super Admin Action Endpoints (requires edit-level access)
     Route::middleware('permission:ESS Management:Edit')->group(function () {
         Route::patch('admin/requests/{id}/status', [EssAdminController::class, 'updateStatus']);
         Route::post('admin/requests/behalf', [EssAdminController::class, 'fileOnBehalf']);
         Route::put('admin/categories/{id}/toggle', [EssAdminController::class, 'toggleCategory']);
+        Route::patch('admin/learning/{id}/status', [EssAdminController::class, 'verifyLearning']);
     });
 });

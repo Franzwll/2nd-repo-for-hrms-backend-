@@ -55,6 +55,7 @@ export function AnnouncementsModal({
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [currentPage, setCurrentPage] = useState(1);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
 
   // 1. Role visibility filter
   const visibleToRole = useMemo(() => {
@@ -114,6 +115,114 @@ export function AnnouncementsModal({
     setSelectedAudience(val);
     setCurrentPage(1);
   };
+
+  /**
+   * The one announcement the caller asked to open, when it is visible to this
+   * role. Opening a specific post shows ONLY that post â€” the full list stays
+   * behind it rather than scrolling the selected row into view, because a
+   * scrolled list still shows every other announcement beside the one the
+   * user actually clicked.
+   */
+  const selected = useMemo(() => {
+    if (!initialSelectedId) return null;
+    return visibleToRole.find((a) => a.id === initialSelectedId) ?? null;
+  }, [visibleToRole, initialSelectedId]);
+
+  /** Single-post view is a mode, so "Back to all" leaves it without closing. */
+  const [singleView, setSingleView] = useState(false);
+
+  useEffect(() => {
+    setSingleView(Boolean(initialSelectedId));
+  }, [initialSelectedId]);
+
+  /* Single post: the caller opened one specific announcement, so only that
+     one is rendered. The browsable list is one click away behind "All". */
+  if (singleView && selected) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl w-[95vw] max-h-[85vh] p-0 gap-0 overflow-hidden bg-background border-border/80 shadow-2xl flex flex-col rounded-2xl">
+          <div className="flex items-start gap-3 px-6 py-4 border-b border-border/70 bg-muted/20">
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-1"
+              onClick={() => setSingleView(false)}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" /> All
+            </Button>
+
+            <div className="h-9 w-9 shrink-0 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+              <Megaphone className="h-5 w-5" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="font-display text-lg font-semibold leading-snug">
+                {selected.title}
+              </DialogTitle>
+              <p className="text-xs text-muted-foreground">Single announcement</p>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6">
+            <article className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1 font-medium text-foreground">
+                  <User className="h-3.5 w-3.5 text-primary" /> {selected.author}
+                </span>
+                <span>&middot;</span>
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3.5 w-3.5" /> {selected.createdAt}
+                </span>
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] font-semibold px-2 py-0.5 ${
+                    selected.audience === "All"
+                      ? "bg-primary/10 text-primary border-primary/20"
+                      : selected.audience === "Employee"
+                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                        : "bg-purple-500/10 text-purple-600 border-purple-500/30"
+                  }`}
+                >
+                  {selected.audience}
+                </Badge>
+              </div>
+
+              <p className="text-sm leading-relaxed whitespace-pre-line text-foreground">
+                {selected.body}
+              </p>
+            </article>
+          </div>
+
+          <div className="px-6 py-3.5 border-t border-border/70 bg-card/60 flex flex-col sm:flex-row items-center justify-between gap-3">
+            {canManage ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                onClick={() => {
+                  removeAnnouncement(selected.id);
+                  onOpenChange(false);
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete announcement
+              </Button>
+            ) : (
+              <span />
+            )}
+
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setSingleView(false)}>
+                All announcements
+              </Button>
+              <Button size="sm" onClick={() => onOpenChange(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -219,13 +328,25 @@ export function AnnouncementsModal({
           ) : (
             paginatedItems.map((a) => {
               const isHighlighted = highlightedId === a.id;
+              const isFocused = focusedId === a.id;
               return (
                 <div
                   key={a.id}
-                  className={`rounded-2xl border p-4 sm:p-5 shadow-xs transition-all space-y-2.5 group ${
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setFocusedId(isFocused ? null : a.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setFocusedId(isFocused ? null : a.id);
+                    }
+                  }}
+                  className={`rounded-2xl border p-4 sm:p-5 shadow-xs transition-all space-y-2.5 group cursor-pointer ${
                     isHighlighted
                       ? "border-primary ring-2 ring-primary/30 bg-primary/5 shadow-md"
-                      : "border-border/80 bg-card hover:border-primary/40 hover:bg-muted/10"
+                      : isFocused
+                        ? "border-primary/60 bg-primary/5 shadow-md"
+                        : "border-border/80 bg-card hover:border-primary/40 hover:bg-muted/10"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -247,6 +368,9 @@ export function AnnouncementsModal({
                         <span>·</span>
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3.5 w-3.5" /> {a.createdAt}
+                        </span>
+                        <span className="ml-1 text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                          {isFocused ? "Hide details" : "View details"} →
                         </span>
                       </div>
                     </div>
@@ -270,7 +394,10 @@ export function AnnouncementsModal({
                           size="icon"
                           className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                           aria-label={`Remove announcement ${a.title}`}
-                          onClick={() => removeAnnouncement(a.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeAnnouncement(a.id);
+                          }}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -278,9 +405,20 @@ export function AnnouncementsModal({
                     </div>
                   </div>
 
-                  <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed whitespace-pre-line border-t border-border/40 pt-2.5">
+                  <p
+                    className={`text-xs sm:text-sm text-muted-foreground leading-relaxed whitespace-pre-line border-t border-border/40 pt-2.5 ${
+                      isFocused ? "" : "line-clamp-3"
+                    }`}
+                  >
                     {a.body}
                   </p>
+                  {isFocused && (
+                    <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Sparkles className="h-3.5 w-3.5 text-primary" /> Full post shown
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })

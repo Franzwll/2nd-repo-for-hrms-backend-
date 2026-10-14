@@ -1,16 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { CalendarCheck, FileCheck2, UserPlus, Users } from "lucide-react";
+import { CalendarCheck, FileCheck2, Headset, Send, UserPlus, Users } from "lucide-react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Legend,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -24,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { applicantsApi, dashboardApi, jobPostsApi } from "@/lib/api";
+import { applicantsApi, dashboardApi, essApi, jobPostsApi, newHiresApi } from "@/lib/api";
 import type { ApiApplicant, ApiDashboardStats, ApiJobPost } from "@/lib/api";
 import { ListSkeleton, StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 const Skeleton = (p: any) => <div className={"animate-pulse rounded-md bg-primary/10 " + (p.className ?? "")} />;
@@ -73,21 +70,55 @@ function AdminDashboard() {
   const [stats, setStats] = useState<ApiDashboardStats | null>(null);
   const [applicants, setApplicants] = useState<ApiApplicant[]>([]);
   const [openJobs, setOpenJobs] = useState<ApiJobPost[]>([]);
+  const [essCounts, setEssCounts] = useState({ pending: 0, under_review: 0 });
+  const [nhStats, setNhStats] = useState<{
+    total: number;
+    by_stage: Record<string, number>;
+    starting_soon: number;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      dashboardApi.stats(),
-      applicantsApi.list({ per_page: 100 }),
-      jobPostsApi.list({ per_page: 100, status: "Open" }),
-    ])
-      .then(([s, a, j]) => {
-        if (cancelled) return;
-        setStats(s.data);
-        setApplicants(a.data ?? []);
-        setOpenJobs((j.data ?? []).filter((p) => p.active));
+    // Independent fetches: a single HTML/proxy failure must not blank the
+    // whole dashboard (Promise.all rejects on the first rejection, leaving
+    // `stats === null` and the pink skeletons stuck forever).
+    dashboardApi
+      .stats()
+      .then((s) => {
+        if (!cancelled) setStats(s.data);
       })
       .catch(() => {});
+    applicantsApi
+      .list({ per_page: 100 })
+      .then((a) => {
+        if (!cancelled) setApplicants(a.data ?? []);
+      })
+      .catch(() => {});
+    jobPostsApi
+      .list({ per_page: 100, status: "Open" })
+      .then((j) => {
+        if (!cancelled) setOpenJobs((j.data ?? []).filter((p) => p.active));
+      })
+      .catch(() => {});
+
+    // Fetch ESS request queue counts for the admin
+    essApi
+      .adminRequests()
+      .then((res) => {
+        if (!cancelled && res.counts) {
+          setEssCounts({ pending: res.counts.pending, under_review: res.counts.under_review });
+        }
+      })
+      .catch(() => {});
+
+    // Onboarding snapshot counts for the snapshot card
+    newHiresApi
+      .stats()
+      .then((s) => {
+        if (!cancelled) setNhStats(s);
+      })
+      .catch(() => {});
+
     return () => {
       cancelled = true;
     };
@@ -101,19 +132,33 @@ function AdminDashboard() {
     key: k,
   }));
 
-  const funnel = ["Screened", "Interview Scheduled", "Assessed", "Offer", "Hired"].map((s) => ({
-    stage: s,
-    count: stats?.applicants.by_stage[s] ?? 0,
-  }));
-
-  const sourceData = Object.entries(stats?.applicants.by_source ?? {}).map(([name, count]) => ({
-    name,
-    count,
-  }));
+  const stageCounts: Record<string, number> = stats?.applicants.by_stage ?? {};
+  /** Mirrors ApplicantManagement's 5-step pipeline (pipelineStepOf):
+   *  1 Screening (Screened + Accepted) → 2 Interview (Scheduled + Assessed) →
+   *  3 Assessment Test → 4 Practical Test → 5 Final Evaluation + Offer.
+   *  Hired / Rejected are terminal and excluded, same as the pipeline lists. */
+  const funnel = [
+    {
+      stage: "1 · Screening",
+      count: (stageCounts["Screened"] ?? 0) + (stageCounts["Accepted"] ?? 0),
+    },
+    {
+      stage: "2 · Interview",
+      count: (stageCounts["Interview Scheduled"] ?? 0) + (stageCounts["Assessed"] ?? 0),
+    },
+    { stage: "3 · Assessment", count: stageCounts["Assessment Test"] ?? 0 },
+    { stage: "4 · Practical", count: stageCounts["Practical Test"] ?? 0 },
+    {
+      stage: "5 · Final + Offer",
+      count: (stageCounts["Final Evaluation"] ?? 0) + (stageCounts["Offer"] ?? 0),
+    },
+  ];
+  const funnelActive = funnel.reduce((s, f) => s + f.count, 0);
+  const funnelConversion =
+    funnelActive > 0 ? Math.round((funnel[4].count / funnelActive) * 100) : 0;
 
   const topApplicants = [...applicants]
-    .sort((a, b) => (b.fit_score ?? 0) - (a.fit_score ?? 0))
-    .slice(0, 6);
+    .sort((a, b) => (b.fit_score ?? 0) - (a.fit_score ?? 0));
 
   const vacancyJobs = openJobs.filter((j) => j.vacancies > 0);
 
@@ -123,9 +168,8 @@ function AdminDashboard() {
   return (
     <div>
       <PageHeader
-        eyebrow="HR Admin"
-        title="Recruitment Dashboard"
-        description="Applicant pipeline, interview schedule, and onboarding progress for Oxford Suites Makati."
+        title="HR Admin Dashboard"
+        description="Recruitment pipeline, ESS approval queue, and onboarding progress for Oxford Suites Makati."
         actions={
           <Button asChild>
             <Link to="/admin/recruitment">Post a Job</Link>
@@ -136,11 +180,10 @@ function AdminDashboard() {
       {loading ? (
         <StatCardsSkeleton count={4} />
       ) : (
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <StatCard
           label="Total Applicants"
           value={stats?.applicants.total ?? 0}
-          hint="In current pipeline"
           icon={Users}
           tone="primary"
           to="/admin/applicants"
@@ -156,7 +199,6 @@ function AdminDashboard() {
         <StatCard
           label="Interviews Scheduled"
           value={stats?.interviews.scheduled ?? 0}
-          hint="Next 7 days"
           icon={CalendarCheck}
           tone="gold"
           to="/admin/applicants"
@@ -164,9 +206,22 @@ function AdminDashboard() {
         <StatCard
           label="Onboarding"
           value={stats?.new_hires.total ?? 0}
-          hint="New hires in progress"
           icon={UserPlus}
           to="/admin/onboarding"
+        />
+        <StatCard
+          label="ESS Pending"
+          value={essCounts.pending}
+          icon={Send}
+          tone="caution"
+          to="/admin/ess"
+        />
+        <StatCard
+          label="ESS Under Review"
+          value={essCounts.under_review}
+          icon={Headset}
+          tone="gold"
+          to="/admin/ess"
         />
         </div>
       )}
@@ -175,9 +230,6 @@ function AdminDashboard() {
         <Card className="border-border/70">
           <CardContent className="p-6">
             <h2 className="font-display text-2xl font-semibold">Applications This Week</h2>
-            <p className="text-xs text-muted-foreground">
-              Incoming applications versus resumes processed by the screening engine.
-            </p>
             {loading ? (
               <Skeleton className="mt-4 h-64 rounded-xl" aria-busy="true" aria-label="Loading applications chart" />
             ) : (
@@ -217,26 +269,35 @@ function AdminDashboard() {
             {loading ? (
               <Skeleton className="mt-2 h-64 rounded-xl" aria-busy="true" aria-label="Loading screening outcomes chart" />
             ) : (
-            <div className="mt-2 h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={outcomeData}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={45}
-                    outerRadius={78}
-                    paddingAngle={3}
-                  >
-                    {outcomeData.map((d) => (
-                      <Cell key={d.key} fill={statusColors[d.key]} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={tooltipStyle} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+            <ul className="mt-4 max-h-64 space-y-4 overflow-y-auto pr-1">
+              {(() => {
+                const total = outcomeData.reduce((s, d) => s + d.value, 0) || 1;
+                return [...outcomeData]
+                  .sort((a, b) => b.value - a.value)
+                  .map((d) => {
+                    const pct = Math.round((d.value / total) * 100);
+                    return (
+                      <li key={d.key}>
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="flex min-w-0 items-center gap-2 font-medium">
+                            <span
+                              className="h-2.5 w-2.5 shrink-0 rounded-full"
+                              style={{ background: statusColors[d.key] }}
+                            />
+                            <span className="truncate">{d.name}</span>
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            <span className="font-display text-base font-semibold text-foreground">{d.value}</span>
+                            {" · "}
+                            {pct}%
+                          </span>
+                        </div>
+                        <Progress value={pct} className="mt-1.5 h-2" />
+                      </li>
+                    );
+                  });
+              })()}
+            </ul>
             )}
           </CardContent>
         </Card>
@@ -245,10 +306,16 @@ function AdminDashboard() {
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.5fr_1fr]">
         <Card className="border-border/70">
           <CardContent className="p-6">
-            <h2 className="font-display text-2xl font-semibold">Hiring Funnel</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-2xl font-semibold">Hiring Funnel</h2>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/admin/applicants">Open pipeline</Link>
+              </Button>
+            </div>
             {loading ? (
               <Skeleton className="mt-4 h-60 rounded-xl" aria-busy="true" aria-label="Loading hiring funnel chart" />
             ) : (
+            <>
             <div className="mt-4 h-60">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={funnel}>
@@ -264,37 +331,79 @@ function AdminDashboard() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              <span className="font-display text-base font-semibold text-foreground">{funnelActive}</span>
+              {" "}active in pipeline · {funnelConversion}% reach Final + Offer
+            </p>
+            </>
             )}
           </CardContent>
         </Card>
 
         <Card className="border-border/70">
           <CardContent className="p-6">
-            <h2 className="font-display text-2xl font-semibold">Applicant Sources</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-2xl font-semibold">Onboarding Snapshot</h2>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/admin/onboarding">View all</Link>
+              </Button>
+            </div>
             {loading ? (
-              <Skeleton className="mt-4 h-60 rounded-xl" aria-busy="true" aria-label="Loading applicant sources chart" />
+              <ListSkeleton items={3} className="mt-4" />
             ) : (
-            <div className="mt-4 h-60">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={sourceData} layout="vertical" margin={{ left: 30 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                  <XAxis
-                    type="number"
-                    allowDecimals={false}
-                    fontSize={12}
-                    stroke="var(--color-muted-foreground)"
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={100}
-                    fontSize={11}
-                    stroke="var(--color-muted-foreground)"
-                  />
-                  <Tooltip contentStyle={tooltipStyle} />
-                  <Bar dataKey="count" fill="var(--color-gold)" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="mt-4 max-h-60 space-y-4 overflow-y-auto pr-1">
+              {(() => {
+                const stages = [
+                  { name: "Pre-onboarding", color: "var(--color-caution)" },
+                  { name: "Probationary", color: "var(--color-primary)" },
+                  { name: "Regular", color: "var(--color-success)" },
+                ];
+                const total = nhStats?.total ?? stages.reduce((s, st) => s + (nhStats?.by_stage?.[st.name] ?? 0), 0);
+                const safeTotal = total || 1;
+                return (
+                  <>
+                    <div className="flex items-end justify-between">
+                      <div>
+                        <p className="font-display text-4xl font-bold">{total}</p>
+                        <p className="text-xs text-muted-foreground">Total hires tracked</p>
+                      </div>
+                      <Badge variant="outline" className="border-gold/40 bg-gold/10 text-gold-foreground dark:text-gold">
+                        {nhStats?.starting_soon ?? 0} starting soon
+                      </Badge>
+                    </div>
+                    <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted" aria-label="Hires by onboarding stage">
+                      {stages.map((st) => {
+                        const count = nhStats?.by_stage?.[st.name] ?? 0;
+                        return (
+                          <div
+                            key={st.name}
+                            className="h-full"
+                            style={{ width: `${(count / safeTotal) * 100}%`, background: st.color }}
+                            title={`${st.name}: ${count}`}
+                          />
+                        );
+                      })}
+                    </div>
+                    <ul className="grid grid-cols-3 gap-2">
+                      {stages.map((st) => {
+                        const count = nhStats?.by_stage?.[st.name] ?? 0;
+                        const pct = Math.round((count / safeTotal) * 100);
+                        return (
+                          <li key={st.name} className="rounded-xl border border-border/70 p-3 text-center">
+                            <p className="font-display text-2xl font-semibold" style={{ color: st.color }}>
+                              {count}
+                            </p>
+                            <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              {st.name}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">{pct}%</p>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                );
+              })()}
             </div>
             )}
           </CardContent>
@@ -313,7 +422,7 @@ function AdminDashboard() {
             {loading ? (
               <ListSkeleton items={5} className="mt-4" />
             ) : (
-            <ul className="mt-4 space-y-3">
+            <ul className="mt-4 max-h-[382px] space-y-3 overflow-y-auto pr-2">
               {topApplicants.map((a) => (
                 <li
                   key={a.applicant_id}
@@ -345,21 +454,33 @@ function AdminDashboard() {
               {loading ? (
                 <ListSkeleton items={4} className="mt-4" />
               ) : (
-              <ul className="mt-4 space-y-4">
+              <ul className="mt-4 max-h-[382px] space-y-4 overflow-y-auto pr-2">
                 {vacancyJobs.map((j) => {
                   const pct =
                     j.vacancies > 0 ? Math.round((j.filled_count / j.vacancies) * 100) : 0;
+                  const filledBlocks = Math.round((pct / 100) * 10);
                   return (
-                    <li key={j.job_post_id}>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">{j.title}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {j.filled_count}/{j.vacancies} filled
+                    <li key={j.job_post_id} className="rounded-xl border border-border/70 bg-card p-3 shadow-xs">
+                      <div className="flex items-center justify-between gap-2 text-sm">
+                        <span className="truncate font-medium">{j.title}</span>
+                        <span className="shrink-0 font-display text-base font-bold text-primary">
+                          {pct}%
                         </span>
                       </div>
-                      <Progress value={pct} className="mt-1.5 h-2" />
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {j.applicants_count ?? 0} applicants
+                      <div className="mt-2 flex gap-1" aria-label={`${pct}% filled`}>
+                        {Array.from({ length: 10 }).map((_, b) => (
+                          <span
+                            key={b}
+                            className={
+                              b < filledBlocks
+                                ? "h-2 flex-1 rounded-full bg-success"
+                                : "h-2 flex-1 rounded-full bg-muted"
+                            }
+                          />
+                        ))}
+                      </div>
+                      <p className="mt-1.5 text-xs text-muted-foreground">
+                        {j.filled_count}/{j.vacancies} filled · {j.applicants_count ?? 0} applicants
                       </p>
                     </li>
                   );

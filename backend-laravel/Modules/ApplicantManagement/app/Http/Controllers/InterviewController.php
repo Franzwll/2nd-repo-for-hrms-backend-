@@ -9,6 +9,7 @@ use App\Mail\InterviewCancelledMail;
 use App\Mail\InterviewRescheduledMail;
 use App\Services\AuditLogger;
 use App\Services\NotificationService;
+use App\Services\ZoomMeetingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -89,6 +90,23 @@ class InterviewController extends Controller
 
         $interview = Interview::create($data);
 
+        // Virtual interviews auto-generate Zoom links (1st join + 2nd continue
+        // + password) so the applicant email contains everything to join.
+        if (($interview->mode ?? null) === 'Virtual') {
+            $zoom = ZoomMeetingService::createForInterview(
+                (string) $interview->interview_code,
+                (string) (Applicant::find($data['applicant_id'])?->name ?? 'Applicant'),
+                $interview->interviewer_name,
+            );
+            $interview->update([
+                'zoom_meeting_id'   => $zoom['meeting_id'],
+                'zoom_join_url'     => $zoom['join_url'],
+                'zoom_continue_url' => $zoom['continue_url'],
+                'zoom_password'     => $zoom['password'],
+            ]);
+            $interview->refresh();
+        }
+
         // Advance applicant to "Interview Scheduled" stage
         $applicant = Applicant::findOrFail($data['applicant_id']);
         if (in_array($applicant->stage, ['Screened', 'Accepted'])) {
@@ -110,7 +128,8 @@ class InterviewController extends Controller
             module: 'Applicant Management',
             type: 'info',
             targetType: 'Interview',
-            targetId: (string) $interview->interview_id
+            targetId: (string) $interview->interview_id,
+            onlyRoleNames: ['Admin', 'Super Admin']
         );
 
         if ($applicant->email) {
@@ -121,7 +140,11 @@ class InterviewController extends Controller
                     position: $applicant->jobPost?->title ?? 'Position',
                     interviewDate: $interview->scheduled_date,
                     interviewTime: $interview->scheduled_time,
-                    interviewMode: $interview->mode
+                    interviewMode: $interview->mode,
+                    interviewerName: $interview->interviewer_name,
+                    zoomJoinUrl: $interview->zoom_join_url,
+                    zoomContinueUrl: $interview->zoom_continue_url,
+                    zoomPassword: $interview->zoom_password
                 ));
             } catch (\Throwable $e) {
                 Log::warning("Failed to send interview invitation to {$applicant->email}: " . $e->getMessage());
@@ -152,6 +175,13 @@ class InterviewController extends Controller
 
         $model->update(['facility_status' => 'Facility Approved']);
 
+        // Virtual interviews must have Zoom links before the confirmation email.
+        if ($model->mode === 'Virtual' && empty($model->zoom_join_url)) {
+            ZoomMeetingService::ensureForModel($model, $applicant?->jobPost?->title);
+            $model->save();
+            $model->refresh();
+        }
+
         AuditLogger::log(
             action: 'Facility Request Approved',
             module: 'Applicant Management',
@@ -161,14 +191,8 @@ class InterviewController extends Controller
             details: "Facility request approved — {$model->facility->name} for {$applicant?->name}'s interview on {$model->scheduled_date} at {$model->scheduled_time}. Confirmation email sent to {$applicant?->email}."
         );
 
-        NotificationService::send(
-            title: "Facility request approved: {$model->facility->name}",
-            body: "{$applicant?->name}'s interview schedule is confirmed. Confirmation email sent.",
-            module: 'Applicant Management',
-            type: 'success',
-            targetType: 'Interview',
-            targetId: (string) $model->interview_id
-        );
+        // Helpful-only: facility confirmation already emails the applicant and
+        // stays in audit log. No bell needed.
 
         // Automatically email the applicant their confirmed schedule.
         if ($applicant?->email) {
@@ -181,6 +205,11 @@ class InterviewController extends Controller
                     interviewDate: (string) $model->scheduled_date,
                     interviewTime: (string) $model->scheduled_time,
                     facilityLocation: $model->facility->location,
+                    interviewerName: $model->interviewer_name,
+                    interviewMode: $model->mode,
+                    zoomJoinUrl: $model->zoom_join_url,
+                    zoomContinueUrl: $model->zoom_continue_url,
+                    zoomPassword: $model->zoom_password,
                 ));
             } catch (\Throwable $e) {
                 Log::warning("Failed to send facility approval notice to {$applicant->email}: " . $e->getMessage());
@@ -201,6 +230,84 @@ class InterviewController extends Controller
     }
 
     /* ------------------------------------------------------------------ */
+    /* POST /api/v1/interviews/{interview}/zoom-signature                   */
+    /* Mints a Meeting SDK signature so the frontend Component View can    */
+    /* embed the REAL Zoom meeting inside the HRMS popup (no Zoom app).    */
+    /* 428 when the interview has no meeting yet; 501 when SDK keys are    */
+    /* missing (frontend falls back to local preview + join-link button).  */
+    /* ------------------------------------------------------------------ */
+
+    public function zoomSignature(Request $request, int $interview): JsonResponse
+    {
+        $model = Interview::findOrFail($interview);
+
+        if ($model->mode !== 'Virtual' || empty($model->zoom_meeting_id)) {
+            return response()->json([
+                'message' => 'This interview has no Zoom meeting to embed yet.',
+                'sdk_configured' => ZoomMeetingService::sdkConfigured(),
+            ], 428);
+        }
+
+        if (! ZoomMeetingService::sdkConfigured()) {
+            return response()->json([
+                'message' => 'Zoom Meeting SDK is not configured (ZOOM_SDK_KEY/SECRET missing).',
+                'sdk_configured' => false,
+            ], 501);
+        }
+
+        $role = (int) $request->input('role', 0);
+        $role = $role === 1 ? 1 : 0;
+        $signature = ZoomMeetingService::sdkSignature((string) $model->zoom_meeting_id, $role);
+
+        if ($signature === null) {
+            return response()->json(['message' => 'Could not mint a meeting signature.'], 500);
+        }
+
+        return response()->json([
+            'meeting_number' => preg_replace('/\D/', '', (string) $model->zoom_meeting_id),
+            'password'       => $model->zoom_password,
+            'join_url'       => $model->zoom_join_url,
+            'sdk_key'        => (string) config('services.zoom.sdk_key'),
+            'signature'      => $signature,
+            'role'           => $role,
+            'user_name'      => $model->interviewer_name ?: 'HR Interviewer',
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* PUT /api/v1/interviews/{interview}                                  */
+    /* ------------------------------------------------------------------ */
+
+    /* ------------------------------------------------------------------ */
+    /* PATCH /api/v1/interviews/{interview}/notes                            */
+    /* Save interviewer notes during/after the interview.                  */
+    /* ------------------------------------------------------------------ */
+
+    public function saveNotes(Request $request, int $interview): JsonResponse
+    {
+        $request->validate([
+            'notes' => 'nullable|string|max:10000',
+        ]);
+
+        $model = Interview::findOrFail($interview);
+        $model->update(['interview_notes' => $request->input('notes')]);
+
+        AuditLogger::log(
+            action: 'Interview Notes Updated',
+            module: 'Applicant Management',
+            severity: 'Info',
+            targetType: 'Interview',
+            targetId: (string) $model->interview_id,
+            details: "Interview notes saved for {$model->applicant?->name}'s interview."
+        );
+
+        return response()->json([
+            'message' => 'Notes saved',
+            'interview_notes' => $model->interview_notes,
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
     /* PUT /api/v1/interviews/{interview}                                  */
     /* ------------------------------------------------------------------ */
 
@@ -214,6 +321,15 @@ class InterviewController extends Controller
         $previousStatus = $model->status;
 
         $model->update($request->validated());
+
+        // Switching to Virtual (or missing links) auto-generates Zoom links so
+        // the reschedule email always has fresh Join + Continue + password.
+        $model->refresh();
+        if ($model->mode === 'Virtual' && empty($model->zoom_join_url)) {
+            ZoomMeetingService::ensureForModel($model, $applicant?->jobPost?->title);
+            $model->save();
+            $model->refresh();
+        }
 
         $applicant = $model->applicant;
 
@@ -244,7 +360,8 @@ class InterviewController extends Controller
                 module: 'Applicant Management',
                 type: 'warning',
                 targetType: 'Interview',
-                targetId: (string) $model->interview_id
+                targetId: (string) $model->interview_id,
+                onlyRoleNames: ['Admin', 'Super Admin']
             );
 
             if ($applicant?->email) {
@@ -286,7 +403,11 @@ class InterviewController extends Controller
                     interviewTime: $model->scheduled_time,
                     interviewMode: $model->mode,
                     previousDate: $previousDate,
-                    previousTime: $previousTime
+                    previousTime: $previousTime,
+                    interviewerName: $model->interviewer_name,
+                    zoomJoinUrl: $model->zoom_join_url,
+                    zoomContinueUrl: $model->zoom_continue_url,
+                    zoomPassword: $model->zoom_password
                 ));
             } catch (\Throwable $e) {
                 Log::warning("Failed to send reschedule notice to {$applicant->email}: " . $e->getMessage());
@@ -352,7 +473,8 @@ class InterviewController extends Controller
             module: 'Applicant Management',
             type: 'warning',
             targetType: 'Interview',
-            targetId: (string) $model->interview_id
+            targetId: (string) $model->interview_id,
+            onlyRoleNames: ['Admin', 'Super Admin']
         );
 
         $model->delete();

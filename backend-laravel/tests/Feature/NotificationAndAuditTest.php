@@ -99,6 +99,98 @@ class NotificationAndAuditTest extends TestCase
         $this->assertDatabaseMissing('notifications', ['system_user_id' => $actorId]);
     }
 
+    public function test_employee_update_is_audit_only_no_bell(): void
+    {
+        $token = $this->loginViaOtp();
+        DB::table('notifications')->delete();
+
+        $employeeId = DB::table('employees')->orderBy('employee_id')->value('employee_id');
+        $auditCountBefore = DB::table('audit_logs')
+            ->where('module_name', 'Core HCM')
+            ->where('action', 'Employee updated')
+            ->count();
+
+        $this->putJson("/api/v1/employees/{$employeeId}", [
+            'middle_name' => 'HelpfulOnly',
+        ], $this->authHeaders($token))->assertOk();
+
+        // Audit still records the routine edit.
+        $auditCountAfter = DB::table('audit_logs')
+            ->where('module_name', 'Core HCM')
+            ->where('action', 'Employee updated')
+            ->count();
+        $this->assertGreaterThan($auditCountBefore, $auditCountAfter);
+
+        // Helpful-only: no bell for routine edits.
+        $this->assertEquals(0, DB::table('notifications')->count());
+    }
+
+    public function test_employee_only_announcement_notifies_employees_only(): void
+    {
+        $token = $this->loginViaOtp();
+        DB::table('notifications')->delete();
+        $actorId = SystemUser::where('email', 'bullseur@oxfordsuites.com.ph')->firstOrFail()->system_user_id;
+
+        $this->postJson('/api/v1/announcements', [
+            'title' => 'DTR Reminder',
+            'body' => 'Submit your DTR.',
+            'audience' => 'Employee',
+        ], $this->authHeaders($token))->assertCreated();
+
+        $notifiedRoleNames = DB::table('notifications')
+            ->join('system_users', 'system_users.system_user_id', '=', 'notifications.system_user_id')
+            ->join('system_roles', 'system_roles.role_id', '=', 'system_users.role_id')
+            ->distinct()
+            ->pluck('system_roles.role_name')
+            ->sort()
+            ->values()
+            ->all();
+
+        $this->assertNotEmpty($notifiedRoleNames);
+        $this->assertEquals(['Employee'], $notifiedRoleNames);
+        $this->assertDatabaseMissing('notifications', ['system_user_id' => $actorId]);
+    }
+
+    public function test_landing_apply_notifies_hr_admins(): void
+    {
+        DB::table('notifications')->delete();
+
+        $jobPostId = DB::table('job_posts')
+            ->whereIn('status', ['published', 'Open'])
+            ->orderBy('job_post_id')
+            ->value('job_post_id');
+
+        // Ensure at least one open/published post exists for the public apply.
+        if (! $jobPostId) {
+            $jobPostId = DB::table('job_posts')->orderBy('job_post_id')->value('job_post_id');
+            DB::table('job_posts')->where('job_post_id', $jobPostId)->update(['status' => 'published']);
+        }
+
+        $email = 'landing.test.' . time() . '@example.com';
+
+        $this->postJson('/api/v1/landing/apply', [
+            'job_post_id' => $jobPostId,
+            'name' => 'Landing Tester',
+            'email' => $email,
+            'phone' => '09171234567',
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('notifications', [
+            'module_name' => 'Applicant Management',
+            'title' => 'New applicant from Landing: Landing Tester',
+        ]);
+
+        // Helpful-only: Employees must not get hiring bells.
+        $employeeNotified = DB::table('notifications')
+            ->join('system_users', 'system_users.system_user_id', '=', 'notifications.system_user_id')
+            ->join('system_roles', 'system_roles.role_id', '=', 'system_users.role_id')
+            ->where('notifications.title', 'New applicant from Landing: Landing Tester')
+            ->where('system_roles.role_name', 'Employee')
+            ->exists();
+
+        $this->assertFalse($employeeNotified, 'Employees should not receive hiring notifications.');
+    }
+
     public function test_notifications_endpoint_exposes_target_for_navigation(): void
     {
         $token = $this->loginViaOtp();

@@ -10,12 +10,15 @@ import {
   FileCheck2,
   FileText,
   Hourglass,
+  Inbox,
   Info,
   Loader2,
   Lock,
   Pencil,
   Plus,
+  Printer,
   RefreshCw,
+  RotateCcw,
   Save,
   Search,
   Send,
@@ -26,6 +29,10 @@ import {
   Users,
   X,
   ArrowUpDown,
+  Compass,
+  Flag,
+  Clock,
+  Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "@tanstack/react-router";
@@ -66,12 +73,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { ListSkeleton } from "@/components/ui/loading-skeletons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { usePagination } from "@/hooks/usePagination";
@@ -90,20 +99,19 @@ import {
   applicantsApi,
   checklistRequestsApi,
   coreHcmApi,
+  essApi,
   newHiresApi,
   onboardingItemsApi,
   resolveStorageUrl,
   settingsApi,
   type ApiChecklistRequest,
   type ApiNewHire,
+  type ApiOnboardingSubmission,
 } from "@/lib/api";
 import {
-  describeExport,
-  exportReport,
   type ReportData,
-  type ReportFormat,
 } from "@/lib/report-export";
-import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
+import { ReportMenu } from "@/components/ui/report-menu";
 import { getUser } from "@/lib/auth";
 import {
   isValidEmail,
@@ -329,13 +337,15 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
         setRequestedItems((res?.data ?? []).map(transformApiRequest));
       })
       .catch((err) => console.warn("Could not fetch checklist requests from API:", err));
+    // default_password is sensitive (Settings:Full only) — non-Full roles 404
+    // by design. Silently keep the shipped default instead of warning.
     settingsApi
       .get("default_password")
       .then((res) => {
         const pw = res?.setting_value?.password;
         if (pw) setDefaultPassword(pw);
       })
-      .catch((err) => console.warn("Could not fetch default password from database:", err));
+      .catch(() => {});
     // Auto-regularization threshold (days worked, default 180 = 6 months) —
     // shared through system_settings so every admin session follows the
     // same DOLE cap. Readable by all roles with Settings:View.
@@ -393,7 +403,16 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
           setCandidateApplicants(hired);
         }
       })
-      .catch((err) => console.warn("Could not fetch applicants from API:", err));
+      .catch((err) => {
+        // 401 (expired token) is handled globally (redirect to /login);
+        // NetworkError (CORS/offline) and SyntaxError (proxy returned HTML,
+        // e.g. stale-Vite/SSR fallback) both fall back to mock data, so only
+        // log unexpected failures.
+        const status = (err as { status?: number } | null)?.status;
+        if (status !== 401 && !(err instanceof TypeError) && !(err instanceof SyntaxError)) {
+          console.warn("Could not fetch applicants from API:", err);
+        }
+      });
   }, []);
 
   const [reqItemDraft, setReqItemDraft] = useState("");
@@ -414,6 +433,68 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const [newItemUploadPlaceholder, setNewItemUploadPlaceholder] = useState("");
   const [showItemDetails, setShowItemDetails] = useState(false);
   const [tab, setTab] = useState("pipeline");
+  /** HR review queue: submitted-but-unverified onboarding items across hires. */
+  const [submissions, setSubmissions] = useState<ApiOnboardingSubmission[]>([]);
+  const [subLoading, setSubLoading] = useState(false);
+  const [verifyingId, setVerifyingId] = useState<number | null>(null);
+  /** Submission being returned for correction + the HR note. */
+  const [returnTarget, setReturnTarget] = useState<ApiOnboardingSubmission | null>(null);
+  const [returnNote, setReturnNote] = useState("");
+  const [returnBusy, setReturnBusy] = useState(false);
+
+  const loadSubmissions = useCallback(async () => {
+    setSubLoading(true);
+    try {
+      const res = await onboardingItemsApi.submissions();
+      setSubmissions(res?.data ?? []);
+    } catch {
+      // Keep previous state on error
+    } finally {
+      setSubLoading(false);
+    }
+  }, []);
+
+  /** Refresh the review queue whenever HR opens the Submissions tab. */
+  useEffect(() => {
+    if (tab === "submissions") {
+      loadSubmissions();
+    }
+  }, [tab, loadSubmissions]);
+
+  const handleVerifySubmission = async (s: ApiOnboardingSubmission) => {
+    setVerifyingId(s.employee_onboarding_item_id);
+    try {
+      await onboardingItemsApi.toggle(s.employee_onboarding_item_id, { done: true });
+      toast.success(`Verified "${s.item_text}" for ${s.hire_name}.`);
+      await loadSubmissions();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not verify submission.");
+    } finally {
+      setVerifyingId(null);
+    }
+  };
+
+  const handleReturnSubmission = async () => {
+    if (!returnTarget) return;
+    if (!returnNote.trim()) {
+      toast.error("Please add a correction note so the employee knows what to fix.");
+      return;
+    }
+    setReturnBusy(true);
+    try {
+      await onboardingItemsApi.returnItem(returnTarget.employee_onboarding_item_id, {
+        note: returnNote.trim(),
+      });
+      toast.success(`Returned "${returnTarget.item_text}" for correction.`);
+      setReturnTarget(null);
+      setReturnNote("");
+      await loadSubmissions();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not return submission.");
+    } finally {
+      setReturnBusy(false);
+    }
+  };
   const [draftItems, setDraftItems] = useState<
     {
       item_text: string;
@@ -729,213 +810,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     setConfirmDelete(null);
   };
 
-  /** Predefined onboarding reports — the only reports this module exports. */
-  const onboardingReportOptions = [
-    {
-      id: "summary" as const,
-      title: "Onboarding Summary",
-      description: "Every active hire with stage, days of work and overall progress.",
-    },
-    {
-      id: "progress" as const,
-      title: "Checklist Progress",
-      description: "Verified vs. pending requirements per hire.",
-    },
-    {
-      id: "overdue" as const,
-      title: "Overdue & At-Risk",
-      description:
-        "Incomplete hires past the expected timeline (pre-onboarding > 7 days, probationary > 30 days).",
-    },
-  ];
-  type OnboardingReportId = (typeof onboardingReportOptions)[number]["id"];
-
-  /** Password-protected export flow — predefined report + format awaiting a file password. */
-  const [reportsOpen, setReportsOpen] = useState(false);
-  const [csvOpen, setCsvOpen] = useState(false);
-  const [csvBusy, setCsvBusy] = useState(false);
-  const [csvPending, setCsvPending] = useState<{
-    id: OnboardingReportId;
-    format: ReportFormat;
-  } | null>(null);
-
-  const pendingCountOf = (h: NewHire) => h.checklist.filter((c) => !c.done).length;
-
-  const buildSummaryReport = (): ReportData => {
-    const pool = hires.filter((h) => h.stage !== "Regular");
-    const rowsData = pool.map((h) => ({
-      name: h.name,
-      position: h.position,
-      department: h.department,
-      stage: h.stage,
-      daysOfWork: daysOfWork(h.startDate),
-      progress: `${progress(h)}%`,
-      startDate: h.startDate,
-    }));
-    return {
-      title: "New Hire Onboarding Report",
-      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · Predefined report: Onboarding Summary`,
-      columns: [
-        { header: "New Hire", key: "name", width: "17%" },
-        { header: "Position", key: "position", width: "17%" },
-        { header: "Department", key: "department", width: "15%" },
-        { header: "Stage", key: "stage", width: "13%" },
-        { header: "Days of Work", key: "daysOfWork", width: "11%" },
-        { header: "Progress", key: "progress", width: "11%" },
-        { header: "Start Date", key: "startDate", width: "16%" },
-      ],
-      rows: rowsData,
-      summary: [
-        { label: "Total Hires", value: pool.length },
-        {
-          label: "Pre-onboarding",
-          value: pool.filter((h) => h.stage === "Pre-onboarding").length,
-        },
-        {
-          label: "Probationary",
-          value: pool.filter((h) => h.stage === "Probationary").length,
-        },
-      ],
-    };
-  };
-
-  const buildProgressReport = (): ReportData => {
-    const pool = hires.filter((h) => h.stage !== "Regular");
-    const rowsData = pool.map((h) => ({
-      name: h.name,
-      position: h.position,
-      department: h.department,
-      stage: h.stage,
-      total: h.checklist.length,
-      verified: h.checklist.filter((c) => c.done).length,
-      pending: pendingCountOf(h),
-      progress: `${progress(h)}%`,
-    }));
-    return {
-      title: "Onboarding Checklist Progress Report",
-      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · Predefined report: Checklist Progress`,
-      columns: [
-        { header: "New Hire", key: "name", width: "18%" },
-        { header: "Position", key: "position", width: "18%" },
-        { header: "Department", key: "department", width: "16%" },
-        { header: "Stage", key: "stage", width: "14%" },
-        { header: "Total Items", key: "total", width: "9%" },
-        { header: "Verified", key: "verified", width: "9%" },
-        { header: "Pending", key: "pending", width: "9%" },
-        { header: "Progress", key: "progress", width: "9%" },
-      ],
-      rows: rowsData,
-      summary: [
-        { label: "Total Hires", value: pool.length },
-        {
-          label: "Fully Verified",
-          value: pool.filter((h) => progress(h) === 100).length,
-        },
-        {
-          label: "In Progress",
-          value: pool.filter((h) => progress(h) < 100).length,
-        },
-      ],
-    };
-  };
-
-  const buildOverdueReport = (): ReportData => {
-    const pool = hires.filter((h) => h.stage !== "Regular");
-    const flagged = pool
-      .map((h) => {
-        const dw = daysOfWork(h.startDate);
-        const pct = progress(h);
-        const overdue =
-          pct < 100 &&
-          ((h.stage === "Pre-onboarding" && dw > 7) || (h.stage === "Probationary" && dw > 30));
-        const flag =
-          pct === 100
-            ? "Complete"
-            : !overdue
-              ? "On track"
-              : h.stage === "Pre-onboarding"
-                ? "Overdue pre-onboarding"
-                : "At-risk probationary";
-        return {
-          name: h.name,
-          position: h.position,
-          department: h.department,
-          stage: h.stage,
-          startDate: h.startDate,
-          daysOfWork: dw,
-          progress: `${pct}%`,
-          pending: pendingCountOf(h),
-          flag,
-          overdue,
-        };
-      })
-      .filter((r) => r.overdue);
-    return {
-      title: "Onboarding Overdue & At-Risk Report",
-      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · Predefined report: Overdue & At-Risk`,
-      columns: [
-        { header: "New Hire", key: "name", width: "16%" },
-        { header: "Position", key: "position", width: "16%" },
-        { header: "Department", key: "department", width: "14%" },
-        { header: "Stage", key: "stage", width: "12%" },
-        { header: "Start Date", key: "startDate", width: "11%" },
-        { header: "Days of Work", key: "daysOfWork", width: "9%" },
-        { header: "Progress", key: "progress", width: "8%" },
-        { header: "Pending", key: "pending", width: "8%" },
-        { header: "Flag", key: "flag", width: "16%" },
-      ],
-      rows: flagged.map(({ overdue: _o, ...rest }) => rest),
-      summary: [
-        { label: "Active Hires", value: pool.length },
-        { label: "Overdue / At-Risk", value: flagged.length },
-        {
-          label: "Overdue Pre-onboarding",
-          value: flagged.filter((r) => r.stage === "Pre-onboarding").length,
-        },
-        {
-          label: "At-Risk Probationary",
-          value: flagged.filter((r) => r.stage === "Probationary").length,
-        },
-      ],
-    };
-  };
-
-  const buildOnboardingReport = (id: OnboardingReportId): ReportData => {
-    if (id === "progress") return buildProgressReport();
-    if (id === "overdue") return buildOverdueReport();
-    return buildSummaryReport();
-  };
-
-  /** Every format is password-protected: picking one opens the password gate. */
-  const handleExportOnboardingReportById = (id: OnboardingReportId, format: ReportFormat) => {
-    if (buildOnboardingReport(id).rows.length === 0) {
-      toast.error("No onboarding records to export.");
-      return;
-    }
-    setCsvPending({ id, format });
-    setCsvOpen(true);
-  };
-
-  const confirmOnboardingCsv = async (password: string) => {
-    if (!csvPending) return;
-    setCsvBusy(true);
-    try {
-      const data = buildOnboardingReport(csvPending.id);
-      await exportReport(data, csvPending.format, { password });
-      const { zipName } = describeExport(data, csvPending.format);
-      toast.success(
-        `${data.title} exported as password-protected ${csvPending.format.toUpperCase()} (${zipName}).`,
-      );
-      setCsvOpen(false);
-      setCsvPending(null);
-    } catch (e) {
-      console.error("Protected export failed:", e);
-      toast.error(e instanceof Error ? e.message : "Protected export failed.");
-    } finally {
-      setCsvBusy(false);
-    }
-  };
-
   /**
    * Automatic regularization by operation of law (Art. 296, Labor Code; DOLE
    * 6-month rule). When a probationary hire is allowed to keep working past
@@ -1017,6 +891,71 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const hirePage = usePagination(visible);
   const reqPage = usePagination(requestedItems, 6);
   const checklistPage = usePagination(masterChecklists, 3);
+
+  /**
+   * Org-chart–aligned report payload: Position immediately followed by
+   * Department, rows ordered Department → Position → Name (same hierarchy
+   * as the Organizational Chart), departments resolved against the Core HCM
+   * master. Exports the currently filtered pipeline view (department filter
+   * + search + stage), not the unfiltered store.
+   */
+  const buildOnboardingReportData = (): ReportData => {
+    const deptOfHire = (h: NewHire) =>
+      knownPositions.find((p) => p.title === h.position)?.department ?? h.department;
+    const rowsData = [...filtered]
+      .map((h) => ({
+        name: h.name,
+        position: h.position,
+        department: deptOfHire(h),
+        stage: h.stage,
+        daysOfWork: daysOfWork(h.startDate),
+        progress: `${progress(h)}%`,
+        startDate: h.startDate,
+      }))
+      .sort(
+        (a, b) =>
+          a.department.localeCompare(b.department) ||
+          a.position.localeCompare(b.position) ||
+          a.name.localeCompare(b.name),
+      );
+    const scope = awaitingOnly
+      ? "Awaiting evaluation"
+      : showAllStages
+        ? "All stages"
+        : stage;
+    return {
+      title: "New Hire Onboarding Report",
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · Department: ${deptFilter} | Stage: ${scope}`,
+      columns: [
+        { header: "New Hire", key: "name", width: "17%" },
+        { header: "Position", key: "position", width: "17%" },
+        { header: "Department", key: "department", width: "15%" },
+        { header: "Stage", key: "stage", width: "13%" },
+        { header: "Days of Work", key: "daysOfWork", width: "11%" },
+        { header: "Progress", key: "progress", width: "11%" },
+        { header: "Start Date", key: "startDate", width: "16%" },
+      ],
+      rows: rowsData,
+      // Same security logic as every other module: hire rows carry PII.
+      sensitive: true,
+      summary: [
+        { label: "Total Hires", value: hires.length },
+        {
+          label: "Pre-onboarding",
+          value: hires.filter((h) => h.stage === "Pre-onboarding").length,
+        },
+        {
+          label: "Probationary",
+          value: hires.filter((h) => h.stage === "Probationary").length,
+        },
+        {
+          label: "Departments Covered",
+          value: new Set(rowsData.map((r) => r.department)).size,
+        },
+        { label: "Rows in Report", value: rowsData.length },
+      ],
+    };
+  };
 
   const selectStage = (s: Stage) => {
     setStage(s);
@@ -1141,107 +1080,12 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   return (
     <div>
       <PageHeader
+        eyebrow={role === "superadmin" ? "Super Admin · Recruitment" : "Admin · Recruitment"}
         title="New Hire Onboarding"
+        description="Pre-onboarding, probationary and regularization tracking with requirement checklists."
         actions={
-          <Button variant="outline" className="gap-2" onClick={() => setReportsOpen(true)}>
-            <Download className="h-4 w-4" /> Generate Report
-          </Button>
+          <ReportMenu report={() => buildOnboardingReportData()} recordCount={onboardingHires.length} />
         }
-      />
-
-      {/* PREDEFINED REPORTS DIALOG */}
-      <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Generate Report</DialogTitle>
-            <DialogDescription>
-              Predefined reports — every format is password-protected (sealed in an AES-256 ZIP; you
-              will be asked for a file password on every export).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            {onboardingReportOptions.map((r) => (
-              <div
-                key={r.id}
-                className="flex items-center justify-between gap-3 rounded-md border border-border p-3"
-              >
-                <div>
-                  <p className="text-sm font-medium">{r.title}</p>
-                  <p className="text-xs text-muted-foreground">{r.description}</p>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline">
-                      <Download className="mr-2 h-4 w-4" /> Generate
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-60">
-                    <DropdownMenuItem onClick={() => handleExportOnboardingReportById(r.id, "pdf")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => handleExportOnboardingReportById(r.id, "docx")}
-                    >
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => handleExportOnboardingReportById(r.id, "excel")}
-                    >
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExportOnboardingReportById(r.id, "csv")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      <span className="flex items-center gap-1.5">
-                        Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                      </span>
-                    </DropdownMenuItem>
-                    <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-                      Password-protected ZIP — password asked on every export.
-                    </p>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <SecureExportDialog
-        open={csvOpen}
-        onOpenChange={(o) => {
-          if (!csvBusy) {
-            setCsvOpen(o);
-            if (!o) setCsvPending(null);
-          }
-        }}
-        reportTitle={
-          csvPending
-            ? (onboardingReportOptions.find((o) => o.id === csvPending.id)?.title ??
-              "Onboarding report")
-            : "Onboarding report"
-        }
-        formatLabel={
-          !csvPending
-            ? ""
-            : csvPending.format === "pdf"
-              ? "PDF"
-              : csvPending.format === "docx"
-                ? "DOCX"
-                : csvPending.format === "excel"
-                  ? "Excel"
-                  : "CSV"
-        }
-        busy={csvBusy}
-        onConfirm={confirmOnboardingCsv}
       />
 
       <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -1281,12 +1125,20 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
-        <TabsList className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
-          <TabsTrigger className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="pipeline">
+        <TabsList className="flex h-auto flex-wrap justify-start">
+          <TabsTrigger className="flex items-center gap-1.5" value="pipeline">
             <ClipboardList className="h-3.5 w-3.5" /> Onboarding Pipeline
           </TabsTrigger>
-          <TabsTrigger className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="checklists">
+          <TabsTrigger className="flex items-center gap-1.5" value="checklists">
             <Send className="h-3.5 w-3.5" /> Requested Checklists
+          </TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5" value="submissions">
+            <Inbox className="h-3.5 w-3.5" /> Submissions
+            {submissions.length > 0 && (
+              <span className="ml-1 rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold text-primary">
+                {submissions.length}
+              </span>
+            )}
           </TabsTrigger>
         </TabsList>
 
@@ -1344,6 +1196,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                         <span className="mt-1 max-w-[220px] text-[0.7rem] text-muted-foreground">
                           {stageBlurb[s]}
                         </span>
+                        <Badge variant="secondary" className="mt-2">
+                          {onboardingHires.filter((h) => h.stage === s).length} hires
+                        </Badge>
                       </div>
                     );
                   })}
@@ -1482,7 +1337,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                       className={cn(
                                         "text-xs",
                                         awaiting
-                                          ? "bg-gold/15 text-gold-foreground"
+                                          ? "bg-gold/15 text-gold-foreground dark:text-gold"
                                           : complete
                                             ? "bg-success/15 text-success"
                                             : "bg-primary/10 text-primary",
@@ -1513,7 +1368,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                           "font-medium",
                                           isProbationary &&
                                             remaining <= 0 &&
-                                            "text-gold-foreground",
+                                            "text-gold-foreground dark:text-gold",
                                         )}
                                       >
                                         {worked} {worked === 1 ? "day" : "days"}
@@ -1525,7 +1380,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                         </span>
                                       )}
                                       {isProbationary && remaining <= 0 && (
-                                        <span className="block text-[0.65rem] font-medium text-gold-foreground">
+                                        <span className="block text-[0.65rem] font-medium text-gold-foreground dark:text-gold">
                                           Probation cap reached — regularization due
                                         </span>
                                       )}
@@ -1543,7 +1398,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   )}
                                 />
                                 {awaiting ? (
-                                  <p className="mt-1 flex items-center gap-1.5 text-[0.7rem] text-gold-foreground">
+                                  <p className="mt-1 flex items-center gap-1.5 text-[0.7rem] text-gold-foreground dark:text-gold">
                                     <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
                                     Waiting for evaluation
                                   </p>
@@ -1564,7 +1419,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   variant="outline"
                                   className={cn(
                                     awaiting
-                                      ? "border-gold/40 bg-gold/15 text-gold-foreground"
+                                      ? "border-gold/40 bg-gold/15 text-gold-foreground dark:text-gold"
                                       : complete && "border-success/30 bg-success/15 text-success",
                                   )}
                                 >
@@ -1630,6 +1485,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                       <ClipboardCheck className="h-5 w-5 text-primary" /> Checklist Builder
                     </h2>
                   </div>
+                  <Badge variant="secondary">
+                    {hireStore.combinedProbationaryItems().length} combined items
+                  </Badge>
                 </div>
 
                 <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4">
@@ -1867,6 +1725,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <p className="font-medium">{c.title}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {c.items.length} item{c.items.length === 1 ? "" : "s"}
+                                </p>
                                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                                   <Badge variant="outline" className="text-[0.65rem]">
                                     {c.phase ?? "Probationary"}
@@ -2154,6 +2015,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                       <Send className="h-5 w-5 text-primary" /> Requested Checklists
                     </h2>
                   </div>
+                  <Badge variant="secondary">{requestedItems.length} requested</Badge>
                 </div>
 
                 <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_13rem_auto]">
@@ -2263,7 +2125,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   className={cn(
                                     "text-xs",
                                     r.position === "all" &&
-                                      "border-gold/40 bg-gold/10 text-gold-foreground",
+                                      "border-gold/40 bg-gold/10 text-gold-foreground dark:text-gold",
                                   )}
                                 >
                                   {r.position === "all" ? "All positions" : r.position}
@@ -2332,6 +2194,127 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="submissions" className="mt-4 space-y-6">
+          {/* HR REVIEW QUEUE — every submitted-but-unverified item across
+              hires. Verifying notifies the employee; returning sends the
+              correction note back to their checklist. */}
+          <Card className="border-border/70">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
+              <div>
+                <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold">
+                  <Inbox className="h-5 w-5 text-primary" /> Submissions Awaiting Review
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {submissions.length === 0
+                    ? "Nothing pending — new employee uploads land here."
+                    : `${submissions.length} submission${submissions.length === 1 ? "" : "s"} need${submissions.length === 1 ? "s" : ""} verification.`}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 cursor-pointer"
+                onClick={loadSubmissions}
+                disabled={subLoading}
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", subLoading && "animate-spin")} />
+                Refresh
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {subLoading ? (
+                <ListSkeleton items={4} />
+              ) : submissions.length === 0 ? (
+                <ListEmptyState
+                  subject="submissions awaiting review"
+                />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>New Hire</TableHead>
+                      <TableHead>Requirement</TableHead>
+                      <TableHead>Submitted</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {submissions.map((s) => (
+                      <TableRow key={s.employee_onboarding_item_id}>
+                        <TableCell>
+                          <p className="text-sm font-semibold">{s.hire_name}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {s.hire_stage ?? "Probationary"}
+                            {s.returned_count > 0 ? ` · returned ${s.returned_count}×` : ""}
+                          </p>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm">{s.item_text}</p>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            {s.phase && (
+                              <Badge variant="outline" className="text-[10px]">
+                                {s.phase}
+                              </Badge>
+                            )}
+                            {s.file_name && (
+                              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                                <FileCheck2 className="h-3 w-3 text-primary" />
+                                {s.file_name}
+                              </span>
+                            )}
+                          </div>
+                          {s.notes && (
+                            <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
+                              Note: {s.notes}
+                            </p>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {s.submitted_at
+                            ? new Date(s.submitted_at).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                              })
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1.5">
+                            <Button
+                              size="sm"
+                              className="h-8 cursor-pointer text-xs"
+                              disabled={verifyingId === s.employee_onboarding_item_id}
+                              onClick={() => handleVerifySubmission(s)}
+                            >
+                              {verifyingId === s.employee_onboarding_item_id ? (
+                                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                              )}
+                              Verify
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 cursor-pointer text-xs"
+                              onClick={() => {
+                                setReturnTarget(s);
+                                setReturnNote(s.review_note ?? "");
+                              }}
+                            >
+                              <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                              Return
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
@@ -2633,6 +2616,60 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Return-for-correction dialog: HR explains what the employee must fix */}
+      <Dialog
+        open={returnTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReturnTarget(null);
+            setReturnNote("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-4 w-4 text-orange-500" /> Return for correction
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            {returnTarget && (
+              <>
+                <strong className="text-foreground">{returnTarget.item_text}</strong> ·{" "}
+                {returnTarget.hire_name}. The employee keeps their uploaded file and
+                sees this note on their checklist.
+              </>
+            )}
+          </p>
+          <Textarea
+            value={returnNote}
+            onChange={(e) => setReturnNote(e.target.value)}
+            placeholder="e.g. The NBI clearance photo is blurry — please re-upload a clear scan."
+            rows={4}
+            className="text-xs"
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setReturnTarget(null);
+                setReturnNote("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleReturnSubmission} disabled={returnBusy}>
+              {returnBusy ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Send className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              Send correction
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -2654,6 +2691,10 @@ type EmployeeChecklistItem = {
   phase: Phase;
   /** Employee has submitted this requirement (awaiting HR verification). */
   submittedAt?: string;
+  /** HR correction feedback on a returned submission (null once verified). */
+  reviewNote?: string | null;
+  /** How many times HR has returned this item for correction. */
+  returnedCount?: number;
   /** Database onboarding item id — used to toggle completion / upload via the API. */
   dbId?: number;
   /** Template item id — virtual items are materialized on first interaction. */
@@ -2676,6 +2717,10 @@ function EmployeeChecklistRow({
   onView: (i: EmployeeChecklistItem) => void;
 }) {
   const submitted = Boolean(item.submittedAt || item.fileName || item.notes);
+  /** Pre-onboarding items are HR-owned context — visible but not actionable. */
+  const readOnly = item.phase === "Pre-onboarding";
+  /** HR sent the submission back with a correction note. */
+  const returned = !item.done && !!item.reviewNote;
 
   return (
     <div
@@ -2714,13 +2759,26 @@ function EmployeeChecklistRow({
               className={
                 item.done
                   ? "bg-success/10 text-success border-success/30 text-[10px]"
-                  : submitted
-                    ? "bg-destructive/10 text-destructive border-destructive/30 text-[10px]"
-                    : "bg-caution/10 text-caution border-caution/30 text-[10px]"
+                  : returned
+                    ? "bg-orange-500/10 text-orange-600 border-orange-500/30 text-[10px]"
+                    : submitted
+                      ? "bg-destructive/10 text-destructive border-destructive/30 text-[10px]"
+                      : "bg-caution/10 text-caution border-caution/30 text-[10px]"
               }
             >
-              {item.done ? "Verified by HR" : submitted ? "Submitted · pending review" : "Pending"}
+              {item.done
+                ? "Verified by HR"
+                : returned
+                  ? "Returned for correction"
+                  : submitted
+                    ? "Submitted · pending review"
+                    : "Pending"}
             </Badge>
+            {readOnly && (
+              <Badge variant="outline" className="bg-muted/40 text-muted-foreground text-[10px]">
+                Pre-onboarding · view only
+              </Badge>
+            )}
             {item.fileName && (
               <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                 <FileCheck2 className="h-3 w-3 text-primary" /> Attachment uploaded
@@ -2728,6 +2786,14 @@ function EmployeeChecklistRow({
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">{item.date}</p>
+            {returned && (
+              <p className="text-[11px] text-orange-600 dark:text-orange-400 mt-1 leading-snug">
+                HR feedback: {item.reviewNote}
+                {typeof item.returnedCount === "number" && item.returnedCount > 1
+                  ? ` (returned ${item.returnedCount}×)`
+                  : ""}
+              </p>
+            )}
         </div>
       </div>
 
@@ -2767,33 +2833,68 @@ export function EmployeeOnboarding() {
     const authUser = getUser();
     const myName = authUser?.full_name?.trim().toLowerCase() ?? "";
     const myEmployeeId = authUser?.employee_id ?? null;
+    const isEmployeePortal = (authUser?.role ?? "").toLowerCase() === "employee";
 
-    newHiresApi
-      .list({ per_page: 100 })
-      .then((res) => {
-        const mine =
-          (myEmployeeId != null
-            ? res.data.find((h) => h.employee_id === myEmployeeId)
-            : undefined) ??
-          (myName ? res.data.find((h) => h.name.trim().toLowerCase() === myName) : undefined) ??
-          // Demo fallback: prefer a Probationary hire so the probationary
-          // checklist view stays populated straight from the database.
-          res.data.find((h) => h.stage === "Probationary") ??
-          res.data[0] ??
-          null;
-        setNewHire(mine);
-        return mine;
-      })
+    // Employees use the ESS-safe endpoint (staff /new-hires list needs the
+    // New Hire Onboarding module permission, which employees don't have).
+    // hireLookup resolves the hire header; itemLookup resolves the rows the
+    // same way so NO staff-only call fires on the employee portal.
+    const hireLookup: Promise<ApiNewHire | null> = isEmployeePortal
+      ? essApi
+          .myChecklist()
+          .then((res) => {
+            const nh = res?.new_hire;
+            if (!nh) return null;
+            const mine = {
+              new_hire_id: nh.new_hire_id,
+              new_hire_code: nh.new_hire_code,
+              name: nh.name,
+              email: authUser?.email ?? "",
+              phone: "",
+              stage: nh.stage,
+            } as ApiNewHire;
+            setNewHire(mine);
+            return mine;
+          })
+          .catch(() => null)
+      : newHiresApi
+          .list({ per_page: 100 })
+          .then((res) => {
+            const mine =
+              (myEmployeeId != null
+                ? res.data.find((h) => h.employee_id === myEmployeeId)
+                : undefined) ??
+              (myName ? res.data.find((h) => h.name.trim().toLowerCase() === myName) : undefined) ??
+              // Demo fallback: prefer a Probationary hire so the probationary
+              // checklist view stays populated straight from the database.
+              res.data.find((h) => h.stage === "Probationary") ??
+              res.data[0] ??
+              null;
+            setNewHire(mine);
+            return mine;
+          });
+
+    // ESS-safe rows come bundled with myChecklist; staff rows come from the
+    // staff onboarding-items endpoint. Keeps employee + staff shapes identical.
+    const itemLookup = (mine: ApiNewHire): Promise<any[]> =>
+      isEmployeePortal
+        ? essApi
+            .myChecklist()
+            .then((res) => res?.data ?? [])
+            .catch(() => [])
+        : onboardingItemsApi
+            .listForNewHire(mine.new_hire_id)
+            .catch(() => []);
+
+    hireLookup
       .then((mine) => {
         if (!mine) return;
-        return onboardingItemsApi.listForNewHire(mine.new_hire_id).then((apiItems) => {
-          // Show ONLY the Probationary checklist — pre-onboarding / onboarding
-          // items are hidden from the employee portal entirely.
-          const probationaryOnly = apiItems.filter(
-            (i) => (i.phase ?? "Probationary") === "Probationary",
-          );
+        return itemLookup(mine).then((apiItems) => {
+          // All assigned phases are visible. Probationary items are fully
+          // actionable; Pre-onboarding items are read-only context (HR-owned)
+          // so new hires see what's coming without editing it.
           setItems(
-            probationaryOnly.map((i) => ({
+            apiItems.map((i) => ({
               id: i.employee_onboarding_item_id
                 ? `chk-${i.employee_onboarding_item_id}`
                 : `virt-${i.template_item_id}`,
@@ -2824,7 +2925,9 @@ export function EmployeeOnboarding() {
                   : (i.submitted_at?.slice(0, 10) ?? "2026-08-01"),
               done: Boolean(i.done),
               rank: i.done ? 0 : i.submitted_at ? 1 : 2,
-              phase: "Probationary" as Phase,
+              phase: ((i.phase ?? "Probationary") as Phase),
+              reviewNote: (i.review_note ?? null) as string | null,
+              returnedCount: (i.returned_count ?? 0) as number,
             })),
           );
         });
@@ -3023,17 +3126,65 @@ export function EmployeeOnboarding() {
     };
   }, [syncListHeight, filteredItems, viewingItem]);
 
-  /** Every format is password-protected: picking one opens the password gate. */
-  const handleExportEmployeeReport = (format: ReportFormat) => {
-    const data = buildEmployeeReportData();
-    if (!data) return;
-    if (data.rows.length === 0) {
-      toast.error("No checklist items to export.");
-      return;
-    }
-    setEmpCsvPending(format);
-    setEmpCsvOpen(true);
-  };
+  // Calculate Tenure & 30-60-90-180 Day Probation Milestones
+  const hireDateStr = newHire?.start_date || "2026-08-01";
+  const hireDate = useMemo(() => new Date(hireDateStr), [hireDateStr]);
+  const now = useMemo(() => new Date(), []);
+
+  const elapsedDays = useMemo(() => {
+    const diffTime = Math.abs(now.getTime() - hireDate.getTime());
+    return Math.max(1, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+  }, [hireDate, now]);
+
+  const totalProbationDays = 180;
+  const currentMonthNum = Math.min(6, Math.max(1, Math.ceil(elapsedDays / 30)));
+  const daysRemaining = Math.max(0, totalProbationDays - elapsedDays);
+  const tenurePct = Math.min(100, Math.round((elapsedDays / totalProbationDays) * 100));
+
+  const regularizationDate = useMemo(() => {
+    const d = new Date(hireDate);
+    d.setDate(d.getDate() + 180);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }, [hireDate]);
+
+  const milestones = [
+    {
+      id: "w1",
+      dayTarget: 7,
+      label: "Week 1",
+      title: "Orientation & Setup",
+      desc: "Biometrics, company policies & initial tooling",
+      status: elapsedDays >= 7 ? "completed" : "in-progress",
+      targetDate: new Date(hireDate.getTime() + 7 * 86400000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    },
+    {
+      id: "m1",
+      dayTarget: 30,
+      label: "Month 1",
+      title: "30-Day Check-in",
+      desc: "Initial performance touchpoint with supervisor",
+      status: elapsedDays >= 30 ? "completed" : elapsedDays >= 7 ? "in-progress" : "upcoming",
+      targetDate: new Date(hireDate.getTime() + 30 * 86400000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    },
+    {
+      id: "m3",
+      dayTarget: 90,
+      label: "Month 3",
+      title: "Mid-Probation Review",
+      desc: "Mid-term evaluation & KPI performance sync",
+      status: elapsedDays >= 90 ? "completed" : elapsedDays >= 30 ? "in-progress" : "upcoming",
+      targetDate: new Date(hireDate.getTime() + 90 * 86400000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    },
+    {
+      id: "m6",
+      dayTarget: 180,
+      label: "Month 6",
+      title: "Regularization",
+      desc: "Final appraisal for regular employment status",
+      status: elapsedDays >= 180 ? "completed" : elapsedDays >= 90 ? "in-progress" : "upcoming",
+      targetDate: regularizationDate,
+    },
+  ];
 
   const buildEmployeeReportData = (): ReportData | null => {
     if (!newHire) {
@@ -3062,161 +3213,133 @@ export function EmployeeOnboarding() {
     };
   };
 
-  const [empCsvOpen, setEmpCsvOpen] = useState(false);
-  const [empCsvBusy, setEmpCsvBusy] = useState(false);
-  const [empCsvPending, setEmpCsvPending] = useState<ReportFormat | null>(null);
-
-  const confirmEmployeeCsv = async (password: string) => {
-    if (!empCsvPending) return;
-    const format = empCsvPending;
-    const data = buildEmployeeReportData();
-    if (!data) return;
-    setEmpCsvBusy(true);
-    try {
-      await exportReport(data, format, { password });
-      const { zipName } = describeExport(data, format);
-      toast.success(
-        `Onboarding checklist exported as password-protected ${format.toUpperCase()} (${zipName}).`,
-      );
-      setEmpCsvOpen(false);
-      setEmpCsvPending(null);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Protected export failed.");
-    } finally {
-      setEmpCsvBusy(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Employee Portal"
         title="New Hire Onboarding"
-        description="Complete these probationary requirements to finish your onboarding. This menu disappears once HR marks onboarding as complete."
+        description="Complete your onboarding requirements and track your employment stage."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" className="gap-2" onClick={loadOnboarding} disabled={loading}>
               <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /> Refresh
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <Download className="h-4 w-4" /> Generate Report
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
-                <DropdownMenuItem onClick={() => handleExportEmployeeReport("pdf")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportEmployeeReport("docx")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportEmployeeReport("excel")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportEmployeeReport("csv")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-                  Every file is sealed in a password-protected ZIP (AES-256). You will be asked for
-                  a file password.
-                </p>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <SecureExportDialog
-              open={empCsvOpen}
-              onOpenChange={(o) => {
-                if (!empCsvBusy) {
-                  setEmpCsvOpen(o);
-                  if (!o) setEmpCsvPending(null);
-                }
-              }}
-              reportTitle="My Onboarding Checklist"
-              formatLabel={
-                !empCsvPending
-                  ? ""
-                  : empCsvPending === "pdf"
-                    ? "PDF"
-                    : empCsvPending === "docx"
-                      ? "DOCX"
-                      : empCsvPending === "excel"
-                        ? "Excel"
-                        : "CSV"
-              }
-              busy={empCsvBusy}
-              onConfirm={confirmEmployeeCsv}
+            <ReportMenu
+              report={() => buildEmployeeReportData() ?? { title: "My Onboarding Checklist", columns: [], rows: [] }}
+              recordCount={items.length}
             />
           </div>
         }
       />
 
-      {/* Yellow HR Notice Alert */}
-      <div className="flex items-start gap-3 rounded-lg border border-caution/30 bg-caution/10 p-4 text-caution">
-        <Info className="h-5 w-5 shrink-0 mt-0.5 text-caution" />
-        <p className="text-sm">
-          Employee regularization and full activation is performed by HR Admin after all
-          probationary requirements below have been verified.
-        </p>
-      </div>
-
-      {/* NEW HIRE ONBOARDING Header & Progress Card */}
-      <Card className="border-border/70 overflow-hidden">
+      {/* PROBATIONARY JOURNEY & MILESTONE TIMELINE */}
+      <Card className="border-border/70 shadow-xs overflow-hidden">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 bg-muted/20 border-b border-border/60">
+          <div>
+            <CardTitle className="font-display text-lg sm:text-xl font-semibold flex items-center gap-2">
+              <Compass className="h-5 w-5 text-primary" />
+              Probationary Journey &amp; Milestone Timeline
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Track your active tenure duration, 30-90-180 day performance touchpoints, and regularization pathway.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs font-semibold px-2.5 py-1 flex items-center gap-1.5 shadow-2xs">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              Day {elapsedDays} of {totalProbationDays} Active
+            </Badge>
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs font-semibold px-2.5 py-1">
+              Month {currentMonthNum} of 6
+            </Badge>
+          </div>
+        </CardHeader>
         <CardContent className="p-6 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <p className="eyebrow">NEW HIRE ONBOARDING</p>
-              <h2 className="text-2xl font-semibold font-display text-foreground mt-1">
-                {newHire?.name ?? getUser()?.full_name ?? myProfile.name}
-              </h2>
-              <p className="text-sm font-medium text-muted-foreground mt-0.5">
-                Employee ID:{" "}
-                <span className="text-foreground font-mono font-semibold">
-                  {newHire?.employee_id
-                    ? `OSM-${String(newHire.employee_id).padStart(4, "0")}`
-                    : myProfile.employeeId}
-                </span>
-              </p>
-            </div>
+          {/* Stepper Progression Grid */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {milestones.map((m) => {
+              const isCompleted = m.status === "completed";
+              const isInProgress = m.status === "in-progress";
 
-            {/* Prominent Employment Status — PROBATIONARY */}
-            <div className="flex flex-col sm:items-end gap-1.5">
-              <Badge
-                variant="outline"
-                className="border-gold/40 bg-gold/10 text-gold text-xs px-3 py-1 font-semibold uppercase tracking-wider self-start sm:self-auto"
-              >
-                PROBATIONARY
-              </Badge>
-              <span className="text-xs text-muted-foreground font-medium">Employment Status</span>
-            </div>
+              return (
+                <div
+                  key={m.id}
+                  className={`relative rounded-xl border p-4 transition-all ${
+                    isCompleted
+                      ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/15 shadow-2xs"
+                      : isInProgress
+                      ? "border-primary/60 bg-primary/5 shadow-xs ring-1 ring-primary/25"
+                      : "border-border/70 bg-muted/10 opacity-75"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                        isCompleted
+                          ? "bg-emerald-500/15 text-emerald-600 border border-emerald-500/30"
+                          : isInProgress
+                          ? "bg-primary text-primary-foreground font-semibold"
+                          : "bg-muted text-muted-foreground border border-border"
+                      }`}
+                    >
+                      {m.label}
+                    </span>
+
+                    {isCompleted ? (
+                      <div className="flex items-center gap-1 text-emerald-600 text-xs font-semibold">
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span>Passed</span>
+                      </div>
+                    ) : isInProgress ? (
+                      <div className="flex items-center gap-1 text-primary text-xs font-semibold">
+                        <Clock className="h-4 w-4 animate-pulse" />
+                        <span>Current Stage</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 text-muted-foreground text-xs font-medium">
+                        <Calendar className="h-3.5 w-3.5" />
+                        <span>{m.targetDate}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <h4 className="font-display text-sm font-bold text-foreground">
+                    {m.title}
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-1 leading-snug">
+                    {m.desc}
+                  </p>
+
+                  <div className="mt-3 pt-2.5 border-t border-border/60 flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">Target: Day {m.dayTarget}</span>
+                    <span className="font-semibold text-foreground">
+                      {isCompleted ? "Verified ✓" : isInProgress ? `Day ${elapsedDays} · Active` : m.targetDate}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          {/* Overall Progress */}
-          <div className="border-t border-border pt-4">
-            <div className="flex items-center justify-between text-sm font-medium mb-2">
-              <span className="text-muted-foreground">
-                Verified Progress{" "}
-                <span className="font-normal text-muted-foreground/70">
-                  (HR updates this when they verify your submissions)
-                </span>
+          {/* Overall Probation Timeline Bar */}
+          <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs mb-2">
+              <span className="font-semibold text-foreground flex items-center gap-1.5">
+                <Flag className="h-3.5 w-3.5 text-primary" /> Overall Probationary Elapsed Progress
               </span>
-              <span className="text-primary font-bold">{pct}% Complete</span>
+              <span className="text-muted-foreground">
+                <strong className="text-primary font-bold">{tenurePct}%</strong> elapsed · <strong className="text-foreground">{daysRemaining} days</strong> remaining until regularization review
+              </span>
             </div>
-            <Progress value={pct} className="h-3" />
+            <Progress value={tenurePct} className="h-2.5" />
+            <div className="flex justify-between items-center text-[11px] text-muted-foreground mt-2">
+              <span>Start Date: <strong className="text-foreground">{hireDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</strong></span>
+              <span>Target Regularization: <strong className="text-foreground">{regularizationDate}</strong></span>
+            </div>
           </div>
         </CardContent>
       </Card>
+
 
       {/* SPLIT VIEW CONTAINER: Checklist on Left, Task Detail Panel on Right.
           The checklist card keeps a constant 7-row height and DEFINES the
@@ -3231,7 +3354,7 @@ export function EmployeeOnboarding() {
                   <ClipboardList className="h-5 w-5 text-primary" /> Onboarding Checklist
                 </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Probationary checklist requirements
+                  Onboarding checklist requirements — probationary items are actionable, pre-onboarding items are view-only
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -3260,13 +3383,11 @@ export function EmployeeOnboarding() {
             <CardContent className="flex min-h-0 flex-1 flex-col">
               <div ref={listScrollRef} className="-mr-2 overflow-y-auto pr-2">
                 {loading ? (
-                  <div className="flex h-full items-center justify-center py-12 text-center text-sm text-muted-foreground">
-                    Loading your probationary onboarding checklist...
-                  </div>
+                  <ListSkeleton items={5} />
                 ) : filteredItems.length === 0 ? (
                   <div className="flex h-full items-center justify-center py-12 px-4 text-center text-sm text-muted-foreground">
                     {totalCount === 0
-                      ? "No probationary onboarding checklist assigned yet — your HR admin will assign requirements once you start."
+                      ? "No onboarding checklist assigned yet — your HR admin will assign requirements once you start."
                       : "No checklist items match the current filter."}
                   </div>
                 ) : (
@@ -3306,8 +3427,13 @@ export function EmployeeOnboarding() {
                       {viewingItem.done ? "Completed" : "Pending Action"}
                     </Badge>
                     <Badge variant="outline" className="text-xs">
-                      Probationary
+                      {viewingItem.phase}
                     </Badge>
+                    {viewingItem.phase === "Pre-onboarding" && (
+                      <Badge variant="outline" className="bg-muted/40 text-muted-foreground text-xs">
+                        View only · managed by HR
+                      </Badge>
+                    )}
                   </div>
                   <CardTitle className="font-display text-lg font-semibold leading-tight">
                     {viewingItem.title}
@@ -3335,6 +3461,29 @@ export function EmployeeOnboarding() {
                     "Please complete this requirement and upload the supporting document for HR verification."}
                 </div>
 
+                {/* HR correction feedback — resubmit below to resolve it */}
+                {!viewingItem.done && viewingItem.reviewNote && (
+                  <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-xs leading-relaxed">
+                    <p className="font-semibold text-orange-600 dark:text-orange-400">
+                      HR requested a correction
+                      {typeof viewingItem.returnedCount === "number" &&
+                      viewingItem.returnedCount > 1
+                        ? ` (returned ${viewingItem.returnedCount}×)`
+                        : ""}
+                    </p>
+                    <p className="text-foreground mt-1">{viewingItem.reviewNote}</p>
+                  </div>
+                )}
+
+                {/* Pre-onboarding items are HR-owned: details are visible,
+                    submission controls are hidden */}
+                {viewingItem.phase === "Pre-onboarding" && (
+                  <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground leading-relaxed">
+                    This is a pre-onboarding requirement managed by HR. No action
+                    is needed from you here — it will unlock for submission if HR
+                    assigns it to your probationary checklist.
+                  </div>
+                )}
                 {/* Existing Uploaded Document */}
                 {viewingItem.fileName && (
                   <div className="flex items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/5 p-3">
@@ -3360,17 +3509,20 @@ export function EmployeeOnboarding() {
                   </div>
                 )}
 
-                <DocumentPreviewModal
-                  open={docOpen}
-                  onOpenChange={setDocOpen}
-                  fileUrl={viewingItem.fileUrl as string}
-                  fileName={viewingItem.fileName}
-                />
+                {docOpen && viewingItem.fileUrl && (
+                  <DocumentPreviewModal
+                    open={docOpen}
+                    onOpenChange={setDocOpen}
+                    fileUrl={viewingItem.fileUrl}
+                    fileName={viewingItem.fileName}
+                  />
+                )}
 
                 {/* Upload Dropzone / Placeholder — only when the checklist
                     item requires an upload; stretches to fill leftover
                     vertical space in the card */}
-                {viewingItem.requiresUpload !== false && (
+                {viewingItem.phase !== "Pre-onboarding" &&
+                  viewingItem.requiresUpload !== false && (
                   <div className="flex flex-1 flex-col gap-2">
                     <Label className="text-xs font-semibold">
                       {viewingItem.fileName
@@ -3440,7 +3592,8 @@ export function EmployeeOnboarding() {
                   </div>
                 )}
 
-                {/* Optional Notes */}
+                {/* Optional Notes — hidden for read-only pre-onboarding items */}
+                {viewingItem.phase !== "Pre-onboarding" && (
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">
                     Notes / Details{" "}
@@ -3454,6 +3607,7 @@ export function EmployeeOnboarding() {
                     className="text-xs"
                   />
                 </div>
+                )}
 
                 {/* Action Buttons — pinned to the bottom of the card */}
                 <div className="mt-auto flex items-center justify-end gap-2 border-t border-border pt-3">
@@ -3468,6 +3622,7 @@ export function EmployeeOnboarding() {
                   >
                     Cancel
                   </Button>
+                  {viewingItem.phase !== "Pre-onboarding" && (
                   <Button
                     size="sm"
                     onClick={handleTaskSubmit}
@@ -3485,6 +3640,7 @@ export function EmployeeOnboarding() {
                       </>
                     )}
                   </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

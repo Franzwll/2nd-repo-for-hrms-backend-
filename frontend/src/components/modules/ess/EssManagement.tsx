@@ -32,6 +32,7 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
+import { ReportMenu } from "@/components/ui/report-menu";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
@@ -182,7 +183,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   >("Approved");
   const [reviewNote, setReviewNote] = useState("");
   const [confirmReject, setConfirmReject] = useState(false);
-  const [reportsOpen, setReportsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [behalfDept, setBehalfDept] = useState("all");
@@ -470,6 +470,56 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     return rows.filter((r) => r.status === s).length;
   };
 
+  const buildEssReport = (reportName: string) => {
+    const baseRows = sortedFiltered.map((r) => ({
+      reference: r.id,
+      employee: r.employee,
+      department: r.department,
+      category: r.category,
+      type: r.type,
+      filed: r.filed,
+      assignedTo: r.assignedTo,
+      status: r.status,
+    }));
+    return {
+      title: reportName,
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Department: ${dept} | Status: ${status}`,
+      columns: [
+        { header: "Reference", key: "reference" },
+        { header: "Employee", key: "employee" },
+        { header: "Department", key: "department" },
+        { header: "Category", key: "category" },
+        { header: "Type", key: "type" },
+        { header: "Filed", key: "filed" },
+        { header: "Assigned To", key: "assignedTo" },
+        { header: "Status", key: "status" },
+      ],
+      rows: baseRows,
+      summary: [
+        { label: "Total Requests", value: countsData.total },
+        { label: "Pending", value: countsData.pending },
+        { label: "Under Review", value: countsData.under_review },
+        { label: "Approved", value: countsData.approved },
+        { label: "Completed", value: countsData.completed },
+        { label: "Rows in Report", value: baseRows.length },
+      ],
+    };
+  };
+
+  const essReportOptions = (
+    role === "superadmin"
+      ? reportOptions
+      : reportOptions.filter(
+          (r) =>
+            !["Branch Performance", "Approval Performance", "ESS Usage Statistics"].includes(r),
+        )
+  ).map((reportName) => ({
+    id: reportName,
+    title: reportName,
+    build: () => buildEssReport(reportName),
+    recordCount: sortedFiltered.length,
+  }));
+
   const reviewRow = rows.find((r) => r.id === reviewId) ?? null;
 
   // Opening a review takes ownership: Pending auto-promotes to Under Review.
@@ -534,18 +584,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   return (
     <div>
       <PageHeader
-        eyebrow={role === "superadmin" ? "Super Admin · Core HR" : "Admin · Core HR"}
         title="ESS Management"
-        description={
-          role === "superadmin"
-            ? "Organization-wide monitoring, bulk processing, workflow and policy configuration."
-            : "Process, approve and track employee self-service requests for your departments."
-        }
-        actions={
-          <Button size="sm" variant="outline" onClick={() => setReportsOpen(true)}>
-            <FileText className="mr-2 h-4 w-4" /> Generate reports
-          </Button>
-        }
+        description="Monitor, process and configure employee self-service requests."
+        actions={<ReportMenu size="sm" reports={essReportOptions} />}
       />
 
       {loading ? (
@@ -577,7 +618,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
           label="Returned"
           value={count("Returned for Clarification")}
           icon={RotateCcw}
-          hint="Awaiting employee response"
           onClick={() => setStatus("Returned for Clarification")}
         />
         <StatCard
@@ -600,6 +640,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
         <TabsList className="flex h-auto flex-wrap justify-start">
           <TabsTrigger className="flex items-center gap-1.5" value="requests">
             <ListChecks className="h-3.5 w-3.5" /> Request Queue
+          </TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5" value="learning">
+            <BookOpen className="h-3.5 w-3.5" /> Learning
           </TabsTrigger>
           {role === "superadmin" && (
             <TabsTrigger className="flex items-center gap-1.5" value="config">
@@ -841,11 +884,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                             <Badge variant="outline" className={statusClass[r.status]}>
                               {r.status === "Returned for Clarification" ? "Returned" : r.status}
                             </Badge>
-                            {r.status === "Returned for Clarification" && (
-                              <p className="mt-1 text-[11px] text-muted-foreground">
-                                Awaiting employee response
-                              </p>
-                            )}
                             {(r.returnedCount ?? 0) > 1 && (
                               <p className="mt-1 text-[11px] text-caution">
                                 Returned {r.returnedCount}×
@@ -920,9 +958,19 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                   to={requestPage.to}
                   total={requestPage.total}
                   label="requests"
+                  showRangeLabel={false}
                   onPageChange={requestPage.setPage}
                 />
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="learning" className="mt-4">
+          <Card className="border-border/70">
+            <CardContent className="p-6">
+              <p className="text-sm text-muted-foreground">
+                Learning management is not available in this build.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -935,10 +983,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                     <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                       <Cog className="h-5 w-5 text-primary" /> Category Management
                     </h2>
-                    <p className="text-xs text-muted-foreground">
-                      Create, edit and remove ESS request categories. Description shows to employees
-                      as the request-form placeholder.
-                    </p>
                   </div>
                   <div className="mt-3 rounded-md border border-dashed border-border">
                     <button
@@ -947,7 +991,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                       aria-expanded={newCategoryOpen}
                       className="flex w-full cursor-pointer items-center justify-between gap-2 p-3 text-left"
                     >
-                      <span className="eyebrow flex items-center gap-1.5">
+                      <span className="flex items-center gap-1.5 text-sm font-medium">
                         <ListChecks className="h-3.5 w-3.5" /> New category
                       </span>
                       <ChevronDown
@@ -1195,19 +1239,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                       <Settings2 className="h-5 w-5 text-primary" />
                       Request Management Settings
                     </h2>
-                    <p className="text-xs text-muted-foreground">
-                      Intake rules, approval routing, SLA and notifications applied to every open
-                      category.
-                    </p>
-                  </div>
-
-                  <div className="rounded-md border border-border p-3">
-                    <p className="eyebrow">Intake</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {categories.filter((c) => c.open !== false).length} of {categories.length}{" "}
-                      categories are open for new requests. Close a category in the list to stop
-                      accepting requests without deleting it.
-                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -1371,6 +1402,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                     to={logPage.to}
                     total={logPage.total}
                     label="log entries"
+                    showRangeLabel={false}
                     onPageChange={logPage.setPage}
                   />
                 </div>
@@ -1422,21 +1454,18 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                         value: "Approved",
                         id: "decision-approve",
                         label: "Approve",
-                        help: "Employee is notified and the request is finalised.",
                         active: "border-success/50 bg-success/10",
                       },
                       {
                         value: "Returned for Clarification",
                         id: "decision-clarify",
                         label: "Request clarification",
-                        help: "Sent back to the employee — they can edit and resubmit the same request.",
                         active: "border-primary/50 bg-primary/10",
                       },
                       {
                         value: "Rejected",
                         id: "decision-reject",
                         label: "Reject",
-                        help: "Request is closed permanently; the employee must file a new one.",
                         active: "border-destructive/50 bg-destructive/10",
                       },
                     ] as const
@@ -1450,7 +1479,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                       <RadioGroupItem value={o.value} id={o.id} className="mt-0.5" />
                       <span>
                         <span className="block text-sm font-medium">{o.label}</span>
-                        <span className="block text-xs text-muted-foreground">{o.help}</span>
                       </span>
                     </label>
                   ))}
@@ -1484,13 +1512,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                   </div>
                 )}
               </div>
-
-              {confirmReject && (
-                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
-                  Rejecting closes this request permanently. Press “Confirm rejection” to continue,
-                  or switch to “Request clarification” if the employee can still fix it.
-                </div>
-              )}
             </div>
           )}
           <DialogFooter>
@@ -1513,43 +1534,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Generate Reports</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2">
-            {(role === "superadmin"
-              ? reportOptions
-              : reportOptions.filter(
-                (r) =>
-                  ![
-                    "Branch Performance",
-                    "Approval Performance",
-                    "ESS Usage Statistics",
-                  ].includes(r),
-              )
-            ).map((r) => (
-              <div
-                key={r}
-                className="flex items-center justify-between rounded-md border border-border p-3"
-              >
-                <span className="text-sm">{r}</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    toast.success(`${r} generated`);
-                    setReportsOpen(false);
-                  }}
-                >
-                  Generate
-                </Button>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

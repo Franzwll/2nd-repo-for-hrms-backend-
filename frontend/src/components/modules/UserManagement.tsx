@@ -557,7 +557,6 @@ export function UserManagement() {
   return (
     <div>
       <PageHeader
-        eyebrow="Super Admin"
         title="User Management"
         description="System accounts, login activity, and per-module permission matrix."
       />
@@ -573,7 +572,6 @@ export function UserManagement() {
             setStatusFilter("all");
             setActiveTab("users");
           }}
-          hint="Click to view all"
         />
         <StatCard
           label="Active"
@@ -585,7 +583,6 @@ export function UserManagement() {
             setRoleFilter("all");
             setActiveTab("users");
           }}
-          hint="Click to filter active"
         />
         <StatCard
           label="Suspended"
@@ -597,7 +594,6 @@ export function UserManagement() {
             setRoleFilter("all");
             setActiveTab("users");
           }}
-          hint="Click to filter suspended"
         />
         <StatCard
           label="Admins"
@@ -609,7 +605,6 @@ export function UserManagement() {
             setStatusFilter("all");
             setActiveTab("users");
           }}
-          hint="Click to filter admins"
         />
       </div>
 
@@ -935,6 +930,7 @@ export function UserManagement() {
                 to={usersPage.to}
                 total={usersPage.total}
                 label="users"
+                showRangeLabel={false}
                 onPageChange={usersPage.setPage}
               />
             </CardContent>
@@ -1114,11 +1110,6 @@ export function UserManagement() {
                   </TableBody>
                 </Table>
               </div>
-              <p className="mt-3 text-xs text-muted-foreground">
-                {isEditingMatrix
-                  ? "Checkboxes active — click Save when finished editing permissions."
-                  : "Click the 'Edit matrix' button above to unlock and modify role permission checkboxes."}
-              </p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -1133,9 +1124,6 @@ export function UserManagement() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium">Two-factor authentication</p>
-                    <p className="text-xs text-muted-foreground">
-                      Require an OTP code for all admin logins.
-                    </p>
                   </div>
                   <Switch checked={twoFactor} onCheckedChange={setTwoFactor} />
                 </div>

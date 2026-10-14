@@ -86,4 +86,39 @@ class Notifier
             ->pluck('system_user_id')
             ->all();
     }
+
+    /**
+     * Audience for an announcement: respects the Audience column so the bell
+     * matches what the board shows (All / Employee / Admin / Super Admin).
+     * Returns null to mean "all users".
+     */
+    public static function audienceRoleNames(?string $audience): ?array
+    {
+        return match ($audience) {
+            'Employee' => ['Employee'],
+            'Admin' => ['Admin'],
+            'Super Admin' => ['Super Admin'],
+            default => null,
+        };
+    }
+
+    /**
+     * Deliver to every ACTIVE user holding one of the given role names.
+     */
+    public static function toActiveRoles(array $roleNames, array $attrs, ?array $exceptIds = null): void
+    {
+        $roleIds = SystemRole::whereIn('role_name', $roleNames)->pluck('role_id');
+
+        if ($roleIds->isEmpty()) {
+            return;
+        }
+
+        $query = SystemUser::whereIn('role_id', $roleIds)->where('status', 'Active');
+
+        if (! empty($exceptIds)) {
+            $query->whereNotIn('system_user_id', $exceptIds);
+        }
+
+        self::to($query->pluck('system_user_id')->all(), $attrs);
+    }
 }

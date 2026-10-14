@@ -39,11 +39,15 @@ class PracticalRequirement
 
     /**
      * True when the practical assessment applies to this applicant's post:
-     * the explicit job-post flag wins, otherwise the position is checked
-     * against the designated list.
+     * the global Core HCM switch must be ON, then the explicit job-post
+     * flag wins, otherwise the position is checked against the designated list.
      */
     public static function required(?JobPost $jobPost, ?string $position = null): bool
     {
+        if (! AssessmentConfig::practicalTestEnabled()) {
+            return false;
+        }
+
         if ($jobPost && (bool) $jobPost->requires_practical) {
             return true;
         }

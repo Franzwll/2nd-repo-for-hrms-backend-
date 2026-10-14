@@ -3,10 +3,13 @@
 namespace Modules\ApplicantManagement\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Mail\AssessmentTestResultMail;
 use App\Services\AuditLogger;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Modules\ApplicantManagement\Http\Resources\AssessmentTestResource;
 use Modules\ApplicantManagement\Models\Applicant;
 use Modules\ApplicantManagement\Models\AssessmentTest;
@@ -45,7 +48,21 @@ class AssessmentTestController extends Controller
     /* Workflow gate: the interview assessment must be "Passed" first.  */
     public function store(Request $request, int $applicant): JsonResponse
     {
+        if (! \Modules\ApplicantManagement\Services\AssessmentConfig::assessmentTestEnabled()) {
+            return response()->json([
+                'message' => 'Assessment tests are disabled in Core HCM settings. Enable them in Core HCM to record assessment tests.',
+            ], 422);
+        }
+
         $model = Applicant::with('jobPost')->findOrFail($applicant);
+
+        // Position gate: only candidates for positions requiring assessment test
+        // may take the assessment test.
+        if (! \Modules\ApplicantManagement\Services\AssessmentRequirement::required($model->jobPost, null, $model->jobPost?->position)) {
+            return response()->json([
+                'message' => 'This position does not require an assessment test. Enable "Requires Assessment" in the job post, position, or configure the position in AssessmentRequirement.',
+            ], 422);
+        }
 
         // Workflow gate: only candidates who passed the interview assessment
         // may take the assessment test.
@@ -96,14 +113,25 @@ class AssessmentTestController extends Controller
             details: "Recorded assessment test \"{$test->test_title}\" for {$model->name} with score {$test->total_score}% and result {$test->result}."
         );
 
-        NotificationService::send(
-            title: "Assessment test recorded: {$model->name}",
-            body: "Scored {$test->total_score}% — Result: {$test->result}.",
-            module: 'Applicant Management',
-            type: 'info',
-            targetType: 'Assessment Test',
-            targetId: (string) $test->assessment_test_id
-        );
+        // Helpful-only: assessment test scores stay in audit log + applicant email.
+        // No bell for intermediate steps.
+
+        // Email the applicant their score right after the test is recorded.
+        if ($model->email) {
+            try {
+                Mail::to($model->email)->send(new AssessmentTestResultMail(
+                    recipientEmail: $model->email,
+                    applicantName: $model->name,
+                    position: $model->jobPost?->title ?? 'Position',
+                    testTitle: $test->test_title,
+                    totalScore: (float) ($test->total_score ?? 0),
+                    result: $test->result,
+                    passingScore: (float) ($test->passing_score ?? 75.00),
+                ));
+            } catch (\Throwable $e) {
+                Log::warning("Failed to send assessment test score to {$model->email}: ".$e->getMessage());
+            }
+        }
 
         return response()->json(new AssessmentTestResource($test->load('applicant.jobPost.department')), 201);
     }

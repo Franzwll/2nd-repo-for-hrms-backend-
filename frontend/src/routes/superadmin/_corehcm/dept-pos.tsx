@@ -2,6 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { DeptPosModule } from "@/components/modules/CoreHCM";
 
 export const Route = createFileRoute("/superadmin/_corehcm/dept-pos")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    highlight: typeof search.highlight === "string" ? search.highlight : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Department, Positions & Salary Grades — Oxford Suites HRMS" },

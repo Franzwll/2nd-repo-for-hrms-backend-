@@ -24,6 +24,8 @@ class UserResource extends JsonResource
             'otp_enabled' => (bool) ($this->otp_enabled ?? true),
             'permissions' => $this->permissionMap(),
             'last_login_at' => $this->last_login_at?->toIso8601String(),
+            'gender' => $this->gender,
+            'profile_photo_url' => $this->profile_photo_url,
         ];
     }
 }

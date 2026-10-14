@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -12,11 +13,14 @@ import { Award, Download, Printer, CheckCircle2, ShieldCheck, Loader2 } from "lu
 import { toast } from "sonner";
 import { myProfile } from "@/data/ess";
 import { getUser } from "@/lib/auth";
+import { essApi } from "@/lib/api";
 import { downloadCertificatePdf } from "@/lib/downloadCertificatePdf";
 
 interface LmsCertificateModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Catalog course code (e.g. LMS-101) — used to verify completion + code. */
+  courseId?: string;
   courseTitle: string;
   category?: string;
   completedDate?: string;
@@ -26,16 +30,39 @@ interface LmsCertificateModalProps {
 export function LmsCertificateModal({
   open,
   onOpenChange,
+  courseId,
   courseTitle,
   category = "Hospitality & Compliance",
   completedDate = "Jul 10, 2026",
   score = "95%",
 }: LmsCertificateModalProps) {
-  const user = getUser();
-  const recipientName = user?.full_name || myProfile.name;
-  const recipientRole = user?.department_name ? `${user.department_name} Staff` : myProfile.position;
-  const recipientDept = user?.department_name || myProfile.department;
+  // getUser() reads browser storage (absent during server render) — resolve
+  // identity after mount so server and client HTML match on first paint.
+  const [authUser, setAuthUser] = useState<ReturnType<typeof getUser>>(null);
+  useEffect(() => {
+    setAuthUser(getUser());
+  }, []);
+  const recipientName = authUser?.full_name || myProfile.name;
+  const recipientRole = authUser?.department_name ? `${authUser.department_name} Staff` : myProfile.position;
+  const recipientDept = authUser?.department_name || myProfile.department;
   const [downloading, setDownloading] = useState(false);
+
+  // Server-verified credential: eligibility + deterministic verification code
+  // for COMPLETED courses only (404 otherwise — never fabricate a code).
+  const [verificationCode, setVerificationCode] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  useEffect(() => {
+    if (!open || !courseId) {
+      setVerificationCode(null);
+      return;
+    }
+    setVerifying(true);
+    essApi
+      .learningCertificate(courseId)
+      .then((res) => setVerificationCode(res?.verification_code ?? null))
+      .catch(() => setVerificationCode(null))
+      .finally(() => setVerifying(false));
+  }, [open, courseId]);
 
   const handlePrint = () => {
     window.print();
@@ -56,6 +83,7 @@ export function LmsCertificateModal({
         category: category,
         completedDate: completedDate,
         score: score,
+        verificationCode: verificationCode ?? "UNVERIFIED",
       });
       toast.success(`Certificate for "${courseTitle}" downloaded as PDF.`);
     } catch {
@@ -110,7 +138,9 @@ export function LmsCertificateModal({
             </div>
             <div className="flex flex-col items-center">
               <CheckCircle2 className="h-6 w-6 text-emerald-600 mb-0.5" />
-              <p className="font-mono text-[9px]">ID: LMS-VERIFIED-2026</p>
+              <p className="font-mono text-[9px]">
+                ID: {verifying ? "VERIFYING…" : (verificationCode ?? "UNVERIFIED")}
+              </p>
             </div>
             <div>
               <p className="font-semibold text-foreground">HR Administration</p>
@@ -120,7 +150,13 @@ export function LmsCertificateModal({
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2 sm:justify-between items-center border-t border-border pt-3">
-          <p className="text-[11px] text-muted-foreground">Permanent record saved in employee file.</p>
+          <p className="text-[11px] text-muted-foreground">
+            {verifying
+              ? "Verifying record with HR…"
+              : verificationCode
+                ? `Verified record · ${verificationCode}`
+                : "Unverified — completion pending HR records."}
+          </p>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={handlePrint} className="gap-1.5 text-xs">
               <Printer className="h-3.5 w-3.5" /> Print

@@ -4,7 +4,13 @@
 
 import { clearSession, getToken } from "./auth";
 
-const BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string) || "http://127.0.0.1:8000/api/v1";
+const RAW_BASE_URL =
+  (import.meta.env["VITE_API_BASE_URL"] as string) || "http://127.0.0.1:8000/api/v1";
+// Normalize: "/api" + "/applicants" must join as "/api/v1/applicants" (the Vite
+// dev proxy forwards /api -> Laravel), never "/api/applicants".
+const BASE_URL =
+  RAW_BASE_URL.replace(/\/+$/, "") +
+  (RAW_BASE_URL.replace(/\/+$/, "").endsWith("/v1") ? "" : "/v1");
 export const API_BASE_URL = BASE_URL;
 
 /** Never show raw SQL / DB internals to users — collapse them to a generic message. */
@@ -89,6 +95,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     // If 204 No Content
     if (response.status === 204) {
       return {} as T;
+    }
+
+    // Vite proxy / SSR fallback can answer with 200 + text/html (index.html)
+    // when the backend is unreachable or the dev server hasn't reloaded.
+    // Fail fast as a network error (mock-data fallback) instead of a
+    // confusing `JSON.parse: unexpected character` SyntaxError.
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      throw new TypeError(
+        `Expected JSON but received ${contentType || "unknown content type"} (HTTP ${response.status}) for ${url}`,
+      );
     }
 
     return response.json();
@@ -299,7 +316,12 @@ export interface ApiInterview {
   scheduled_time: string;
   mode: "On-site" | "Virtual";
   facility_id: number | null;
-  facility_status: "Not Required" | "Waiting for Facility Approval" | "Facility Approved" | "Facility Declined" | null;
+  facility_status:
+    | "Not Required"
+    | "Waiting for Facility Approval"
+    | "Facility Approved"
+    | "Facility Declined"
+    | null;
   facility?: {
     facility_id: number;
     name: string;
@@ -310,6 +332,11 @@ export interface ApiInterview {
   } | null;
   interviewer_employee_id: number | null;
   interviewer_name: string | null;
+  zoom_meeting_id: string | null;
+  zoom_join_url: string | null;
+  zoom_continue_url: string | null;
+  zoom_password: string | null;
+  interview_notes?: string | null;
   status: "Scheduled" | "Completed" | "No Show";
   applicant?: {
     applicant_id: number;
@@ -433,11 +460,7 @@ export interface ApiFinalEvaluation {
 /* Supporting-document verification (NLP comparison of an uploaded COE /
  * Certificate / Credential against the applicant's resume claims). */
 export type DocumentVerificationStatus =
-  | "PENDING"
-  | "PROCESSING"
-  | "VERIFIED"
-  | "DISCREPANCY_FOUND"
-  | "UNABLE_TO_VERIFY";
+  "PENDING" | "PROCESSING" | "VERIFIED" | "DISCREPANCY_FOUND" | "UNABLE_TO_VERIFY";
 
 export interface ApiComparedResumeEntry {
   entry_index: number | null;
@@ -493,7 +516,10 @@ export function resolveStorageUrl(value: string | null): string | null {
   // Fall back to the page origin when it is not an absolute URL.
   let origin: string;
   try {
-    origin = new URL(BASE_URL, typeof window !== "undefined" ? window.location.origin : "http://localhost").origin;
+    origin = new URL(
+      BASE_URL,
+      typeof window !== "undefined" ? window.location.origin : "http://localhost",
+    ).origin;
   } catch {
     origin = typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:8000";
   }
@@ -587,6 +613,11 @@ export const applicantsApi = {
 };
 
 export const assessmentsApi = {
+  /** Global Assessment Test / Practical Test switches owned by Core HCM. */
+  getConfig: () =>
+    request<{ data: { assessment_test_enabled: boolean; practical_test_enabled: boolean } }>(
+      `/assessments/config`,
+    ),
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
     return request<{ data: ApiAssessment[]; meta: any }>(`/assessments${qs ? `?${qs}` : ""}`);
@@ -622,11 +653,7 @@ export interface ScreeningConfiguration {
 
 /** Entity types a requirement template row can carry (mirrors the NLP entity set). */
 export type ScreeningRequirementEntityType =
-  | "skill"
-  | "job_role"
-  | "certification"
-  | "education"
-  | "experience";
+  "skill" | "job_role" | "certification" | "education" | "experience";
 
 export interface ApiRequirementTemplateItem {
   item_id: number;
@@ -756,10 +783,9 @@ export const screeningApi = {
         { method: "PUT", body: JSON.stringify(payload) },
       ),
     remove: (id: number) =>
-      request<{ success: boolean; message: string }>(
-        `/screening/requirement-templates/${id}`,
-        { method: "DELETE" },
-      ),
+      request<{ success: boolean; message: string }>(`/screening/requirement-templates/${id}`, {
+        method: "DELETE",
+      }),
     toggleActive: (id: number) =>
       request<{ success: boolean; data: ApiRequirementTemplate }>(
         `/screening/requirement-templates/${id}/toggle`,
@@ -790,6 +816,29 @@ export const interviewsApi = {
    *  automatically emails the applicant their confirmed schedule. */
   facilityApprove: (id: number | string) =>
     request<ApiInterview>(`/interviews/${id}/facility-approve`, { method: "POST" }),
+  /** Mint a Meeting SDK signature to embed the Zoom meeting in the HRMS popup.
+   *  Rejects (428/501) when the interview has no meeting yet or SDK keys are
+   *  missing — the caller falls back to local preview + join-link button. */
+  zoomSignature: (id: number | string, role: 0 | 1 = 0) =>
+    request<{
+      meeting_number: string;
+      password: string | null;
+      join_url: string | null;
+      sdk_key: string;
+      signature: string;
+      role: number;
+      user_name: string;
+    }>(`/interviews/${id}/zoom-signature`, {
+      method: "POST",
+      body: JSON.stringify({ role }),
+    }),
+
+  /** Save interviewer notes during/after the interview. */
+  saveNotes: (id: number | string, notes: string) =>
+    request<{ message: string; interview_notes: string | null }>(`/interviews/${id}/notes`, {
+      method: "PATCH",
+      body: JSON.stringify({ notes }),
+    }),
 };
 
 /* ========================================================================= */
@@ -806,7 +855,9 @@ export const facilitiesApi = {
 export const assessmentTestsApi = {
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
-    return request<{ data: ApiAssessmentTest[]; meta: any }>(`/assessment-tests${qs ? `?${qs}` : ""}`);
+    return request<{ data: ApiAssessmentTest[]; meta: any }>(
+      `/assessment-tests${qs ? `?${qs}` : ""}`,
+    );
   },
   create: (applicantId: number | string, data: Record<string, any>) =>
     request<ApiAssessmentTest>(`/applicants/${applicantId}/assessment-tests`, {
@@ -857,7 +908,9 @@ export const assessmentInvitesApi = {
 export const practicalTestsApi = {
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
-    return request<{ data: ApiPracticalTest[]; meta: any }>(`/practical-tests${qs ? `?${qs}` : ""}`);
+    return request<{ data: ApiPracticalTest[]; meta: any }>(
+      `/practical-tests${qs ? `?${qs}` : ""}`,
+    );
   },
   create: (applicantId: number | string, data: Record<string, any>) =>
     request<ApiPracticalTest>(`/applicants/${applicantId}/practical-tests`, {
@@ -902,7 +955,9 @@ export interface ApiFinalEvaluationPreview {
 export const finalEvaluationsApi = {
   list: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
-    return request<{ data: ApiFinalEvaluation[]; meta: any }>(`/final-evaluations${qs ? `?${qs}` : ""}`);
+    return request<{ data: ApiFinalEvaluation[]; meta: any }>(
+      `/final-evaluations${qs ? `?${qs}` : ""}`,
+    );
   },
   preview: (applicantId: number | string) =>
     request<ApiFinalEvaluationPreview>(`/applicants/${applicantId}/final-evaluations/preview`),
@@ -964,6 +1019,11 @@ export interface ApiJobPost {
   department_id: number;
   department?: string;
   position_id: number | null;
+  /**
+   * Saved builder canvas arrangement (ordered block ids). null means the post
+   * was built before block order was persisted, so the default order applies.
+   */
+  blocks: string[] | null;
   employment_type: "Full-time" | "Part-time" | "Contract" | "Seasonal";
   schedule: string | null;
   salary_min: number | null;
@@ -980,6 +1040,9 @@ export interface ApiJobPost {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
+  additional?: string[];
+  instructions?: string | null;
+  about?: string | null;
   platforms?: string[];
   picture: string | null;
   picture_url: string | null;
@@ -1010,6 +1073,8 @@ export interface JobDraftPayload {
   vacancies?: number | undefined;
   experience_level?: string | undefined;
   education_level?: string | undefined;
+  blocks?: string[] | undefined;
+  notes?: Record<string, string> | undefined;
 }
 
 export interface JobDraftResult {
@@ -1017,6 +1082,7 @@ export interface JobDraftResult {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
+  additional?: string[];
   instructions: string;
   about: string;
 }
@@ -1173,6 +1239,10 @@ export interface ApiPosition {
   level: string;
   headcount: number;
   filled_count: number;
+  /** Open slots = headcount - filled_count, resolved by PositionResource. */
+  vacancies?: number;
+  requires_assessment?: boolean;
+  requires_practical?: boolean;
 }
 
 /** Core HCM lookups — departments & positions live in the database. */
@@ -1198,7 +1268,7 @@ export const coreHcmApi = {
   salaryGrades: {
     list: (params?: Record<string, any>) => {
       const qs = new URLSearchParams(params).toString();
-      return request<{ data: ApiSalaryGrade[]; meta: any }>(`/salary-grades${qs ? `?${qs}` : ''}`);
+      return request<{ data: ApiSalaryGrade[]; meta: any }>(`/salary-grades${qs ? `?${qs}` : ""}`);
     },
   },
 };
@@ -1240,6 +1310,21 @@ export interface ApiNewHire {
     template_item_id: number | null;
     phase: string;
   }[];
+}
+
+export interface ApiOnboardingSubmission {
+  employee_onboarding_item_id: number;
+  new_hire_id: number | null;
+  hire_name: string;
+  hire_stage?: string | null;
+  employee_id: number | null;
+  item_text: string;
+  phase?: string | null;
+  file_name?: string | null;
+  notes?: string | null;
+  submitted_at?: string | null;
+  returned_count: number;
+  review_note?: string | null;
 }
 
 export interface ApiChecklistTemplate {
@@ -1358,11 +1443,31 @@ export const onboardingItemsApi = {
       method: "POST",
       body: JSON.stringify({ template_item_id: templateItemId }),
     }),
-  toggle: (itemId: number | string, body?: { done: boolean }) =>
-    request<{ employee_onboarding_item_id: number; done: boolean; completed_at: string | null }>(
-      `/onboarding-items/${itemId}/toggle`,
-      { method: "PATCH", ...(body ? { body: JSON.stringify(body) } : {}) },
-    ),
+  toggle: (itemId: number | string, body?: { done: boolean; review_note?: string | null }) =>
+    request<{
+      employee_onboarding_item_id: number;
+      done: boolean;
+      completed_at: string | null;
+      review_note?: string | null;
+      returned_count?: number;
+    }>(`/onboarding-items/${itemId}/toggle`, {
+      method: "PATCH",
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    }),
+  /** HR sends a submission back for correction with a reason (Edit-gated). */
+  returnItem: (itemId: number | string, body: { note: string }) =>
+    request<{
+      employee_onboarding_item_id: number;
+      done: boolean;
+      review_note: string | null;
+      returned_count: number;
+    }>(`/onboarding-items/${itemId}/return`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** HR review queue: submitted-but-unverified items across hires (Edit-gated). */
+  submissions: () =>
+    request<{ count: number; data: ApiOnboardingSubmission[] }>(`/onboarding-submissions`),
   upload: (itemId: number | string, formData: FormData) =>
     request<{
       employee_onboarding_item_id: number;
@@ -1781,6 +1886,8 @@ export interface ApiPosition {
   headcount: number;
   filled_count: number;
   vacancies?: number;
+  requires_assessment?: boolean;
+  requires_practical?: boolean;
 }
 
 export interface ApiSalaryGrade {
@@ -2147,6 +2254,9 @@ export interface ApiLandingJob {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
+  additional?: string[];
+  instructions?: string | null;
+  about?: string | null;
   benefits: string[];
   picture?: string | null;
   picture_url?: string | null;
@@ -2321,6 +2431,8 @@ export interface ApiRecognitionItem {
     fire: number;
     star: number;
   };
+  shares?: number;
+  userReactions?: string[];
   timeAgo: string;
   createdAt: string;
 }
@@ -2334,6 +2446,8 @@ export interface ApiPayrollData {
   gross: number;
   net: number;
   nextPayout: string;
+  hero_source?: string;
+  hero_period?: string | null;
   deductions: {
     sss: number;
     philhealth: number;
@@ -2349,6 +2463,8 @@ export interface ApiPayrollData {
     net: number;
     payoutDate: string;
     status: string;
+    earnings?: { label: string; amount: number; ytd: number }[];
+    deductions_breakdown?: { label: string; amount: number; ytd: number }[];
   }[];
 }
 
@@ -2380,8 +2496,8 @@ export interface ApiEssOverview {
   performance_summary?: {
     lms_completed: number;
     lms_total: number;
-    competency_level: string;
-    average_score: number;
+    competency_level: string | null;
+    average_score: number | null;
   };
   leave_balances: ApiLeaveBalance[];
   pending_requests_count: number;
@@ -2488,26 +2604,67 @@ export const essApi = {
         name: string;
         role: string;
         department: string;
-        overall_rating: number;
-        competency_level: string;
+        overall_rating: number | null;
+        competency_level: string | null;
       };
       stats: {
         completed_courses: number;
         in_progress_courses: number;
-        average_score: number;
-        total_training_hours: number;
+        average_score: number | null;
+        total_training_hours: number | null;
       };
       courses: {
         id: string;
         title: string;
         category: string;
-        progress: number;
+        progress: number | null;
         status: string;
         score: number | null;
-        duration: string;
+        duration: string | null;
         completedDate: string | null;
       }[];
     }>("/ess/my-performance"),
+  updateLearningProgress: (data: { course_code: string }) =>
+    request<{ message: string; learning: any }>(`/ess/my-learning/progress`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  learningCertificate: (courseCode: string) =>
+    request<{
+      eligible: boolean;
+      verification_code: string | null;
+      course?: {
+        code: string;
+        title: string;
+        category: string;
+        score: number | null;
+        completed_date: string | null;
+      };
+    }>(`/ess/my-learning/certificate/${encodeURIComponent(courseCode)}`),
+  adminLearning: () =>
+    request<{
+      records: {
+        id: number;
+        employee_id: number;
+        employee_name: string;
+        email: string;
+        department: string;
+        course_id: number;
+        course_code: string;
+        course_title: string;
+        course_category: string;
+        status: string;
+        score: number | null;
+        assigned_date: string | null;
+        completed_date: string | null;
+      }[];
+      summary: { total: number; assigned: number; in_progress: number; completed: number };
+    }>(`/ess/admin/learning`),
+  verifyLearning: (id: number | string, data: { status: string; score?: number }) =>
+    request<{ message: string; record: any }>(`/ess/admin/learning/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
   getCategories: () =>
     request<{
       categories: {
@@ -2539,6 +2696,10 @@ export const essApi = {
         body: JSON.stringify({ reaction }),
       },
     ),
+  shareKudos: (id: string) =>
+    request<{ message: string; shares: number }>(`/ess/recognitions/${id}/share`, {
+      method: "POST",
+    }),
   myRequests: (params?: Record<string, any>) => {
     const qs = params ? new URLSearchParams(params).toString() : "";
     return request<{ requests: ApiEssRequestItem[] }>(`/ess/my-requests${qs ? `?${qs}` : ""}`);
@@ -2562,6 +2723,17 @@ export const essApi = {
       body: JSON.stringify({ action }),
     }),
   myPromotionRequests: () => request<{ data: ApiPromotionRequest[] }>("/ess/my-promotion-requests"),
+  // ESS-safe promotion position options (id/title/department only — no Core HCM permission needed).
+  promotionPositions: () =>
+    request<{ data: { position_id: number; title: string; department?: string | null }[] }>(
+      "/ess/promotion-positions",
+    ),
+  // ESS-safe view of the employee's OWN onboarding checklist.
+  myChecklist: () =>
+    request<{
+      data: any[];
+      new_hire: { new_hire_id: number; new_hire_code: string; name: string; stage: string } | null;
+    }>("/ess/my-checklist"),
   createPromotionRequest: (data: {
     requested_position_id?: number | null;
     requested_salary_grade_id?: number | null;
@@ -2734,10 +2906,10 @@ export const chatbotFaqApi = {
   unanswered: () => request<{ data: ApiChatbotUnanswered[] }>("/chatbot/unanswered"),
   dismissUnanswered: (hash: string) =>
     request<{ message: string }>(`/chatbot/unanswered/${hash}`, { method: "DELETE" }),
-  messageFeedback: (messageId: number, value: 1 | -1 | 0) =>
+  messageFeedback: (messageId: number, value: 1 | -1 | 0, sessionId?: string | null) =>
     request<{ message: string }>(`/chatbot/messages/${messageId}/feedback`, {
       method: "POST",
-      body: JSON.stringify({ value }),
+      body: JSON.stringify({ value, session_id: sessionId ?? null }),
     }),
 };
 
@@ -2787,7 +2959,48 @@ export interface GlobalSearchResult {
   employees_hidden: boolean;
 }
 
+export interface UnifiedSearchResult {
+  id: number | string;
+  type: string;
+  module: string;
+  title: string;
+  subtitle: string;
+  url: string;
+}
+
+export interface UnifiedSearchGroup {
+  module: string;
+  count: number;
+  items: UnifiedSearchResult[];
+}
+
+export interface UnifiedSearchResponse {
+  results: UnifiedSearchGroup[];
+  total: number;
+  query: string;
+}
+
 export const searchApi = {
   global: (q: string, limit = 6) =>
     request<{ data: GlobalSearchResult }>(`/search?q=${encodeURIComponent(q)}&limit=${limit}`),
+  unified: (q: string, limit = 8) =>
+    request<{ data: UnifiedSearchResponse }>(
+      `/search/unified?q=${encodeURIComponent(q)}&limit=${limit}`,
+    ),
+};
+
+/* ========================================================================= */
+/* 13. PROFILE PHOTO                                                          */
+/* ========================================================================= */
+
+export const profileApi = {
+  uploadPhoto: (file: File) => {
+    const formData = new FormData();
+    formData.append("photo", file);
+    return request<{ message: string; url: string }>("/profile/photo", {
+      method: "POST",
+      body: formData,
+    });
+  },
+  removePhoto: () => request<{ message: string }>("/profile/photo", { method: "DELETE" }),
 };

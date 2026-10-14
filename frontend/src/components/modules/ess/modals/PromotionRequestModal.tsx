@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -13,7 +12,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Briefcase,
-  AlertCircle,
   TrendingUp,
   Send,
   Building2,
@@ -25,14 +23,14 @@ import {
 import { toast } from "sonner";
 import { myProfile, myPerformance } from "@/data/ess";
 import { positions as fallbackPositions } from "@/data/hr";
-import { essApi, hcmApi } from "@/lib/api";
+import { essApi } from "@/lib/api";
 
 interface PromotionRequestModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmitSuccess?: (requestData: any) => void;
-  competencyScore?: string;
-  lmsCompletedCount?: number;
+  competencyScore?: string | undefined;
+  lmsCompletedCount?: number | undefined;
 }
 
 interface PositionOption {
@@ -68,6 +66,8 @@ export function PromotionRequestModal({
   open,
   onOpenChange,
   onSubmitSuccess,
+  competencyScore,
+  lmsCompletedCount,
 }: PromotionRequestModalProps) {
   const [targetPosition, setTargetPosition] = useState("");
   const [justification, setJustification] = useState("");
@@ -81,10 +81,23 @@ export function PromotionRequestModal({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // 1. Filter fallback positions exclusively to employee's department and exclude current role
+    // 1. Filter fallback positions exclusively to employee's department and exclude current role.
+    // Pastry Chef 2/3/4 are hidden from the promotion dropdown (hotel uses the
+    // hot-kitchen ladder + Pastry Chef 1 / Lead / CDP Pastry instead).
+    const HIDDEN_PROMOTION_TITLES = new Set([
+      "pastry chef 2",
+      "pastry chef 3",
+      "pastry chef 4",
+    ]);
+    const isPromotionVisible = (title: string) =>
+      !HIDDEN_PROMOTION_TITLES.has(title.toLowerCase().trim());
+
     const fallbackDeptPositions: PositionOption[] = fallbackPositions
       .filter(
-        (p) => matchesDepartment(p.department, myProfile.department) && p.title !== myProfile.position
+        (p) =>
+          matchesDepartment(p.department, myProfile.department) &&
+          p.title !== myProfile.position &&
+          isPromotionVisible(p.title)
       )
       .map((p) => ({
         id: p.id,
@@ -94,29 +107,25 @@ export function PromotionRequestModal({
         salaryBand: p.salaryBand,
       }));
 
-    // 2. Fetch active positions from HCM API, also restricting strictly to employee's department
-    hcmApi.positions
-      .list({ per_page: 100 })
+    // 2. Fetch positions via the ESS-safe endpoint (employees have Core HCM=None
+    // so /positions 403s). Falls back to the ladder when the API is unreachable.
+    essApi
+      .promotionPositions()
       .then((res) => {
         if (res?.data?.length) {
           const apiPositions: PositionOption[] = res.data
             .filter((p) => {
-              const deptName =
-                typeof p.department === "object" && p.department
-                  ? (p.department as any).name
-                  : (p.department as string || "");
+              const deptName = p.department || "";
               return (
                 matchesDepartment(deptName, myProfile.department) &&
-                p.title !== myProfile.position
+                p.title !== myProfile.position &&
+                isPromotionVisible(p.title)
               );
             })
             .map((p) => ({
               id: p.position_id,
               title: p.title,
-              dept:
-                typeof p.department === "object" && p.department
-                  ? (p.department as any).name
-                  : (p.department as string || undefined),
+              dept: p.department || undefined,
             }));
 
           // Merge fallback ladder positions and API positions, deduplicating by title
@@ -224,6 +233,8 @@ export function PromotionRequestModal({
         `Department Career Track: ${myProfile.department}`,
         `Current Role: ${myProfile.position} (${myProfile.department})`,
         `Current Salary Grade: ${myPerformance.salaryGrade}`,
+        competencyScore ? `Competency Score: ${competencyScore}` : "",
+        lmsCompletedCount != null ? `LMS Training Completed: ${lmsCompletedCount} module(s)` : "",
         `Justification: ${justification.trim()}`,
         keyAchievements.trim() ? `Key Achievements: ${keyAchievements.trim()}` : "",
         attachedFiles.length > 0
@@ -267,10 +278,6 @@ export function PromotionRequestModal({
             <TrendingUp className="h-5 w-5" />
             <DialogTitle className="text-xl">Apply for Career Promotion</DialogTitle>
           </div>
-          <DialogDescription>
-            Submit an official promotion application. Submissions advance within your department career ladder
-            and initiate a promotion appraisal review with your department head.
-          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
@@ -336,9 +343,6 @@ export function PromotionRequestModal({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-[11px] text-muted-foreground">
-              Promotions are strictly intra-departmental. Showing positions within {myProfile.department}.
-            </p>
           </div>
 
           {/* Justification Textarea */}
@@ -469,14 +473,6 @@ export function PromotionRequestModal({
                 ))}
               </div>
             )}
-          </div>
-
-          <div className="rounded-md bg-amber-500/10 p-3 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-            <div>
-              <strong>HR Process Notice:</strong> Promotion applications are forwarded to Core HCM and the Performance
-              Appraisal Board. A supervisor evaluation recommendation (HR3) is required before final executive sign-off.
-            </div>
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0 pt-2">

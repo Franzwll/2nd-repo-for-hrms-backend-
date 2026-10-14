@@ -1,9 +1,10 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Timer } from "lucide-react";
 import { toast } from "sonner";
 
-import { Logo } from "@/components/brand/Logo";
+import oxfordMarkWhite from "@/assets/oxford-mark-white.png";
+import oxfordMarkMaroon from "@/assets/oxford-mark-maroon.png";
 import interior1 from "@/assets/oxford-suite-makati-interior1.png";
 import suiteb from "@/assets/o-suiteb.png";
 import loginDining from "@/assets/login-dining.png";
@@ -94,6 +95,12 @@ function OTPPage() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState("");
+  // Flip to true right after mount so the brand lockup cross-fades white → maroon,
+  // then keeps looping white → maroon → white → maroon … until verified.
+  const [brandLit, setBrandLit] = useState(false);
+  // Tracks whether the entrance fade already ran so every later leg — including
+  // maroon → white — waits the same full beat before flipping (no flick).
+  const [brandCycled, setBrandCycled] = useState(false);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const otpTtl = loginCtx?.expires_in ?? 120;
@@ -104,6 +111,29 @@ function OTPPage() {
       navigate({ to: "/login" });
     }
   }, [navigate]);
+
+  // Loop the brand lockup white → maroon → white → maroon … while unverified.
+  // The transitions stay ON the whole time, so every leg is the same slow
+  // 2000ms color fade as the entrance (white → maroon, then maroon → white,
+  // then white → maroon …) — the new color always eases in, never flicks.
+  // First leg starts 500ms after entry; every later leg holds 4400ms
+  // (2000ms fade + 2400ms hold) so each fade fully resolves before flipping.
+  // Stops (settles on maroon) the moment `verified` becomes true.
+  useEffect(() => {
+    if (verified) {
+      setBrandLit(true);
+      return;
+    }
+    if (!brandCycled) {
+      const id = window.setTimeout(() => {
+        setBrandLit(true);
+        setBrandCycled(true);
+      }, 500);
+      return () => window.clearTimeout(id);
+    }
+    const id = window.setTimeout(() => setBrandLit((v) => !v), 4400);
+    return () => window.clearTimeout(id);
+  }, [brandCycled, brandLit, verified]);
 
   // Montage slideshow transition
   useEffect(() => {
@@ -277,12 +307,60 @@ function OTPPage() {
       {/* Neutral scrim for legibility */}
       <div className="absolute inset-0 z-0 bg-slate-950/40 backdrop-blur-[2px]" />
 
-      {/* Logo */}
-      <div className="relative z-10 mb-8 drop-shadow-xl scale-105">
-        <Logo mark="white" tone="invert" />
-      </div>
+      {/* Brand lockup — login's exact position/size/font (top-left full lockup
+          at scale-170, Logo's h-9 mark + font-display uppercase wordmark),
+          logo + text only (no background). Animates white → maroon on entry:
+          two stacked marks cross-fade opacity while the wordmark
+          transition-colors to text-primary. */}
+      <Link
+        to="/"
+        aria-label="Oxford Suites Makati — home"
+        className="absolute left-6 top-6 z-10 origin-left scale-125 drop-shadow-xl sm:left-8 sm:top-8 sm:scale-150 lg:left-12 lg:top-10 lg:scale-170"
+      >
+        <span className="inline-flex items-center gap-2.5">
+          <span className="relative block h-9 w-auto shrink-0">
+            <img
+              src={oxfordMarkWhite}
+              alt=""
+              aria-hidden="true"
+              className={cn(
+                "h-9 w-auto object-contain transition-opacity duration-2000 ease-in-out",
+                brandLit ? "opacity-0" : "opacity-100",
+              )}
+            />
+            <img
+              src={oxfordMarkMaroon}
+              alt=""
+              aria-hidden="true"
+              className={cn(
+                "absolute inset-0 h-9 w-auto object-contain transition-opacity duration-2000 ease-in-out",
+                brandLit ? "opacity-100" : "opacity-0",
+              )}
+            />
+          </span>
+          <span className="flex flex-col leading-none">
+            <span
+              className={cn(
+                "font-display text-[0.95rem] font-bold uppercase tracking-[0.14em] transition-colors duration-2000 ease-in-out",
+                brandLit ? "text-primary" : "text-white",
+              )}
+            >
+              Oxford Suites
+            </span>
+            <span
+              className={cn(
+                "font-display text-[0.8rem] font-semibold uppercase tracking-[0.3em] opacity-80 transition-colors duration-2000 ease-in-out",
+                brandLit ? "text-primary" : "text-white",
+              )}
+            >
+              Makati
+            </span>
+          </span>
+          <span className="sr-only">Oxford Suites Makati</span>
+        </span>
+      </Link>
 
-      <div className="relative z-10 w-full max-w-sm rounded-2xl border border-white/20 bg-card/95 p-8 shadow-2xl backdrop-blur-md">
+      <div className="relative z-10 w-full max-w-sm rounded-2xl border border-white/20 bg-card/95 px-8 py-10 shadow-2xl backdrop-blur-md">
         {verified ? (
           <div className="flex flex-col items-center gap-4 py-4 text-center">
             <div className="flex h-14 w-14 items-center justify-center">
@@ -295,13 +373,10 @@ function OTPPage() {
           <>
             {/* Header */}
             <div className="mb-6 flex flex-col items-center text-center">
-              <div className="mb-4">
-                <Logo variant="mark" mark="maroon" />
-              </div>
               <h1 className="font-display text-2xl font-semibold">
                 {isTotp ? "Authenticator Code" : "OTP Verification"}
               </h1>
-              <p className="mt-2 text-sm text-muted-foreground">
+<p className="mt-2 text-sm text-muted-foreground">
                 {isTotp ? (
                   <>
                     Open your authenticator app and enter the 6-digit code for{" "}
@@ -313,6 +388,15 @@ function OTPPage() {
                     <span className="font-medium text-foreground">{maskEmail(loginCtx?.email)}</span>.
                     Enter it below to continue.
                   </>
+                )}
+                {import.meta.env.DEV && loginCtx?.debug_otp && (
+                  <div className="mt-3 p-3 bg-primary/5 border-primary/20 rounded-md text-center" title="Click to copy">
+                    <div className="font-medium text-primary">Dev debug OTP:</div>
+                    <div className="mt-1 font-mono text-lg font-semibold text-primary">
+                      {loginCtx.debug_otp}
+                    </div>
+                    <div className="text-xs text-primary/80 mt-1">Copy to auto-fill or enter manually</div>
+                  </div>
                 )}
               </p>
             </div>

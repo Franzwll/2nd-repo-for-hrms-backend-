@@ -99,6 +99,37 @@ _GENERIC_SINGLETONS = {
     "national", "license", "licence",
 }
 
+# Vocabulary that proves a string actually names a degree/program. A paper
+# claim without any of these ("TESDA", an issuer name, a bare city) carries
+# no degree to compare — it must report "can't confirm", never a false
+# "Different" against the resume's real degree.
+_DEGREE_VOCAB_RE = re.compile(
+    r"\b(bachelor|master|doctor|associate|diploma|degrees?|undergrad|"
+    r"graduate|vocational|bs|ba|ms|ma|mba|phd|bshm|bsba|bsitm|bscs|bsn|"
+    r"ab|college\s+graduate)\b",
+    re.I,
+)
+
+
+def _has_degree_vocab(value: Optional[str]) -> bool:
+    return bool(value and _DEGREE_VOCAB_RE.search(value))
+
+
+# Generic service phrases that are never employer names ("beverage
+# service", "food safety codes"). Filed as company claims they would turn
+# every comparison into a false "Different".
+_COMPANY_GENERIC_WORDS = {
+    "beverage", "service", "services", "food", "safety", "codes",
+    "sanitation", "hygiene", "techniques", "replenishment", "guest",
+    "relations", "mentions", "recipes", "garnish", "garnishes",
+}
+
+
+def _is_generic_company(value: Optional[str]) -> bool:
+    words = [t for t in _tokens(value) if t not in _SMALL_WORDS]
+    return bool(words) and all(w in _COMPANY_GENERIC_WORDS for w in words)
+
+
 # Degree words that carry no program meaning on their own.
 _DEGREE_GENERIC = {
     "bachelor", "bachelors", "master", "masters", "associate",
@@ -409,10 +440,14 @@ def _normalize_cert(value: Optional[str]) -> str:
     unified, so "Cookery NCII", "Cookery NC 2" and "Cookery NC II"
     all become "COOKERY NC II"."""
     text = re.sub(r"\s+", " ", (value or "").strip().upper())
+    # Strip duplicate parenthetical qualification level at end, e.g. "(NC II)" or "(NC 2)"
+    text = re.sub(r"\s*\(\s*(?:NC\s*)?(?:II|III|IV|I|1|2|3|4|11)\s*\)\s*$", "", text)
     text = re.sub(r"\bN\s*\.?\s*C\s*\.?\s*(II|III|IV|I|1|2|3|4|11)\b",
                   lambda m: "NC " + _NC_LEVELS.get(m.group(1), m.group(1)), text)
     text = re.sub(r"\bNATIONAL\s+CERTIFICATE\s*(II|III|IV|I|1|2|3|4|11)\b",
                   lambda m: "NC " + _NC_LEVELS.get(m.group(1), m.group(1)), text)
+    # Normalize "NC II in Bartending" -> "Bartending NC II"
+    text = re.sub(r"\bNC\s*(II|III|IV|I)\s+IN\s+([A-Z0-9\s/&]+)", r"\2 NC \1", text)
     return re.sub(r"\s+", " ", text).strip()
 
 
@@ -617,11 +652,20 @@ def _best_degree_check(
     document_value: Any,
     reference: Optional[Dict[str, List[str]]] = None,
 ) -> Dict[str, Any]:
-    """Best-of-resume comparison using the strict degree ladder."""
+    """Best-of-resume comparison using the strict degree ladder.
+
+    Both sides must actually name a degree: a paper claim of "TESDA" and a
+    resume entry that is only an institution ("Centro Escolar University")
+    carry nothing comparable, so they report UNABLE instead of a false
+    mismatch.
+    """
     values = [v for v in (resume_values or []) if isinstance(v, str) and v.strip()]
     document_value = _clean_value(document_value) if isinstance(document_value, str) else document_value
     if not document_value:
         return _unable_check(None, None)
+    if not _has_degree_vocab(document_value):
+        return _unable_check(None, document_value)
+    values = [v for v in values if _has_degree_vocab(v)]
     if not values:
         return _unable_check(None, document_value)
     best: Optional[Dict[str, Any]] = None
@@ -687,6 +731,16 @@ def _boundary_contains(outer: Optional[str], inner: Optional[str]) -> bool:
     return f" {i} " in padded or f" {i} " in padded.replace("/", " ").replace(",", " ")
 
 
+# Generic credential words that prove nothing about the issuer on their own
+# ("Certificate" appears in almost every resume cert entry — matching on it
+# alone would corroborate any paper against any entry).
+_ISSUER_GENERIC_WORDS = {
+    "certificate", "certification", "certified", "certificates",
+    "training", "trainings", "participation", "completion",
+    "program", "course", "national", "professional",
+}
+
+
 def _issuer_check(document_issuer: Any, resume_values: Optional[List[Any]]) -> Dict[str, Any]:
     """Compares the document's issuing organization against the resume's
     certification entries.
@@ -710,6 +764,36 @@ def _issuer_check(document_issuer: Any, resume_values: Optional[List[Any]]) -> D
                 "match_method": METHOD_EXACT,
                 "result": RESULT_MATCH,
             }
+        # Check acronym / abbreviation, e.g. "(TESDA)" in "Technical Education and Skills Development Authority (TESDA)"
+        m_paren = re.search(r"\(([A-Za-z0-9]+)\)", document_issuer)
+        acronym_token = m_paren.group(1) if m_paren else None
+        if acronym_token and len(acronym_token) >= 3 and _boundary_contains(value, acronym_token):
+            return {
+                "resume_value": value,
+                "document_value": document_issuer,
+                "normalized_resume": _norm(value),
+                "normalized_document": _norm(document_issuer),
+                "match_method": METHOD_ACRONYM,
+                "result": RESULT_MATCH,
+            }
+        # Check prominent issuer acronyms or names (e.g. "TESDA").
+        # Generic credential words ("certificate", "training") are excluded —
+        # they appear in nearly every entry and would match any paper.
+        issuer_tokens = [
+            t for t in _tokens(document_issuer)
+            if (len(t) >= 4 and t not in _ISSUER_GENERIC_WORDS)
+            or t.upper() in {"TESDA", "CHED", "DEPED", "PRC"}
+        ]
+        for itok in issuer_tokens:
+            if _boundary_contains(value, itok):
+                return {
+                    "resume_value": value,
+                    "document_value": document_issuer,
+                    "normalized_resume": _norm(value),
+                    "normalized_document": _norm(document_issuer),
+                    "match_method": METHOD_TOKEN_SET,
+                    "result": RESULT_MATCH,
+                }
     return _unable_check(None, document_issuer)
 
 
@@ -901,10 +985,14 @@ def _extract_company(
         org.strip() for org in extraction.get("organizations") or []
         if isinstance(org, str) and org.strip()
     ]
-    return _choose_tiered(
+    chosen = _choose_tiered(
         precise, fallback, resume_companies,
         is_match=lambda h, c: _compare_text_values(h, c)["result"] == RESULT_MATCH,
     )
+    # A generic service phrase is extraction noise, never an employer claim.
+    if _is_generic_company(chosen):
+        return None
+    return chosen
 
 
 def _extract_position(
@@ -979,6 +1067,16 @@ def _extract_institution(
         _regex_value(_INSTITUTION_RE, text),
         _regex_value(_INSTITUTION_EXTRA_RE, text),
     ]
+    # Standalone header-style school lines ("CENTRO ESCOLAR UNIVERSITY (CEU)") on diplomas
+    for line in (text or "").split("\n"):
+        line_clean = _clean_value(line)
+        if not line_clean or len(line_clean) > 80:
+            continue
+        if _is_boilerplate(line_clean) or _looks_like_person(line_clean):
+            continue
+        if _INSTITUTION_ORG_HINT_RE.search(line_clean) or re.search(r"\b(university|college|ceu|ust|dlsu|up|ateneo)\b", line_clean, re.I):
+            precise.append(line_clean)
+
     fallback: List[Optional[str]] = []
     if extraction:
         for org in extraction.get("organizations") or []:
@@ -1001,11 +1099,31 @@ def _extract_issuer(
     resume_certs: Optional[List[Any]] = None,
 ) -> Optional[str]:
     precise: List[Optional[str]] = [_regex_value(_ISSUER_RE, text)]
+    # Standalone header lines on certificates, e.g. "TECHNICAL EDUCATION AND SKILLS DEVELOPMENT AUTHORITY (TESDA)"
+    for line in (text or "").split("\n"):
+        line_clean = _clean_value(line)
+        if not line_clean or len(line_clean) > 90:
+            continue
+        if _is_boilerplate(line_clean) or _looks_like_person(line_clean):
+            continue
+        # Document titles ("Certificate of Training Participation") name the
+        # paper, not its issuer — issuers never contain "certificate of".
+        if re.search(r"\bcertificate\s+of\b", line_clean, re.I):
+            continue
+        if re.search(r"\b(national\s+certificate|nc\s*(?:i{1,3}|iv|1-4))\b", line_clean, re.I):
+            continue
+        if _ISSUER_ORG_HINT_RE.search(line_clean):
+            precise.append(line_clean)
+
     fallback: List[Optional[str]] = []
     for org in extraction.get("organizations") or []:
         if isinstance(org, str) and org.strip() and _ISSUER_ORG_HINT_RE.search(org):
-            fallback.append(org.strip())
-    return _choose_tiered(precise, fallback, resume_certs)
+            if not re.search(r"\b(national\s+certificate|nc\s*(?:i{1,3}|iv|1-4)|certificate\s+of)\b", org, re.I):
+                fallback.append(org.strip())
+    return _choose_tiered(
+        precise, fallback, resume_certs,
+        is_match=lambda h, c: _issuer_check(c, [h])["result"] == RESULT_MATCH,
+    )
 
 
 def _cert_line_fallback(text: str) -> Optional[str]:
@@ -1266,6 +1384,26 @@ def _verify_coe(
     checks["end_date"] = _date_check(
         best_entry.get("period") if best_entry else None, doc_range, "end"
     )
+    # Transparency: record WHICH resume entry the paper was measured against
+    # ("compared against work entry 1 of 3"), so a "Different" verdict can
+    # always be traced back to the exact claim — and HR can tell when the
+    # paper proves a different stint than the one displayed.
+    if best_entry is not None:
+        try:
+            entry_index = work.index(best_entry)
+        except ValueError:
+            entry_index = None
+        compared = {
+            "entry_index": entry_index,
+            "total_entries": len(work),
+            "company": best_entry.get("company"),
+            "job_title": best_entry.get("job_title"),
+            "period": best_entry.get("period"),
+            "location": best_entry.get("location"),
+        }
+        for check in checks.values():
+            if isinstance(check, dict):
+                check["compared_resume_entry"] = compared
     return checks, claims
 
 
@@ -1455,11 +1593,40 @@ def verify_supporting_document(
     if normalized_type in COE_TYPES:
         checks, claims = _verify_coe(text, extraction, profile, refs)
     elif normalized_type in EDUCATION_TYPES:
-        checks, claims = _verify_education(
-            text, extraction, profile, (reference_data or {}).get("education")
+        # Check if the document content is actually a vocational credential / training certificate
+        is_vocational_cert = bool(
+            re.search(r"\b(tesda|national\s+certificate|nc\s*(?:i{1,3}|iv|1-4)|certificate\s+of\s+(?:competency|completion|training)|food\s+handler)\b", text, re.I)
+            and not re.search(r"\b(bachelor|master|doctor|degree|diploma|titulong|kurso)\b", text, re.I)
         )
+        if is_vocational_cert:
+            checks, claims = _verify_certification(text, extraction, profile, refs)
+        else:
+            checks, claims = _verify_education(
+                text, extraction, profile, (reference_data or {}).get("education")
+            )
+            # If no comparable degree found, check if it verifies as a certification
+            if checks.get("degree", {}).get("result") == RESULT_UNABLE:
+                cert_checks, cert_claims = _verify_certification(text, extraction, profile, refs)
+                if any(c.get("result") == RESULT_MATCH for c in cert_checks.values()):
+                    checks, claims = cert_checks, cert_claims
     else:
-        checks, claims = _verify_certification(text, extraction, profile, refs)
+        # Credential domain: check if document content is actually an academic diploma
+        is_academic_diploma = bool(
+            re.search(r"\b(bachelor|master|doctor|degree\s+of|diploma|titulong|kurso)\b", text, re.I)
+            and not re.search(r"\b(nc\s*(?:i{1,3}|iv|1-4)|food\s+handler|tesda)\b", text, re.I)
+        )
+        if is_academic_diploma:
+            checks, claims = _verify_education(
+                text, extraction, profile, (reference_data or {}).get("education")
+            )
+        else:
+            checks, claims = _verify_certification(text, extraction, profile, refs)
+            if checks.get("certification", {}).get("result") == RESULT_UNABLE:
+                edu_checks, edu_claims = _verify_education(
+                    text, extraction, profile, (reference_data or {}).get("education")
+                )
+                if any(c.get("result") == RESULT_MATCH for c in edu_checks.values()):
+                    checks, claims = edu_checks, edu_claims
 
     result["checks"] = checks
     if claims:

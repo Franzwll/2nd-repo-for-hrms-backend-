@@ -47,6 +47,12 @@ class PracticalTestController extends Controller
     /* require a practical exam (job_posts.requires_practical).          */
     public function store(Request $request, int $applicant): JsonResponse
     {
+        if (! \Modules\ApplicantManagement\Services\AssessmentConfig::practicalTestEnabled()) {
+            return response()->json([
+                'message' => 'Practical tests are disabled in Core HCM settings. Enable them in Core HCM to record practical assessments.',
+            ], 422);
+        }
+
         $model = Applicant::with('jobPost')->findOrFail($applicant);
 
         // Practical applies when the job post is flagged, or when the position is
@@ -96,14 +102,7 @@ class PracticalTestController extends Controller
             details: "Recorded practical assessment \"{$practical->task_title}\" for {$model->name} with score {$practical->total_score}% and result {$practical->result}."
         );
 
-        NotificationService::send(
-            title: "Practical assessment recorded: {$model->name}",
-            body: "Scored {$practical->total_score}% — Result: {$practical->result}.",
-            module: 'Applicant Management',
-            type: 'info',
-            targetType: 'Practical Test',
-            targetId: (string) $practical->practical_test_id
-        );
+        // Helpful-only: practical scores stay in audit log. No bell for intermediate steps.
 
         return response()->json(new PracticalTestResource($practical->load('applicant.jobPost.department')), 201);
     }

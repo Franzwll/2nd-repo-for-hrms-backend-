@@ -33,6 +33,11 @@ class JobPostResource extends JsonResource
                 $this->resource instanceof JobPost ? $this->resource : null,
                 $this->title,
             ),
+            /* Assessment test requirement — same logic, uses AssessmentRequirement. */
+            'requires_assessment'   => \Modules\ApplicantManagement\Services\AssessmentRequirement::required(
+                $this->resource instanceof JobPost ? $this->resource : null,
+                $this->title,
+            ),
             'experience_level'      => $this->experience_level,
             'education_level'       => $this->education_level,
             'summary'               => $this->summary,
@@ -40,6 +45,11 @@ class JobPostResource extends JsonResource
             'responsibilities'      => $this->responsibilities_json ?? [],
             'qualifications'        => $this->qualifications_json ?? [],
             'skills'                => $this->skills_json ?? [],
+            'additional'            => $this->additional_json ?? [],
+            'instructions'          => $this->instructions,
+            'about'                 => $this->about,
+            /* Saved canvas arrangement; null means "use the default order". */
+            'blocks'                => $this->blocks_json,
             'platforms'             => $this->whenLoaded('platforms',
                 fn () => $this->platforms->where('status', 'published')->pluck('platform')->values()
             ),

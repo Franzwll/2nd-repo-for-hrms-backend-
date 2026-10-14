@@ -6,6 +6,7 @@ import { PublicShell } from "@/components/public/PublicShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { acknowledgeCookies, isCookieAcknowledged } from "@/data/legal";
+import { useLightOnly } from "@/lib/theme";
 
 export const Route = createFileRoute("/_landing/cookies")({
   head: () => ({
@@ -24,6 +25,8 @@ export const Route = createFileRoute("/_landing/cookies")({
 
 function Cookies() {
   const [acked, setAcked] = useState<boolean>(() => isCookieAcknowledged());
+
+  useLightOnly();
 
   const ack = () => {
     acknowledgeCookies();

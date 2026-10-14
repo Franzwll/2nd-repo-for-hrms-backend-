@@ -12,6 +12,10 @@ interface TablePaginationProps {
   /** When false, hides the "Showing X–Y of Z label" text (pagination buttons stay). */
   showRangeLabel?: boolean;
   onPageChange: (page: number) => void;
+  /** Optional page-size selector. When provided, renders 10/25/50 dropdown. */
+  pageSize?: number;
+  pageSizeOptions?: number[];
+  onPageSizeChange?: (size: number) => void;
   className?: string;
 }
 
@@ -44,6 +48,9 @@ export function TablePagination({
   label = "records",
   showRangeLabel = true,
   onPageChange,
+  pageSize,
+  pageSizeOptions = [10, 25, 50],
+  onPageSizeChange,
   className,
 }: TablePaginationProps) {
   if (total === 0) return null;
@@ -52,13 +59,32 @@ export function TablePagination({
 
   return (
     <div className={cn("mt-4 flex flex-wrap items-center justify-between gap-3", className)}>
-      {showRangeLabel ? (
-        <p className="text-xs text-muted-foreground">
-          Showing {from}–{to} of {total} {label}
-        </p>
-      ) : (
-        <span />
-      )}
+      <div className="flex flex-wrap items-center gap-3">
+        {showRangeLabel ? (
+          <p className="text-xs text-muted-foreground">
+            Showing {from}–{to} of {total} {label}
+          </p>
+        ) : (
+          <span />
+        )}
+        {pageSize != null && onPageSizeChange && (
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span aria-hidden="true">Rows:</span>
+            <select
+              aria-label="Rows per page"
+              value={pageSize}
+              onChange={(e) => onPageSizeChange(Number(e.target.value))}
+              className="h-8 rounded-md border border-input bg-background px-1.5 text-xs text-foreground"
+            >
+              {pageSizeOptions.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
       <div className="flex items-center gap-1">
         <Button
           size="sm"

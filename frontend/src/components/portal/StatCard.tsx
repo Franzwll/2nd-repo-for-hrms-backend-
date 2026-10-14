@@ -54,9 +54,7 @@ export function StatCard({
   );
 
   const cardClass = cn(
-    "border-border/70 h-full transition-all",
-    interactive &&
-      "group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md",
+    "border-border/70 h-full transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md",
   );
 
   if (to) {

@@ -11,6 +11,7 @@ use Laravel\Sanctum\PersonalAccessToken;
 use Modules\NewHireOnboarding\Models\EmployeeOnboardingItem;
 use Modules\NewHireOnboarding\Models\NewHire;
 use App\Services\AuditLogger;
+use App\Services\Notifier;
 
 class EmployeeOnboardingItemController extends Controller
 {
@@ -43,14 +44,22 @@ class EmployeeOnboardingItemController extends Controller
     {
         $model = EmployeeOnboardingItem::findOrFail($item);
 
-        DB::transaction(function () use ($model, $request) {
-            $nowDone = $request->has('done')
-                ? (bool) $request->input('done')
+        $data = $request->validate([
+            'done'        => ['sometimes', 'boolean'],
+            'review_note' => ['sometimes', 'nullable', 'string', 'max:1000'],
+        ]);
+
+        DB::transaction(function () use ($model, $request, $data) {
+            $nowDone = array_key_exists('done', $data)
+                ? (bool) $data['done']
                 : ! $model->done;
             $model->update([
                 'done'                 => $nowDone,
                 'completed_at'         => $nowDone ? now() : null,
                 'completed_by_user_id' => $nowDone ? ($request->user()?->id ?? null) : null,
+                // Verifying resolves any prior correction note; reopening
+                // keeps (or sets) the note so the employee sees the reason.
+                'review_note'          => $nowDone ? null : ($data['review_note'] ?? $model->review_note),
             ]);
 
             // Check if all items for this new hire are complete
@@ -77,11 +86,173 @@ class EmployeeOnboardingItemController extends Controller
                 . ($model->new_hire_id ? " (new hire #{$model->new_hire_id})" : '') . '.',
         );
 
+        // Verification changes what the employee sees — tell them.
+        if ($model->done) {
+            $this->notifyEmployee(
+                $model,
+                'Requirement verified',
+                "Your onboarding requirement '{$model->item_text}' was verified by HR.",
+                'success'
+            );
+        }
+
         return response()->json([
             'employee_onboarding_item_id' => $model->employee_onboarding_item_id,
             'done'                         => (bool) $model->done,
             'completed_at'                 => $model->completed_at?->toISOString(),
+            'review_note'                  => $model->review_note,
+            'returned_count'               => (int) ($model->returned_count ?? 0),
         ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* GET /api/v1/onboarding-submissions                                */
+    /* HR review queue: every submitted-but-unverified item across hires */
+    /* (Edit-gated — employees keep using their own ESS checklist).      */
+    /* ------------------------------------------------------------------ */
+
+    public function pendingReview(Request $request): JsonResponse
+    {
+        $items = EmployeeOnboardingItem::with(['newHire', 'templateItem.template'])
+            ->whereNotNull('submitted_at')
+            ->where('done', false)
+            ->orderByDesc('submitted_at')
+            ->get();
+
+        return response()->json([
+            'count' => $items->count(),
+            'data'  => $items->map(fn ($i) => [
+                'employee_onboarding_item_id' => $i->employee_onboarding_item_id,
+                'new_hire_id'                 => $i->new_hire_id,
+                'hire_name'                   => $i->newHire?->name ?? 'Unknown',
+                'hire_stage'                  => $i->newHire?->stage,
+                'employee_id'                 => $i->employee_id,
+                'item_text'                   => $i->item_text,
+                'phase'                       => $i->templateItem?->template?->phase,
+                'file_name'                   => $i->file_name,
+                'notes'                       => $i->notes,
+                'submitted_at'                => $i->submitted_at?->toISOString(),
+                'returned_count'              => (int) ($i->returned_count ?? 0),
+                'review_note'                 => $i->review_note,
+            ]),
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/onboarding-items/{item}/return                         */
+    /* HR sends a submission back for correction with a reason. The item   */
+    /* stays submitted (file kept) but unverified; the employee sees the   */
+    /* note and resubmits via the normal upload flow.                      */
+    /* ------------------------------------------------------------------ */
+
+    public function returnItem(Request $request, int $item): JsonResponse
+    {
+        $model = EmployeeOnboardingItem::findOrFail($item);
+
+        $data = $request->validate([
+            'note' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $model->update([
+            'done'                   => false,
+            'completed_at'           => null,
+            'completed_by_user_id'   => null,
+            'review_note'            => $data['note'],
+            'returned_count'         => ((int) ($model->returned_count ?? 0)) + 1,
+        ]);
+
+        AuditLogger::log(
+            action: 'Onboarding Item Returned',
+            module: 'New Hire Onboarding',
+            targetType: 'Onboarding Item',
+            targetId: (string) $model->getKey(),
+            details: "Returned onboarding item '{$model->item_text}' for correction"
+                . ($model->new_hire_id ? " (new hire #{$model->new_hire_id})" : '')
+                . ": {$data['note']}",
+        );
+
+        $this->notifyEmployee(
+            $model,
+            'Requirement returned for correction',
+            "HR returned '{$model->item_text}' for correction: {$data['note']}",
+            'warning'
+        );
+
+        return response()->json([
+            'employee_onboarding_item_id' => $model->employee_onboarding_item_id,
+            'done'                        => false,
+            'review_note'                 => $model->review_note,
+            'returned_count'              => (int) $model->returned_count,
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Notification helpers (helpful-only: bell rings when someone must    */
+    /* act or know — submissions ping HR, verification/returns ping the    */
+    /* employee). Failures here must never break the main request.        */
+    /* ------------------------------------------------------------------ */
+
+    private function employeeUserIds(EmployeeOnboardingItem $model): array
+    {
+        if (! $model->employee_id) {
+            return [];
+        }
+
+        return SystemUser::where('employee_id', $model->employee_id)
+            ->pluck('system_user_id')
+            ->all();
+    }
+
+    private function notifyEmployee(
+        EmployeeOnboardingItem $model,
+        string $title,
+        string $body,
+        string $type = 'info'
+    ): void {
+        try {
+            $ids = $this->employeeUserIds($model);
+            if (empty($ids)) {
+                return;
+            }
+            Notifier::to($ids, [
+                'title'       => $title,
+                'body'        => $body,
+                'type'        => $type,
+                'module_name' => 'New Hire Onboarding',
+                'target_type' => 'onboarding_item',
+                'target_id'   => (string) $model->getKey(),
+            ]);
+        } catch (\Throwable) {
+            // Notifications are best-effort.
+        }
+    }
+
+    private function notifyHrAdmins(
+        string $title,
+        string $body,
+        EmployeeOnboardingItem $model,
+        ?int $actorId,
+        string $type = 'info'
+    ): void {
+        try {
+            $ids = array_values(array_diff(
+                array_merge(Notifier::hrAdminIds(), Notifier::superAdminIds()),
+                $actorId ? [$actorId] : []
+            ));
+            if (empty($ids)) {
+                return;
+            }
+            Notifier::to($ids, [
+                'title'       => $title,
+                'body'        => $body,
+                'type'        => $type,
+                'module_name' => 'New Hire Onboarding',
+                'target_type' => 'onboarding_item',
+                'target_id'   => (string) $model->getKey(),
+            ]);
+        } catch (\Throwable) {
+            // Notifications are best-effort.
+        }
     }
 
     /* ------------------------------------------------------------------ */
@@ -235,6 +406,15 @@ class EmployeeOnboardingItemController extends Controller
             details: ($fileName ? "Submitted document '{$fileName}'" : 'Submitted notes')
                 . " for onboarding item '{$model->item_text}'"
                 . ($model->new_hire_id ? " (new hire #{$model->new_hire_id})" : '') . '.',
+        );
+
+        // A submission needs HR action — tell HR admins and super admins.
+        $hireName = $model->newHire?->name ?? 'A new hire';
+        $this->notifyHrAdmins(
+            'Onboarding document submitted',
+            "{$hireName} submitted '{$model->item_text}' — awaiting verification.",
+            $model,
+            $request->user()?->system_user_id
         );
 
         return response()->json([

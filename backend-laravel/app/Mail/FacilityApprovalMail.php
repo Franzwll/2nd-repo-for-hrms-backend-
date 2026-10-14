@@ -24,6 +24,11 @@ class FacilityApprovalMail extends Mailable
         public string $interviewDate,
         public string $interviewTime,
         public ?string $facilityLocation = null,
+        public ?string $interviewerName = null,
+        public ?string $interviewMode = null,
+        public ?string $zoomJoinUrl = null,
+        public ?string $zoomContinueUrl = null,
+        public ?string $zoomPassword = null,
     ) {
     }
 
@@ -45,6 +50,11 @@ class FacilityApprovalMail extends Mailable
                 'interviewDate'    => $this->interviewDate,
                 'interviewTime'    => $this->interviewTime,
                 'facilityLocation' => $this->facilityLocation,
+                'interviewerName'  => $this->interviewerName,
+                'interviewMode'    => $this->interviewMode,
+                'zoomJoinUrl'      => $this->zoomJoinUrl,
+                'zoomContinueUrl'  => $this->zoomContinueUrl,
+                'zoomPassword'     => $this->zoomPassword,
             ],
         );
     }
