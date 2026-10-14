@@ -109,13 +109,9 @@ import {
   type ApiOnboardingSubmission,
 } from "@/lib/api";
 import {
-  describeExport,
-  exportReport,
-  printReport,
   type ReportData,
-  type ReportFormat,
 } from "@/lib/report-export";
-import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
+import { ReportMenu } from "@/components/ui/report-menu";
 import { getUser } from "@/lib/auth";
 import {
   isValidEmail,
@@ -814,46 +810,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     setConfirmDelete(null);
   };
 
-  /** Password-protected export flow — same security logic as Applicant,
-   *  Recruitment and Core HCM: every file is sealed in an AES-256 ZIP. */
-  const [onbCsvOpen, setOnbCsvOpen] = useState(false);
-  const [onbCsvBusy, setOnbCsvBusy] = useState(false);
-  const [onbCsvPending, setOnbCsvPending] = useState<ReportFormat | null>(null);
-
-  const handleExportOnboardingReport = (format: ReportFormat) => {
-    if (buildOnboardingReportData().rows.length === 0) {
-      toast.error("No hires to export for the current filters.");
-      return;
-    }
-    setOnbCsvPending(format);
-    setOnbCsvOpen(true);
-  };
-
-  const confirmOnboardingExport = async (password: string) => {
-    if (!onbCsvPending) return;
-    const format = onbCsvPending;
-    const data = buildOnboardingReportData();
-    if (data.rows.length === 0) {
-      toast.error("No hires to export for the current filters.");
-      return;
-    }
-    setOnbCsvBusy(true);
-    try {
-      await exportReport(data, format, { password });
-      const { zipName } = describeExport(data, format);
-      toast.success(
-        `${data.title} exported as password-protected ${format.toUpperCase()} (${zipName}).`,
-      );
-      setOnbCsvOpen(false);
-      setOnbCsvPending(null);
-    } catch (e) {
-      console.error("Protected export failed:", e);
-      toast.error(e instanceof Error ? e.message : "Protected export failed.");
-    } finally {
-      setOnbCsvBusy(false);
-    }
-  };
-
   /**
    * Automatic regularization by operation of law (Art. 296, Labor Code; DOLE
    * 6-month rule). When a probationary hire is allowed to keep working past
@@ -1126,79 +1082,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       <PageHeader
         eyebrow={role === "superadmin" ? "Super Admin · Recruitment" : "Admin · Recruitment"}
         title="New Hire Onboarding"
+        description="Pre-onboarding, probationary and regularization tracking with requirement checklists."
         actions={
-          <>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <Download className="h-4 w-4" /> Generate Report
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
-                <DropdownMenuItem onClick={() => handleExportOnboardingReport("pdf")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportOnboardingReport("docx")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportOnboardingReport("excel")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportOnboardingReport("csv")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-                  Every file is sealed in a password-protected ZIP (AES-256). You will be asked for
-                  a file password.
-                </p>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => {
-                    const data = buildOnboardingReportData();
-                    printReport(data);
-                    toast.success(`${data.title} sent to printer.`);
-                  }}
-                >
-                  <Printer className="mr-2 h-4 w-4" /> Print…
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <SecureExportDialog
-              open={onbCsvOpen}
-              onOpenChange={(o) => {
-                if (!onbCsvBusy) {
-                  setOnbCsvOpen(o);
-                  if (!o) setOnbCsvPending(null);
-                }
-              }}
-              reportTitle="New Hire Onboarding Report"
-              formatLabel={
-                !onbCsvPending
-                  ? ""
-                  : onbCsvPending === "pdf"
-                    ? "PDF"
-                    : onbCsvPending === "docx"
-                      ? "DOCX"
-                      : onbCsvPending === "excel"
-                        ? "Excel"
-                        : "CSV"
-              }
-              busy={onbCsvBusy}
-              onConfirm={confirmOnboardingExport}
-            />
-          </>
+          <ReportMenu report={() => buildOnboardingReportData()} recordCount={onboardingHires.length} />
         }
       />
 
@@ -3300,18 +3186,6 @@ export function EmployeeOnboarding() {
     },
   ];
 
-  /** Every format is password-protected: picking one opens the password gate. */
-  const handleExportEmployeeReport = (format: ReportFormat) => {
-    const data = buildEmployeeReportData();
-    if (!data) return;
-    if (data.rows.length === 0) {
-      toast.error("No checklist items to export.");
-      return;
-    }
-    setEmpCsvPending(format);
-    setEmpCsvOpen(true);
-  };
-
   const buildEmployeeReportData = (): ReportData | null => {
     if (!newHire) {
       toast.error("Your onboarding record is still loading.");
@@ -3339,111 +3213,20 @@ export function EmployeeOnboarding() {
     };
   };
 
-  const [empCsvOpen, setEmpCsvOpen] = useState(false);
-  const [empCsvBusy, setEmpCsvBusy] = useState(false);
-  const [empCsvPending, setEmpCsvPending] = useState<ReportFormat | null>(null);
-
-  const confirmEmployeeCsv = async (password: string) => {
-    if (!empCsvPending) return;
-    const format = empCsvPending;
-    const data = buildEmployeeReportData();
-    if (!data) return;
-    setEmpCsvBusy(true);
-    try {
-      await exportReport(data, format, { password });
-      const { zipName } = describeExport(data, format);
-      toast.success(
-        `Onboarding checklist exported as password-protected ${format.toUpperCase()} (${zipName}).`,
-      );
-      setEmpCsvOpen(false);
-      setEmpCsvPending(null);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Protected export failed.");
-    } finally {
-      setEmpCsvBusy(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Employee Portal"
         title="New Hire Onboarding"
+        description="Complete your onboarding requirements and track your employment stage."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" className="gap-2" onClick={loadOnboarding} disabled={loading}>
               <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /> Refresh
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <Download className="h-4 w-4" /> Generate Report
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
-                <DropdownMenuItem onClick={() => handleExportEmployeeReport("pdf")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportEmployeeReport("docx")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportEmployeeReport("excel")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportEmployeeReport("csv")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-                  Every file is sealed in a password-protected ZIP (AES-256). You will be asked for
-                  a file password.
-                </p>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => {
-                    const data = buildEmployeeReportData();
-                    if (!data) return;
-                    printReport(data);
-                    toast.success(`${data.title} sent to printer.`);
-                  }}
-                >
-                  <Printer className="mr-2 h-4 w-4" /> Print…
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <SecureExportDialog
-              open={empCsvOpen}
-              onOpenChange={(o) => {
-                if (!empCsvBusy) {
-                  setEmpCsvOpen(o);
-                  if (!o) setEmpCsvPending(null);
-                }
-              }}
-              reportTitle="My Onboarding Checklist"
-              formatLabel={
-                !empCsvPending
-                  ? ""
-                  : empCsvPending === "pdf"
-                    ? "PDF"
-                    : empCsvPending === "docx"
-                      ? "DOCX"
-                      : empCsvPending === "excel"
-                        ? "Excel"
-                        : "CSV"
-              }
-              busy={empCsvBusy}
-              onConfirm={confirmEmployeeCsv}
+            <ReportMenu
+              report={() => buildEmployeeReportData() ?? { title: "My Onboarding Checklist", columns: [], rows: [] }}
+              recordCount={items.length}
             />
           </div>
         }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -223,6 +223,10 @@ import {
 import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
 import { ReportMenu } from "@/components/ui/report-menu";
 import {
+  ZoomEmbeddedMeeting,
+  type ZoomEmbedState,
+} from "@/components/applicants/ZoomEmbeddedMeeting";
+import {
   isValidEmail,
   isValidName,
   isValidPhone,
@@ -344,6 +348,7 @@ function transformApiInterview(i: ApiInterview): Interview {
     zoomJoinUrl: (i as unknown as Record<string, string | null>)["zoom_join_url"] ?? null,
     zoomContinueUrl: (i as unknown as Record<string, string | null>)["zoom_continue_url"] ?? null,
     zoomPassword: (i as unknown as Record<string, string | null>)["zoom_password"] ?? null,
+    interview_notes: (i as unknown as Record<string, string | null>)["interview_notes"] ?? null,
   };
 }
 
@@ -703,6 +708,54 @@ const DEFAULT_SLOT_SETTINGS = {
 const parseTimeToMinutes = (t: string) => {
   const [h, m] = t.split(":").map(Number);
   return (h ?? 0) * 60 + (m ?? 0);
+};
+
+/** Start-window state of one interview booking against the wall clock. */
+export type InterviewWindowState =
+  | "future-day"
+  | "upcoming"
+  | "live"
+  | "ended"
+  | "past-day";
+
+/** Parses an interview time label ("10:30 AM", "10:30", "10:30:00") into
+ *  minutes-from-midnight. Null when the label is unparseable. */
+const parseInterviewTimeToMinutes = (t: string): number | null => {
+  const m = String(t ?? "")
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp]\.?[Mm]\.?)?$/);
+  if (!m) return null;
+  let h = Number(m[1]);
+  const mins = Number(m[2]);
+  const mer = m[4]?.replace(/\./g, "").toUpperCase();
+  if (mer) {
+    if (mer === "PM" && h < 12) h += 12;
+    if (mer === "AM" && h === 12) h = 0;
+  }
+  if (h > 23 || mins > 59) return null;
+  return h * 60 + mins;
+};
+
+/** Which part of its slot an interview is in right now.
+ *  The meeting is startable only while "live": today and now inside
+ *  [start, start + durationMinutes) — e.g. 10:30 + 30 min stays open
+ *  10:30–11:00. Unparseable times on today's date fall back to "live"
+ *  (the previous date-only behaviour) so nothing gets stuck. */
+const getInterviewWindow = (
+  dateISO: string,
+  timeLabel: string,
+  durationMinutes: number,
+  now: Date,
+): InterviewWindowState => {
+  const todayISO = isoOf(now);
+  if (dateISO > todayISO) return "future-day";
+  if (dateISO < todayISO) return "past-day";
+  const start = parseInterviewTimeToMinutes(timeLabel);
+  if (start === null) return "live";
+  const duration = Math.max(1, Math.floor(durationMinutes) || 30);
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  if (nowMins < start) return "upcoming";
+  return nowMins < start + duration ? "live" : "ended";
 };
 
 /** Formats minutes-from-midnight into a 12-hour "hh:mm AM/PM" label. */
@@ -3118,10 +3171,23 @@ export function ScreeningReferenceManager() {
     setEditorOpen(true);
   };
 
+  const looksLikeEducation = (v: string) =>
+    /\b(bachelor|master|doctorate|ph\.?d|mba|college|university|high school|vocational|tesda|associate|diploma|degree|b\.?s\.?|b\.?a\.?|bshm|bsba|tourism|hospitality management)\b/i.test(
+      v,
+    );
+
   const save = async () => {
     const value = form.canonical_value.trim();
     if (!value) {
       toast.error("Enter a canonical value.");
+      return;
+    }
+    if (!editing && form.data_type === "skill" && looksLikeEducation(value)) {
+      toast.error("That looks like an education entry.", {
+        description:
+          "Change Type to Education before saving — degrees saved as Skill show under Skills and leave Education empty.",
+      });
+      setForm((f) => ({ ...f, data_type: "education" }));
       return;
     }
     const payload = {
@@ -3496,8 +3562,17 @@ export function ScreeningReferenceManager() {
               />
             </div>
             {!editing && (
-              <div className="space-y-2 rounded-md border border-dashed border-border bg-muted/30 p-3">
-                <Label className="text-xs">Bulk upload entries</Label>
+              <div
+                className="space-y-2 rounded-md border border-dashed bg-muted/30 p-3 transition-colors"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  void handleBulkUpload(e.dataTransfer.files?.[0]);
+                }}
+              >
+                <Label className="text-xs">Bulk upload entries — drag &amp; drop a .csv / .txt file here</Label>
                 <div className="flex flex-wrap items-center gap-2">
                   <Input
                     type="file"
@@ -4766,6 +4841,9 @@ type ApplicantViewScreenProps = {
   recomputingRanking?: boolean;
   onSchedule: () => void;
   onStartInterview: () => void;
+  /** Slot length in minutes driving the interview start window
+   *  ([start, start + duration) is startable). Falls back to 30. */
+  slotDurationMinutes?: number;
   /** Accept & schedule / Schedule interview — jumps to Interview Scheduling prefilled. */
   onAcceptAndSchedule?: () => void;
   /** Reschedule — jumps to Interview Scheduling prefilling the live booking. */
@@ -5307,6 +5385,7 @@ function ApplicantViewScreen({
   recomputingRanking,
   onSchedule,
   onStartInterview,
+  slotDurationMinutes = DEFAULT_SLOT_SETTINGS.intervalMinutes,
   onAcceptAndSchedule,
   onRescheduleInterview,
   showAcceptInterview,
@@ -6522,24 +6601,39 @@ function ApplicantViewScreen({
                               >
                                 {interview.status}
                               </Badge>
-                              {interview.date === TODAY_ISO ? (
-                                interview.mode === "Virtual" ? (
-                                  <Button size="sm" onClick={onStartInterview}>
-                                    <Video className="mr-1.5 h-3.5 w-3.5" /> Start Zoom Interview
-                                  </Button>
-                                ) : (
-                                  <Button size="sm" onClick={onStartInterview}>
-                                    <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" /> Start
-                                    Interview
-                                  </Button>
-                                )
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  {interview.date > TODAY_ISO
-                                    ? "Available on interview day"
-                                    : "Interview window has passed"}
-                                </span>
-                              )}
+                              {(() => {
+                                // Startable only inside the slot window
+                                // ([start, start + duration)) — not the whole day.
+                                const windowState = interview
+                                  ? getInterviewWindow(
+                                      interview.date,
+                                      interview.time,
+                                      slotDurationMinutes,
+                                      new Date(),
+                                    )
+                                  : "past-day";
+                                if (windowState === "live") {
+                                  return interview.mode === "Virtual" ? (
+                                    <Button size="sm" onClick={onStartInterview}>
+                                      <Video className="mr-1.5 h-3.5 w-3.5" /> Start Zoom Interview
+                                    </Button>
+                                  ) : (
+                                    <Button size="sm" onClick={onStartInterview}>
+                                      <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" /> Start
+                                      Interview
+                                    </Button>
+                                  );
+                                }
+                                return (
+                                  <span className="text-xs text-muted-foreground">
+                                    {windowState === "upcoming"
+                                      ? `Starts at ${interview.time} (${slotDurationMinutes} min)`
+                                      : windowState === "future-day"
+                                        ? "Available on interview day"
+                                        : "Interview window has passed"}
+                                  </span>
+                                );
+                              })()}
                             </div>
                           </div>
                           {interview.mode === "Virtual" &&
@@ -6997,6 +7091,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     };
   }, [loadApplicantRecords]);
 
+  /* Clock for interview start windows — ticks so Start enables the moment a
+     slot opens (and disables when it ends) without needing a refresh. The
+     20s record poll above re-renders anyway; this covers the gaps. */
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const clock = window.setInterval(() => {
+      if (document.visibilityState === "visible") setNowMs(Date.now());
+    }, 15_000);
+    return () => window.clearInterval(clock);
+  }, []);
+
   // Schedulable interview days (Mon–Sun setter) persisted via system_settings
   const [schedulableDays, setSchedulableDays] = useState<string[]>(DEFAULT_SCHEDULABLE_DAYS);
   const [schedulableDaysDraft, setSchedulableDaysDraft] =
@@ -7173,12 +7278,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   );
   const [zoomMicOn, setZoomMicOn] = useState(true);
   const [zoomCamOn, setZoomCamOn] = useState(true);
-  const [zoomTranscripts, setZoomTranscripts] = useState<{ time: string; text: string }[]>([]);
-  const [zoomListening, setZoomListening] = useState(false);
-  const [zoomManualCaption, setZoomManualCaption] = useState("");
+  const [zoomEmbed, setZoomEmbed] = useState<ZoomEmbedState>({ status: "idle" });
+  // Zoom room: the notes drawer and the invite details both start closed so
+  // the video + scorecard stay the only things on screen during the call.
+  const [zoomNotesOpen, setZoomNotesOpen] = useState(false);
+  const [zoomInviteOpen, setZoomInviteOpen] = useState(false);
+  // Interview notes — loaded from the interview record, saved to backend.
+  const [zoomNotes, setZoomNotes] = useState("");
+  const [zoomNotesSaving, setZoomNotesSaving] = useState(false);
   const zoomVideoRef = useRef<HTMLVideoElement | null>(null);
   const zoomStreamRef = useRef<MediaStream | null>(null);
-  const zoomRecogRef = useRef<{ stop: () => void } | null>(null);
 
   /* --- Assessment Test dialog state (job-specific test after interview) --- */
   const [testingTest, setTestingTest] = useState<Applicant | null>(null);
@@ -8504,7 +8613,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   };
 
   /** Opens the landscape Zoom room (Virtual, scheduled today): inits the same
-   *  eval state as Start Interview, then shows video preview + transcription. */
+   *  eval state as Start Interview, then shows video + scorecard with a
+   *  collapsible interview-notes drawer (persisted to the interview record). */
   const openZoomRoom = (a: Applicant) => {
     const iv =
       interviews.find((x) => x.applicant === a.name && x.status !== "Cancelled") ??
@@ -8516,6 +8626,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     startInterviewFor(a);
     setZoomMicOn(true);
     setZoomCamOn(true);
+    setZoomEmbed({ status: "idle" });
+    setZoomNotes(iv.interview_notes ?? "");
     setZoomRoom({ applicant: a, interview: iv });
   };
 
@@ -8526,14 +8638,40 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       /* ignore */
     }
     zoomStreamRef.current = null;
-    try {
-      zoomRecogRef.current?.stop();
-    } catch {
-      /* ignore */
-    }
-    zoomRecogRef.current = null;
-    setZoomListening(false);
     setZoomRoom(null);
+    // Scoring already lives inside the Zoom room, so leaving must not pop
+    // the standalone Interview form afterwards. On-site interviews never
+    // enter this path — their form still opens via Start Interview.
+    setEvaluating(null);
+  };
+
+  const handleSaveZoomNotes = async () => {
+    if (!zoomRoom || zoomNotesSaving) return;
+    if (!zoomRoom.interview.dbId) {
+      toast.error("Interview is not saved on the server yet — notes can't be saved");
+      return;
+    }
+    setZoomNotesSaving(true);
+    try {
+      const res = await interviewsApi.saveNotes(zoomRoom.interview.dbId, zoomNotes);
+      const saved = res.interview_notes ?? zoomNotes;
+      setZoomNotes(saved);
+      // Keep the room + pipeline list in sync so re-opening the room reloads the saved notes.
+      setZoomRoom((prev) =>
+        prev ? { ...prev, interview: { ...prev.interview, interview_notes: saved } } : prev,
+      );
+      setInterviews((prev) =>
+        prev.map((x) =>
+          x.dbId === zoomRoom.interview.dbId ? { ...x, interview_notes: saved } : x,
+        ),
+      );
+      toast.success("Interview notes saved");
+    } catch (e) {
+      console.error("Failed to save interview notes:", e);
+      toast.error("Failed to save notes");
+    } finally {
+      setZoomNotesSaving(false);
+    }
   };
 
   const toggleZoomMic = () => {
@@ -8552,82 +8690,22 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     });
   };
 
-  const startZoomTranscription = () => {
-    const w = window as unknown as Record<string, unknown>;
-    const SR =
-      (w["SpeechRecognition"] as unknown as new () => unknown) ??
-      (w["webkitSpeechRecognition"] as unknown as new () => unknown);
-    if (!SR) {
-      toast.error("Live transcription not supported — type captions manually below.");
-      return;
+  /* Local camera preview for the Zoom room (right-side video pane).
+   *  The fallback <video> only mounts when zoomEmbed flips to "fallback",
+   *  which happens AFTER this effect captures zoomVideoRef.current (null at
+   *  that point) — so attach via a callback ref that fires when the video
+   *  actually mounts, instead of relying on the stale captured element. */
+  const attachZoomPreview = useCallback((el: HTMLVideoElement | null) => {
+    zoomVideoRef.current = el;
+    const stream = zoomStreamRef.current;
+    if (el && stream) {
+      el.srcObject = stream;
+      el.play().catch(() => undefined);
     }
-    try {
-      const recog = new SR() as unknown as {
-        continuous: boolean;
-        interimResults: boolean;
-        lang: string;
-        onresult:
-          | ((e: {
-              results: { [k: number]: { [j: number]: { transcript: string } }; length: number };
-            }) => void)
-          | null;
-        onerror: (() => void) | null;
-        onend: (() => void) | null;
-        start: () => void;
-        stop: () => void;
-      };
-      recog.continuous = true;
-      recog.interimResults = false;
-      recog.lang = "en-US";
-      recog.onresult = (e) => {
-        const last = e.results[e.results.length - 1]?.[0]?.transcript?.trim();
-        if (!last) return;
-        const time = new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        });
-        setZoomTranscripts((prev) => [...prev.slice(-199), { time, text: last }]);
-      };
-      recog.onerror = () => undefined;
-      recog.onend = () => {
-        // Auto-restart while the room wants to keep listening.
-        setZoomListening((listening) => {
-          if (listening) {
-            try {
-              recog.start();
-            } catch {
-              /* already started */
-            }
-            return true;
-          }
-          return false;
-        });
-      };
-      recog.start();
-      zoomRecogRef.current = recog;
-      setZoomListening(true);
-      toast.success("Live transcription started");
-    } catch {
-      toast.error("Could not start transcription on this browser.");
-    }
-  };
-
-  const stopZoomTranscription = () => {
-    try {
-      zoomRecogRef.current?.stop();
-    } catch {
-      /* ignore */
-    }
-    zoomRecogRef.current = null;
-    setZoomListening(false);
-  };
-
-  /* Local camera preview for the Zoom room (right-side video pane). */
+  }, []);
   useEffect(() => {
     if (!zoomRoom) return;
     let cancelled = false;
-    const el = zoomVideoRef.current;
     (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -8642,6 +8720,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         stream.getVideoTracks().forEach((t) => {
           t.enabled = zoomCamOn;
         });
+        // The fallback video may already be mounted (SDK failed fast) —
+        // otherwise attachZoomPreview picks the stream up on mount.
+        const el = zoomVideoRef.current;
         if (el) {
           el.srcObject = stream;
           await el.play().catch(() => undefined);
@@ -10463,6 +10544,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     <div>
       <PageHeader
         title="Applicant Management"
+        description="NER resume screening, candidate ranking, interview scheduling and evaluation."
         actions={
           <div className="flex items-center gap-2">
             <ReportMenu
@@ -10507,6 +10589,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               e.details.includes(viewedApplicant.id),
           )}
           passing={passing}
+          slotDurationMinutes={slotSettings.intervalMinutes}
           onBack={() => setViewingApplicant(null)}
           onBackToOnboarding={
             viewedFromOnboarding ? () => navigate({ to: `/${role}/onboarding` }) : undefined
@@ -13923,9 +14006,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 (liveInterview.status === "Scheduled" ||
                                   liveInterview.status === "Completed") &&
                                 !isInterviewLocked(liveInterview);
-                              const startToday = showStart
-                                ? (liveInterview?.date ?? interview?.date) === TODAY_ISO
-                                : false;
+                              const startWindow = showStart
+                                ? getInterviewWindow(
+                                    liveInterview?.date ?? interview?.date ?? "",
+                                    liveInterview?.time ?? interview?.time ?? "",
+                                    slotSettings.intervalMinutes,
+                                    new Date(nowMs),
+                                  )
+                                : "past-day";
+                              // Startable only inside the slot window
+                              // ([start, start + duration)) — not the whole day.
+                              const startToday = startWindow === "live";
                               const showStartTest = !test && readyForTest && canProgress;
                               const showStartPractical =
                                 requiresPrac && !practical && readyForPractical && canProgress;
@@ -14360,9 +14451,13 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                               title={
                                                 facilityPending
                                                   ? "Waiting for facility approval — the interview can start once the facility request is approved"
-                                                  : startToday
+                                                  : startWindow === "live"
                                                     ? undefined
-                                                    : "Scheduled today to access it"
+                                                    : startWindow === "upcoming"
+                                                      ? `Starts at ${liveInterview?.time ?? interview?.time} (${slotSettings.intervalMinutes} min)`
+                                                      : startWindow === "future-day"
+                                                        ? "Available on interview day"
+                                                        : "Interview window has passed"
                                               }
                                             >
                                               <DropdownMenuItem
@@ -15618,207 +15713,173 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         </DialogContent>
       </Dialog>
 
-      {/* ZOOM INTERVIEW ROOM — landscape: video preview left, eval form right (30%),
-          live transcription spanning full width below. Opens from
-          "Start Zoom Interview" for Virtual interviews scheduled today. */}
+      {/* ZOOM INTERVIEW ROOM — the applicant's face and the scorecard are the
+          only two things on screen. Invitation links and the transcript live
+          behind collapsible drawers so nothing competes with the call.
+          Opens from "Start Zoom Interview" for Virtual interviews inside
+          their slot window. */}
       <Dialog open={!!zoomRoom} onOpenChange={(o) => !o && closeZoomRoom()}>
-        <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-6xl lg:max-w-[92vw] xl:max-w-[1400px]">
+        <DialogContent
+          className="flex max-h-[94vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl lg:h-[var(--zoom-room-h)] lg:max-w-[92vw] xl:max-w-[min(1600px,92vw)]"
+          style={
+            {
+              // Size the room so the video stage lands on a true 16:9 —
+              // otherwise the tall pane letterboxes the meeting into a
+              // small strip with dead black bands. 66px covers the header
+              // row; 362px is the scorecard column plus the dialog border.
+              "--zoom-room-h":
+                "calc(66px + min(calc((min(1600px, 92vw) - 362px) * 0.5625), calc(94vh - 66px)))",
+            } as CSSProperties
+          }
+        >
           {zoomRoom && (
             <>
-              <DialogHeader className="min-w-0">
-                <DialogTitle className="flex items-center gap-2 font-display text-2xl">
-                  <Video className="h-5 w-5 text-primary" /> Start Zoom Interview
-                </DialogTitle>
-                <DialogDescription
-                  className="min-w-0 max-w-full break-words"
-                  style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                >
-                  {zoomRoom.applicant.name} — {zoomRoom.applicant.position} ·{" "}
-                  {zoomRoom.interview.date} · {zoomRoom.interview.time} · Virtual ·{" "}
-                  {zoomRoom.interview.interviewer}
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="grid items-start gap-4 lg:h-[70vh] lg:min-h-[560px] lg:grid-cols-[1fr_28%]">
-                {/* RIGHT — interview scoring form / Image 1 (30% scope, same state as Interview dialog).
-                    Height-locked to the video column with internal scroll so both panes align. */}
-                <div className="order-2 min-w-0 space-y-4 lg:h-[70vh] lg:min-h-[560px] lg:overflow-y-auto lg:pr-2">
-                  <div className="grid grid-cols-1 gap-3">
-                    <div className="space-y-1.5">
-                      <Label>
-                        Interviewer <span className="text-destructive">*</span>
-                      </Label>
-                      <Select value={evalAssessor} onValueChange={setEvalAssessor}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select interviewer" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {assessors.length === 0 && (
-                            <div className="px-2 py-3 text-xs text-muted-foreground">
-                              No system users found.
-                            </div>
-                          )}
-                          {assessors.map((u) => (
-                            <SelectItem key={u.system_user_id} value={String(u.system_user_id)}>
-                              {u.full_name}
-                              {u.department_name ? ` — ${u.department_name}` : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Interview date</Label>
-                      <Input
-                        type="date"
-                        value={evalDateTime}
-                        onChange={(e) => setEvalDateTime(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="overflow-hidden rounded-md border border-border">
-                    <div className="hidden">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Category
-                      </span>
-                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Rate
-                      </span>
-                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Comments
-                      </span>
-                    </div>
-                    {assessmentCriteria.map((c, idx) => (
-                      <div
-                        key={c}
-                        className={
-                          "grid grid-cols-1 gap-2 px-3 py-3" +
-                          (idx > 0 ? " border-t border-border" : "")
-                        }
-                      >
-                        <span className="flex text-sm font-medium">{c}</span>
-                        <Select
-                          value={String(evalScores[c] ?? 4)}
-                          onValueChange={(v) => setEvalScores((p) => ({ ...p, [c]: Number(v) }))}
-                        >
-                          <SelectTrigger className="min-h-[48px] w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {[5, 4, 3, 2, 1].map((n) => (
-                              <SelectItem key={n} value={String(n)}>
-                                {n} / 5
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Textarea
-                          rows={2}
-                          className="min-h-[56px]"
-                          value={evalComments[c] ?? ""}
-                          onChange={(e) => setEvalComments((p) => ({ ...p, [c]: e.target.value }))}
-                          placeholder={`Remarks for ${c.toLowerCase()}—`}
-                        />
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Overall Evaluation</Label>
-                    <Textarea
-                      rows={3}
-                      value={evalRemarks}
-                      onChange={(e) => setEvalRemarks(e.target.value)}
-                      placeholder="Overall evaluation of the interview—"
-                    />
-                  </div>
-                  <div className="rounded-md border border-border p-3">
-                    <p className="eyebrow">Computed score</p>
-                    <p className="font-display text-3xl font-semibold text-primary">
-                      {Math.round(
-                        (assessmentCriteria.reduce((t, c) => t + (evalScores[c] ?? 4), 0) /
-                          (assessmentCriteria.length * 5)) *
-                          100,
-                      )}
-                      %
-                    </p>
+              {/* Compact header — identity on the left, actions on the right. */}
+              <DialogHeader className="min-w-0 flex-row items-center justify-between gap-3 space-y-0 border-b border-border px-5 py-3 pr-12">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                    {zoomRoom.applicant.name
+                      .split(" ")
+                      .map((w) => w[0])
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .join("")}
+                  </span>
+                  <div className="min-w-0">
+                    <DialogTitle className="truncate font-display text-xl">
+                      {zoomRoom.applicant.name}
+                    </DialogTitle>
+                    <DialogDescription className="min-w-0 truncate text-xs">
+                      {zoomRoom.applicant.position} · {zoomRoom.interview.time} · Virtual ·{" "}
+                      {zoomRoom.interview.interviewer}
+                    </DialogDescription>
                   </div>
                 </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="hidden items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success sm:flex">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
+                    </span>
+                    Live
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setZoomInviteOpen((v) => !v)}
+                    aria-expanded={zoomInviteOpen}
+                  >
+                    <Link2 className="mr-1.5 h-3.5 w-3.5" /> Invite
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setZoomNotesOpen((v) => !v)}
+                    aria-expanded={zoomNotesOpen}
+                  >
+                    <FileText className="mr-1.5 h-3.5 w-3.5" /> Notes
+                    {zoomNotes.trim().length > 0 && (
+                      <span className="ml-1.5 rounded-full bg-primary px-1.5 text-[0.65rem] font-bold text-primary-foreground">
+                        ✓
+                      </span>
+                    )}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={closeZoomRoom}>
+                    <PhoneOff className="mr-1.5 h-3.5 w-3.5" /> Leave
+                  </Button>
+                </div>
+              </DialogHeader>
 
-                {/* LEFT — video preview + Zoom links (70%, same height as eval form) */}
-                <div className="order-1 min-w-0 space-y-3 lg:h-[70vh] lg:min-h-[560px] lg:overflow-y-auto lg:pr-1">
-                  <div className="overflow-hidden rounded-lg border border-border bg-black">
-                    <div className="flex items-center justify-between bg-muted/60 px-3 py-2">
-                      <p className="flex items-center gap-1.5 text-xs font-semibold">
-                        <Video className="h-3.5 w-3.5" /> Video preview
-                      </p>
-                      <Badge variant="outline" className="text-[0.65rem]">
-                        {zoomRoom.interview.date} · {zoomRoom.interview.time}
-                      </Badge>
+              {/* Body — video stage + scorecard side by side, both panes
+                  scroll independently so the dialog itself never scrolls. */}
+              <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_360px]">
+                {/* LEFT — the meeting fills the pane edge to edge. */}
+                <div className="order-1 flex min-h-0 flex-col bg-black">
+                  <div className="relative flex min-h-[300px] flex-1 items-center justify-center">
+                    {/* REAL embedded Zoom meeting, chromeless: no card, gray
+                        header, or border — just the meeting filling the pane.
+                        Falls back to local camera preview + Join link when
+                        SDK keys are missing. */}
+                    <div className="relative aspect-video w-full max-h-full">
+                      <ZoomEmbeddedMeeting
+                        interviewDbId={zoomRoom.interview.dbId}
+                        joinUrl={zoomRoom.interview.zoomJoinUrl}
+                        userName={zoomRoom.interview.interviewer || zoomRoom.applicant.name}
+                        onStateChange={setZoomEmbed}
+                        fill
+                      />
                     </div>
-                    <video
-                      ref={zoomVideoRef}
-                      muted
-                      playsInline
-                      className="aspect-video w-full bg-black object-cover lg:aspect-auto lg:h-[50vh] lg:min-h-[420px]"
-                    />
-                    <div className="flex flex-wrap items-center gap-2 bg-muted/60 px-3 py-2">
-                      <Button
-                        size="sm"
-                        variant={zoomMicOn ? "outline" : "destructive"}
-                        onClick={toggleZoomMic}
-                      >
-                        {zoomMicOn ? (
-                          <Mic className="h-3.5 w-3.5" />
-                        ) : (
-                          <MicOff className="h-3.5 w-3.5" />
-                        )}
-                        {zoomMicOn ? "Mute" : "Unmute"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={zoomCamOn ? "outline" : "destructive"}
-                        onClick={toggleZoomCam}
-                      >
-                        {zoomCamOn ? (
-                          <Video className="h-3.5 w-3.5" />
-                        ) : (
-                          <VideoOff className="h-3.5 w-3.5" />
-                        )}
-                        {zoomCamOn ? "Stop video" : "Start video"}
-                      </Button>
-                    </div>
+                    {zoomEmbed.status === "fallback" && (
+                      <>
+                        <video
+                          ref={attachZoomPreview}
+                          muted
+                          playsInline
+                          className="h-full w-full bg-black object-cover"
+                        />
+                        <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
+                          <Button
+                            size="sm"
+                            variant={zoomMicOn ? "outline" : "destructive"}
+                            onClick={toggleZoomMic}
+                          >
+                            {zoomMicOn ? (
+                              <Mic className="h-3.5 w-3.5" />
+                            ) : (
+                              <MicOff className="h-3.5 w-3.5" />
+                            )}
+                            {zoomMicOn ? "Mute" : "Unmute"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={zoomCamOn ? "outline" : "destructive"}
+                            onClick={toggleZoomCam}
+                          >
+                            {zoomCamOn ? (
+                              <Video className="h-3.5 w-3.5" />
+                            ) : (
+                              <VideoOff className="h-3.5 w-3.5" />
+                            )}
+                            {zoomCamOn ? "Stop video" : "Start video"}
+                          </Button>
+                        </div>
+                      </>
+                    )}
                   </div>
 
-                  <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-xs dark:border-blue-900/40 dark:bg-blue-950/20">
-                    <p className="mb-2 font-semibold text-blue-800 dark:text-blue-200">
-                      Zoom meeting — also emailed to applicant
-                    </p>
-                    {zoomRoom.interview.zoomJoinUrl ? (
-                      <div className="mb-2 space-y-1">
-                        <p className="break-all text-blue-700 dark:text-blue-300">
-                          <b>1st link — Join:</b>{" "}
+                  {/* Invitation drawer — the applicant already has this by
+                      email, so it stays collapsed until someone asks. */}
+                  {zoomInviteOpen && (
+                    <div className="shrink-0 space-y-2 border-t border-border bg-background px-4 py-3 text-xs">
+                      <p className="font-semibold text-foreground">
+                        Zoom meeting — also emailed to {zoomRoom.applicant.name}
+                      </p>
+                      {zoomRoom.interview.zoomJoinUrl ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="shrink-0 font-medium text-foreground">
+                            Join:
+                          </span>
                           <a
                             href={zoomRoom.interview.zoomJoinUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="underline"
+                            title={zoomRoom.interview.zoomJoinUrl}
+                            className="min-w-0 flex-1 break-all text-primary underline underline-offset-2"
                           >
                             {zoomRoom.interview.zoomJoinUrl}
                           </a>
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="ghost"
+                            className="h-7 shrink-0 px-2"
+                            aria-label="Copy join link"
                             onClick={() =>
                               copyZoomText(zoomRoom.interview.zoomJoinUrl ?? "", "Join link")
                             }
                           >
-                            <Copy className="mr-1 h-3 w-3" /> Copy join
+                            <Copy className="h-3.5 w-3.5" />
                           </Button>
-                          <Button size="sm" asChild>
+                          <Button size="sm" asChild className="h-7 shrink-0 px-2">
                             <a
                               href={zoomRoom.interview.zoomJoinUrl}
                               target="_blank"
@@ -15828,29 +15889,30 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             </a>
                           </Button>
                         </div>
-                      </div>
-                    ) : (
-                      <p className="mb-2 text-muted-foreground">
-                        Join link generates on booking — reschedule to Virtual to regenerate.
-                      </p>
-                    )}
-                    {zoomRoom.interview.zoomContinueUrl && (
-                      <div className="mb-2 space-y-1">
-                        <p className="break-all text-blue-700 dark:text-blue-300">
-                          <b>2nd link — Continue:</b>{" "}
+                      ) : (
+                        <p className="text-muted-foreground">
+                          Join link generates on booking — reschedule to Virtual to regenerate.
+                        </p>
+                      )}
+                      {zoomRoom.interview.zoomContinueUrl && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="shrink-0 font-medium text-foreground">
+                            Continue:
+                          </span>
                           <a
                             href={zoomRoom.interview.zoomContinueUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="underline"
+                            title={zoomRoom.interview.zoomContinueUrl}
+                            className="min-w-0 flex-1 break-all text-primary underline underline-offset-2"
                           >
                             {zoomRoom.interview.zoomContinueUrl}
                           </a>
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="ghost"
+                            className="h-7 shrink-0 px-2"
+                            aria-label="Copy continue link"
                             onClick={() =>
                               copyZoomText(
                                 zoomRoom.interview.zoomContinueUrl ?? "",
@@ -15858,173 +15920,250 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               )
                             }
                           >
-                            <Copy className="mr-1 h-3 w-3" /> Copy continue
+                            <Copy className="h-3.5 w-3.5" />
                           </Button>
                         </div>
-                      </div>
-                    )}
-                    <p className="text-blue-700 dark:text-blue-300">
+                      )}
                       {zoomRoom.interview.zoomPassword && (
-                        <>
-                          <b>Password:</b>{" "}
-                          <code className="rounded bg-blue-100 px-1.5 py-0.5 dark:bg-blue-900">
+                        <p className="flex flex-wrap items-center gap-2 text-foreground">
+                          <span className="font-medium">Password:</span>
+                          <code className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-foreground">
                             {zoomRoom.interview.zoomPassword}
-                          </code>{" "}
+                          </code>
                           <Button
                             size="sm"
                             variant="ghost"
                             className="h-6 px-1.5"
+                            aria-label="Copy password"
                             onClick={() =>
                               copyZoomText(zoomRoom.interview.zoomPassword ?? "", "Password")
                             }
                           >
                             <Copy className="h-3 w-3" />
                           </Button>
-                          <br />
-                        </>
+                        </p>
                       )}
-                      <b>Interviewer:</b> {zoomRoom.interview.interviewer}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* BELOW — live transcription spanning left to right */}
-              <div className="mt-4 rounded-lg border border-border">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2">
-                  <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    <FileText className="h-3.5 w-3.5" /> Live transcription
-                  </p>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {zoomListening ? (
-                      <Button size="sm" variant="destructive" onClick={stopZoomTranscription}>
-                        <MicOff className="mr-1 h-3 w-3" /> Stop
-                      </Button>
-                    ) : (
-                      <Button size="sm" variant="outline" onClick={startZoomTranscription}>
-                        <Mic className="mr-1 h-3 w-3" /> Start live transcription
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setZoomTranscripts([])}
-                      disabled={zoomTranscripts.length === 0}
-                    >
-                      Clear
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={zoomTranscripts.length === 0}
-                      onClick={() =>
-                        copyZoomText(
-                          zoomTranscripts.map((t) => `[${t.time}] ${t.text}`).join("\n"),
-                          "Transcript",
-                        )
-                      }
-                    >
-                      <Copy className="mr-1 h-3 w-3" /> Copy
-                    </Button>
-                  </div>
-                </div>
-                <div className="max-h-44 space-y-1.5 overflow-y-auto px-4 py-3">
-                  {zoomTranscripts.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      {zoomListening
-                        ? "Listening… speak to transcribe the interview."
-                        : "Press Start live transcription (browser mic) or add captions manually below."}
-                    </p>
-                  ) : (
-                    zoomTranscripts.map((t, idx) => (
-                      <p key={idx} className="text-xs leading-relaxed">
-                        <span className="font-semibold text-muted-foreground">[{t.time}]</span>{" "}
-                        {t.text}
-                      </p>
-                    ))
+                    </div>
                   )}
                 </div>
-                <div className="flex flex-col gap-2 border-t border-border px-4 py-2.5 sm:flex-row">
-                  <Input
-                    value={zoomManualCaption}
-                    onChange={(e) => setZoomManualCaption(e.target.value)}
-                    placeholder="Type a caption line manually…"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && zoomManualCaption.trim()) {
-                        const time = new Date().toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          second: "2-digit",
-                        });
-                        setZoomTranscripts((prev) => [
-                          ...prev.slice(-199),
-                          { time, text: zoomManualCaption.trim() },
-                        ]);
-                        setZoomManualCaption("");
-                      }
-                    }}
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={!zoomManualCaption.trim()}
-                    onClick={() => {
-                      const time = new Date().toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                      });
-                      setZoomTranscripts((prev) => [
-                        ...prev.slice(-199),
-                        { time, text: zoomManualCaption.trim() },
-                      ]);
-                      setZoomManualCaption("");
-                    }}
-                  >
-                    Add caption
-                  </Button>
+
+                {/* RIGHT — scorecard. Compact 1–5 taps instead of a dropdown
+                    per criterion so rating during a live call takes one click. */}
+                <div className="order-2 flex min-h-0 flex-col border-l border-border bg-background">
+                  <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-[0.7rem] text-muted-foreground">Interviewer</Label>
+                        <Select value={evalAssessor} onValueChange={setEvalAssessor}>
+                          <SelectTrigger className="h-9 w-full text-sm">
+                            <SelectValue placeholder="Select interviewer" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {assessors.length === 0 && (
+                              <div className="px-2 py-3 text-xs text-muted-foreground">
+                                No system users found.
+                              </div>
+                            )}
+                            {assessors.map((u) => (
+                              <SelectItem key={u.system_user_id} value={String(u.system_user_id)}>
+                                {u.full_name}
+                                {u.department_name ? ` — ${u.department_name}` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[0.7rem] text-muted-foreground">Date</Label>
+                        <Input
+                          type="date"
+                          className="h-9 text-sm"
+                          value={evalDateTime}
+                          onChange={(e) => setEvalDateTime(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="overflow-hidden rounded-md border border-border">
+                      <div className="flex items-center justify-between border-b border-border bg-muted/40 px-3 py-1.5">
+                        <span className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Score the applicant
+                        </span>
+                        <span className="text-[0.65rem] text-muted-foreground">Tap 1–5</span>
+                      </div>
+                      {assessmentCriteria.map((c, idx) => (
+                        <div
+                          key={c}
+                          className={
+                            "space-y-1.5 px-3 py-2" + (idx > 0 ? " border-t border-border" : "")
+                          }
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium leading-tight">{c}</span>
+                            <div className="flex shrink-0 gap-0.5" role="group" aria-label={`Rate ${c}`}>
+                              {[5, 4, 3, 2, 1].map((n) => {
+                                const active = (evalScores[c] ?? 4) === n;
+                                return (
+                                  <button
+                                    key={n}
+                                    type="button"
+                                    aria-pressed={active}
+                                    aria-label={`${c}: ${n} out of 5`}
+                                    onClick={() => setEvalScores((p) => ({ ...p, [c]: n }))}
+                                    className={
+                                      "h-7 w-7 rounded border text-[0.7rem] font-semibold transition-colors " +
+                                      (active
+                                        ? "border-primary bg-primary text-primary-foreground"
+                                        : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground")
+                                    }
+                                  >
+                                    {n}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <Textarea
+                            rows={1}
+                            className="min-h-[30px] resize-none px-2 py-1 text-[0.7rem]"
+                            value={evalComments[c] ?? ""}
+                            onChange={(e) => setEvalComments((p) => ({ ...p, [c]: e.target.value }))}
+                            placeholder="Optional note…"
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-[0.7rem] text-muted-foreground">
+                        Overall evaluation
+                      </Label>
+                      <Textarea
+                        rows={2}
+                        className="resize-none text-xs"
+                        value={evalRemarks}
+                        onChange={(e) => setEvalRemarks(e.target.value)}
+                        placeholder="Overall evaluation of the interview…"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Score + verdict pinned to the bottom of the scorecard —
+always one tap away, no scrolling to finish the interview. */}
+                  <div className="shrink-0 space-y-2 border-t border-border bg-muted/30 px-3 py-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Computed score
+                      </span>
+                      <span className="font-display text-2xl font-semibold leading-none text-primary">
+                        {Math.round(
+                          (assessmentCriteria.reduce((t, c) => t + (evalScores[c] ?? 4), 0) /
+                            (assessmentCriteria.length * 5)) *
+                            100,
+                        )}
+                        %
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() =>
+                          askConfirm({
+                            title: "Mark this interview as Failed?",
+                            description: `${zoomRoom.applicant.name}'s interview will be saved with a Failed verdict.`,
+                            confirmLabel: "Yes, mark Failed",
+                            destructive: true,
+                            onConfirm: () => saveAssessment("Failed"),
+                          })
+                        }
+                      >
+                        <XCircle className="mr-1.5 h-4 w-4" /> Failed
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-success text-white hover:bg-success/90"
+                        onClick={() =>
+                          askConfirm({
+                            title: "Mark this interview as Passed?",
+                            description: `${zoomRoom.applicant.name}'s interview will be saved with a Passed verdict and the candidate will advance to the assessment test stage.`,
+                            confirmLabel: "Yes, mark Passed",
+                            onConfirm: () => saveAssessment("Passed"),
+                          })
+                        }
+                      >
+                        <CheckCircle2 className="mr-1.5 h-4 w-4" /> Passed
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <Button variant="ghost" onClick={closeZoomRoom}>
-                  <PhoneOff className="mr-1.5 h-4 w-4" /> Leave room
-                </Button>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    Assessor Verdict:
-                  </span>
-                  <Button
-                    variant="outline"
-                    className="border-success/40 text-success hover:bg-success/10 hover:text-success"
-                    onClick={() =>
-                      askConfirm({
-                        title: "Mark this interview as Passed?",
-                        description: `${zoomRoom.applicant.name}'s interview will be saved with a Passed verdict and the candidate will advance to the assessment test stage.`,
-                        confirmLabel: "Yes, mark Passed",
-                        onConfirm: () => saveAssessment("Passed"),
-                      })
-                    }
-                  >
-                    <CheckCircle2 className="mr-1.5 h-4 w-4" /> Passed
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() =>
-                      askConfirm({
-                        title: "Mark this interview as Failed?",
-                        description: `${zoomRoom.applicant.name}'s interview will be saved with a Failed verdict.`,
-                        confirmLabel: "Yes, mark Failed",
-                        destructive: true,
-                        onConfirm: () => saveAssessment("Failed"),
-                      })
-                    }
-                  >
-                    <XCircle className="mr-1.5 h-4 w-4" /> Failed
-                  </Button>
+              {/* NOTES drawer — interviewer notes saved to the interview record.
+                  Capped height with its own scroll so opening Notes never pushes
+                  the video/scorecard out of the dialog (Image 1 fix). */}
+              {zoomNotesOpen && (
+                <div className="flex max-h-[42vh] shrink-0 flex-col border-t border-border bg-background">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <FileText className="h-3.5 w-3.5" /> Interview Notes
+                      {zoomNotes.trim().length > 0 && (
+                        <span className="font-normal normal-case tracking-normal">
+                          · {zoomNotes.trim().length.toLocaleString()} chars
+                        </span>
+                      )}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant={zoomNotesSaving ? "outline" : "default"}
+                        onClick={handleSaveZoomNotes}
+                        disabled={zoomNotesSaving || zoomNotes.trim() === ""}
+                      >
+                        {zoomNotesSaving ? (
+                          <>
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Saving…
+                          </>
+                        ) : (
+                          <>
+                            <Save className="mr-1.5 h-3.5 w-3.5" /> Save
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          copyZoomText(zoomNotes, "Interview notes")
+                        }
+                        disabled={zoomNotes.trim() === ""}
+                      >
+                        <Copy className="mr-1 h-3 w-3" /> Copy
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                    <Textarea
+                      className="min-h-[180px] resize-y text-sm"
+                      value={zoomNotes}
+                      onChange={(e) => setZoomNotes(e.target.value)}
+                      onKeyDown={(e) => {
+                        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+                          e.preventDefault();
+                          void handleSaveZoomNotes();
+                        }
+                      }}
+                      placeholder="Type your interview notes here… (Ctrl+S to save)"
+                      aria-label="Interview notes"
+                    />
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Notes are saved to the interview record and reload next time you open
+                      this room. Use <kbd className="px-1.5 py-0.5 rounded bg-muted border">Ctrl+S</kbd> or click Save.
+                    </p>
+                  </div>
                 </div>
-              </DialogFooter>
+              )}
             </>
           )}
         </DialogContent>

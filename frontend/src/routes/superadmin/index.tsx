@@ -14,6 +14,7 @@ import {
   Users,
 } from "lucide-react";
 import { AnnouncementsCard } from "@/components/portal/AnnouncementsCard";
+import { DashboardList } from "@/components/portal/DashboardList";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { StatCard } from "@/components/portal/StatCard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -247,11 +248,15 @@ function SuperAdminDashboard() {
             {loading ? (
               <Skeleton className="mt-5 h-68 w-full rounded-xl" aria-busy="true" aria-label="Loading headcount chart" />
             ) : (
-            <ul className="mt-5 max-h-[272px] divide-y divide-border/70 overflow-y-auto rounded-xl border border-border/70 pr-1">
+            <DashboardList
+              rowHeight={60}
+              visibleRows={5}
+              className="mt-5 divide-y divide-border/70 rounded-xl border border-border/70"
+            >
               {(activeTrend ?? []).map((m) => {
                 const net = m.hires - m.exits;
                 return (
-                  <li key={m.month} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                  <div key={m.month} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold">{m.month}</p>
                       <p className="text-xs text-muted-foreground">
@@ -277,15 +282,15 @@ function SuperAdminDashboard() {
                         {net >= 0 ? `+${net}` : net} net
                       </Badge>
                     </div>
-                  </li>
+                  </div>
                 );
               })}
               {(activeTrend ?? []).length === 0 && (
-                <li className="px-4 py-8 text-center text-xs text-muted-foreground">
+                <div className="px-4 py-8 text-center text-xs text-muted-foreground">
                   No movement recorded for this period.
-                </li>
+                </div>
               )}
-            </ul>
+            </DashboardList>
             )}
           </CardContent>
         </Card>

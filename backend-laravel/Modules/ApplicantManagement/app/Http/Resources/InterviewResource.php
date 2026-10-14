@@ -47,6 +47,7 @@ class InterviewResource extends JsonResource
             'zoom_continue_url'       => $this->zoom_continue_url,
             'zoom_password'           => $this->zoom_password,
             'status'                  => $this->status,
+            'interview_notes'         => $this->interview_notes,
             'created_at'              => $this->created_at?->toISOString(),
             'updated_at'              => $this->updated_at?->toISOString(),
             'applicant'               => $applicantData,

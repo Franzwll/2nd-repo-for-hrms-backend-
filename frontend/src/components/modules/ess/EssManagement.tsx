@@ -32,6 +32,7 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
+import { ReportMenu } from "@/components/ui/report-menu";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
@@ -182,7 +183,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   >("Approved");
   const [reviewNote, setReviewNote] = useState("");
   const [confirmReject, setConfirmReject] = useState(false);
-  const [reportsOpen, setReportsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [behalfDept, setBehalfDept] = useState("all");
@@ -470,6 +470,56 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     return rows.filter((r) => r.status === s).length;
   };
 
+  const buildEssReport = (reportName: string) => {
+    const baseRows = sortedFiltered.map((r) => ({
+      reference: r.id,
+      employee: r.employee,
+      department: r.department,
+      category: r.category,
+      type: r.type,
+      filed: r.filed,
+      assignedTo: r.assignedTo,
+      status: r.status,
+    }));
+    return {
+      title: reportName,
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Department: ${dept} | Status: ${status}`,
+      columns: [
+        { header: "Reference", key: "reference" },
+        { header: "Employee", key: "employee" },
+        { header: "Department", key: "department" },
+        { header: "Category", key: "category" },
+        { header: "Type", key: "type" },
+        { header: "Filed", key: "filed" },
+        { header: "Assigned To", key: "assignedTo" },
+        { header: "Status", key: "status" },
+      ],
+      rows: baseRows,
+      summary: [
+        { label: "Total Requests", value: countsData.total },
+        { label: "Pending", value: countsData.pending },
+        { label: "Under Review", value: countsData.under_review },
+        { label: "Approved", value: countsData.approved },
+        { label: "Completed", value: countsData.completed },
+        { label: "Rows in Report", value: baseRows.length },
+      ],
+    };
+  };
+
+  const essReportOptions = (
+    role === "superadmin"
+      ? reportOptions
+      : reportOptions.filter(
+          (r) =>
+            !["Branch Performance", "Approval Performance", "ESS Usage Statistics"].includes(r),
+        )
+  ).map((reportName) => ({
+    id: reportName,
+    title: reportName,
+    build: () => buildEssReport(reportName),
+    recordCount: sortedFiltered.length,
+  }));
+
   const reviewRow = rows.find((r) => r.id === reviewId) ?? null;
 
   // Opening a review takes ownership: Pending auto-promotes to Under Review.
@@ -535,11 +585,8 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     <div>
       <PageHeader
         title="ESS Management"
-        actions={
-          <Button size="sm" variant="outline" onClick={() => setReportsOpen(true)}>
-            <FileText className="mr-2 h-4 w-4" /> Generate reports
-          </Button>
-        }
+        description="Monitor, process and configure employee self-service requests."
+        actions={<ReportMenu size="sm" reports={essReportOptions} />}
       />
 
       {loading ? (
@@ -1487,43 +1534,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Generate Reports</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2">
-            {(role === "superadmin"
-              ? reportOptions
-              : reportOptions.filter(
-                (r) =>
-                  ![
-                    "Branch Performance",
-                    "Approval Performance",
-                    "ESS Usage Statistics",
-                  ].includes(r),
-              )
-            ).map((r) => (
-              <div
-                key={r}
-                className="flex items-center justify-between rounded-md border border-border p-3"
-              >
-                <span className="text-sm">{r}</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    toast.success(`${r} generated`);
-                    setReportsOpen(false);
-                  }}
-                >
-                  Generate
-                </Button>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

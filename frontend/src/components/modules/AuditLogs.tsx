@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   Activity,
   AlertTriangle,
-  Download,
   ScrollText,
   Search,
   ShieldAlert,
@@ -11,22 +10,13 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
+import { ReportMenu } from "@/components/ui/report-menu";
 import { SortHead, useSort } from "@/components/portal/sortable";
 import { StatCard } from "@/components/portal/StatCard";
 import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -64,7 +54,6 @@ export function AuditLogs() {
   const [severity, setSeverity] = useState("all");
   const [moduleFilter, setModuleFilter] = useState("all");
   const [search, setSearch] = useState("");
-  const [reportOpen, setReportOpen] = useState(false);
   const [entries, setEntries] = useState<ApiAuditLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -126,96 +115,49 @@ export function AuditLogs() {
   const warningCount = entries.filter((a) => a.severity === "Warning").length;
   const uniqueActors = new Set(entries.map((a) => a.user)).size;
 
-  const exportCsv = () => {
-    const header = [
-      "Timestamp",
-      "User",
-      "Role",
-      "Department",
-      "Action",
-      "Module",
-      "Device",
-      "IP Address",
-      "URL",
-      "Severity",
-    ];
-    const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
-    const lines = filteredRows.map((a) =>
-      [
-        formatTimestamp(a.timestamp),
-        esc(a.user),
-        esc(a.role),
-        esc(a.department),
-        esc(a.action),
-        esc(a.module),
-        esc(a.device),
-        esc(a.ip_address),
-        esc(a.url ?? ""),
-        a.severity,
-      ].join(","),
-    );
-    const blob = new Blob([[header.join(","), ...lines].join("\n")], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `audit-report-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-    toast.success("Audit log report downloaded");
-  };
+  const buildAuditReport = () => ({
+    title: "Audit Logs Report",
+    subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Severity: ${severity} | Module: ${moduleFilter}`,
+    columns: [
+      { header: "Timestamp", key: "timestamp" },
+      { header: "User", key: "user" },
+      { header: "Role", key: "role" },
+      { header: "Department", key: "department" },
+      { header: "Action", key: "action" },
+      { header: "Module", key: "module" },
+      { header: "Device", key: "device" },
+      { header: "IP Address", key: "ip_address" },
+      { header: "URL", key: "url" },
+      { header: "Severity", key: "severity" },
+    ],
+    rows: rows.map((a) => ({
+      timestamp: formatTimestamp(a.timestamp),
+      user: a.user,
+      role: a.role,
+      department: a.department,
+      action: a.action,
+      module: a.module,
+      device: a.device,
+      ip_address: a.ip_address,
+      url: a.url ?? "—",
+      severity: a.severity,
+    })),
+    summary: [
+      { label: "Total Events", value: totalEvents },
+      { label: "Critical", value: criticalCount },
+      { label: "Warnings", value: warningCount },
+      { label: "Unique Actors", value: uniqueActors },
+      { label: "Rows in Report", value: rows.length },
+    ],
+  });
 
   return (
     <div>
       <PageHeader
         title="Audit Logs"
+        description="Full system activity trail across all HRMS modules and users."
         actions={
-          <Dialog open={reportOpen} onOpenChange={setReportOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Download className="mr-2 h-4 w-4" /> Generate report
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="font-display text-2xl">Generate Audit Report</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2 sm:col-span-2">
-                  <Label>Report type</Label>
-                  <Select defaultValue="summary">
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="summary">Summary report</SelectItem>
-                      <SelectItem value="detailed">Detailed activity report</SelectItem>
-                      <SelectItem value="security">Security incidents report</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>From date</Label>
-                  <Input type="date" />
-                </div>
-                <div className="space-y-2">
-                  <Label>To date</Label>
-                  <Input type="date" />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  onClick={() => {
-                    exportCsv();
-                    setReportOpen(false);
-                  }}
-                >
-                  Generate
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <ReportMenu size="sm" report={() => buildAuditReport()} recordCount={rows.length} />
         }
       />
 

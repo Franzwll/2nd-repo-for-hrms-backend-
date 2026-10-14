@@ -243,6 +243,38 @@ function JobDetail() {
                 </ul>
               </section>
 
+              {(job.additional ?? []).length > 0 && (
+                <section className="mt-10">
+                  <h2 className="font-display text-2xl font-semibold">Additional Info</h2>
+                  <ul className="mt-4 space-y-2.5">
+                    {(job.additional ?? []).map((r: string) => (
+                      <li key={r} className="flex gap-2.5 text-[15px] text-foreground/75">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
+                        {r}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {job.instructions?.trim() ? (
+                <section className="mt-10">
+                  <h2 className="font-display text-2xl font-semibold">How to Apply</h2>
+                  <p className="mt-3 text-[15px] leading-relaxed text-foreground/75">
+                    {job.instructions}
+                  </p>
+                </section>
+              ) : null}
+
+              {job.about?.trim() ? (
+                <section className="mt-10">
+                  <h2 className="font-display text-2xl font-semibold">About Company</h2>
+                  <p className="mt-3 text-[15px] leading-relaxed text-foreground/75">
+                    {job.about}
+                  </p>
+                </section>
+              ) : null}
+
             </div>
           </div>
 

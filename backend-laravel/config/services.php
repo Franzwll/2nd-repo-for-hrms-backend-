@@ -95,4 +95,27 @@ return [
         'daily_limit' => (int) env('JOB_AI_DAILY_LIMIT', 0),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Zoom Meeting SDK (embedded virtual interviews)
+    |--------------------------------------------------------------------------
+    | Mock provider (default) needs no keys — ZoomMeetingService generates
+    | Zoom-style links stored on the interview row. To embed a REAL meeting
+    | inside the HRMS popup (no Zoom app), create a Meeting SDK app +
+    | Server-to-Server OAuth app at https://marketplace.zoom.us and fill:
+    |   ZOOM_PROVIDER=api
+    |   ZOOM_SDK_KEY=..., ZOOM_SDK_SECRET=...
+    |   ZOOM_ACCOUNT_ID=..., ZOOM_CLIENT_ID=..., ZOOM_CLIENT_SECRET=...
+    | The frontend joins via @zoom/meetingsdk Component View using the
+    | signature minted by POST /api/v1/interviews/{id}/zoom-signature.
+    */
+    'zoom' => [
+        'provider'      => env('ZOOM_PROVIDER', 'mock'),
+        'sdk_key'       => env('ZOOM_SDK_KEY'),
+        'sdk_secret'    => env('ZOOM_SDK_SECRET'),
+        'account_id'    => env('ZOOM_ACCOUNT_ID'),
+        'client_id'     => env('ZOOM_CLIENT_ID'),
+        'client_secret' => env('ZOOM_CLIENT_SECRET'),
+    ],
+
 ];

@@ -144,6 +144,15 @@ Route::prefix('v1')
           Route::post('interviews/{interview}/facility-approve', [InterviewController::class, 'facilityApprove'])
                ->name('interview.facility-approve');
 
+          // Meeting SDK signature for the embedded in-popup Zoom meeting
+          // (frontend Component View). Falls back gracefully when unconfigured.
+          Route::post('interviews/{interview}/zoom-signature', [InterviewController::class, 'zoomSignature'])
+               ->name('interview.zoom-signature');
+
+          // Save interviewer notes during/after the interview
+          Route::patch('interviews/{interview}/notes', [InterviewController::class, 'saveNotes'])
+               ->name('interview.save-notes');
+
           /* ------------------------------------------------------------------ */
           /* Facilities                                                           */
           /* ------------------------------------------------------------------ */

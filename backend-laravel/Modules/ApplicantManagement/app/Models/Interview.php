@@ -25,6 +25,7 @@ class Interview extends Model
         'zoom_continue_url',
         'zoom_password',
         'status',
+        'interview_notes',
     ];
 
     protected $casts = [

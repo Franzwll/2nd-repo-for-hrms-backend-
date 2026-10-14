@@ -772,9 +772,10 @@ class JobContentGenerator
     }
 
     /**
-     * Vocab-preferred prompt: the model must reuse vocabulary terms verbatim
-     * for skills (and certifications inside qualifications) and may introduce
-     * at most 2 new terms when nothing fits.
+     * Vocab-preferred prompt: the model reuses vocabulary terms verbatim
+     * inside qualifications (and certifications) and writes only the
+     * requested prose blocks. Skills are NOT generated — they come from the
+     * position's requirement template.
      */
     protected function buildPrompt(array $job, array $vocabulary): string
     {
@@ -785,9 +786,24 @@ class JobContentGenerator
         $skills = array_slice($skills, 0, 150);
         $certs = array_slice($certs, 0, 60);
 
+        $blocks = $job['blocks'] ?? ['description', 'responsibilities', 'qualifications', 'additional', 'instructions', 'about'];
+        $blocks = array_values(array_intersect(
+            array_map('strval', (array) $blocks),
+            ['description', 'responsibilities', 'qualifications', 'additional', 'instructions', 'about'],
+        ));
+        if ($blocks === []) {
+            $blocks = ['description', 'responsibilities', 'qualifications', 'additional', 'instructions', 'about'];
+        }
+        $notes = isset($job['notes']) && is_array($job['notes']) ? $job['notes'] : [];
+        $noteFor = function (string $key) use ($notes): string {
+            $v = trim((string) ($notes[$key] ?? ''));
+            return $v !== '' ? " Extra guidance: {$v}" : '';
+        };
+
+        $keys = implode(', ', $blocks);
         $lines = [
             'You are an HR copywriter for Oxford Suites Makati, a premier all-suite hotel in Makati\'s business district known for warm Filipino hospitality.',
-            'Write a job-post draft for this role. Return ONLY a JSON object with exactly these keys: description, responsibilities, qualifications, skills, instructions, about.',
+            "Write a job-post draft for this role. Return ONLY a JSON object with exactly these keys: {$keys}.",
             '',
             'Role context:',
             '- Position: ' . ($job['position_title'] ?? 'Staff'),
@@ -803,21 +819,87 @@ class JobContentGenerator
             '- CERTIFICATIONS: ' . ($certs ? implode('; ', $certs) : '(none)'),
             '',
             'Rules:',
-            '1. description: 2-3 sentences pitching the role at Oxford Suites Makati.',
-            '2. responsibilities: 5-7 bullets, each under 120 characters, plain text, no numbering.',
-            '3. qualifications: 4-6 bullets; mention a CERTIFICATION from the list above when relevant (e.g. TESDA NC II, Food Handler).',
-            '4. skills: 6-10 items; PREFER the SKILLS vocabulary verbatim (exact spelling). You may add at most 2 new terms only when nothing in the list fits.',
-            '5. instructions: 1-2 sentences telling applicants to send their updated resume through the posting or walk in at the HR Office, Oxford Suites Makati.',
-            '6. about: 1-2 sentences about Oxford Suites Makati as a premier all-suite hotel in Makati.',
-            '7. Keep language professional, hotel-appropriate, Philippine English. No markdown, no numbering, no extra keys.',
         ];
+        if (in_array('description', $blocks, true)) {
+            $lines[] = '1. description: 2-3 sentences pitching the role at Oxford Suites Makati.' . $noteFor('description');
+        }
+        if (in_array('responsibilities', $blocks, true)) {
+            $lines[] = '2. responsibilities: 5-7 bullets, each under 120 characters, plain text, no numbering. Prefer SKILLS vocabulary wording where it fits naturally.' . $noteFor('responsibilities');
+        }
+        if (in_array('qualifications', $blocks, true)) {
+            $lines[] = '3. qualifications: 4-6 bullets; reuse SKILLS terms verbatim where relevant and mention a CERTIFICATION from the list above when relevant (e.g. TESDA NC II, Food Handler).' . $noteFor('qualifications');
+        }
+        if (in_array('additional', $blocks, true)) {
+            $lines[] = '4. additional: 3-5 bullets of perks / shift details / dress code — only promise what is standard for a Makati hotel posting, plain text, no numbering.' . $noteFor('additional');
+        }
+        if (in_array('instructions', $blocks, true)) {
+            $lines[] = '5. instructions: 1-2 sentences telling applicants to send their updated resume through the posting or walk in at the HR Office, Oxford Suites Makati.' . $noteFor('instructions');
+        }
+        if (in_array('about', $blocks, true)) {
+            $lines[] = '6. about: 1-2 sentences about Oxford Suites Makati as a premier all-suite hotel in Makati.' . $noteFor('about');
+        }
+        $lines[] = '7. Keep language professional, hotel-appropriate, Philippine English. No markdown, no numbering, no extra keys.';
 
         return implode("\n", $lines);
     }
 
+    /**
+     * Forces a string to well-formed UTF-8 with no illegal control bytes.
+     *
+     * Providers occasionally emit a stray byte sequence — a smart quote or dash
+     * saved in Windows-1252, or a truncated multi-byte character. That breaks
+     * two separate things downstream: json_decode rejects a raw control byte
+     * with "Control character error", and JsonResponse's own json_encode throws
+     * "Malformed UTF-8 characters" once the value is already decoded. Either one
+     * turned an otherwise usable draft into a 500, so both are scrubbed here —
+     * one bad character should never fail a whole generation.
+     *
+     * \t \n \r survive: they are legal JSON whitespace and meaningful content in
+     * the decoded values.
+     */
+    protected function scrubUtf8(string $value): string
+    {
+        if ($value === '') {
+            return $value;
+        }
+
+        if (! mb_check_encoding($value, 'UTF-8')) {
+            // mb_scrub (PHP 8) replaces invalid sequences; the mb_convert_encoding
+            // fallback covers older runtimes by re-interpreting the bytes as UTF-8.
+            $value = function_exists('mb_scrub')
+                ? mb_scrub($value, 'UTF-8')
+                : (string) mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+        }
+
+        // A half-decoded sequence can leave a lone control byte behind (the
+        // trailing 0x09 of a cut-off 0xE2 0x80 0x09), so drop those explicitly.
+        // preg_replace returns null on invalid UTF-8; the scrub above guarantees
+        // valid input, and the ?? keeps a surprise from blanking the draft.
+        return (string) (preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/u', '', $value) ?? $value);
+    }
+
+    /**
+     * Scrubs model output that is still raw JSON text, before it is decoded.
+     *
+     * Same as scrubUtf8(), but \t \n \r also become spaces: they are fine as
+     * JSON whitespace between tokens yet illegal *inside* a string, which is
+     * where a truncated character leaves them. A space is valid in both places,
+     * so pretty-printed JSON still parses and a stray control byte no longer
+     * fails the whole payload.
+     */
+    protected function scrubJsonText(string $value): string
+    {
+        $clean = $this->scrubUtf8($value);
+        if ($clean === '') {
+            return $clean;
+        }
+
+        return str_replace(["\t", "\n", "\r"], ' ', $clean);
+    }
+
     protected function parseJsonPayload(string $text): ?array
     {
-        $clean = trim($text);
+        $clean = trim($this->scrubJsonText($text));
         // Strip ```json fences some models add despite responseMimeType.
         if (str_starts_with($clean, '```')) {
             $clean = (string) preg_replace('/^```(?:json)?\s*/i', '', $clean);
@@ -832,7 +914,9 @@ class JobContentGenerator
     /** Normalizes model output into the builder's shape (arrays capped, strings trimmed). */
     protected function normalize(array $raw): array
     {
-        $toList = function ($value, int $max): array {
+        $scrub = fn ($value) => $this->scrubUtf8((string) $value);
+
+        $toList = function ($value, int $max) use ($scrub): array {
             if (is_string($value)) {
                 $value = preg_split('/\r?\n/', $value) ?: [];
             }
@@ -841,7 +925,7 @@ class JobContentGenerator
             }
             $out = [];
             foreach ($value as $item) {
-                $item = trim((string) $item, " \t\n\r\0\x0B-•*1234567890.() ");
+                $item = trim($scrub($item), " \t\n\r\0\x0B-•*1234567890.() ");
                 if ($item !== '' && ! in_array($item, $out, true)) {
                     $out[] = mb_substr($item, 0, 280);
                 }
@@ -854,12 +938,13 @@ class JobContentGenerator
         };
 
         return [
-            'description' => mb_substr(trim((string) ($raw['description'] ?? '')), 0, 1200),
+            'description' => mb_substr(trim($scrub($raw['description'] ?? '')), 0, 1200),
             'responsibilities' => $toList($raw['responsibilities'] ?? [], 8),
             'qualifications' => $toList($raw['qualifications'] ?? [], 8),
             'skills' => $toList($raw['skills'] ?? [], 12),
-            'instructions' => mb_substr(trim((string) ($raw['instructions'] ?? '')), 0, 600),
-            'about' => mb_substr(trim((string) ($raw['about'] ?? '')), 0, 600),
+            'additional' => $toList($raw['additional'] ?? [], 8),
+            'instructions' => mb_substr(trim($scrub($raw['instructions'] ?? '')), 0, 600),
+            'about' => mb_substr(trim($scrub($raw['about'] ?? '')), 0, 600),
         ];
     }
 }

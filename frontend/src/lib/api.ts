@@ -336,6 +336,7 @@ export interface ApiInterview {
   zoom_join_url: string | null;
   zoom_continue_url: string | null;
   zoom_password: string | null;
+  interview_notes?: string | null;
   status: "Scheduled" | "Completed" | "No Show";
   applicant?: {
     applicant_id: number;
@@ -815,6 +816,29 @@ export const interviewsApi = {
    *  automatically emails the applicant their confirmed schedule. */
   facilityApprove: (id: number | string) =>
     request<ApiInterview>(`/interviews/${id}/facility-approve`, { method: "POST" }),
+  /** Mint a Meeting SDK signature to embed the Zoom meeting in the HRMS popup.
+   *  Rejects (428/501) when the interview has no meeting yet or SDK keys are
+   *  missing — the caller falls back to local preview + join-link button. */
+  zoomSignature: (id: number | string, role: 0 | 1 = 0) =>
+    request<{
+      meeting_number: string;
+      password: string | null;
+      join_url: string | null;
+      sdk_key: string;
+      signature: string;
+      role: number;
+      user_name: string;
+    }>(`/interviews/${id}/zoom-signature`, {
+      method: "POST",
+      body: JSON.stringify({ role }),
+    }),
+
+  /** Save interviewer notes during/after the interview. */
+  saveNotes: (id: number | string, notes: string) =>
+    request<{ message: string; interview_notes: string | null }>(`/interviews/${id}/notes`, {
+      method: "PATCH",
+      body: JSON.stringify({ notes }),
+    }),
 };
 
 /* ========================================================================= */
@@ -995,6 +1019,11 @@ export interface ApiJobPost {
   department_id: number;
   department?: string;
   position_id: number | null;
+  /**
+   * Saved builder canvas arrangement (ordered block ids). null means the post
+   * was built before block order was persisted, so the default order applies.
+   */
+  blocks: string[] | null;
   employment_type: "Full-time" | "Part-time" | "Contract" | "Seasonal";
   schedule: string | null;
   salary_min: number | null;
@@ -1011,6 +1040,9 @@ export interface ApiJobPost {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
+  additional?: string[];
+  instructions?: string | null;
+  about?: string | null;
   platforms?: string[];
   picture: string | null;
   picture_url: string | null;
@@ -1041,6 +1073,8 @@ export interface JobDraftPayload {
   vacancies?: number | undefined;
   experience_level?: string | undefined;
   education_level?: string | undefined;
+  blocks?: string[] | undefined;
+  notes?: Record<string, string> | undefined;
 }
 
 export interface JobDraftResult {
@@ -1048,6 +1082,7 @@ export interface JobDraftResult {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
+  additional?: string[];
   instructions: string;
   about: string;
 }
@@ -2219,6 +2254,9 @@ export interface ApiLandingJob {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
+  additional?: string[];
+  instructions?: string | null;
+  about?: string | null;
   benefits: string[];
   picture?: string | null;
   picture_url?: string | null;

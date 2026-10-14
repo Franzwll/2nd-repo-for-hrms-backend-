@@ -116,6 +116,114 @@ export function AnnouncementsModal({
     setCurrentPage(1);
   };
 
+  /**
+   * The one announcement the caller asked to open, when it is visible to this
+   * role. Opening a specific post shows ONLY that post â€” the full list stays
+   * behind it rather than scrolling the selected row into view, because a
+   * scrolled list still shows every other announcement beside the one the
+   * user actually clicked.
+   */
+  const selected = useMemo(() => {
+    if (!initialSelectedId) return null;
+    return visibleToRole.find((a) => a.id === initialSelectedId) ?? null;
+  }, [visibleToRole, initialSelectedId]);
+
+  /** Single-post view is a mode, so "Back to all" leaves it without closing. */
+  const [singleView, setSingleView] = useState(false);
+
+  useEffect(() => {
+    setSingleView(Boolean(initialSelectedId));
+  }, [initialSelectedId]);
+
+  /* Single post: the caller opened one specific announcement, so only that
+     one is rendered. The browsable list is one click away behind "All". */
+  if (singleView && selected) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl w-[95vw] max-h-[85vh] p-0 gap-0 overflow-hidden bg-background border-border/80 shadow-2xl flex flex-col rounded-2xl">
+          <div className="flex items-start gap-3 px-6 py-4 border-b border-border/70 bg-muted/20">
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-1"
+              onClick={() => setSingleView(false)}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" /> All
+            </Button>
+
+            <div className="h-9 w-9 shrink-0 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+              <Megaphone className="h-5 w-5" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="font-display text-lg font-semibold leading-snug">
+                {selected.title}
+              </DialogTitle>
+              <p className="text-xs text-muted-foreground">Single announcement</p>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6">
+            <article className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1 font-medium text-foreground">
+                  <User className="h-3.5 w-3.5 text-primary" /> {selected.author}
+                </span>
+                <span>&middot;</span>
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3.5 w-3.5" /> {selected.createdAt}
+                </span>
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] font-semibold px-2 py-0.5 ${
+                    selected.audience === "All"
+                      ? "bg-primary/10 text-primary border-primary/20"
+                      : selected.audience === "Employee"
+                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                        : "bg-purple-500/10 text-purple-600 border-purple-500/30"
+                  }`}
+                >
+                  {selected.audience}
+                </Badge>
+              </div>
+
+              <p className="text-sm leading-relaxed whitespace-pre-line text-foreground">
+                {selected.body}
+              </p>
+            </article>
+          </div>
+
+          <div className="px-6 py-3.5 border-t border-border/70 bg-card/60 flex flex-col sm:flex-row items-center justify-between gap-3">
+            {canManage ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                onClick={() => {
+                  removeAnnouncement(selected.id);
+                  onOpenChange(false);
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete announcement
+              </Button>
+            ) : (
+              <span />
+            )}
+
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setSingleView(false)}>
+                All announcements
+              </Button>
+              <Button size="sm" onClick={() => onOpenChange(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl w-[95vw] max-h-[85vh] p-0 gap-0 overflow-hidden bg-background border-border/80 shadow-2xl flex flex-col rounded-2xl">

@@ -744,6 +744,11 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
     <div>
       <PageHeader
         title="Settings"
+        description={
+          role === "employee"
+            ? "Notifications, portal preferences, account security, personal contact details, and work information."
+            : "Account security, default password and notification preferences."
+        }
       />
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">

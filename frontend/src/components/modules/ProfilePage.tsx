@@ -47,12 +47,69 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { roleMeta, type Role } from "@/lib/nav";
-import { getUser } from "@/lib/auth";
+import { getUser, setUser } from "@/lib/auth";
 import { essApi, profileApi } from "@/lib/api";
 
-// Preset profile images
+// Preset profile images — defaults picked by gender, plus the full gallery
+// the user can choose from (Choose preset dialog).
 import defaultBoy from "@/assets/Preset Profile/Preset Profile/defaultboy.svg";
 import defaultGirl from "@/assets/Preset Profile/Preset Profile/default girl.svg";
+import franzPreset from "@/assets/Preset Profile/Preset Profile/franz.svg";
+import notion1786421526 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786421526.svg";
+import notion1786737589719 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737589719.svg";
+import notion1786737598454 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737598454.svg";
+import notion1786737605510 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737605510.svg";
+import notion1786737612237 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737612237.svg";
+import notion1786737625328 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737625328.svg";
+import notion1786737722250 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737722250.svg";
+import notion1786737746289 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737746289.svg";
+import notion1786737759718 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737759718.svg";
+import notion1786737763565 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737763565.svg";
+import notion1786737802586 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737802586.svg";
+import notion1786737807726 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737807726.svg";
+import notion1786737810585 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737810585.svg";
+import notion1786737819473 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737819473.svg";
+import notion1786737834554 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737834554.svg";
+import notion1786737836300 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737836300.svg";
+import notion1786737848298 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737848298.svg";
+import notion1786737863293 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737863293.svg";
+import notion1786737905991 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786737905991.svg";
+import notion1786739096696abc from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786739096696abc.svg";
+import notion1786739262001 from "@/assets/Preset Profile/Preset Profile/notion-avatar-1786739262001.svg";
+
+/** Every preset avatar the user can pick as their default profile image. */
+export const presetAvatars: { name: string; src: string }[] = [
+  { name: "Default Boy", src: defaultBoy },
+  { name: "Default Girl", src: defaultGirl },
+  { name: "Franz", src: franzPreset },
+  { name: "Avatar 1786421526", src: notion1786421526 },
+  { name: "Avatar 1786737589719", src: notion1786737589719 },
+  { name: "Avatar 1786737598454", src: notion1786737598454 },
+  { name: "Avatar 1786737605510", src: notion1786737605510 },
+  { name: "Avatar 1786737612237", src: notion1786737612237 },
+  { name: "Avatar 1786737625328", src: notion1786737625328 },
+  { name: "Avatar 1786737722250", src: notion1786737722250 },
+  { name: "Avatar 1786737746289", src: notion1786737746289 },
+  { name: "Avatar 1786737759718", src: notion1786737759718 },
+  { name: "Avatar 1786737763565", src: notion1786737763565 },
+  { name: "Avatar 1786737802586", src: notion1786737802586 },
+  { name: "Avatar 1786737807726", src: notion1786737807726 },
+  { name: "Avatar 1786737810585", src: notion1786737810585 },
+  { name: "Avatar 1786737819473", src: notion1786737819473 },
+  { name: "Avatar 1786737834554", src: notion1786737834554 },
+  { name: "Avatar 1786737836300", src: notion1786737836300 },
+  { name: "Avatar 1786737848298", src: notion1786737848298 },
+  { name: "Avatar 1786737863293", src: notion1786737863293 },
+  { name: "Avatar 1786737905991", src: notion1786737905991 },
+  { name: "Avatar 1786739096696", src: notion1786739096696abc },
+  { name: "Avatar 1786739262001", src: notion1786739262001 },
+];
+
+/** Storage key so the chosen preset survives reloads (per portal user). */
+export const presetStorageKey = (email: string | undefined, role: Role) =>
+  `hrms-profile-preset:${role}:${(email || "anonymous").toLowerCase()}`;
+
+import { getStoredPresetAvatar, notifyAvatarChanged } from "@/lib/profile-avatar";
 
 type Dependent = {
   name: string;
@@ -349,9 +406,15 @@ export function ProfilePage({ role }: { role: Role }) {
   const [draft, setDraft] = useState<ProfileState>(initialProfile);
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("profile");
-  const [photo, setPhoto] = useState<string | null>(null);
+  // Start from the saved server URL so the uploaded JPG survives reloads
+  // (null = no photo yet, show the chosen preset instead).
+  const [photo, setPhoto] = useState<string | null>(() => user?.profile_photo_url ?? null);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const value = editing ? draft : profile;
+  const settingsPath =
+    role === "employee" ? "/employee/settings" : role === "superadmin" ? "/superadmin/settings" : "/admin/settings";
 
   // Get preset image based on gender
   const getPresetImage = (gender?: string) => {
@@ -365,9 +428,40 @@ export function ProfilePage({ role }: { role: Role }) {
     }
   };
 
-  const presetImage = getPresetImage(value.gender);
+  // Chosen preset avatar — persisted per user so the default survives reloads.
+  // An uploaded photo always wins; the preset shows when no photo is set.
+  const [presetSrc, setPresetSrc] = useState<string>(() => {
+    try {
+      const saved = window.localStorage.getItem(presetStorageKey(user?.email, role));
+      if (saved && presetAvatars.some((p) => p.src === saved)) return saved;
+    } catch {
+      /* private mode — fall through to gender default */
+    }
+    return getPresetImage(initialProfile.gender);
+  });
+  const [presetOpen, setPresetOpen] = useState(false);
+
+  const presetImage = presetSrc;
+
+  const choosePreset = (src: string) => {
+    setPresetSrc(src);
+    try {
+      window.localStorage.setItem(presetStorageKey(user?.email, role), src);
+    } catch {
+      /* storage unavailable — keep in-memory choice */
+    }
+    notifyAvatarChanged();
+    setPresetOpen(false);
+    toast.success("Preset avatar updated");
+  };
 
   useEffect(() => {
+    try {
+      const saved = getUser()?.profile_photo_url ?? null;
+      if (saved) setPhoto(saved);
+    } catch {
+      /* ignore */
+    }
     if (role === "employee") {
       essApi
         .overview()
@@ -405,9 +499,6 @@ export function ProfilePage({ role }: { role: Role }) {
     }
   }, [role, user?.full_name, user?.email, user?.department_name]);
 
-  const value = editing ? draft : profile;
-  const settingsPath = role === "employee" ? "/employee/settings" : "/admin/settings";
-
   function set<K extends keyof ProfileState>(key: K, v: ProfileState[K]) {
     setDraft((d) => ({ ...d, [key]: v }));
   }
@@ -423,7 +514,14 @@ export function ProfilePage({ role }: { role: Role }) {
     const localUrl = URL.createObjectURL(file);
     setPhoto(localUrl);
     try {
-      await profileApi.uploadPhoto(file);
+      const res = await profileApi.uploadPhoto(file);
+      // Persist the server URL so the photo (and the header avatar) survives reloads.
+      if (res?.url) {
+        setPhoto(res.url);
+        const current = getUser();
+        if (current) setUser({ ...current, profile_photo_url: res.url });
+      }
+      notifyAvatarChanged();
       toast.success("Profile photo uploaded");
     } catch (err: any) {
       toast.error(err?.message || "Failed to upload photo");
@@ -439,6 +537,9 @@ export function ProfilePage({ role }: { role: Role }) {
     try {
       await profileApi.removePhoto();
       setPhoto(null);
+      const current = getUser();
+      if (current) setUser({ ...current, profile_photo_url: null });
+      notifyAvatarChanged();
       toast.success("Profile photo removed");
     } catch (err: any) {
       toast.error(err?.message || "Failed to remove photo");
@@ -468,9 +569,9 @@ export function ProfilePage({ role }: { role: Role }) {
           </div>
           <CardContent className="-mt-16 flex flex-col items-center px-6 pb-6 text-center">
             <div className="relative">
-              <Avatar className="h-28 w-28 border-4 border-card shadow-md">
+              <Avatar className="h-28 w-28 overflow-hidden border-4 border-card bg-gradient-to-br from-primary via-primary to-sidebar shadow-md">
                 {photo ? (
-                  <AvatarImage src={photo} alt={value.fullName} />
+                  <AvatarImage src={photo} alt={value.fullName} className="bg-card" />
                 ) : (
                   <AvatarImage src={presetImage} alt={value.fullName} />
                 )}
@@ -507,6 +608,10 @@ export function ProfilePage({ role }: { role: Role }) {
               <Button className="w-full shadow-sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
                 <Camera className="mr-2 h-4 w-4" />
                 {uploading ? "Uploading…" : photo ? "Change Photo" : "Upload Photo"}
+              </Button>
+              <Button variant="outline" className="w-full" onClick={() => setPresetOpen(true)}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                Choose preset
               </Button>
               {photo && (
                 <Button variant="outline" className="w-full" onClick={removePhoto} disabled={uploading}>
@@ -1377,6 +1482,62 @@ export function ProfilePage({ role }: { role: Role }) {
           </CardContent>
         </Card>
       </div>
+
+      {/* CHOOSE PRESET AVATAR — restores the old preset gallery. The picked
+          SVG becomes the default avatar (used whenever no photo is uploaded)
+          and is remembered per user. */}
+      {presetOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setPresetOpen(false)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-lg overflow-hidden rounded-xl border border-border bg-card shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border/60 px-5 py-4">
+              <div>
+                <h3 className="font-display text-lg font-semibold">Choose preset avatar</h3>
+                <p className="text-xs text-muted-foreground">
+                  Shown as your default profile image until you upload a photo.
+                </p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setPresetOpen(false)}>
+                Close
+              </Button>
+            </div>
+            <div className="grid max-h-[55vh] grid-cols-4 gap-3 overflow-y-auto p-5 sm:grid-cols-6">
+              {presetAvatars.map((preset) => {
+                const active = preset.src === presetSrc;
+                return (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    title={preset.name}
+                    onClick={() => choosePreset(preset.src)}
+                    className={`group grid aspect-square place-items-center overflow-hidden rounded-xl border-2 bg-gradient-to-br from-primary via-primary to-sidebar transition-all hover:scale-105 ${
+                      active
+                        ? "border-primary ring-2 ring-primary/30"
+                        : "border-border/60 hover:border-primary/50"
+                    }`}
+                  >
+                    <img
+                      src={preset.src}
+                      alt={preset.name}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  </button>
+                );
+              })}
+            </div>
+            <p className="border-t border-border/60 px-5 py-3 text-xs text-muted-foreground">
+              Current default: {presetAvatars.find((p) => p.src === presetSrc)?.name ?? "Custom"}.
+              Uploading a photo always overrides the preset.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

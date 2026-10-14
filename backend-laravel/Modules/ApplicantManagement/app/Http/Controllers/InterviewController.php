@@ -230,6 +230,84 @@ class InterviewController extends Controller
     }
 
     /* ------------------------------------------------------------------ */
+    /* POST /api/v1/interviews/{interview}/zoom-signature                   */
+    /* Mints a Meeting SDK signature so the frontend Component View can    */
+    /* embed the REAL Zoom meeting inside the HRMS popup (no Zoom app).    */
+    /* 428 when the interview has no meeting yet; 501 when SDK keys are    */
+    /* missing (frontend falls back to local preview + join-link button).  */
+    /* ------------------------------------------------------------------ */
+
+    public function zoomSignature(Request $request, int $interview): JsonResponse
+    {
+        $model = Interview::findOrFail($interview);
+
+        if ($model->mode !== 'Virtual' || empty($model->zoom_meeting_id)) {
+            return response()->json([
+                'message' => 'This interview has no Zoom meeting to embed yet.',
+                'sdk_configured' => ZoomMeetingService::sdkConfigured(),
+            ], 428);
+        }
+
+        if (! ZoomMeetingService::sdkConfigured()) {
+            return response()->json([
+                'message' => 'Zoom Meeting SDK is not configured (ZOOM_SDK_KEY/SECRET missing).',
+                'sdk_configured' => false,
+            ], 501);
+        }
+
+        $role = (int) $request->input('role', 0);
+        $role = $role === 1 ? 1 : 0;
+        $signature = ZoomMeetingService::sdkSignature((string) $model->zoom_meeting_id, $role);
+
+        if ($signature === null) {
+            return response()->json(['message' => 'Could not mint a meeting signature.'], 500);
+        }
+
+        return response()->json([
+            'meeting_number' => preg_replace('/\D/', '', (string) $model->zoom_meeting_id),
+            'password'       => $model->zoom_password,
+            'join_url'       => $model->zoom_join_url,
+            'sdk_key'        => (string) config('services.zoom.sdk_key'),
+            'signature'      => $signature,
+            'role'           => $role,
+            'user_name'      => $model->interviewer_name ?: 'HR Interviewer',
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* PUT /api/v1/interviews/{interview}                                  */
+    /* ------------------------------------------------------------------ */
+
+    /* ------------------------------------------------------------------ */
+    /* PATCH /api/v1/interviews/{interview}/notes                            */
+    /* Save interviewer notes during/after the interview.                  */
+    /* ------------------------------------------------------------------ */
+
+    public function saveNotes(Request $request, int $interview): JsonResponse
+    {
+        $request->validate([
+            'notes' => 'nullable|string|max:10000',
+        ]);
+
+        $model = Interview::findOrFail($interview);
+        $model->update(['interview_notes' => $request->input('notes')]);
+
+        AuditLogger::log(
+            action: 'Interview Notes Updated',
+            module: 'Applicant Management',
+            severity: 'Info',
+            targetType: 'Interview',
+            targetId: (string) $model->interview_id,
+            details: "Interview notes saved for {$model->applicant?->name}'s interview."
+        );
+
+        return response()->json([
+            'message' => 'Notes saved',
+            'interview_notes' => $model->interview_notes,
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
     /* PUT /api/v1/interviews/{interview}                                  */
     /* ------------------------------------------------------------------ */
 

@@ -579,6 +579,7 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
     <div className="space-y-6">
       <PageHeader
         title="Organizational Structure & Employee Roster"
+        description="Hierarchy chart, employee roster, lifecycle actions and status transition logs."
         actions={<div ref={setHeaderActionsEl} className="flex flex-wrap items-center gap-2" />}
       />
 
@@ -3510,6 +3511,7 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
     <div className="space-y-6">
       <PageHeader
         title="Department, Position & Salary Grade Management"
+        description="Departments, position master list, salary grade management and vacancy requisitions."
         actions={<div ref={setHeaderActionsEl} className="flex flex-wrap items-center gap-2" />}
       />
 

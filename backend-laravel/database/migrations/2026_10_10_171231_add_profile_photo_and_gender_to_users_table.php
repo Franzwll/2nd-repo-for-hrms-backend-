@@ -8,19 +8,20 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
+     *
+     * The portal authenticates via `system_users` (see config/auth.php), so the
+     * profile photo + gender columns must live there — not on the stock
+     * `users` table (which this app does not use).
      */
     public function up(): void
     {
-        // The default Laravel `users` table does not exist in every
-        // database using this codebase (e.g. hotel_hr authenticates via
-        // `system_users`). Only alter it where present so the migration
-        // stays runnable everywhere instead of blocking the whole chain.
-        if (! Schema::hasTable('users')) {
-            return;
-        }
-        Schema::table('users', function (Blueprint $table) {
-            $table->string('profile_photo_url')->nullable()->after('remember_token');
-            $table->string('gender')->nullable()->after('profile_photo_url');
+        Schema::table('system_users', function (Blueprint $table) {
+            if (! Schema::hasColumn('system_users', 'profile_photo_url')) {
+                $table->string('profile_photo_url')->nullable();
+            }
+            if (! Schema::hasColumn('system_users', 'gender')) {
+                $table->string('gender')->nullable();
+            }
         });
     }
 
@@ -29,11 +30,18 @@ return new class extends Migration
      */
     public function down(): void
     {
-        if (! Schema::hasTable('users')) {
-            return;
-        }
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn(['profile_photo_url', 'gender']);
+        Schema::table('system_users', function (Blueprint $table) {
+            $columns = [];
+            if (Schema::hasColumn('system_users', 'profile_photo_url')) {
+                $columns[] = 'profile_photo_url';
+            }
+            if (Schema::hasColumn('system_users', 'gender')) {
+                $columns[] = 'gender';
+            }
+            if ($columns !== []) {
+                $table->dropColumn($columns);
+            }
         });
     }
 };
+

@@ -38,8 +38,14 @@ class UpdateJobPostRequest extends FormRequest
             'responsibilities' => ['nullable', 'array'],
             'qualifications' => ['nullable', 'array'],
             'skills' => ['nullable', 'array'],
+            'additional' => ['nullable', 'array'],
+            'instructions' => ['nullable', 'string'],
+            'about' => ['nullable', 'string'],
             'platforms' => ['nullable', 'array'],
             'platforms.*' => ['string', 'in:Website,Facebook,Instagram,Indeed'],
+            /* The recruiter's drag-and-drop block order on the builder canvas. */
+            'blocks' => ['nullable', 'array'],
+            'blocks.*' => ['string', 'in:title,info,picture,description,responsibilities,qualifications,skills,additional,instructions,about'],
             'picture' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ];
     }

@@ -32,6 +32,9 @@ class JobPostResource extends JsonResource
             'responsibilities' => $this->responsibilities_json,
             'qualifications' => $this->qualifications_json,
             'skills' => $this->skills_json,
+            'additional' => $this->additional_json ?? [],
+            'instructions' => $this->instructions,
+            'about' => $this->about,
             'benefits' => $this->benefits_json,
             'picture' => $this->picture,
             'picture_url' => $this->picture

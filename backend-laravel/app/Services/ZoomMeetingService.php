@@ -2,22 +2,24 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+
 /**
  * Zoom virtual-interview link generator.
  *
- * Self-contained MOCK provider (no external API keys needed): generates a
- * deterministic Zoom-style meeting (meeting ID + join link + continue/rejoin
- * link + password) and stores it on the interview row. The applicant receives
- * both links + password + interviewer name by email.
+ * Two providers behind the same return shape (callers and emails unchanged):
  *
- * To swap in the real Zoom Server-to-Server OAuth API later, replace
- * ::createForInterview() internals with a POST to
- * https://api.zoom.us/v2/users/me/meetings (see ZOOM_* env vars below) and
- * keep the same return shape — callers and emails stay unchanged.
+ *  - mock (default, no keys): deterministic Zoom-style meeting (meeting ID +
+ *    join link + continue/rejoin link + password) stored on the interview row.
+ *  - api  (ZOOM_PROVIDER=api + Server-to-Server OAuth creds): creates a REAL
+ *    Zoom meeting via POST https://api.zoom.us/v2/users/me/meetings so the
+ *    frontend Meeting SDK Component View can embed it in the HRMS popup
+ *    (no Zoom app needed). Falls back to mock when creds/API fail.
  *
- * Env (future real provider):
- *   ZOOM_PROVIDER=mock|api, ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID,
- *   ZOOM_CLIENT_SECRET
+ * Env:
+ *   ZOOM_PROVIDER=mock|api, ZOOM_SDK_KEY, ZOOM_SDK_SECRET,
+ *   ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET
  */
 class ZoomMeetingService
 {
@@ -30,10 +32,19 @@ class ZoomMeetingService
         ?string $interviewerName = null,
         ?string $position = null,
     ): array {
-        // Real-provider hook (not wired yet — falls through to mock).
-        // if (config('services.zoom.provider') === 'api') { ... }
+        // Real provider: try the Zoom API, fall back to mock on any failure.
+        if (config('services.zoom.provider') === 'api') {
+            $real = static::createViaApi($interviewCode, $applicantName, $interviewerName, $position);
+            if ($real !== null) {
+                return $real;
+            }
+        }
 
-        // Mock Zoom-style meeting ID: 3-4-4 digit groups like real Zoom IDs.
+        return static::createMock($interviewCode);
+    }
+
+    /** Mock Zoom-style meeting (no external calls). */
+    protected static function createMock(string $interviewCode): array {
         $digits = '';
         for ($i = 0; $i < 11; $i++) {
             $digits .= (string) random_int(0, 9);
@@ -64,6 +75,115 @@ class ZoomMeetingService
             'continue_url' => $continueUrl,
             'password'     => $password,
         ];
+    }
+
+    /**
+     * Create a REAL Zoom meeting via Server-to-Server OAuth.
+     * Returns null when not configured / API fails (caller falls back to mock).
+     *
+     * @return array{meeting_id:string,join_url:string,continue_url:string,password:string}|null
+     */
+    protected static function createViaApi(
+        string $interviewCode,
+        string $applicantName,
+        ?string $interviewerName = null,
+        ?string $position = null,
+    ): ?array {
+        $accountId = (string) config('services.zoom.account_id');
+        $clientId = (string) config('services.zoom.client_id');
+        $clientSecret = (string) config('services.zoom.client_secret');
+        if ($accountId === '' || $clientId === '' || $clientSecret === '') {
+            return null;
+        }
+
+        try {
+            $tokenRes = Http::withBasicAuth($clientId, $clientSecret)->asForm()->post(
+                'https://zoom.us/oauth/token',
+                ['grant_type' => 'account_credentials', 'account_id' => $accountId]
+            );
+            if (! $tokenRes->successful()) {
+                Log::warning('Zoom OAuth failed: '.$tokenRes->body());
+                return null;
+            }
+            $accessToken = (string) ($tokenRes->json('access_token') ?? '');
+            if ($accessToken === '') {
+                return null;
+            }
+
+            $topic = trim("Interview — {$applicantName}".($position ? " ({$position})" : ''));
+            $agenda = trim("{$interviewCode}".($interviewerName ? " · Interviewer: {$interviewerName}" : ''));
+            $createRes = Http::withToken($accessToken)->post('https://api.zoom.us/v2/users/me/meetings', [
+                'topic'    => mb_substr($topic, 0, 200),
+                'type'     => 2,
+                'agenda'   => mb_substr($agenda, 0, 2000),
+                'settings' => [
+                    'waiting_room'     => true,
+                    'join_before_host' => false,
+                    'approval_type'    => 2,
+                    'auto_recording'   => 'none',
+                ],
+            ]);
+            if (! $createRes->successful()) {
+                Log::warning('Zoom create meeting failed: '.$createRes->body());
+                return null;
+            }
+            $meetingId = (string) ($createRes->json('id') ?? '');
+            $joinUrl = (string) ($createRes->json('join_url') ?? '');
+            $password = (string) ($createRes->json('password') ?? '');
+            if ($meetingId === '' || $joinUrl === '') {
+                return null;
+            }
+
+            return [
+                'meeting_id'   => $meetingId,
+                'join_url'     => $joinUrl,
+                'continue_url' => $joinUrl.'#rejoin',
+                'password'     => $password,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Zoom API error: '.$e->getMessage());
+            return null;
+        }
+    }
+
+    /** Whether the SDK embed is configured (Meeting SDK key pair present). */
+    public static function sdkConfigured(): bool
+    {
+        return (string) config('services.zoom.sdk_key') !== ''
+            && (string) config('services.zoom.sdk_secret') !== '';
+    }
+
+    /**
+     * Mint a Meeting SDK JWT signature for Component View join.
+     * Returns null when SDK keys are missing. The secret never leaves the server.
+     */
+    public static function sdkSignature(string $meetingNumber, int $role = 0): ?string
+    {
+        $sdkKey = (string) config('services.zoom.sdk_key');
+        $sdkSecret = (string) config('services.zoom.sdk_secret');
+        if ($sdkKey === '' || $sdkSecret === '') {
+            return null;
+        }
+
+        $digits = (string) preg_replace('/\D/', '', $meetingNumber);
+        if ($digits === '') {
+            return null;
+        }
+
+        $enc = static fn (string $json): string => rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
+        $header = $enc((string) json_encode(['alg' => 'HS256', 'typ' => 'JWT']));
+        $payload = $enc((string) json_encode([
+            'sdkKey'   => $sdkKey,
+            'appKey'   => $sdkKey,
+            'mn'       => $digits,
+            'role'     => $role,
+            'iat'      => time(),
+            'exp'      => time() + 7200,
+            'tokenExp' => time() + 7200,
+        ]));
+        $sig = hash_hmac('sha256', $header.'.'.$payload, $sdkSecret, true);
+
+        return $header.'.'.$payload.'.'.rtrim(strtr(base64_encode($sig), '+/', '-_'), '=');
     }
 
     /**

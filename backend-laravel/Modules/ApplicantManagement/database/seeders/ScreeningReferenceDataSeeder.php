@@ -267,7 +267,50 @@ class ScreeningReferenceDataSeeder extends Seeder
                 'Team Leadership for Front Office Supervisors, 2022' => ['team leadership for front office supervisors, 2022', 'team leadership for front office supervisors,'],
                 'Technical Maintenance and Plumbing Training' => ['basic plumbing training', 'plumbing maintenance training', 'facility maintenance training'],
             ],
+            // Degrees / attainment levels. These were missing entirely, so the
+            // Education section stayed empty and HR-typed degrees saved as
+            // `skill` had nowhere correct to live. Mirrors
+            // nlp-service/app/config.py EDUCATION_RANKS + common PH degrees.
+            'education' => [
+                'High School Graduate' => ['high school graduate', 'high school', 'secondary education', 'senior high school', 'senior high', 'grade 12', 'k to 12'],
+                'Vocational / TESDA' => ['vocational / tesda', 'vocational', 'tesda', 'vocational diploma', 'technical course', 'technical vocational', 'nc ii holder'],
+                'College Level' => ['college level', 'college undergraduate', 'undergraduate', 'some college', 'associate degree', 'associate', 'diploma'],
+                "Bachelor's Degree" => ["bachelor's degree", "bachelor's", 'bachelor', 'b.s.', 'bs', 'b.a.', 'ba', 'college graduate', "bachelor's degree holder", 'bachelor degree'],
+                'Bachelor of Science in Hospitality Management' => ['bachelor of science in hospitality management', 'bs hospitality management', 'bshm', 'bs hm', 'hospitality management degree'],
+                'Bachelor of Science in Tourism Management' => ['bachelor of science in tourism management', 'bs tourism', 'bs tourism management', 'tourism degree'],
+                'Bachelor of Science in Business Administration' => ['bachelor of science in business administration', 'bsba', 'bs business administration', 'business administration degree'],
+                'Bachelor degree in Hospitality or related field' => ['bachelor degree in hospitality or related field', 'bachelor in hospitality', 'hospitality degree or related field', 'degree in hospitality'],
+                "Master's Degree" => ["master's degree", "master's", 'master', 'm.s.', 'mba', 'graduate degree', 'postgraduate degree'],
+                'Doctorate' => ['doctorate', 'phd', 'doctoral degree', 'ph.d.'],
+            ],
+            // Tenure / seniority phrasings. Mirrors
+            // ScreeningRequirementTemplateItem::EXPERIENCE_LEVELS so the
+            // Experience section is manageable instead of empty.
+            'experience' => [
+                'No Experience' => ['no experience', 'fresh graduate', 'entry level', 'no work experience', 'student'],
+                '1-2 Years' => ['1-2 years', '1 to 2 years', 'one to two years', 'at least 1 year', '1 year experience', '2 years experience'],
+                '3-5 Years' => ['3-5 years', '3 to 5 years', 'three to five years', 'at least 3 years', '3 years experience', '5 years experience'],
+                '5+ Years' => ['5+ years', '5 years and above', 'more than 5 years', 'five plus years', 'senior level experience', 'extensive experience'],
+            ],
         ];
+
+        // One-time repair: degrees that were saved as `skill` (Add dialog
+        // defaults to skill) move to `education`. Runs before seeding so the
+        // education entries above always exist afterwards.
+        $misTypedEducation = [
+            'Bachelor degree in Hospitality or related field',
+            "Bachelor's Degree",
+            'BS Tourism',
+        ];
+        foreach ($misTypedEducation as $value) {
+            DB::table((new ScreeningReferenceData)->getTable())
+                ->where('data_type', ScreeningReferenceData::TYPE_SKILL)
+                ->where('canonical_value', $value)
+                ->update([
+                    'data_type' => ScreeningReferenceData::TYPE_EDUCATION,
+                    'updated_at' => now(),
+                ]);
+        }
 
         foreach ($seed as $type => $entries) {
             foreach ($entries as $canonical => $aliases) {

@@ -1,0 +1,32 @@
+<svg width="1000" height="360" xmlns="http://www.w3.org/2000/svg">
+<rect x="0" y="0" width="1000" height="360" rx="12" fill="#faf8f5" stroke="#ddd"/>
+<rect x="12" y="12" width="976" height="38" rx="8" fill="#2b2320"/>
+<text x="26" y="37" fill="#fff" font-size="15" font-family="Georgia">Fig 2 - Screening Setup: NLP Settings</text>
+<rect x="12" y="58" width="310" height="290" rx="8" fill="#fff" stroke="#ddd"/>
+<text x="26" y="84" font-size="12" font-weight="bold" font-family="Arial">A. Weights = 100%</text>
+<text x="26" y="112" font-size="11" font-family="Arial">Skills 40%</text>
+<rect x="26" y="118" width="160" height="10" rx="5" fill="#6b1212"/>
+<text x="26" y="148" font-size="11" font-family="Arial">Experience 30%</text>
+<rect x="26" y="154" width="120" height="10" rx="5" fill="#6b1212"/>
+<text x="26" y="184" font-size="11" font-family="Arial">Education 20%</text>
+<rect x="26" y="190" width="80" height="10" rx="5" fill="#6b1212"/>
+<text x="26" y="214" font-size="11" font-family="Arial">Certs 10%</text>
+<rect x="26" y="220" width="40" height="10" rx="5" fill="#6b1212"/>
+<text x="26" y="260" font-size="11" font-family="Arial">Passing 75% | Cover min 60%</text>
+<rect x="338" y="58" width="320" height="290" rx="8" fill="#fff" stroke="#ddd"/>
+<text x="352" y="84" font-size="12" font-weight="bold" font-family="Arial">B. Dictionary</text>
+<rect x="352" y="94" width="292" height="30" rx="15" fill="#eee" stroke="#ccc"/>
+<text x="362" y="113" font-size="10" font-family="Arial">Cash Handling (cashier, POS)</text>
+<rect x="352" y="130" width="200" height="30" rx="15" fill="#eee" stroke="#ccc"/>
+<text x="362" y="149" font-size="10" font-family="Arial">Communication</text>
+<rect x="352" y="166" width="180" height="30" rx="15" fill="#eee" stroke="#ccc"/>
+<text x="362" y="185" font-size="10" font-family="Arial">Opera PMS (pms)</text>
+<rect x="674" y="58" width="314" height="290" rx="8" fill="#fff" stroke="#ddd"/>
+<text x="688" y="84" font-size="12" font-weight="bold" font-family="Arial">C. Template</text>
+<text x="688" y="110" font-size="11" font-family="Arial">Front Desk: 5 skills</text>
+<rect x="688" y="118" width="140" height="26" rx="6" fill="#2e7d32"/>
+<text x="696" y="135" font-size="10" fill="#fff" font-family="Arial">Use in job post</text>
+<text x="688" y="165" font-size="11" font-family="Arial">Line Cook: 4 skills</text>
+<rect x="688" y="173" width="140" height="26" rx="6" fill="#2e7d32"/>
+<text x="696" y="190" font-size="10" fill="#fff" font-family="Arial">Use in job post</text>
+</svg>

@@ -35,6 +35,8 @@ class SystemUser extends Authenticatable
         'locked_until',
         'last_login_at',
         'last_login_ip',
+        'profile_photo_url',
+        'gender',
     ];
 
     protected $hidden = [

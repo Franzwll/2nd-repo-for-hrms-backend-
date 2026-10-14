@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\Rule;
 
 class ProfileController extends Controller
 {
@@ -63,20 +62,27 @@ class ProfileController extends Controller
     public function uploadPhoto(Request $request)
     {
         $request->validate([
-            'photo' => ['required', 'file', 'image', 'max:2048', Rule::mimeType('image/jpeg', 'image/png')],
+            'photo' => 'required|file|image|mimes:jpeg,jpg,png|max:2048',
         ]);
 
         $user = $request->user();
 
-        // Delete old photo if exists
+        // Delete old photo if exists (supports both the legacy
+        // /storage/... URLs and the /api/v1/profile-photo/... URLs).
         if ($user->profile_photo_url) {
-            $oldPath = str_replace(asset('storage') . '/', '', $user->profile_photo_url);
+            $oldPath = $user->profile_photo_url;
+            if (str_contains($oldPath, '/profile-photo/')) {
+                $oldPath = 'profile-photos/' . basename($oldPath);
+            } else {
+                $oldPath = str_replace(asset('storage') . '/', '', $oldPath);
+            }
             Storage::disk('public')->delete($oldPath);
         }
 
-        // Store new photo
+        // Store new photo — served via GET /api/v1/profile-photo/{file}
+        // so it works even when public/storage is a stale copy (Windows dev).
         $path = $request->file('photo')->store('profile-photos', 'public');
-        $url = asset('storage/' . $path);
+        $url = url('/api/v1/profile-photo/' . basename($path));
 
         $user->profile_photo_url = $url;
         $user->save();
@@ -95,7 +101,7 @@ class ProfileController extends Controller
         $user = $request->user();
 
         if ($user->profile_photo_url) {
-            $oldPath = str_replace(asset('storage') . '/', '', $user->profile_photo_url);
+            $oldPath = str_replace('profile-photo/', '', $user->profile_photo_url);
             Storage::disk('public')->delete($oldPath);
 
             $user->profile_photo_url = null;
@@ -104,6 +110,29 @@ class ProfileController extends Controller
 
         return response()->json([
             'message' => 'Profile photo removed successfully',
+        ]);
+    }
+
+    /**
+     * Stream the stored profile photo inline.
+     *
+     * Served through the API (not `public/storage`) so uploads work even when
+     * the storage symlink is stale or missing on Windows dev machines.
+     */
+    public function showPhoto(Request $request, string $filename)
+    {
+        $filename = basename($filename);
+        $path = 'profile-photos/' . $filename;
+
+        if (! Storage::disk('public')->exists($path)) {
+            abort(404);
+        }
+
+        $mime = Storage::disk('public')->mimeType($path) ?: 'image/jpeg';
+
+        return Storage::disk('public')->response($path, $filename, [
+            'Content-Type' => $mime,
+            'Cache-Control' => 'public, max-age=86400',
         ]);
     }
 }

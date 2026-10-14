@@ -517,6 +517,8 @@ export type Interview = {
   zoomJoinUrl?: string | null;
   zoomContinueUrl?: string | null;
   zoomPassword?: string | null;
+  /** Interviewer free-text notes taken in the Zoom room (persisted via PATCH /interviews/{id}/notes). */
+  interview_notes?: string | null;
 };
 
 export const interviews: Interview[] = [

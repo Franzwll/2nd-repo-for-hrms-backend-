@@ -81,7 +81,7 @@ import {
   printReport,
   type ReportFormat,
 } from "@/lib/report-export";
-import { usePasswordGate } from "@/components/ui/report-menu";
+import { usePasswordGate, ReportMenu } from "@/components/ui/report-menu";
 import { usePagination } from "@/hooks/usePagination";
 import { useHighlightId, highlightRowClass } from "@/hooks/useHighlight";
 
@@ -303,7 +303,6 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [profileId, setProfileId] = useState<string | null>(null);
   const recordDetail = useRecordDetail(profileId);
-  const [bulkOpen, setBulkOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [docType, setDocType] = useState(documentTypes[0]!);
   const [generatedDocs, setGeneratedDocs] = useState<GeneratedDoc[]>([]);
@@ -714,27 +713,27 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     };
   };
 
-  /** EXPORT path only — downloads the company report, never prints. */
-  const exportCompanyReport = (reportName: string, format: ReportFormat) => {
-    gateSensitive({ sensitive: true }, () => {
-      exportReport(buildCompanyReport(reportName), format);
-      toast.success(`${reportName} exported as ${format.toUpperCase()}.`);
-    });
-  };
+  /** Company-wide reports for the shared ReportMenu picker — one option per
+   *  predefined report, all exporting through the SAME locked-ZIP flow. */
+  const companyReportOptions = reportTypes.map((reportName) => ({
+    id: reportName,
+    title: reportName,
+    build: () => buildCompanyReport(reportName),
+    recordCount: list.length,
+  }));
 
   return (
     <div>
       {gateDialog}
       <PageHeader
         title="Employee Records"
+        description="201 files, employment details, certificate and report generation."
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <span className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-[0.7rem] text-muted-foreground">
               <ShieldCheck className="h-3.5 w-3.5" /> Password-protected records
             </span>
-            <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>
-              <FileText className="mr-2 h-4 w-4" /> Generate reports
-            </Button>
+            <ReportMenu size="sm" reports={companyReportOptions} />
           </div>
         }
       />
@@ -1813,37 +1812,8 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
         </DialogContent>
       </Dialog>
 
-      {/* BULK REPORTS */}
-
-      <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Generate Reports</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2">
-            {reportTypes.map((r) => (
-              <div
-                key={r}
-                className="flex items-center justify-between rounded-md border border-border p-3"
-              >
-                <span className="text-sm">{r}</span>
-                <div className="flex gap-1.5">
-                  {(["pdf", "excel"] as ReportFormat[]).map((format) => (
-                    <Button
-                      key={format}
-                      size="sm"
-                      variant="outline"
-                      onClick={() => exportCompanyReport(r, format)}
-                    >
-                      <Download className="mr-1.5 h-3.5 w-3.5" /> {format.toUpperCase()}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* BULK REPORTS — now handled by the shared ReportMenu picker in the
+          PageHeader (same locked-ZIP flow as every module). */}
 
       {/* EDIT PERSONAL DATA */}
       {/* ADD / EDIT DOCUMENT */}
