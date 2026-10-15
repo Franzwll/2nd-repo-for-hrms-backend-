@@ -22,3 +22,5 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+# Windows conflict / backup copies (never commit the *-DESKTOP-* duplicates)
+*-DESKTOP-*

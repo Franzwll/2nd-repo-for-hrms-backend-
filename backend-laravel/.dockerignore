@@ -1,0 +1,21 @@
+# Keep the Docker build context lean (Dokploy/Nixpacks)
+vendor/
+node_modules/
+public/build/
+public/hot/
+public/storage/
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+tests/
+.phpunit.cache/
+.phpunit.result.cache
+*.log
+.env
+.env.*
+!.env.example
+.git/
+.idea/
+.vscode/
+*-DESKTOP-*
