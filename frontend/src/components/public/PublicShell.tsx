@@ -1,13 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Mail, MapPin, Menu, Phone, X } from "lucide-react";
 
 import { Logo } from "@/components/brand/Logo";
 import { Chatbot } from "@/components/public/Chatbot";
 import { Button } from "@/components/ui/button";
 import { useCompany } from "@/lib/landing";
-import { applyInitialTheme } from "@/lib/theme";
+import { useLightOnly } from "@/lib/theme";
 
 const links = [
   { label: "Home", to: "/" },
@@ -26,9 +26,11 @@ const legalLinks = [
 
 export function PublicShell({ children, bare = false }: { children: ReactNode; bare?: boolean }) {
   const { company } = useCompany();
-  useEffect(() => {
-    applyInitialTheme();
-  }, []);
+  // Public pages are always light. (Previously this called applyInitialTheme()
+  // in a passive effect, which ran AFTER each page's useLightOnly layout
+  // effect and re-applied the stored/OS dark theme — black nav/sections and
+  // a washed-out hero whenever the OS or stored preference was dark.)
+  useLightOnly();
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Bare mode: logo + content only (e.g. assessment test link).
