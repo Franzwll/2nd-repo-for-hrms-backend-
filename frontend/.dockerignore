@@ -1,0 +1,12 @@
+# Keep the Docker build context lean (Dokploy/Nixpacks)
+node_modules/
+dist/
+dist-ssr/
+.output/
+.nitro/
+.tanstack/
+.vinxi/
+*.log
+.env
+.env.*
+!.env.example
