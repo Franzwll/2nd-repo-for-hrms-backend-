@@ -5,7 +5,6 @@ import {
   Plus,
   Search,
   ArrowUpDown,
-  FileEdit,
   FileText,
   ArrowLeftRight,
   MapPin,
@@ -28,7 +27,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatCard } from "@/components/portal/StatCard";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -42,7 +40,6 @@ import { StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { myAttendance } from "@/data/ess";
-import { DtrCorrectionModal } from "@/components/modules/ess/modals/DtrCorrectionModal";
 import { ShiftSwapModal } from "@/components/modules/ess/modals/ShiftSwapModal";
 import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
 import { ScheduleRecordsModal } from "@/components/modules/ess/modals/ScheduleRecordsModal";
@@ -51,15 +48,15 @@ import { essApi, type ApiScheduleDay, type ApiEssEmployee, type ApiLeaveBalance 
 import { toast } from "sonner";
 
 interface EssAttendanceTabProps {
-  initialTab?: "clocking" | "roster" | "schedule" | "dtr" | "leave";
+  initialTab?: "clocking" | "roster" | "schedule" | "leave";
 }
 
 const DEFAULT_ROSTER: ApiScheduleDay[] = [
-  { day: "Monday", shift: "Morning Shift", time: "07:00 AM – 04:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen · Line 1" },
-  { day: "Tuesday", shift: "Morning Shift", time: "07:00 AM – 04:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen · Line 1" },
-  { day: "Wednesday", shift: "Morning Shift", time: "07:00 AM – 04:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen · Line 1" },
-  { day: "Thursday", shift: "Mid Shift", time: "02:00 PM – 11:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen · Pastry Prep" },
-  { day: "Friday", shift: "Night Shift", time: "11:00 PM – 07:00 AM", hours: "8.0h (1h break)", location: "Main Kitchen · Night Prep" },
+  { day: "Monday", shift: "Morning Shift", time: "07:00 AM â€“ 04:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen Â· Line 1" },
+  { day: "Tuesday", shift: "Morning Shift", time: "07:00 AM â€“ 04:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen Â· Line 1" },
+  { day: "Wednesday", shift: "Morning Shift", time: "07:00 AM â€“ 04:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen Â· Line 1" },
+  { day: "Thursday", shift: "Mid Shift", time: "02:00 PM â€“ 11:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen Â· Pastry Prep" },
+  { day: "Friday", shift: "Night Shift", time: "11:00 PM â€“ 07:00 AM", hours: "8.0h (1h break)", location: "Main Kitchen Â· Night Prep" },
   { day: "Saturday", shift: "Rest Day", time: "Off Duty", hours: "0h", location: "Off Duty" },
   { day: "Sunday", shift: "Rest Day", time: "Off Duty", hours: "0h", location: "Off Duty" },
 ];
@@ -180,10 +177,9 @@ function getShiftVisual(shift: string, time: string) {
 }
 
 export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabProps) {
-  // Navigation tabs — admin-consistent: schedule (clocking + roster combined) / dtr / leave
-  type AttendanceTabValue = "schedule" | "dtr" | "leave";
+  // Navigation tabs â€” admin-consistent: schedule (clocking + roster combined) / dtr / leave
+  type AttendanceTabValue = "schedule" | "leave";
   const normalizeTab = (t: string | undefined): AttendanceTabValue => {
-    if (t === "dtr") return "dtr";
     if (t === "leave") return "leave";
     return "schedule";
   };
@@ -197,14 +193,14 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
     }
   }, [initialTab]);
 
-  // Live Clock Terminal State — client-only (null until mounted so SSR HTML matches).
+  // Live Clock Terminal State â€” client-only (null until mounted so SSR HTML matches).
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [currentDutyStatus, setCurrentDutyStatus] = useState<"clocked_in" | "on_break" | "clocked_out">("clocked_in");
   const [punchLog, setPunchLog] = useState({
     timeIn: myAttendance.today.timeIn || "07:52 AM",
     breakIn: myAttendance.today.breakIn || "12:00 PM",
     breakOut: myAttendance.today.breakOut || "12:58 PM",
-    timeOut: myAttendance.today.timeOut !== "—" ? myAttendance.today.timeOut : "—",
+    timeOut: myAttendance.today.timeOut !== "â€”" ? myAttendance.today.timeOut : "â€”",
   });
 
   // Attendance summary & history
@@ -215,17 +211,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
   });
   const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
 
-  const [attRequests, setAttRequests] = useState([
-    { id: "REQ-4408", date: "Jul 20, 2026", isoDate: "2026-07-20", type: "Missed Time Out", status: "Pending", statusRank: 0, details: "Scanner offline at end of shift" },
-    { id: "REQ-4390", date: "Jun 12, 2026", isoDate: "2026-06-12", type: "Time In Correction", status: "Approved", statusRank: 1, details: "Late override approved by Chef Marco" },
-    { id: "REQ-4355", date: "May 22, 2026", isoDate: "2026-05-22", type: "Rest Day Work", status: "Approved", statusRank: 1, details: "Catering banquet support" },
-  ]);
-
-  const [attSearch, setAttSearch] = useState("");
-  const [attSort, setAttSort] = useState("date-desc");
-  const [dtrSearch, setDtrSearch] = useState("");
   const [leaveSearch, setLeaveSearch] = useState("");
-  const [correctionModalOpen, setCorrectionModalOpen] = useState(false);
   const [swapModalOpen, setSwapModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -237,12 +223,12 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
 
   // Leave state
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
-  // TRY: top-right records modal — remove state if not applicable
+  // TRY: top-right records modal â€” remove state if not applicable
   const [recordsModalOpen, setRecordsModalOpen] = useState(false);
   const [leaveBalances, setLeaveBalances] = useState<ApiLeaveBalance[]>([]);
   const [leaveHistory, setLeaveHistory] = useState<any[]>([]);
 
-  // Clock Ticker — starts after mount so SSR HTML matches (no hydration mismatch).
+  // Clock Ticker â€” starts after mount so SSR HTML matches (no hydration mismatch).
   useEffect(() => {
     setCurrentTime(new Date());
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -317,24 +303,11 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         month: "long",
         day: "numeric",
       })
-    : "Loading…";
+    : "Loadingâ€¦";
 
   const todayDayName = currentTime ? currentTime.toLocaleDateString("en-US", { weekday: "long" }) : "";
 
-  const filteredAttRequests = useMemo(() => {
-    return attRequests
-      .filter((r) => !attSearch || r.type.toLowerCase().includes(attSearch.toLowerCase()) || r.status.toLowerCase().includes(attSearch.toLowerCase()))
-      .sort((a, b) => {
-        if (attSort === "date-desc") return b.isoDate.localeCompare(a.isoDate);
-        if (attSort === "date-asc") return a.isoDate.localeCompare(b.isoDate);
-        if (attSort === "status") return a.statusRank - b.statusRank;
-        return 0;
-      });
-  }, [attRequests, attSearch, attSort]);
-
-  const attPage = usePagination(filteredAttRequests);
-
-  // DTR history — admin-consistent searchable + paginated table
+  // DTR history â€” admin-consistent searchable + paginated table
   const dtrRecords = useMemo(() => {
     if (attendanceLogs.length > 0) return attendanceLogs;
     return myAttendance.history.map((h) => ({
@@ -346,20 +319,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
     }));
   }, [attendanceLogs]);
 
-  const filteredDtrRecords = useMemo(() => {
-    const q = dtrSearch.trim().toLowerCase();
-    if (!q) return dtrRecords;
-    return dtrRecords.filter((h: any) =>
-      String(h.date ?? "").toLowerCase().includes(q) ||
-      String(h.status ?? "").toLowerCase().includes(q) ||
-      String(h.timeIn ?? "").toLowerCase().includes(q) ||
-      String(h.timeOut ?? "").toLowerCase().includes(q)
-    );
-  }, [dtrRecords, dtrSearch]);
-
-  const dtrPage = usePagination(filteredDtrRecords);
-
-  // Leave history — admin-consistent searchable + paginated table
+  // Leave history â€” admin-consistent searchable + paginated table
   const filteredLeaveHistory = useMemo(() => {
     const q = leaveSearch.trim().toLowerCase();
     if (!q) return leaveHistory;
@@ -372,33 +332,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
   }, [leaveHistory, leaveSearch]);
 
   const leavePage = usePagination(filteredLeaveHistory);
-
-  const handleCorrectionSubmit = async (newCorrection: any) => {
-    const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    const isoStr = new Date().toISOString().slice(0, 10);
-    const req = {
-      id: `REQ-${Date.now().toString().slice(-4)}`,
-      date: todayStr,
-      isoDate: isoStr,
-      type: newCorrection.type || "DTR Correction",
-      status: "Pending",
-      statusRank: 0,
-      details: newCorrection.reason || "Time record adjustment requested",
-    };
-    setAttRequests([req, ...attRequests]);
-
-    try {
-      await essApi.createRequest({
-        category_code: "attendance",
-        category_name: "Attendance",
-        request_type: newCorrection.type || "DTR Correction",
-        date_from: newCorrection.date || isoStr,
-        details: newCorrection.reason || "Time record adjustment requested",
-      });
-    } catch {
-      // fallback
-    }
-  };
 
   const handleRowClick = (req: any, category = "Attendance") => {
     setSelectedRequest({
@@ -415,7 +348,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
 
   return (
     <div className="space-y-6">
-      {/* Metric cards — admin-consistent placement above tabs */}
+      {/* Metric cards â€” admin-consistent placement above tabs */}
       <div className="grid gap-4 sm:grid-cols-2">
         <StatCard
           label="Present Days"
@@ -442,12 +375,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
             value="schedule"
           >
             <Clock className="h-3.5 w-3.5" /> Attendance &amp; Schedule
-          </TabsTrigger>
-          <TabsTrigger
-            className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-            value="dtr"
-          >
-            <FileText className="h-3.5 w-3.5" /> DTR &amp; Corrections
           </TabsTrigger>
           <TabsTrigger
             className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
@@ -555,13 +482,13 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                     <div className="space-y-2.5 pt-3.5 text-xs">
                       <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Assigned Shift:</span>
-                        <span className="font-semibold text-foreground">AM Shift (07:00 AM – 04:00 PM)</span>
+                        <span className="font-semibold text-foreground">AM Shift (07:00 AM â€“ 04:00 PM)</span>
                       </div>
 
                       <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Geolocation:</span>
                         <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                          Oxford Suites Makati (Main Kitchen) ✓
+                          Oxford Suites Makati (Main Kitchen) âœ“
                         </span>
                       </div>
 
@@ -612,7 +539,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
           </Card>
           <Card className="border-border/70 shadow-xs">
             <CardContent className="p-6">
-              {/* TRY: roster header + top-right records button — remove block if not applicable */}
+              {/* TRY: roster header + top-right records button â€” remove block if not applicable */}
               <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
                 <div>
                   <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
@@ -707,169 +634,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
           </Card>
         </TabsContent>
 
-        <TabsContent value="dtr" className="mt-4 space-y-4">
-
-          <Card className="border-border/70 shadow-xs">
-            <CardContent className="p-6">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-                  <Calendar className="h-4 w-4 text-primary" /> Daily Time Record (DTR) History
-                </h2>
-                <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                  <div className="relative w-56">
-                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={dtrSearch}
-                      onChange={(e) => setDtrSearch(e.target.value)}
-                      placeholder="Search DTR records…"
-                      className="pl-8"
-                    />
-                  </div>
-                  <Button
-                    size="sm"
-                    onClick={() => setCorrectionModalOpen(true)}
-                    className="gap-1.5 text-xs shadow-xs cursor-pointer"
-                  >
-                    <Plus className="h-4 w-4" /> File DTR Correction
-                  </Button>
-                </div>
-              </div>
-              <ListBody className="mt-4">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[24%]">Date</TableHead>
-                      <TableHead className="w-[18%]">Time In</TableHead>
-                      <TableHead className="w-[18%]">Time Out</TableHead>
-                      <TableHead className="w-[22%]">Status &amp; Remark</TableHead>
-                      <TableHead className="w-[18%] text-right">Hours Worked</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dtrPage.pageItems.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5}>
-                          <ListEmptyState placeholder="Search DTR records…" subject="DTR records" />
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      dtrPage.pageItems.map((h: any, i: number) => (
-                        <TableRow key={i}>
-                          <TableCell className="font-medium text-xs text-foreground">{h.date}</TableCell>
-                          <TableCell className="text-xs font-mono">{h.timeIn}</TableCell>
-                          <TableCell className="text-xs font-mono">{h.timeOut}</TableCell>
-                          <TableCell>
-                            <EssStatusBadge status={h.status} />
-                          </TableCell>
-                          <TableCell className="text-right text-xs font-semibold font-mono text-foreground">
-                            {h.workedHours} hrs
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </ListBody>
-              <div className="shrink-0 border-t border-border/60 pt-3">
-                <TablePagination
-                  page={dtrPage.page}
-                  pageCount={dtrPage.pageCount}
-                  from={dtrPage.from}
-                  to={dtrPage.to}
-                  total={dtrPage.total}
-                  label="records"
-                  showRangeLabel={false}
-                  onPageChange={dtrPage.setPage}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/70 shadow-xs">
-            <CardContent className="p-6">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-                  <FileEdit className="h-4 w-4 text-primary" /> My Attendance Correction Requests
-                </h2>
-                <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                  <div className="relative w-56">
-                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      placeholder="Search requests…"
-                      value={attSearch}
-                      onChange={(e) => setAttSearch(e.target.value)}
-                      className="pl-8"
-                    />
-                  </div>
-                  <Select value={attSort} onValueChange={setAttSort}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="date-desc">Newest first</SelectItem>
-                      <SelectItem value="date-asc">Oldest first</SelectItem>
-                      <SelectItem value="status">Status</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <ListBody className="mt-4">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Request ID</TableHead>
-                  <TableHead>Date Filed</TableHead>
-                  <TableHead>Correction Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {attPage.pageItems.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5}>
-                      <ListEmptyState placeholder="Search requests…" subject="correction requests" />
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  attPage.pageItems.map((r, idx) => (
-                    <TableRow
-                      key={idx}
-                      className="cursor-pointer transition-colors"
-                      onClick={() => handleRowClick(r, "Attendance")}
-                    >
-                      <TableCell className="text-xs font-mono font-medium text-foreground">{r.id}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{r.date}</TableCell>
-                      <TableCell className="text-xs font-medium">{r.type}</TableCell>
-                      <TableCell>
-                        <EssStatusBadge status={r.status} />
-                      </TableCell>
-                      <TableCell className="text-right py-1">
-                        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-primary cursor-pointer">
-                          Timeline →
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-              </ListBody>
-              <div className="shrink-0 border-t border-border/60 pt-3">
-                <TablePagination
-                  page={attPage.page}
-                  pageCount={attPage.pageCount}
-                  from={attPage.from}
-                  to={attPage.to}
-                  total={attPage.total}
-                  label="requests"
-                  showRangeLabel={false}
-                  onPageChange={attPage.setPage}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         <TabsContent value="leave" className="mt-4 space-y-4">
           <Card className="border-border/70 shadow-xs">
@@ -882,7 +646,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                   <div className="relative w-56">
                     <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      placeholder="Search leave…"
+                      placeholder="Search leaveâ€¦"
                       value={leaveSearch}
                       onChange={(e) => setLeaveSearch(e.target.value)}
                       className="pl-8"
@@ -926,7 +690,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                     {leavePage.pageItems.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6}>
-                          <ListEmptyState placeholder="Search leave…" subject="leave requests" />
+                          <ListEmptyState placeholder="Search leaveâ€¦" subject="leave requests" />
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -949,7 +713,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                           </TableCell>
                           <TableCell className="text-right py-1">
                             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-primary cursor-pointer">
-                              Timeline →
+                              Timeline â†’
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -986,11 +750,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
           loadData();
         }}
       />
-      <DtrCorrectionModal
-        open={correctionModalOpen}
-        onOpenChange={setCorrectionModalOpen}
-        onSubmitCorrection={handleCorrectionSubmit}
-      />
       <ShiftSwapModal
         open={swapModalOpen}
         onOpenChange={setSwapModalOpen}
@@ -1001,7 +760,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         onOpenChange={setTimelineOpen}
         request={selectedRequest}
       />
-      {/* TRY: records dialog — remove block if not applicable */}
+      {/* TRY: records dialog â€” remove block if not applicable */}
       <ScheduleRecordsModal
         open={recordsModalOpen}
         onOpenChange={setRecordsModalOpen}
