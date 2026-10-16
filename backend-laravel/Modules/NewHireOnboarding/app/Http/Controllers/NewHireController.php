@@ -16,6 +16,7 @@ use Modules\NewHireOnboarding\Http\Resources\NewHireResource;
 use Modules\NewHireOnboarding\Models\NewHire;
 use Modules\NewHireOnboarding\Models\OnboardingChecklistTemplate;
 use App\Services\AuditLogger;
+use Modules\CoreHCM\Services\EmployeeLifecycleService;
 use Modules\Settings\Models\SystemSetting;
 use Modules\Settings\Models\SystemUser;
 
@@ -325,19 +326,23 @@ class NewHireController extends Controller
 
             try {
                 $nameParts = preg_split('/\s+/', trim($newHire->name) ?: 'New Hire', 2);
-                $employee = \App\Models\Employee::create([
-                    'employee_code' => $this->nextEmployeeCode(),
-                    'first_name' => $nameParts[0] ?? 'New',
-                    'last_name' => $nameParts[1] ?? ($nameParts[0] ?? 'Hire'),
-                    'email' => $newHire->email ?: null,
-                    'phone' => $newHire->phone,
-                    'position_id' => $newHire->position_id,
-                    'department_id' => $newHire->department_id,
-                    'employment_type' => 'Regular',
-                    'date_hired' => $newHire->start_date,
-                    'status' => 'Active',
-                    'onboarding_complete' => true,
-                ]);
+                // Mint the code and insert inside one transaction so the locked
+                // sequence (shared with Core HCM's own create) serialises hires.
+                $employee = \Illuminate\Support\Facades\DB::transaction(function () use ($newHire, $nameParts) {
+                    return \App\Models\Employee::create([
+                        'employee_code' => app(EmployeeLifecycleService::class)->generateEmployeeCode(),
+                        'first_name' => $nameParts[0] ?? 'New',
+                        'last_name' => $nameParts[1] ?? ($nameParts[0] ?? 'Hire'),
+                        'email' => $newHire->email ?: null,
+                        'phone' => $newHire->phone,
+                        'position_id' => $newHire->position_id,
+                        'department_id' => $newHire->department_id,
+                        'employment_type' => 'Regular',
+                        'date_hired' => $newHire->start_date,
+                        'status' => 'Active',
+                        'onboarding_complete' => true,
+                    ]);
+                });
 
                 \App\Models\Position::where('position_id', $newHire->position_id)->increment('filled_count');
 
@@ -410,25 +415,6 @@ class NewHireController extends Controller
             targetId: (string) $employee->employee_id,
             details: "Employment type of {$employee->full_name} set to Regular (hire {$newHire->new_hire_code} reached the Regular stage).",
         );
-    }
-
-    /**
-     * Next sequential employee code (EMP-XXXX) — same generator Core HCM
-     * uses, guarded by a table lock so concurrent creates can't collide.
-     */
-    private function nextEmployeeCode(): string
-    {
-        return \Illuminate\Support\Facades\DB::transaction(function () {
-            \Illuminate\Support\Facades\DB::selectOne('SELECT GET_LOCK(?, 5)', ['employee_code_gen']);
-            try {
-                $last = \App\Models\Employee::max('employee_code');
-                $next = $last ? ((int) substr($last, 4)) + 1 : 1;
-
-                return 'EMP-' . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
-            } finally {
-                \Illuminate\Support\Facades\DB::selectOne('SELECT RELEASE_LOCK(?)', ['employee_code_gen']);
-            }
-        });
     }
 
     /* ------------------------------------------------------------------ */

@@ -336,6 +336,7 @@ export interface ApiInterview {
   zoom_join_url: string | null;
   zoom_continue_url: string | null;
   zoom_password: string | null;
+  interview_notes?: string | null;
   status: "Scheduled" | "Completed" | "No Show";
   applicant?: {
     applicant_id: number;
@@ -815,6 +816,29 @@ export const interviewsApi = {
    *  automatically emails the applicant their confirmed schedule. */
   facilityApprove: (id: number | string) =>
     request<ApiInterview>(`/interviews/${id}/facility-approve`, { method: "POST" }),
+  /** Mint a Meeting SDK signature to embed the Zoom meeting in the HRMS popup.
+   *  Rejects (428/501) when the interview has no meeting yet or SDK keys are
+   *  missing — the caller falls back to local preview + join-link button. */
+  zoomSignature: (id: number | string, role: 0 | 1 = 0) =>
+    request<{
+      meeting_number: string;
+      password: string | null;
+      join_url: string | null;
+      sdk_key: string;
+      signature: string;
+      role: number;
+      user_name: string;
+    }>(`/interviews/${id}/zoom-signature`, {
+      method: "POST",
+      body: JSON.stringify({ role }),
+    }),
+
+  /** Save interviewer notes during/after the interview. */
+  saveNotes: (id: number | string, notes: string) =>
+    request<{ message: string; interview_notes: string | null }>(`/interviews/${id}/notes`, {
+      method: "PATCH",
+      body: JSON.stringify({ notes }),
+    }),
 };
 
 /* ========================================================================= */
@@ -995,6 +1019,11 @@ export interface ApiJobPost {
   department_id: number;
   department?: string;
   position_id: number | null;
+  /**
+   * Saved builder canvas arrangement (ordered block ids). null means the post
+   * was built before block order was persisted, so the default order applies.
+   */
+  blocks: string[] | null;
   employment_type: "Full-time" | "Part-time" | "Contract" | "Seasonal";
   schedule: string | null;
   salary_min: number | null;
@@ -1011,6 +1040,9 @@ export interface ApiJobPost {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
+  additional?: string[];
+  instructions?: string | null;
+  about?: string | null;
   platforms?: string[];
   picture: string | null;
   picture_url: string | null;
@@ -1041,6 +1073,8 @@ export interface JobDraftPayload {
   vacancies?: number | undefined;
   experience_level?: string | undefined;
   education_level?: string | undefined;
+  blocks?: string[] | undefined;
+  notes?: Record<string, string> | undefined;
 }
 
 export interface JobDraftResult {
@@ -1048,6 +1082,7 @@ export interface JobDraftResult {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
+  additional?: string[];
   instructions: string;
   about: string;
 }
@@ -1718,6 +1753,8 @@ export interface ApiEmployee {
   gender: string | null;
   civil_status: string | null;
   nationality: string | null;
+  /** Present on the ERM dossier endpoint; true when gov IDs are hidden. */
+  pii_masked?: boolean;
   department_id: number;
   department_name: string;
   position_id: number;
@@ -1728,10 +1765,10 @@ export interface ApiEmployee {
   status: string;
   date_hired: string;
   onboarding_complete: boolean;
-  sss_number: string | null;
-  philhealth_number: string | null;
-  pagibig_number: string | null;
-  tin_number: string | null;
+  sss_number?: string | null;
+  philhealth_number?: string | null;
+  pagibig_number?: string | null;
+  tin_number?: string | null;
   salary_step: string | null;
   employee_record_last_updated_at: string | null;
   emergency_contacts?: ApiEmergencyContact[];
@@ -1758,7 +1795,11 @@ export interface ApiDocument {
   document_code: string;
   title: string;
   category: string;
+  source_type?: string | null;
+  original_name?: string | null;
   file_path: string | null;
+  file_url?: string | null;
+  has_file?: boolean;
   mime_type: string | null;
   file_size_bytes: number | null;
   document_status: string;
@@ -2219,6 +2260,9 @@ export interface ApiLandingJob {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
+  additional?: string[];
+  instructions?: string | null;
+  about?: string | null;
   benefits: string[];
   picture?: string | null;
   picture_url?: string | null;
@@ -2445,7 +2489,9 @@ export interface ApiEssOverview {
   };
   monthly_attendance?: {
     present: number;
-    leave: number;
+    late: number;
+    absent: number;
+    overtime_hours: number;
     total_leave_available: number;
   };
   payroll_summary?: {
@@ -2548,7 +2594,9 @@ export const essApi = {
     request<{
       summary: {
         present_days: number;
-        leave_days: number;
+        late_days: number;
+        absent_days: number;
+        overtime_hours: number;
         average_hours: number;
       };
       records: {
@@ -2559,6 +2607,7 @@ export const essApi = {
         timeIn: string;
         timeOut: string;
         workedHours: number;
+        overtimeHours: number;
         status: string;
         device: string;
         remarks: string;
@@ -2706,13 +2755,6 @@ export const essApi = {
     }),
   /** Same-origin URL to stream a file attached to the employee's own request
    *  (their upload or HR's fulfilment) with ?token= auth for browser opens. */
-  /** Same-origin URL to stream the employee's own document file
-   *  with ?token= auth for browser opens. */
-  documentFileUrl: (documentId: string | number) => {
-    const token = getToken();
-    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `/api/v1/ess/my-documents/${documentId}/file${qs}`;
-  },
   requestAttachmentUrl: (requestId: string | number, attachmentId: string | number) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
@@ -2817,6 +2859,98 @@ export const ermApi = {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
     return `/api/v1/erm/document-requests/${requestId}/attachments/${attachmentId}/file${qs}`;
+  },
+
+  /** The ERM-owned 201 dossier (employment master + personal/gov data). */
+  employees: {
+    dossier: (id: number | string) => request<{ data: ApiEmployee }>(`/erm/employees/${id}`),
+    updateDossier: (id: number | string, data: Record<string, any>) =>
+      request<{ message: string; data: ApiEmployee }>(`/erm/employees/${id}/dossier`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    contacts: (id: number | string) =>
+      request<{ contacts: ApiEmergencyContact[] }>(`/erm/employees/${id}/emergency-contacts`),
+    addContact: (id: number | string, data: Record<string, any>) =>
+      request<{ message: string; contact: ApiEmergencyContact }>(
+        `/erm/employees/${id}/emergency-contacts`,
+        { method: "POST", body: JSON.stringify(data) },
+      ),
+    updateContact: (id: number | string, contactId: number | string, data: Record<string, any>) =>
+      request<{ message: string; contact: ApiEmergencyContact }>(
+        `/erm/employees/${id}/emergency-contacts/${contactId}`,
+        { method: "PUT", body: JSON.stringify(data) },
+      ),
+    removeContact: (id: number | string, contactId: number | string) =>
+      request<{ message: string }>(`/erm/employees/${id}/emergency-contacts/${contactId}`, {
+        method: "DELETE",
+      }),
+    documents: (id: number | string) =>
+      request<{ documents: ApiDocument[] }>(`/erm/employees/${id}/documents`),
+    uploadDocument: (
+      id: number | string,
+      data: {
+        title: string;
+        category: string;
+        file?: File;
+        document_date?: string;
+        expiry_date?: string;
+        document_status?: string;
+      },
+    ) => {
+      const form = new FormData();
+      form.append("title", data.title);
+      form.append("category", data.category);
+      if (data.file) form.append("file", data.file);
+      if (data.document_date) form.append("document_date", data.document_date);
+      if (data.expiry_date) form.append("expiry_date", data.expiry_date);
+      if (data.document_status) form.append("document_status", data.document_status);
+      return request<{ message: string; document: ApiDocument }>(
+        `/erm/employees/${id}/documents`,
+        { method: "POST", body: form },
+      );
+    },
+    verifyDocument: (id: number | string, documentId: number | string, status: string) =>
+      request<{ message: string; document: ApiDocument }>(
+        `/erm/employees/${id}/documents/${documentId}/verify`,
+        { method: "POST", body: JSON.stringify({ status }) },
+      ),
+    updateDocument: (
+      id: number | string,
+      documentId: number | string,
+      data: {
+        title?: string;
+        category?: string;
+        document_status?: string;
+        document_date?: string;
+        expiry_date?: string;
+      },
+    ) =>
+      request<{ message: string; document: ApiDocument }>(
+        `/erm/employees/${id}/documents/${documentId}`,
+        { method: "PUT", body: JSON.stringify(data) },
+      ),
+    removeDocument: (id: number | string, documentId: number | string) =>
+      request<{ message: string }>(`/erm/employees/${id}/documents/${documentId}`, {
+        method: "DELETE",
+      }),
+    documentFileUrl: (id: number | string, documentId: number | string) => {
+      const token = getToken();
+      const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+      return `/api/v1/erm/employees/${id}/documents/${documentId}/file${qs}`;
+    },
+    updateExitRecord: (id: number | string, data: Record<string, any>) =>
+      request<{ message: string; exit_record: ApiExitRecord }>(`/erm/employees/${id}/exit-record`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    archive: (id: number | string) =>
+      request<{ message: string }>(`/erm/employees/${id}/archive`, { method: "POST" }),
+    restore: (id: number | string) =>
+      request<{ message: string; data: ApiEmployee }>(`/erm/employees/${id}/restore`, {
+        method: "POST",
+      }),
+    archived: () => request<{ data: ApiEmployee[] }>(`/erm/employees/archived`),
   },
 };
 

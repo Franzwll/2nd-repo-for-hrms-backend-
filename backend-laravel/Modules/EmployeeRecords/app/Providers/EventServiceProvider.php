@@ -22,6 +22,9 @@ class EventServiceProvider extends ServiceProvider
         \Modules\EmployeeSelfService\Events\EssRequestFulfilled::class => [
             \Modules\EmployeeRecords\Listeners\NotifyEmployeeRequestFulfilled::class,
         ],
+        \Modules\CoreHCM\Events\EmployeeStatusChanged::class => [
+            \Modules\EmployeeRecords\Listeners\SyncEmployeeDossierOnStatusChange::class,
+        ],
     ];
 
     /**
