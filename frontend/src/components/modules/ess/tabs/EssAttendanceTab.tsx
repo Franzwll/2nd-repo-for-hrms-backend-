@@ -320,21 +320,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
 
   const todayDayName = currentTime ? currentTime.toLocaleDateString("en-US", { weekday: "long" }) : "";
 
-  // TRY: week-range label for roster header — remove if modal removed
-  const weekRangeLabel = useMemo(() => {
-    const base = currentTime ?? new Date();
-    const day = base.getDay(); // 0 Sun … 6 Sat
-    const mondayOffset = (day + 6) % 7;
-    const monday = new Date(base);
-    monday.setDate(base.getDate() - mondayOffset);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    const fmt = (d: Date) =>
-      d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    return `${fmt(monday)} – ${fmt(sunday)}`;
-  }, [currentTime]);
-
-
   const filteredAttRequests = useMemo(() => {
     return attRequests
       .filter((r) => !attSearch || r.type.toLowerCase().includes(attSearch.toLowerCase()) || r.status.toLowerCase().includes(attSearch.toLowerCase()))
@@ -632,9 +617,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                   <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
                     <Calendar className="h-4 w-4 text-primary" /> Weekly Shift Schedule &amp; Roster
                   </h2>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {weekRangeLabel} · {employeeInfo?.department || "Main Hotel Front Desk"} · Mon–Sun roster
-                  </p>
                 </div>
                 <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                   <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary text-xs font-medium px-2.5 py-1">
