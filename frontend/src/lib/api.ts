@@ -2538,6 +2538,36 @@ export interface ApiEssRequestItem {
   note?: string;
   returnedCount?: number;
   attachment_path?: string | null;
+  /** Files attached to the request — employee uploads and HR fulfilment. */
+  attachments?: ApiEssRequestAttachment[];
+  /** True once HR has attached the requested file. */
+  has_fulfillment?: boolean;
+  /** Filed -> Received -> Fulfilled timeline. */
+  timeline?: { status: string; note: string | null; at: string | null }[];
+}
+
+export interface ApiEssRequestAttachment {
+  id: number;
+  direction: "employee" | "hr";
+  original_name: string | null;
+  mime_type: string | null;
+  file_size_bytes: number | null;
+  has_file: boolean;
+}
+
+export interface ApiDocumentRequest extends ApiEssRequestItem {
+  employeeDbId?: number;
+  has_fulfillment: boolean;
+  attachments: ApiEssRequestAttachment[];
+  archive_options?: {
+    id: number;
+    code: string;
+    title: string;
+    category: string;
+    status: string;
+    document_date: string | null;
+    file_path: string | null;
+  }[];
 }
 
 export interface ApiEssCategory {
@@ -2717,6 +2747,13 @@ export const essApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  /** Same-origin URL to stream a file attached to the employee's own request
+   *  (their upload or HR's fulfilment) with ?token= auth for browser opens. */
+  requestAttachmentUrl: (requestId: string | number, attachmentId: string | number) => {
+    const token = getToken();
+    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `/api/v1/ess/requests/${requestId}/attachments/${attachmentId}/file${qs}`;
+  },
   clock: (action: "clock_in" | "clock_out") =>
     request<{ message: string; record: any }>("/ess/clock", {
       method: "POST",
@@ -2783,6 +2820,40 @@ export const essApi = {
       method: "PUT",
     }),
   auditLogs: () => request<{ logs: any[] }>("/ess/admin/audit-logs"),
+};
+
+/* ========================================================================= */
+/* Employee Records Management (ERM) — ESS document-request fulfilment loop  */
+/* ========================================================================= */
+
+export const ermApi = {
+  /** Document requests filed by employees in ESS (hr_document category). */
+  documentRequests: (params?: Record<string, any>) => {
+    const qs = params ? new URLSearchParams(params).toString() : "";
+    return request<{
+      counts: { total: number; pending: number; fulfilled: number };
+      requests: ApiDocumentRequest[];
+    }>(`/erm/document-requests${qs ? `?${qs}` : ""}`);
+  },
+  documentRequest: (id: string | number) =>
+    request<{ request: ApiDocumentRequest }>(`/erm/document-requests/${id}`),
+  /** Fulfil a request: upload a fresh file and/or attach an archived
+   *  document (Team 8 seam) by id. */
+  fulfill: (id: string | number, data: { file?: File; document_id?: number; note?: string }) => {
+    const form = new FormData();
+    if (data.file) form.append("file", data.file);
+    if (data.document_id) form.append("document_id", String(data.document_id));
+    if (data.note) form.append("note", data.note);
+    return request<{ message: string; request: ApiDocumentRequest }>(
+      `/erm/document-requests/${id}/fulfill`,
+      { method: "POST", body: form },
+    );
+  },
+  attachmentFileUrl: (requestId: string | number, attachmentId: string | number) => {
+    const token = getToken();
+    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `/api/v1/erm/document-requests/${requestId}/attachments/${attachmentId}/file${qs}`;
+  },
 };
 
 export interface ApiChatbotSource {

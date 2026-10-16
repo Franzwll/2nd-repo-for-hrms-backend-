@@ -22,11 +22,8 @@ import { Route as LandingPrivacyRouteImport } from './routes/_landing/privacy'
 import { Route as LandingSupportRouteImport } from './routes/_landing/support'
 import { Route as LandingTermsRouteImport } from './routes/_landing/terms'
 import { Route as LoginForgotPasswordRouteImport } from './routes/_login/forgot-password'
-import { Route as LoginForgotPasswordDESKTOPT31RHI0RouteImport } from './routes/_login/forgot-password-DESKTOP-T31RHI0'
 import { Route as LoginLoginRouteImport } from './routes/_login/login'
-import { Route as LoginLoginDESKTOPT31RHI0RouteImport } from './routes/_login/login-DESKTOP-T31RHI0'
 import { Route as LoginOtpRouteImport } from './routes/_login/otp'
-import { Route as LoginOtpDESKTOPT31RHI0RouteImport } from './routes/_login/otp-DESKTOP-T31RHI0'
 import { Route as LoginResetPasswordRouteImport } from './routes/_login/reset-password'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as EmployeeIndexRouteImport } from './routes/employee/index'
@@ -127,31 +124,14 @@ const LoginForgotPasswordRoute = LoginForgotPasswordRouteImport.update({
   path: '/forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LoginForgotPasswordDESKTOPT31RHI0Route =
-  LoginForgotPasswordDESKTOPT31RHI0RouteImport.update({
-    id: '/_login/forgot-password-DESKTOP-T31RHI0',
-    path: '/forgot-password-DESKTOP-T31RHI0',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const LoginLoginRoute = LoginLoginRouteImport.update({
   id: '/_login/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LoginLoginDESKTOPT31RHI0Route =
-  LoginLoginDESKTOPT31RHI0RouteImport.update({
-    id: '/_login/login-DESKTOP-T31RHI0',
-    path: '/login-DESKTOP-T31RHI0',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const LoginOtpRoute = LoginOtpRouteImport.update({
   id: '/_login/otp',
   path: '/otp',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginOtpDESKTOPT31RHI0Route = LoginOtpDESKTOPT31RHI0RouteImport.update({
-  id: '/_login/otp-DESKTOP-T31RHI0',
-  path: '/otp-DESKTOP-T31RHI0',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginResetPasswordRoute = LoginResetPasswordRouteImport.update({
@@ -358,11 +338,8 @@ export interface FileRoutesByFullPath {
   '/support': typeof LandingSupportRoute
   '/terms': typeof LandingTermsRoute
   '/forgot-password': typeof LoginForgotPasswordRoute
-  '/forgot-password-DESKTOP-T31RHI0': typeof LoginForgotPasswordDESKTOPT31RHI0Route
   '/login': typeof LoginLoginRoute
-  '/login-DESKTOP-T31RHI0': typeof LoginLoginDESKTOPT31RHI0Route
   '/otp': typeof LoginOtpRoute
-  '/otp-DESKTOP-T31RHI0': typeof LoginOtpDESKTOPT31RHI0Route
   '/reset-password': typeof LoginResetPasswordRoute
   '/employee/ai': typeof EmployeeAiRoute
   '/': typeof LandingIndexRoute
@@ -409,11 +386,8 @@ export interface FileRoutesByTo {
   '/support': typeof LandingSupportRoute
   '/terms': typeof LandingTermsRoute
   '/forgot-password': typeof LoginForgotPasswordRoute
-  '/forgot-password-DESKTOP-T31RHI0': typeof LoginForgotPasswordDESKTOPT31RHI0Route
   '/login': typeof LoginLoginRoute
-  '/login-DESKTOP-T31RHI0': typeof LoginLoginDESKTOPT31RHI0Route
   '/otp': typeof LoginOtpRoute
-  '/otp-DESKTOP-T31RHI0': typeof LoginOtpDESKTOPT31RHI0Route
   '/reset-password': typeof LoginResetPasswordRoute
   '/employee/ai': typeof EmployeeAiRoute
   '/': typeof LandingIndexRoute
@@ -464,11 +438,8 @@ export interface FileRoutesById {
   '/_landing/support': typeof LandingSupportRoute
   '/_landing/terms': typeof LandingTermsRoute
   '/_login/forgot-password': typeof LoginForgotPasswordRoute
-  '/_login/forgot-password-DESKTOP-T31RHI0': typeof LoginForgotPasswordDESKTOPT31RHI0Route
   '/_login/login': typeof LoginLoginRoute
-  '/_login/login-DESKTOP-T31RHI0': typeof LoginLoginDESKTOPT31RHI0Route
   '/_login/otp': typeof LoginOtpRoute
-  '/_login/otp-DESKTOP-T31RHI0': typeof LoginOtpDESKTOPT31RHI0Route
   '/_login/reset-password': typeof LoginResetPasswordRoute
   '/employee/ai': typeof EmployeeAiRoute
   '/_landing/': typeof LandingIndexRoute
@@ -520,11 +491,8 @@ export interface FileRouteTypes {
     | '/support'
     | '/terms'
     | '/forgot-password'
-    | '/forgot-password-DESKTOP-T31RHI0'
     | '/login'
-    | '/login-DESKTOP-T31RHI0'
     | '/otp'
-    | '/otp-DESKTOP-T31RHI0'
     | '/reset-password'
     | '/employee/ai'
     | '/'
@@ -571,11 +539,8 @@ export interface FileRouteTypes {
     | '/support'
     | '/terms'
     | '/forgot-password'
-    | '/forgot-password-DESKTOP-T31RHI0'
     | '/login'
-    | '/login-DESKTOP-T31RHI0'
     | '/otp'
-    | '/otp-DESKTOP-T31RHI0'
     | '/reset-password'
     | '/employee/ai'
     | '/'
@@ -625,11 +590,8 @@ export interface FileRouteTypes {
     | '/_landing/support'
     | '/_landing/terms'
     | '/_login/forgot-password'
-    | '/_login/forgot-password-DESKTOP-T31RHI0'
     | '/_login/login'
-    | '/_login/login-DESKTOP-T31RHI0'
     | '/_login/otp'
-    | '/_login/otp-DESKTOP-T31RHI0'
     | '/_login/reset-password'
     | '/employee/ai'
     | '/_landing/'
@@ -680,11 +642,8 @@ export interface RootRouteChildren {
   LandingSupportRoute: typeof LandingSupportRoute
   LandingTermsRoute: typeof LandingTermsRoute
   LoginForgotPasswordRoute: typeof LoginForgotPasswordRoute
-  LoginForgotPasswordDESKTOPT31RHI0Route: typeof LoginForgotPasswordDESKTOPT31RHI0Route
   LoginLoginRoute: typeof LoginLoginRoute
-  LoginLoginDESKTOPT31RHI0Route: typeof LoginLoginDESKTOPT31RHI0Route
   LoginOtpRoute: typeof LoginOtpRoute
-  LoginOtpDESKTOPT31RHI0Route: typeof LoginOtpDESKTOPT31RHI0Route
   LoginResetPasswordRoute: typeof LoginResetPasswordRoute
   LandingIndexRoute: typeof LandingIndexRoute
   LandingAssessmentTestTokenRoute: typeof LandingAssessmentTestTokenRoute
@@ -785,13 +744,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_login/forgot-password-DESKTOP-T31RHI0': {
-      id: '/_login/forgot-password-DESKTOP-T31RHI0'
-      path: '/forgot-password-DESKTOP-T31RHI0'
-      fullPath: '/forgot-password-DESKTOP-T31RHI0'
-      preLoaderRoute: typeof LoginForgotPasswordDESKTOPT31RHI0RouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_login/login': {
       id: '/_login/login'
       path: '/login'
@@ -799,25 +751,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_login/login-DESKTOP-T31RHI0': {
-      id: '/_login/login-DESKTOP-T31RHI0'
-      path: '/login-DESKTOP-T31RHI0'
-      fullPath: '/login-DESKTOP-T31RHI0'
-      preLoaderRoute: typeof LoginLoginDESKTOPT31RHI0RouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_login/otp': {
       id: '/_login/otp'
       path: '/otp'
       fullPath: '/otp'
       preLoaderRoute: typeof LoginOtpRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_login/otp-DESKTOP-T31RHI0': {
-      id: '/_login/otp-DESKTOP-T31RHI0'
-      path: '/otp-DESKTOP-T31RHI0'
-      fullPath: '/otp-DESKTOP-T31RHI0'
-      preLoaderRoute: typeof LoginOtpDESKTOPT31RHI0RouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_login/reset-password': {
@@ -1169,12 +1107,8 @@ const rootRouteChildren: RootRouteChildren = {
   LandingSupportRoute: LandingSupportRoute,
   LandingTermsRoute: LandingTermsRoute,
   LoginForgotPasswordRoute: LoginForgotPasswordRoute,
-  LoginForgotPasswordDESKTOPT31RHI0Route:
-    LoginForgotPasswordDESKTOPT31RHI0Route,
   LoginLoginRoute: LoginLoginRoute,
-  LoginLoginDESKTOPT31RHI0Route: LoginLoginDESKTOPT31RHI0Route,
   LoginOtpRoute: LoginOtpRoute,
-  LoginOtpDESKTOPT31RHI0Route: LoginOtpDESKTOPT31RHI0Route,
   LoginResetPasswordRoute: LoginResetPasswordRoute,
   LandingIndexRoute: LandingIndexRoute,
   LandingAssessmentTestTokenRoute: LandingAssessmentTestTokenRoute,

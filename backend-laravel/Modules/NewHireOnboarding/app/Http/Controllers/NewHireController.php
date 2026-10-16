@@ -365,6 +365,35 @@ class NewHireController extends Controller
             $employee->update(['employment_type' => 'Regular']);
         }
 
+        // Employee Records: copy the originating applicant's resume + supporting
+        // documents into the employee's 201 file. Best-effort — a copy failure
+        // must never block the regularization itself.
+        if ($newHire->applicant_id) {
+            try {
+                $applicant = \Modules\ApplicantManagement\Models\Applicant::find($newHire->applicant_id);
+                if ($applicant) {
+                    $copied = app(\Modules\EmployeeRecords\Services\EmployeeRecordProvisioner::class)
+                        ->fromApplicant($applicant, $employee);
+
+                    if ($copied > 0) {
+                        AuditLogger::log(
+                            action: 'Applicant Documents Copied to Employee Record',
+                            module: 'Employee Records',
+                            targetType: 'Employee',
+                            targetId: (string) $employee->employee_id,
+                            details: "Copied {$copied} document(s) from applicant {$applicant->applicant_code} into employee record {$employee->employee_code}.",
+                        );
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Could not copy applicant documents into employee record', [
+                    'new_hire_id' => $newHire->new_hire_id,
+                    'applicant_id' => $newHire->applicant_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         \App\Models\EmployeePositionHistory::create([
             'employee_id' => $employee->employee_id,
             'effective_date' => now()->toDateString(),

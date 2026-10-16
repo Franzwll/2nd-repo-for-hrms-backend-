@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\Employee;
 use App\Models\EssCategory;
 use App\Models\EssRequest;
+use App\Models\EssRequestStatusHistory;
 use App\Models\LeaveBalance;
 use App\Services\AuditLogger;
 use Carbon\Carbon;
@@ -130,6 +131,14 @@ class EssAdminController extends Controller
         }
 
         $essRequest->save();
+
+        // Timeline entry for every admin-driven status change.
+        EssRequestStatusHistory::create([
+            'ess_request_id' => $essRequest->ess_request_id,
+            'status' => $essRequest->status,
+            'actor_user_id' => $user?->system_user_id,
+            'note' => $validated['note'] ?? "Marked {$targetStatus}.",
+        ]);
 
         // If Approved and is a Leave request, automatically deduct/update leave balances
         if ($targetStatus === 'Approved' && $previousStatus !== 'Approved') {

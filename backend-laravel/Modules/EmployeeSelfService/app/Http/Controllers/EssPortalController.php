@@ -9,6 +9,8 @@ use App\Models\EmployeeBenefit;
 use App\Models\EmployeeDocument;
 use App\Models\EssCategory;
 use App\Models\EssRequest;
+use App\Models\EssRequestAttachment;
+use App\Models\EssRequestStatusHistory;
 use App\Models\LeaveBalance;
 use App\Models\WorkSchedule;
 use App\Services\AuditLogger;
@@ -19,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\PersonalAccessToken;
 use App\Models\SystemUser;
+use Modules\EmployeeSelfService\Events\EssRequestFiled;
 use Modules\EmployeeSelfService\Models\RecognitionReaction;
 use Modules\EmployeeSelfService\Models\SocialRecognition;
 use Modules\Settings\Models\SystemSetting;
@@ -527,7 +530,7 @@ class EssPortalController extends Controller
             return response()->json(['message' => 'Employee not found.'], 404);
         }
 
-        $query = EssRequest::with(['category', 'assignedTo'])
+        $query = EssRequest::with(['category', 'assignedTo', 'attachments', 'statusHistory'])
             ->where('employee_id', $employee->employee_id);
 
         if ($request->filled('status') && $request->status !== 'all') {
@@ -564,6 +567,20 @@ class EssPortalController extends Controller
                 'review_note' => $r->review_note,
                 'returned_count' => $r->returned_count,
                 'assigned_to' => $r->assignedTo?->full_name ?? 'HR Admin',
+                'attachments' => $r->attachments->map(fn ($a) => [
+                    'id' => $a->ess_request_attachment_id,
+                    'direction' => $a->direction,
+                    'original_name' => $a->original_name,
+                    'mime_type' => $a->mime_type,
+                    'file_size_bytes' => $a->file_size_bytes,
+                    'has_file' => Storage::disk('public')->exists($a->file_path),
+                ])->values(),
+                'has_fulfillment' => $r->attachments->contains(fn ($a) => $a->direction === 'hr'),
+                'timeline' => $r->statusHistory->map(fn ($h) => [
+                    'status' => $h->status,
+                    'note' => $h->note,
+                    'at' => $h->created_at?->toIso8601String(),
+                ])->values(),
             ]),
         ]);
     }
@@ -589,18 +606,28 @@ class EssPortalController extends Controller
             'attachment_path' => ['nullable', 'string', 'max:255', 'regex:/^[\w\-.\/\\: ]+$/'],
         ]);
 
-        // Find or associate category
+        // Find or associate category. Fall back to the human name when the
+        // client-supplied code does not match a stored category code (the
+        // frontend derives codes from names, e.g. "hr_document" vs "ESS-HRDOC").
         $category = null;
         if (! empty($validated['category_code'])) {
             $category = EssCategory::where('code', $validated['category_code'])->first();
-        } elseif (! empty($validated['category_name'])) {
+        }
+        if (! $category && ! empty($validated['category_name'])) {
             $category = EssCategory::where('name', $validated['category_name'])->first();
         }
 
-        // Generate unique request code: REQ-XXXX
-        $latest = EssRequest::max('ess_request_id') ?? 0;
-        $nextNumber = 4400 + $latest + 1;
-        $requestCode = 'REQ-' . $nextNumber;
+        // Generate a unique request code: REQ-XXXX. Derive the next number from
+        // the highest existing numeric suffix (not the auto-increment id, which
+        // can drift from the seeded REQ-44xx codes) and guard for collisions.
+        $highest = (int) EssRequest::query()
+            ->selectRaw('MAX(CAST(SUBSTRING(request_code, 5) AS UNSIGNED)) as n')
+            ->value('n');
+        $nextNumber = ($highest ?: 4400) + 1;
+        do {
+            $requestCode = 'REQ-' . $nextNumber;
+            $nextNumber++;
+        } while (EssRequest::where('request_code', $requestCode)->exists());
 
         $essRequest = EssRequest::create([
             'request_code' => $requestCode,
@@ -615,6 +642,28 @@ class EssPortalController extends Controller
             'attachment_path' => $validated['attachment_path'] ?? null,
         ]);
 
+        // Timeline entry: Filed.
+        EssRequestStatusHistory::create([
+            'ess_request_id' => $essRequest->ess_request_id,
+            'status' => 'Pending',
+            'actor_user_id' => $request->user()?->system_user_id,
+            'note' => 'Request filed by employee.',
+        ]);
+
+        // If the employee attached a file with the request, keep it in the
+        // attachment ledger (direction = employee).
+        if (! empty($validated['attachment_path'])) {
+            EssRequestAttachment::create([
+                'ess_request_id' => $essRequest->ess_request_id,
+                'direction' => 'employee',
+                'file_path' => $validated['attachment_path'],
+                'original_name' => basename((string) $validated['attachment_path']),
+                'mime_type' => null,
+                'file_size_bytes' => null,
+                'uploaded_by_user_id' => $request->user()?->system_user_id,
+            ]);
+        }
+
         AuditLogger::log(
             action: 'ESS Request Submitted',
             module: 'Employee Self-Service',
@@ -625,9 +674,13 @@ class EssPortalController extends Controller
             request: $request
         );
 
+        // "Outbound" half of the ESS <-> ERM loop: Employee Records listens and
+        // surfaces document requests; other categories are handled in ESS admin.
+        event(new EssRequestFiled($essRequest));
+
         return response()->json([
             'message' => 'Request submitted successfully.',
-            'request' => $essRequest->load(['category', 'employee']),
+            'request' => $essRequest->load(['category', 'employee', 'attachments', 'statusHistory']),
         ], 201);
     }
 
@@ -1090,6 +1143,59 @@ class EssPortalController extends Controller
         return response()->file($path, [
             'Content-Type' => $doc->mime_type ?: 'application/octet-stream',
             'Content-Disposition' => 'inline; filename="' . $name . '"',
+        ]);
+    }
+
+    /**
+     * GET /api/v1/ess/requests/{id}/attachments/{attachmentId}/file
+     * Streams a file attached to one of the employee's OWN requests — either
+     * their own upload or the file HR sent back. Token auth (?token=) so a
+     * plain browser open works without headers.
+     */
+    public function requestAttachmentFile(Request $request, string $id, string $attachmentId): object
+    {
+        $user = $this->resolveTokenUser($request) ?? $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        $employee = $user->employee_id ? Employee::find($user->employee_id) : null;
+        if (! $employee && $user->email) {
+            $employee = Employee::where('email', $user->email)->first();
+        }
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found.'], 404);
+        }
+
+        $essRequest = EssRequest::where('ess_request_id', (int) $id)
+            ->where('employee_id', $employee->employee_id)
+            ->first();
+        if (! $essRequest) {
+            return response()->json(['message' => 'Request not found.'], 404);
+        }
+
+        $attachment = EssRequestAttachment::where('ess_request_attachment_id', (int) $attachmentId)
+            ->where('ess_request_id', $essRequest->ess_request_id)
+            ->first();
+        if (! $attachment) {
+            return response()->json(['message' => 'Attachment not found.'], 404);
+        }
+
+        $relative = ltrim((string) $attachment->file_path, '/');
+        if (str_starts_with($relative, 'storage/')) {
+            $relative = substr($relative, strlen('storage/'));
+        }
+        if (! $relative || ! Storage::disk('public')->exists($relative)) {
+            return response()->json(['message' => 'No file on record for this attachment.'], 404);
+        }
+
+        $path = Storage::disk('public')->path($relative);
+        $name = $attachment->original_name ?: basename($relative);
+        $safeName = (string) preg_replace('/[\r\n"]+/', '_', (string) $name);
+
+        return response()->file($path, [
+            'Content-Type' => $attachment->mime_type ?: 'application/octet-stream',
+            'Content-Disposition' => 'inline; filename="' . $safeName . '"',
         ]);
     }
 
