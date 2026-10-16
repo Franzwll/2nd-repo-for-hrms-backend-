@@ -1,0 +1,24 @@
+<svg width="1000" height="340" xmlns="http://www.w3.org/2000/svg">
+<rect x="0" y="0" width="1000" height="340" rx="12" fill="#1f1a17"/>
+<text x="26" y="36" fill="#f5eeda" font-size="15" font-family="Georgia">Fig 3 - Entity Relation: Job Post, Skills, NLP</text>
+<rect x="20" y="54" width="160" height="70" rx="8" fill="#fff"/>
+<text x="32" y="78" font-size="11" font-weight="bold" font-family="Arial">departments</text>
+<text x="32" y="95" font-size="10" font-family="Arial">Front Office</text>
+<rect x="200" y="54" width="160" height="70" rx="8" fill="#fff"/>
+<text x="212" y="78" font-size="11" font-weight="bold" font-family="Arial">positions</text>
+<text x="212" y="95" font-size="10" font-family="Arial">Front Desk</text>
+<rect x="380" y="54" width="200" height="90" rx="8" fill="#fff3d6"/>
+<text x="392" y="78" font-size="11" font-weight="bold" font-family="Arial">job_posts</text>
+<text x="392" y="95" font-size="10" font-family="Arial">skills_json [Cash...]</text>
+<text x="392" y="111" font-size="10" font-family="Arial">qualifications, levels</text>
+<rect x="600" y="54" width="370" height="90" rx="8" fill="#e8f3e8"/>
+<text x="612" y="78" font-size="11" font-weight="bold" font-family="Arial">screening_reference_data</text>
+<text x="612" y="95" font-size="10" font-family="Arial">skill: Cash Handling (cashier)</text>
+<text x="612" y="111" font-size="10" font-family="Arial">cert: TESDA Front Office NC II</text>
+<rect x="20" y="170" width="950" height="52" rx="8" fill="#6b1212"/>
+<text x="32" y="192" fill="#fff" font-size="11" font-family="Arial">NLP: extract resume - match skills - coverage pct - weighted score - Perfect / Not Fitted</text>
+<text x="32" y="209" fill="#ffb" font-size="10" font-family="Arial">Unknown words = coverage collapses = scores meaningless</text>
+<rect x="20" y="232" width="950" height="80" rx="8" fill="none" stroke="#e7d29a"/>
+<text x="32" y="255" fill="#f5eeda" font-size="11" font-family="Arial">Phase 1: JSON cache, no migration. Phase 2: job_post_skills pivot (FK, Required/Preferred).</text>
+<text x="32" y="275" fill="#f5eeda" font-size="10" font-family="Arial">Weights 40/30/20/10, passing 75 pct, coverage min 60 pct.</text>
+</svg>
