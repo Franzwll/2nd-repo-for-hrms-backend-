@@ -8,6 +8,7 @@ import {
   FileText,
   FolderOpen,
   History,
+  Inbox,
   Pencil,
   Minus,
   Plus,
@@ -67,6 +68,7 @@ import { TablePagination } from "@/components/ui/table-pagination";
 import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 
 import { auditLogApi, hcmApi, type ApiAuditLog, type ApiEmployee } from "@/lib/api";
+import { DocumentRequestInbox } from "./employee-records/DocumentRequestInbox";
 import {
   getEmployeeByCode,
   getRecordDetail,
@@ -790,6 +792,9 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
           <TabsTrigger className="flex items-center gap-1.5" value="history">
             <History className="h-3.5 w-3.5" /> Record History
           </TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5" value="requests">
+            <Inbox className="h-3.5 w-3.5" /> Document Requests
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="list" className="mt-4">
@@ -1161,6 +1166,10 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
               />
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="requests" className="mt-4">
+          <DocumentRequestInbox />
         </TabsContent>
       </Tabs>
 

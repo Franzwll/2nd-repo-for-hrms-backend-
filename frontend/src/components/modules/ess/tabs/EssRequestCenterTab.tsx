@@ -1,11 +1,26 @@
 import { useState, useMemo, useEffect } from "react";
-import { Send, Search, ArrowUpDown, Plus, Filter, Clock, FileText, CheckCircle2 } from "lucide-react";
+import {
+  Send,
+  Search,
+  ArrowUpDown,
+  Plus,
+  Filter,
+  Clock,
+  FileText,
+  CheckCircle2,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -19,14 +34,19 @@ import { TableSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { requestCategories } from "@/data/ess";
-import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
+import {
+  RequestTimelineModal,
+  type RequestItem,
+} from "@/components/modules/ess/modals/RequestTimelineModal";
 import { essApi, type ApiEssRequestItem } from "@/lib/api";
 import { toast } from "sonner";
 
 export function EssRequestCenterTab() {
   const [categoriesList, setCategoriesList] = useState(requestCategories);
   const [category, setCategory] = useState(requestCategories[0]?.name || "Leaves & Time Off");
-  const [requestType, setRequestType] = useState(requestCategories[0]?.types[0] || "Vacation Leave");
+  const [requestType, setRequestType] = useState(
+    requestCategories[0]?.types[0] || "Vacation Leave",
+  );
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [reason, setReason] = useState("");
@@ -47,7 +67,9 @@ export function EssRequestCenterTab() {
       .then((res) => {
         if (res?.categories?.length) {
           const mapped = res.categories.map((c) => {
-            const defaultMatch = requestCategories.find((rc) => rc.name.toLowerCase() === c.name.toLowerCase());
+            const defaultMatch = requestCategories.find(
+              (rc) => rc.name.toLowerCase() === c.name.toLowerCase(),
+            );
             return {
               name: c.name,
               types: defaultMatch?.types || [c.name],
@@ -81,7 +103,10 @@ export function EssRequestCenterTab() {
   const filteredRequests = useMemo(() => {
     return requestsList.filter((r) => {
       if (statusFilter !== "all" && r.status !== statusFilter) return false;
-      if (search && !`${r.type} ${r.category} ${r.id} ${r.status}`.toLowerCase().includes(search.toLowerCase())) {
+      if (
+        search &&
+        !`${r.type} ${r.category} ${r.id} ${r.status}`.toLowerCase().includes(search.toLowerCase())
+      ) {
         return false;
       }
       return true;
@@ -125,6 +150,10 @@ export function EssRequestCenterTab() {
       status: r.status,
       assignedTo: r.assignedTo || r.assigned_to || "HR Administration",
       details: r.details,
+      ...(r.db_id != null ? { dbId: r.db_id } : {}),
+      ...(r.attachments ? { attachments: r.attachments } : {}),
+      ...(r.has_fulfillment != null ? { has_fulfillment: r.has_fulfillment } : {}),
+      ...(r.timeline ? { timeline: r.timeline } : {}),
     });
     setTimelineOpen(true);
   };
@@ -139,7 +168,9 @@ export function EssRequestCenterTab() {
               <Clock className="h-5 w-5 text-primary" />
               All Filed Requests Tracker
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Click any record to inspect live multi-stage review audit trail.</p>
+            <p className="text-xs text-muted-foreground">
+              Click any record to inspect live multi-stage review audit trail.
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
@@ -197,16 +228,26 @@ export function EssRequestCenterTab() {
                         className="cursor-pointer hover:bg-muted/50 transition-colors"
                         onClick={() => handleRowClick(r)}
                       >
-                        <TableCell className="text-xs font-mono font-medium text-foreground">{r.id}</TableCell>
+                        <TableCell className="text-xs font-mono font-medium text-foreground">
+                          {r.id}
+                        </TableCell>
                         <TableCell className="text-xs font-semibold">{r.type}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{r.category}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {r.category}
+                        </TableCell>
                         <TableCell className="text-xs text-muted-foreground">{r.filed}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{r.assignedTo || r.assigned_to || "HR Admin"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {r.assignedTo || r.assigned_to || "HR Admin"}
+                        </TableCell>
                         <TableCell>
                           <EssStatusBadge status={r.status} />
                         </TableCell>
                         <TableCell className="text-right py-1">
-                          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-primary">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs text-primary"
+                          >
                             Timeline →
                           </Button>
                         </TableCell>
@@ -236,7 +277,9 @@ export function EssRequestCenterTab() {
             <Plus className="h-5 w-5 text-primary" />
             Submit General Self-Service Request
           </CardTitle>
-          <p className="text-xs text-muted-foreground">File miscellaneous inquiries, personal data updates, loans, or reimbursements.</p>
+          <p className="text-xs text-muted-foreground">
+            File miscellaneous inquiries, personal data updates, loans, or reimbursements.
+          </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmitRequest} className="space-y-4">

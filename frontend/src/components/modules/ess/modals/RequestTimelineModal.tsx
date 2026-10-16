@@ -14,18 +14,22 @@ import {
   Clock,
   User,
   Building,
+  Download,
   FileText,
   AlertCircle,
+  Paperclip,
   XCircle,
   ArrowRight,
   ShieldCheck,
   Send,
 } from "lucide-react";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
+import { essApi, type ApiEssRequestAttachment } from "@/lib/api";
 import { toast } from "sonner";
 
 export interface RequestItem {
   id?: string;
+  dbId?: number;
   type: string;
   category?: string;
   date: string;
@@ -34,6 +38,21 @@ export interface RequestItem {
   assignedTo?: string;
   details?: string;
   filedBy?: string;
+  attachments?: ApiEssRequestAttachment[];
+  has_fulfillment?: boolean;
+  timeline?: { status: string; note: string | null; at: string | null }[];
+}
+
+function formatBytes(bytes: number | null | undefined) {
+  if (!bytes || bytes <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i += 1;
+  }
+  return `${value.toFixed(value < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
 interface RequestTimelineModalProps {
@@ -84,7 +103,9 @@ export function RequestTimelineModal({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <p className="text-muted-foreground">Category</p>
-              <p className="font-semibold text-foreground">{request.category || "General HR Request"}</p>
+              <p className="font-semibold text-foreground">
+                {request.category || "General HR Request"}
+              </p>
             </div>
             <div>
               <p className="text-muted-foreground">Date Filed</p>
@@ -92,11 +113,15 @@ export function RequestTimelineModal({
             </div>
             <div>
               <p className="text-muted-foreground">Assigned Officer</p>
-              <p className="font-semibold text-foreground">{request.assignedTo || "Juan Dela Cruz (HR Admin)"}</p>
+              <p className="font-semibold text-foreground">
+                {request.assignedTo || "Juan Dela Cruz (HR Admin)"}
+              </p>
             </div>
             <div>
               <p className="text-muted-foreground">Service SLA</p>
-              <p className="font-semibold text-emerald-600 dark:text-emerald-400">Within 24–48 Hours</p>
+              <p className="font-semibold text-emerald-600 dark:text-emerald-400">
+                Within 24–48 Hours
+              </p>
             </div>
           </div>
           {request.details && (
@@ -106,6 +131,50 @@ export function RequestTimelineModal({
             </div>
           )}
         </div>
+
+        {/* Attached / fulfilled documents */}
+        {(request.attachments && request.attachments.length > 0) || request.has_fulfillment ? (
+          <div className="rounded-lg border border-border bg-muted/20 p-3.5 space-y-2 text-xs">
+            <p className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-muted-foreground">
+              <Paperclip className="h-3.5 w-3.5 text-primary" /> Documents
+            </p>
+            {(request.attachments ?? []).map((a) => {
+              const isHr = a.direction === "hr";
+              const href =
+                request.dbId != null ? essApi.requestAttachmentUrl(request.dbId, a.id) : undefined;
+              return (
+                <div
+                  key={a.id}
+                  className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-background px-2.5 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-foreground">
+                      {a.original_name || (isHr ? "HR document" : "My attachment")}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {isHr ? "Provided by HR" : "Attached by you"}
+                      {a.file_size_bytes ? ` · ${formatBytes(a.file_size_bytes)}` : ""}
+                    </p>
+                  </div>
+                  {a.has_file && href ? (
+                    <Button
+                      asChild
+                      size="sm"
+                      variant={isHr ? "default" : "outline"}
+                      className="shrink-0"
+                    >
+                      <a href={href} target="_blank" rel="noreferrer">
+                        <Download className="mr-1.5 h-3.5 w-3.5" /> {isHr ? "Download" : "View"}
+                      </a>
+                    </Button>
+                  ) : (
+                    <span className="shrink-0 text-[11px] text-muted-foreground">Unavailable</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
 
         {/* Multi-Step Approval Timeline */}
         <div className="space-y-3 py-1">
@@ -119,7 +188,9 @@ export function RequestTimelineModal({
               <div className="absolute -left-[31px] top-0.5 h-5 w-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs">
                 <CheckCircle2 className="h-3.5 w-3.5" />
               </div>
-              <p className="text-xs font-semibold text-foreground">1. Request Submitted by Employee</p>
+              <p className="text-xs font-semibold text-foreground">
+                1. Request Submitted by Employee
+              </p>
               <p className="text-[11px] text-muted-foreground">
                 Filed on {request.date} · Logged into ESS Central Queue
               </p>
@@ -140,7 +211,9 @@ export function RequestTimelineModal({
                   <Clock className="h-3 w-3" />
                 )}
               </div>
-              <p className="text-xs font-semibold text-foreground">2. Department Supervisor Review</p>
+              <p className="text-xs font-semibold text-foreground">
+                2. Department Supervisor Review
+              </p>
               <p className="text-[11px] text-muted-foreground">
                 {request.status === "Pending"
                   ? "Awaiting endorsement from Executive Chef Marco"
@@ -155,8 +228,8 @@ export function RequestTimelineModal({
                   ["Approved", "Completed", "Released"].includes(request.status)
                     ? "bg-emerald-500 text-white"
                     : request.status === "Rejected"
-                    ? "bg-rose-500 text-white"
-                    : "bg-muted-foreground/30 text-muted-foreground"
+                      ? "bg-rose-500 text-white"
+                      : "bg-muted-foreground/30 text-muted-foreground"
                 }`}
               >
                 {["Approved", "Completed", "Released"].includes(request.status) ? (
@@ -167,13 +240,15 @@ export function RequestTimelineModal({
                   <div className="h-2 w-2 rounded-full bg-current" />
                 )}
               </div>
-              <p className="text-xs font-semibold text-foreground">3. HR Service Action &amp; Resolution</p>
+              <p className="text-xs font-semibold text-foreground">
+                3. HR Service Action &amp; Resolution
+              </p>
               <p className="text-[11px] text-muted-foreground">
                 {["Approved", "Completed", "Released"].includes(request.status)
                   ? `Approved & processed by ${request.assignedTo || "HR Office"}`
                   : request.status === "Rejected"
-                  ? "Request rejected by HR. Check notes for details."
-                  : "Assigned to HR Administrator for final processing"}
+                    ? "Request rejected by HR. Check notes for details."
+                    : "Assigned to HR Administrator for final processing"}
               </p>
             </div>
           </div>
