@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Award, BookOpen, Building, CheckCircle2, TrendingUp, Sparkles, Send, ShieldCheck, Clock, LayoutDashboard, ScrollText, Menu, Search } from "lucide-react";
+import { Award, BookOpen, Building, CheckCircle2, TrendingUp, Sparkles, Send, Clock, LayoutDashboard, ScrollText, Menu, Search } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -272,20 +272,7 @@ export function EssPerformanceTab() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 sm:grid-cols-3 pt-1 border-t border-border/60 text-xs">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <div>
-                <span className="text-muted-foreground">Appraisal Eligibility:</span>{" "}
-                <strong className="text-foreground">
-                  {perfData.averageScore == null
-                    ? "Awaiting assessment data"
-                    : perfData.averageScore >= 85
-                      ? "Qualified (Score ≥ 85%)"
-                      : `Developing (Score ${perfData.averageScore}%)`}
-                </strong>
-              </div>
-            </div>
+          <div className="grid gap-3 sm:grid-cols-2 pt-1 border-t border-border/60 text-xs">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
               <div>
