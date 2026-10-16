@@ -7,7 +7,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import {
@@ -289,16 +288,6 @@ export function ScheduleRecordsModal({
                     </div>
                     <EssStatusBadge status={selected.record.status} />
                   </div>
-                  {onRowClick && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-2 text-xs text-primary cursor-pointer"
-                      onClick={() => onRowClick(selected.record, "Attendance")}
-                    >
-                      Timeline →
-                    </Button>
-                  )}
                 </div>
               ) : (
                 <p className="text-muted-foreground">No record for this day — select a dotted date.</p>
