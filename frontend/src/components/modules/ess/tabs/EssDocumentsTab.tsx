@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
-import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
+import { EssStatusBadge, docCategoryTint } from "@/components/modules/ess/shared/EssStatusBadge";
 import { ReportMenu } from "@/components/ui/report-menu";
 import { myEmployeeDocuments } from "@/data/ess";
 import { DocumentRequestModal } from "@/components/modules/ess/modals/DocumentRequestModal";
@@ -173,7 +173,7 @@ export function EssDocumentsTab() {
         <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Submitted &amp; Verified</p>
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Documents on File</p>
               <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600 dark:text-emerald-400">
                 <FileCheck className="h-4 w-4" />
               </div>
@@ -348,6 +348,7 @@ export function EssDocumentsTab() {
                   })
                   .map((doc) => {
                     const missing = doc.status === "Missing";
+                    const tint = docCategoryTint(doc.category);
                     return (
                       <button
                         key={doc.id}
@@ -361,9 +362,9 @@ export function EssDocumentsTab() {
                         <div className="flex items-start justify-between gap-2">
                           {/* Doc icon like reference: white tile, folded corner, red doc glyph */}
                           <div className="relative shrink-0">
-                            <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-black/10 bg-white shadow-sm">
+                            <div className={`flex h-14 w-14 items-center justify-center rounded-xl border shadow-sm ${tint.tile}`}>
                               <span className="absolute right-0 top-0 h-3 w-3 rounded-bl-md rounded-tr-xl border-l border-b border-black/10 bg-muted" />
-                              <FileText className="h-6 w-6 text-red-500" strokeWidth={2} />
+                              <FileText className={`h-6 w-6 ${tint.icon}`} strokeWidth={2} />
                             </div>
                             {missing && (
                               <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5">

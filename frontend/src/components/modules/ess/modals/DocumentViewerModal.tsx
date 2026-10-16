@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { docCategoryTint } from "@/components/modules/ess/shared/EssStatusBadge";
 import { essApi } from "@/lib/api";
 
 export interface ViewerDoc {
@@ -38,6 +39,7 @@ export function DocumentViewerModal({
 }: DocumentViewerModalProps) {
   if (!doc) return null;
   const isMissing = doc.status === "Missing";
+  const tint = docCategoryTint(doc.category);
   const fileUrl =
     doc.dbId != null
       ? essApi.documentFileUrl(doc.dbId)
@@ -68,7 +70,9 @@ export function DocumentViewerModal({
             />
           ) : (
             <div className="flex h-full min-h-[30vh] flex-col items-center justify-center gap-2 p-8 text-center">
-              <FileText className="h-8 w-8 text-muted-foreground" />
+              <div className={`flex h-16 w-16 items-center justify-center rounded-xl border shadow-sm ${tint.tile}`}>
+                <FileText className={`h-7 w-7 ${tint.icon}`} strokeWidth={2} />
+              </div>
               <p className="text-xs font-semibold text-foreground">
                 {isMissing ? "No file on record yet" : "Preview unavailable"}
               </p>
