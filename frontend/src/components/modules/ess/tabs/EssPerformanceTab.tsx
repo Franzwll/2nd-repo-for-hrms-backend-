@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { myPerformance, myLearningCourses, myProfile } from "@/data/ess";
 import { LmsCertificateModal } from "@/components/modules/ess/modals/LmsCertificateModal";
-import { PromotionRequestModal } from "@/components/modules/ess/modals/PromotionRequestModal";
+import { PromotionRequestForm } from "@/components/modules/ess/modals/PromotionRequestForm";
 import { essApi } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -68,7 +68,6 @@ export function EssPerformanceTab() {
   });
   const [selectedCourse, setSelectedCourse] = useState<any | null>(null);
   const [certModalOpen, setCertModalOpen] = useState(false);
-  const [promotionModalOpen, setPromotionModalOpen] = useState(false);
   const [activePromotionRequest, setActivePromotionRequest] = useState<any | null>(null);
   // Tabbed bottom section — promotion card above stays in place
   const [activeTab, setActiveTab] = useState<"overview" | "materials" | "assessment" | "promotion">("overview");
@@ -660,59 +659,16 @@ export function EssPerformanceTab() {
               )}
 
               {activeTab === "promotion" && (
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <h4 className="text-sm font-bold font-display text-foreground flex items-center gap-2">
-                        <Send className="h-4 w-4 text-primary" /> Apply for Promotion
-                      </h4>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">File your promotion request and track its review status.</p>
-                    </div>
-                    <Button
-                      size="sm"
-                      className="gap-1.5 shrink-0 shadow-sm cursor-pointer"
-                      onClick={() => setPromotionModalOpen(true)}
-                    >
-                      <Send className="h-3.5 w-3.5" /> Apply for Promotion
-                    </Button>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2 text-xs">
-                    <div className="rounded-lg border border-border/70 bg-background p-3">
-                      <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Eligibility</p>
-                      <p className="mt-1 font-bold text-foreground text-sm">
-                        {perfData.averageScore == null
-                          ? "Awaiting assessment data"
-                          : perfData.averageScore >= 85
-                            ? "Qualified (Score ≥ 85%)"
-                            : `Developing (Score ${perfData.averageScore}%)`}
-                      </p>
-                      <p className="text-muted-foreground mt-0.5">{perfData.completedCount} Modules Completed</p>
-                    </div>
-                    <div className="rounded-lg border border-border/70 bg-background p-3">
-                      <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Active Request</p>
-                      <div className="mt-1">
-                        {activePromotionRequest ? (
-                          <Badge variant="outline" className="text-[10px] font-semibold">
-                            {activePromotionRequest.status} ({activePromotionRequest.id})
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground font-medium text-sm">None pending</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-border/70 bg-background p-3 text-xs">
-                    <p className="font-semibold text-foreground">Request history</p>
-                    <div className="mt-2 space-y-1.5">
-                      {perfAudit.map((r, idx) => (
-                        <div key={idx} className="flex items-center justify-between gap-2">
-                          <span className="truncate text-muted-foreground">{r.type} · {r.date}</span>
-                          <EssStatusBadge status={r.status} />
-                        </div>
-                      ))}
-                      {perfAudit.length === 0 && <p className="text-muted-foreground">No promotion requests filed yet.</p>}
-                    </div>
-                  </div>
+                <div className="rounded-lg border border-border/70 bg-background p-4">
+                  <PromotionRequestForm
+                    competencyScore={
+                      perfData.averageScore != null ? `${perfData.averageScore} / 100` : undefined
+                    }
+                    lmsCompletedCount={perfData.completedCount}
+                    onSubmitSuccess={(req) => {
+                      if (req) setActivePromotionRequest(req);
+                    }}
+                  />
                 </div>
               )}
             </div>
@@ -731,19 +687,6 @@ export function EssPerformanceTab() {
           score={selectedCourse.score}
         />
       )}
-
-      {/* Promotion Request Modal */}
-      <PromotionRequestModal
-        open={promotionModalOpen}
-        onOpenChange={setPromotionModalOpen}
-        competencyScore={
-          perfData.averageScore != null ? `${perfData.averageScore} / 100` : undefined
-        }
-        lmsCompletedCount={perfData.completedCount}
-        onSubmitSuccess={(req) => {
-          if (req) setActivePromotionRequest(req);
-        }}
-      />
     </div>
   );
 }
