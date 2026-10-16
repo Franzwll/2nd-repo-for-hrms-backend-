@@ -458,7 +458,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
 
       {/* Released Payslips Card — full-card fixed body like Attendance Correction Requests */}
       {activeTab === "payslips" && (
-        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+        <Card className="border-border/70 shadow-xs">
         <CardContent className="p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
@@ -495,7 +495,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
                     </TableRow>
                   ) : (
                     payslipPage.pageItems.map((ps, idx) => (
-                      <TableRow key={idx} className="hover:bg-muted/50 transition-colors">
+                      <TableRow key={idx} className="transition-colors">
                         <TableCell className="font-medium text-xs text-foreground">{ps.period}</TableCell>
                         <TableCell>
                           <EssStatusBadge status={ps.status} />
@@ -538,7 +538,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
 
       {/* Statutory Benefits & Company Loans Section */}
       {activeTab === "benefits" && (
-        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+        <Card className="border-border/70 shadow-xs">
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3">
           <div>
             <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
@@ -639,7 +639,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
 
       {/* Submit Payroll & My Payroll Requests - Unified Single Card */}
       {activeTab === "requests" && (
-        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+        <Card className="border-border/70 shadow-xs">
         <CardHeader className="border-b border-border/60 pb-3">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
@@ -855,7 +855,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
                     payPage.pageItems.map((r, idx) => (
                       <TableRow
                         key={idx}
-                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        className="cursor-pointer transition-colors"
                         onClick={() => handleRowClick(r)}
                       >
                         <TableCell className="text-xs font-mono font-medium text-foreground">{r.id}</TableCell>

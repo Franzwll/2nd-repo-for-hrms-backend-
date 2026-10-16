@@ -108,7 +108,7 @@ function getShiftVisual(shift: string, time: string) {
       type: "night" as const,
       label: "Night Shift",
       tag: "Evening / Night",
-      themeBorder: "border-indigo-500/35 hover:border-indigo-500/60",
+      themeBorder: "border-indigo-500/35",
       themeBg: "bg-indigo-500/5",
       themeAccent: "from-indigo-500/15 via-purple-500/5 to-transparent",
       badgeColor: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
@@ -130,7 +130,7 @@ function getShiftVisual(shift: string, time: string) {
       type: "mid" as const,
       label: "Mid Shift",
       tag: "Afternoon",
-      themeBorder: "border-orange-500/35 hover:border-orange-500/60",
+      themeBorder: "border-orange-500/35",
       themeBg: "bg-orange-500/5",
       themeAccent: "from-orange-500/15 via-amber-500/5 to-transparent",
       badgeColor: "bg-orange-500/10 text-orange-500 border-orange-500/30",
@@ -156,7 +156,7 @@ function getShiftVisual(shift: string, time: string) {
     type: "day" as const,
     label: "Day Shift",
     tag: "Morning / AM",
-    themeBorder: "border-amber-500/35 hover:border-amber-500/60",
+    themeBorder: "border-amber-500/35",
     themeBg: "bg-amber-500/5",
     themeAccent: "from-amber-500/15 via-primary/5 to-transparent",
     badgeColor: "bg-amber-500/10 text-amber-500 border-amber-500/30",
@@ -457,7 +457,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         </TabsList>
 
         <TabsContent value="schedule" className="mt-4 space-y-4">
-          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+          <Card className="border-border/70 shadow-xs">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
                 <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
@@ -520,19 +520,19 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
 
                   {/* Today's Punch Summary Grid */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center hover:border-primary/40 transition-colors shadow-2xs">
+                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
                       <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Time In</p>
                       <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.timeIn}</p>
                     </div>
-                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center hover:border-primary/40 transition-colors shadow-2xs">
+                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
                       <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Break Out</p>
                       <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.breakIn}</p>
                     </div>
-                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center hover:border-primary/40 transition-colors shadow-2xs">
+                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
                       <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Break In</p>
                       <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.breakOut}</p>
                     </div>
-                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center hover:border-primary/40 transition-colors shadow-2xs">
+                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
                       <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Time Out</p>
                       <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.timeOut}</p>
                     </div>
@@ -552,26 +552,26 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                     </div>
 
                     <div className="space-y-2.5 pt-3.5 text-xs">
-                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80 hover:border-primary/30 transition-colors">
+                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Assigned Shift:</span>
                         <span className="font-semibold text-foreground">AM Shift (07:00 AM – 04:00 PM)</span>
                       </div>
 
-                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80 hover:border-primary/30 transition-colors">
+                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Geolocation:</span>
                         <span className="font-semibold text-emerald-600 dark:text-emerald-400">
                           Oxford Suites Makati (Main Kitchen) ✓
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80 hover:border-primary/30 transition-colors">
+                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Supervisor:</span>
                         <span className="font-semibold text-foreground">
                           {employeeInfo?.supervisor || "Chef Marco D. Santos"}
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80 hover:border-primary/30 transition-colors">
+                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Department:</span>
                         <span className="font-semibold text-foreground">
                           {employeeInfo?.department || "Kitchen / Culinary"}
@@ -609,7 +609,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
             </div>
             </CardContent>
           </Card>
-          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+          <Card className="border-border/70 shadow-xs">
             <CardContent className="p-6">
               {/* TRY: roster header + top-right records button — remove block if not applicable */}
               <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
@@ -645,7 +645,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                     return (
                       <div
                         key={s.day}
-                        className={`group relative flex flex-col items-center text-center justify-between p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md min-h-[260px] bg-gradient-to-b ${visual.themeAccent} bg-card ${visual.themeBorder} ${
+                        className={`group relative flex flex-col items-center text-center justify-between p-4 rounded-2xl border transition-all duration-200 shadow-xs min-h-[260px] bg-gradient-to-b ${visual.themeAccent} bg-card ${visual.themeBorder} ${
                           isToday ? "ring-2 ring-primary/40 shadow-sm" : ""
                         }`}
                       >
@@ -708,7 +708,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
 
         <TabsContent value="dtr" className="mt-4 space-y-4">
 
-          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+          <Card className="border-border/70 shadow-xs">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
@@ -784,7 +784,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
             </CardContent>
           </Card>
 
-          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+          <Card className="border-border/70 shadow-xs">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
@@ -834,7 +834,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                   attPage.pageItems.map((r, idx) => (
                     <TableRow
                       key={idx}
-                      className="cursor-pointer hover:bg-muted/50 transition-colors"
+                      className="cursor-pointer transition-colors"
                       onClick={() => handleRowClick(r, "Attendance")}
                     >
                       <TableCell className="text-xs font-mono font-medium text-foreground">{r.id}</TableCell>
@@ -871,7 +871,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         </TabsContent>
 
         <TabsContent value="leave" className="mt-4 space-y-4">
-          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+          <Card className="border-border/70 shadow-xs">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
@@ -919,7 +919,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                       leavePage.pageItems.map((item: any, idx: number) => (
                         <TableRow
                           key={idx}
-                          className="cursor-pointer hover:bg-muted/50 transition-colors"
+                          className="cursor-pointer transition-colors"
                           onClick={() => handleRowClick(item, "Leave")}
                         >
                           <TableCell className="text-xs font-mono font-medium text-foreground">
