@@ -51,3 +51,7 @@ TRASH/
 *.log
 38
 "witch main"
+
+# Local reference datasets with >260-char paths (Windows "Filename too long"
+# on push/fetch) вЂ” never commit these; they are untracked test fixtures.
+/other files/
