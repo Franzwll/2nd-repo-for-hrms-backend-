@@ -2587,7 +2587,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                           className="h-2 [&>div]:bg-gold [&>div]:shadow-[0_0_10px_var(--gold)]"
                                         />
                                       </div>
-                                      <div className="grid grid-cols-2 gap-2 text-xs">
+                                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 text-xs">
                                         <div className="rounded-lg border border-gold/25 bg-gold/5 px-3 py-2">
                                           <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">
                                             Requirements

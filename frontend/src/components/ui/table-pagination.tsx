@@ -58,7 +58,7 @@ export function TablePagination({
   const window = getPageWindow(page, pageCount);
 
   return (
-    <div className={cn("mt-4 flex flex-wrap items-center justify-between gap-3", className)}>
+    <div className={cn("mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between", className)}>
       <div className="flex flex-wrap items-center gap-3">
         {showRangeLabel ? (
           <p className="text-xs text-muted-foreground">
@@ -85,7 +85,7 @@ export function TablePagination({
           </label>
         )}
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-1 overflow-x-auto pb-1">
         <Button
           size="sm"
           variant="outline"

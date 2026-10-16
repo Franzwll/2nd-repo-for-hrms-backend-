@@ -1161,7 +1161,7 @@ export function ScreeningStatTiles({
   showIcons?: boolean;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <ScreeningStatTile
         icon={showIcons ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : undefined}
         value={matchedCount}
@@ -2775,7 +2775,7 @@ function ScreeningSupportDocsGrid({
             <div className="mt-3">
               <ScreeningDocStatusPill status="SCREENED" />
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Button size="sm" variant="outline" onClick={onOpenResume}>
                 View
               </Button>
@@ -15396,7 +15396,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     per criterion so rating during a live call takes one click. */}
                 <div className="order-2 flex min-h-0 flex-col border-l border-border bg-background">
                   <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <div className="space-y-1">
                         <Label className="text-[0.7rem] text-muted-foreground">Interviewer</Label>
                         <Select value={evalAssessor} onValueChange={setEvalAssessor}>
@@ -15509,7 +15509,7 @@ always one tap away, no scrolling to finish the interview. */}
                         %
                       </span>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <Button
                         variant="outline"
                         size="sm"

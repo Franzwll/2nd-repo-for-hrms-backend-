@@ -8,10 +8,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, FileText, HelpCircle } from "lucide-react";
+import { Download, Printer, FileText, HelpCircle } from "lucide-react";
 import { toast } from "sonner";
 import { myProfile, myPayroll } from "@/data/ess";
 import { OfficialPayslipDocument } from "@/components/modules/ess/shared/OfficialPayslipDocument";
+import { printReceipt } from "@/lib/printReceipt";
 import { downloadPayslipPdf } from "@/lib/downloadPayslipPdf";
 
 interface PayslipViewerModalProps {
@@ -37,6 +38,11 @@ export function PayslipViewerModal({
   payslip,
   onInquiryClick,
 }: PayslipViewerModalProps) {
+  const handlePrint = () => {
+    printReceipt("official-payslip-receipt", `Oxford Suites Makati - Pay Advice (${period})`);
+    toast.success("Printing official pay advice...");
+  };
+
   const handleDownload = async () => {
     try {
       const safeFilename = `Oxford-Suites-Makati-Payslip-${period.replace(/[\s–—/]+/g, "-")}.pdf`;
@@ -84,7 +90,7 @@ export function PayslipViewerModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[850px] max-h-[92vh] overflow-y-auto p-4 sm:p-6 print:p-0 print:border-none print:shadow-none">
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[850px] max-h-[92vh] overflow-y-auto p-4 sm:p-6 print:p-0 print:border-none print:shadow-none">
         <DialogHeader className="print:hidden">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -143,6 +149,9 @@ export function PayslipViewerModal({
           </Button>
 
           <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handlePrint} className="gap-1.5 text-xs">
+              <Printer className="h-3.5 w-3.5" /> Print
+            </Button>
             <Button
               size="sm"
               onClick={handleDownload}

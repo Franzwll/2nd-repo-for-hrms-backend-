@@ -2119,7 +2119,7 @@ function EmployeeListManager({
 
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Contact Information</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label className="text-xs">Company Email</Label>
                   <Input
@@ -2161,7 +2161,7 @@ function EmployeeListManager({
 
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Other Personal Information</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label className="text-xs">Birth Date</Label>
                   <Input
@@ -2219,7 +2219,7 @@ function EmployeeListManager({
 
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Employment Information</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label className="text-xs">Position</Label>
                   <Select
@@ -2352,7 +2352,7 @@ function EmployeeListManager({
 
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Government IDs</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label className="text-xs">SSS Number</Label>
                   <Input
@@ -4315,7 +4315,7 @@ function DepartmentAndPositionManager({
           </DialogHeader>
 
           <div className="space-y-4 py-2 text-xs">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs">Department Code</Label>
                 <Input
@@ -4457,7 +4457,7 @@ function DepartmentAndPositionManager({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs">Department</Label>
                 <Select value={posDept} onValueChange={setPosDept}>
@@ -4489,7 +4489,7 @@ function DepartmentAndPositionManager({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs">Target Headcount</Label>
                 <Input
@@ -4683,7 +4683,7 @@ function DepartmentAndPositionManager({
           <div className="space-y-4 py-2 text-xs">
             <div className="space-y-1">
               <Label className="text-xs font-semibold">New Requisition</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label className="text-xs">Position</Label>
                   <Select value={reqPosition} onValueChange={onReqPositionChange}>
@@ -5056,7 +5056,7 @@ function SalaryGradeManager() {
             <DialogTitle>{editingSg ? `Edit Salary Grade — ${editingSg.code}` : "Add Salary Grade"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2 text-xs">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs">Grade Code</Label>
                 <Input value={sgCode} onChange={(e) => setSgCode(e.target.value)} className="text-xs font-mono" placeholder="e.g. SG-09" />

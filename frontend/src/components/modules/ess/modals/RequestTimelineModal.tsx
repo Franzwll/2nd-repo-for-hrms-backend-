@@ -82,7 +82,7 @@ export function RequestTimelineModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -100,12 +100,10 @@ export function RequestTimelineModal({
 
         {/* Request Details Card */}
         <div className="rounded-lg border border-border bg-muted/20 p-3.5 space-y-2 text-xs">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div>
               <p className="text-muted-foreground">Category</p>
-              <p className="font-semibold text-foreground">
-                {request.category || "General HR Request"}
-              </p>
+              <p className="font-semibold text-foreground">{request.category || "General HR Request"}</p>
             </div>
             <div>
               <p className="text-muted-foreground">Date Filed</p>
@@ -113,15 +111,11 @@ export function RequestTimelineModal({
             </div>
             <div>
               <p className="text-muted-foreground">Assigned Officer</p>
-              <p className="font-semibold text-foreground">
-                {request.assignedTo || "Juan Dela Cruz (HR Admin)"}
-              </p>
+              <p className="font-semibold text-foreground">{request.assignedTo || "Juan Dela Cruz (HR Admin)"}</p>
             </div>
             <div>
               <p className="text-muted-foreground">Service SLA</p>
-              <p className="font-semibold text-emerald-600 dark:text-emerald-400">
-                Within 24–48 Hours
-              </p>
+              <p className="font-semibold text-emerald-600 dark:text-emerald-400">Within 24–48 Hours</p>
             </div>
           </div>
           {request.details && (

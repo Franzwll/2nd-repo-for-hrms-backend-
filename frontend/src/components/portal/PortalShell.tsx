@@ -83,7 +83,6 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
-
 import { Switch } from "@/components/ui/switch";
 
 import { cn } from "@/lib/utils";
@@ -820,9 +819,9 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
       <div className="flex min-w-0 flex-1 flex-col">
 
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border bg-card/85 px-4 backdrop-blur md:px-6">
+        <header className="sticky top-0 z-30 flex h-16 min-w-0 items-center justify-between gap-2 border-b border-border bg-card/85 px-3 backdrop-blur sm:gap-4 sm:px-4 md:px-6">
 
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
 
             <Button
 
@@ -858,13 +857,13 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
 
 
-          <div className="flex items-center gap-3 sm:gap-4">
+          <div className="flex min-w-0 items-center gap-1.5 sm:gap-4">
 
             <GlobalSearch base={meta.base} />
 
             {/* Live Digital Clock & Date â€” minimal, no border */}
 
-            <div className="flex items-center gap-2.5">
+            <div className="hidden items-center gap-2.5 min-[500px]:flex">
 
               <div className="hidden sm:flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
 
@@ -928,7 +927,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
               </PopoverTrigger>
 
-              <PopoverContent align="end" className="w-[22rem] p-0">
+              <PopoverContent align="end" className="w-[calc(100vw-2rem)] max-w-[22rem] p-0">
 
                 <div className="flex items-center gap-2 border-b border-border px-4 py-3">
 
@@ -1094,7 +1093,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
               </PopoverTrigger>
 
-              <PopoverContent align="end" className="w-[22rem] p-0">
+              <PopoverContent align="end" className="w-[calc(100vw-2rem)] max-w-[22rem] p-0">
 
                 <div className="flex items-center gap-2 border-b border-border px-4 py-3">
 
@@ -1310,7 +1309,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                   type="button"
 
-                  className="flex items-center gap-2 rounded-full border border-border bg-background py-1 pl-1 pr-3 transition-colors hover:bg-muted"
+                  className="flex min-w-0 items-center gap-1.5 rounded-full sm:gap-2 border border-border bg-background py-1 pl-1 pr-3 transition-colors hover:bg-muted"
 
                 >
 
@@ -1337,13 +1336,13 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                   </Avatar>
 
-                  <span suppressHydrationWarning className="hidden text-sm sm:inline">
+                  <span suppressHydrationWarning className="hidden truncate text-sm min-[900px]:inline max-w-[130px]">
 
                     Welcome, <span className="font-medium">{displayName.split(" ")[0]}</span>
 
                   </span>
 
-                  <ChevronDown className="hidden h-4 w-4 text-muted-foreground sm:inline" />
+                  <ChevronDown className="hidden h-4 w-4 shrink-0 text-muted-foreground min-[900px]:inline" />
 
                 </button>
 

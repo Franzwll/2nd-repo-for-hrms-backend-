@@ -55,7 +55,7 @@ export function DocumentRequestModal({ open, onOpenChange, onRequestSuccess }: D
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[500px]">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <div className="rounded-md bg-primary/10 p-2 text-primary">
@@ -110,7 +110,7 @@ export function DocumentRequestModal({ open, onOpenChange, onRequestSuccess }: D
             <RadioGroup
               value={deliveryFormat}
               onValueChange={(val: any) => setDeliveryFormat(val)}
-              className="grid grid-cols-2 gap-2.5"
+              className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"
             >
               <Label
                 htmlFor="fmt-digital"
