@@ -1,0 +1,82 @@
+﻿COLUMN_NAME	tbls	tables_using_it
+created_at	59	announcements, applicants, applicant_assessments, applicant_documents, applicant_screenings, applicant_screening_entities, applicant_screening_scores, assessment_invites, assessment_tests, attendance_records, chatbot_faqs, chatbot_messages, chatbot_unanswered, checklist_requests, departments, employees, employee_benefits, employee_documents, employee_emergency_contacts, employee_exit_records, employee_learning, employee_onboarding_items, employee_position_history, ess_categories, ess_requests, facilities, final_evaluations, hr3_recommendations, interviews, job_posts, job_post_platforms, learning_courses, leave_balances, new_hires, notifications, onboarding_checklist_items, onboarding_checklist_templates, password_reset_tokens, payroll_items, payroll_periods, payroll_records, performance_reviews, personal_access_tokens, positions, practical_tests, promotion_requests, recognition_reactions, requisitions, role_permissions, salary_grades, screening_ground_truths, screening_reference_data, screening_requirement_templates, screening_requirement_template_items, social_recognitions, system_roles, system_settings, system_users, work_schedules
+updated_at	49	announcements, applicants, applicant_assessments, applicant_documents, applicant_screenings, assessment_invites, assessment_tests, attendance_records, chatbot_faqs, chatbot_messages, checklist_requests, departments, employees, employee_benefits, employee_documents, employee_emergency_contacts, employee_exit_records, employee_learning, employee_onboarding_items, ess_categories, ess_requests, facilities, final_evaluations, hr3_recommendations, interviews, job_posts, learning_courses, leave_balances, new_hires, onboarding_checklist_templates, payroll_periods, payroll_records, performance_reviews, personal_access_tokens, positions, practical_tests, promotion_requests, recognition_reactions, requisitions, role_permissions, salary_grades, screening_ground_truths, screening_reference_data, screening_requirement_templates, social_recognitions, system_roles, system_settings, system_users, work_schedules
+employee_id	20	attendance_records, checklist_requests, employees, employee_benefits, employee_documents, employee_emergency_contacts, employee_exit_records, employee_learning, employee_onboarding_items, employee_position_history, ess_requests, hr3_recommendations, leave_balances, new_hires, payroll_records, performance_reviews, promotion_requests, recognition_reactions, system_users, work_schedules
+status	20	announcements, applicants, assessment_invites, attendance_records, checklist_requests, employees, employee_benefits, employee_learning, ess_requests, hr3_recommendations, interviews, job_posts, job_post_platforms, onboarding_checklist_templates, payroll_periods, payroll_records, promotion_requests, requisitions, system_users, user_login_activity
+applicant_id	13	applicants, applicant_assessments, applicant_documents, applicant_screenings, applicant_screening_entities, applicant_screening_scores, assessment_invites, assessment_tests, final_evaluations, interviews, new_hires, practical_tests, screening_ground_truths
+title	9	announcements, applicant_documents, employee_documents, job_posts, learning_courses, notifications, onboarding_checklist_templates, positions, salary_grades
+name	8	applicants, departments, employee_emergency_contacts, ess_categories, facilities, new_hires, personal_access_tokens, screening_requirement_templates
+description	7	departments, ess_categories, facilities, job_posts, learning_courses, screening_requirement_templates, system_roles
+department_id	6	departments, employees, job_posts, new_hires, positions, requisitions
+position_id	6	employees, job_posts, new_hires, positions, requisitions, screening_requirement_templates
+email	5	applicants, employees, new_hires, password_reset_tokens, system_users
+id	5	chatbot_messages, chatbot_unanswered, migrations, personal_access_tokens, sessions
+job_post_id	5	applicants, applicant_screenings, job_posts, job_post_platforms, screening_ground_truths
+notes	5	employee_exit_records, employee_onboarding_items, employee_position_history, salary_grades, screening_ground_truths
+template_id	5	checklist_requests, onboarding_checklist_items, onboarding_checklist_templates, screening_requirement_templates, screening_requirement_template_items
+phone	4	applicants, employees, employee_emergency_contacts, new_hires
+result	4	applicant_assessments, assessment_invites, assessment_tests, practical_tests
+salary_grade_id	4	employees, performance_reviews, positions, salary_grades
+system_user_id	4	audit_logs, notifications, system_users, user_login_activity
+total_score	4	applicant_assessments, assessment_invites, assessment_tests, practical_tests
+active	3	job_posts, screening_reference_data, screening_requirement_templates
+assessor_user_id	3	applicant_assessments, assessment_tests, practical_tests
+code	3	departments, ess_categories, salary_grades
+file_path	3	applicant_documents, employee_documents, employee_onboarding_items
+ip_address	3	audit_logs, sessions, user_login_activity
+message	3	chatbot_messages, chatbot_unanswered, social_recognitions
+module_name	3	audit_logs, notifications, role_permissions
+remarks	3	applicant_assessments, assessment_tests, practical_tests
+role_id	3	role_permissions, system_roles, system_users
+scores_json	3	applicant_assessments, assessment_tests, practical_tests
+sort_order	3	chatbot_faqs, ess_categories, onboarding_checklist_items
+token	3	assessment_invites, password_reset_tokens, personal_access_tokens
+value	3	applicant_screening_entities, cache, screening_requirement_template_items
+address	2	employees, employee_emergency_contacts
+body	2	announcements, notifications
+category	2	employee_documents, learning_courses
+comments	2	hr3_recommendations, performance_reviews
+course_id	2	employee_learning, learning_courses
+created_by_user_id	2	announcements, assessment_invites
+details	2	audit_logs, ess_requests
+device_info	2	audit_logs, user_login_activity
+effective_date	2	employee_benefits, employee_position_history
+employment_type	2	employees, job_posts
+evaluator_user_id	2	hr3_recommendations, performance_reviews
+expiration	2	cache, cache_locks
+expires_at	2	assessment_invites, personal_access_tokens
+facility_id	2	facilities, interviews
+filled_count	2	job_posts, positions
+item_text	2	employee_onboarding_items, onboarding_checklist_items
+justification	2	promotion_requests, requisitions
+key	2	cache, cache_locks
+label	2	applicant_screening_entities, payroll_items
+level	2	positions, salary_grades
+location	2	facilities, work_schedules
+new_hire_id	2	employee_onboarding_items, new_hires
+passing_score	2	assessment_invites, assessment_tests
+payout_date	2	payroll_periods, payroll_records
+payroll_period_id	2	payroll_periods, payroll_records
+payroll_record_id	2	payroll_items, payroll_records
+phase	2	checklist_requests, onboarding_checklist_templates
+promotion_request_id	2	hr3_recommendations, promotion_requests
+questions_json	2	assessment_invites, assessment_tests
+recognition_id	2	recognition_reactions, social_recognitions
+requested_at	2	checklist_requests, requisitions
+requested_by_user_id	2	checklist_requests, requisitions
+request_code	2	checklist_requests, ess_requests
+salary_step	2	employees, performance_reviews
+score	2	applicant_screening_scores, employee_learning
+session_id	2	chatbot_messages, chatbot_unanswered
+source	2	applicants, chatbot_messages
+stage	2	applicants, new_hires
+submitted_at	2	assessment_invites, employee_onboarding_items
+summary	2	applicants, job_posts
+target_id	2	audit_logs, notifications
+target_type	2	audit_logs, notifications
+template_item_id	2	employee_onboarding_items, onboarding_checklist_items
+test_date	2	assessment_tests, practical_tests
+test_title	2	assessment_invites, assessment_tests
+type	2	facilities, notifications
+user_agent	2	sessions, user_login_activity
+user_id	2	chatbot_messages, sessions

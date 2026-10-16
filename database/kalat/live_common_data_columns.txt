@@ -1,0 +1,17 @@
+﻿COLUMN_NAME	tbls	defs
+status	20	announcements:varchar(20), applicants:varchar(30), assessment_invites:varchar(20), attendance_records:varchar(30), checklist_requests:varchar(30), employees:varchar(30), employee_benefits:varchar(30), employee_learning:varchar(30), ess_requests:varchar(30), hr3_recommendations:varchar(40), interviews:varchar(20), job_posts:varchar(20), job_post_platforms:varchar(20), onboarding_checklist_templates:varchar(20), payroll_periods:varchar(20), payroll_records:varchar(30), promotion_requests:varchar(30), requisitions:varchar(20), system_users:varchar(20), user_login_activity:varchar(20)
+title	9	announcements:varchar(200), applicant_documents:varchar(190), employee_documents:varchar(200), job_posts:varchar(150), learning_courses:varchar(200), notifications:varchar(200), onboarding_checklist_templates:varchar(200), positions:varchar(150), salary_grades:varchar(120)
+name	8	applicants:varchar(160), departments:varchar(120), employee_emergency_contacts:varchar(160), ess_categories:varchar(120), facilities:varchar(120), new_hires:varchar(160), personal_access_tokens:text, screening_requirement_templates:varchar(150)
+description	7	departments:text, ess_categories:text, facilities:text, job_posts:text, learning_courses:text, screening_requirement_templates:varchar(500), system_roles:text
+email	5	applicants:varchar(190), employees:varchar(190), new_hires:varchar(190), password_reset_tokens:varchar(255), system_users:varchar(190)
+phone	4	applicants:varchar(40), employees:varchar(40), employee_emergency_contacts:varchar(40), new_hires:varchar(40)
+code	3	departments:varchar(30), ess_categories:varchar(40), salary_grades:varchar(30)
+address	2	employees:text, employee_emergency_contacts:text
+category	2	employee_documents:varchar(80), learning_courses:varchar(120)
+employment_type	2	employees:varchar(30), job_posts:varchar(30)
+level	2	positions:varchar(30), salary_grades:varchar(30)
+location	2	facilities:varchar(190), work_schedules:varchar(120)
+salary_step	2	employees:varchar(30), performance_reviews:varchar(30)
+source	2	applicants:varchar(60), chatbot_messages:varchar(20)
+stage	2	applicants:varchar(40), new_hires:varchar(30)
+summary	2	applicants:text, job_posts:text
