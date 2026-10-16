@@ -42,7 +42,6 @@ import { myAttendance } from "@/data/ess";
 import { ShiftSwapModal } from "@/components/modules/ess/modals/ShiftSwapModal";
 import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
 import { ScheduleRecordsModal } from "@/components/modules/ess/modals/ScheduleRecordsModal";
-import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
 import { essApi, type ApiScheduleDay, type ApiEssEmployee, type ApiLeaveBalance } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -51,11 +50,11 @@ interface EssAttendanceTabProps {
 }
 
 const DEFAULT_ROSTER: ApiScheduleDay[] = [
-  { day: "Monday", shift: "Morning Shift", time: "07:00 AM â€“ 04:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen Â· Line 1" },
-  { day: "Tuesday", shift: "Morning Shift", time: "07:00 AM â€“ 04:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen Â· Line 1" },
-  { day: "Wednesday", shift: "Morning Shift", time: "07:00 AM â€“ 04:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen Â· Line 1" },
-  { day: "Thursday", shift: "Mid Shift", time: "02:00 PM â€“ 11:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen Â· Pastry Prep" },
-  { day: "Friday", shift: "Night Shift", time: "11:00 PM â€“ 07:00 AM", hours: "8.0h (1h break)", location: "Main Kitchen Â· Night Prep" },
+  { day: "Monday", shift: "Morning Shift", time: "07:00 AM – 04:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen · Line 1" },
+  { day: "Tuesday", shift: "Morning Shift", time: "07:00 AM – 04:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen · Line 1" },
+  { day: "Wednesday", shift: "Morning Shift", time: "07:00 AM – 04:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen · Line 1" },
+  { day: "Thursday", shift: "Mid Shift", time: "02:00 PM – 11:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen · Pastry Prep" },
+  { day: "Friday", shift: "Night Shift", time: "11:00 PM – 07:00 AM", hours: "8.0h (1h break)", location: "Main Kitchen · Night Prep" },
   { day: "Saturday", shift: "Rest Day", time: "Off Duty", hours: "0h", location: "Off Duty" },
   { day: "Sunday", shift: "Rest Day", time: "Off Duty", hours: "0h", location: "Off Duty" },
 ];
@@ -176,7 +175,7 @@ function getShiftVisual(shift: string, time: string) {
 }
 
 export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabProps) {
-  // Navigation tabs â€” admin-consistent: schedule (clocking + roster combined) / dtr / leave
+  // Navigation tabs — admin-consistent: schedule (clocking + roster combined) / dtr / leave
   type AttendanceTabValue = "schedule" | "leave";
   const normalizeTab = (t: string | undefined): AttendanceTabValue => {
     if (t === "leave") return "leave";
@@ -192,14 +191,14 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
     }
   }, [initialTab]);
 
-  // Live Clock Terminal State â€” client-only (null until mounted so SSR HTML matches).
+  // Live Clock Terminal State — client-only (null until mounted so SSR HTML matches).
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [currentDutyStatus, setCurrentDutyStatus] = useState<"clocked_in" | "on_break" | "clocked_out">("clocked_in");
   const [punchLog, setPunchLog] = useState({
     timeIn: myAttendance.today.timeIn || "07:52 AM",
     breakIn: myAttendance.today.breakIn || "12:00 PM",
     breakOut: myAttendance.today.breakOut || "12:58 PM",
-    timeOut: myAttendance.today.timeOut !== "â€”" ? myAttendance.today.timeOut : "â€”",
+    timeOut: myAttendance.today.timeOut !== "—" ? myAttendance.today.timeOut : "—",
   });
 
   // Attendance summary & history
@@ -212,8 +211,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
 
   const [leaveSearch, setLeaveSearch] = useState("");
   const [swapModalOpen, setSwapModalOpen] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
-  const [timelineOpen, setTimelineOpen] = useState(false);
 
   // Schedule state
   const [scheduleLoading, setScheduleLoading] = useState(true);
@@ -222,12 +219,12 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
 
   // Leave state
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
-  // TRY: top-right records modal â€” remove state if not applicable
+  // TRY: top-right records modal — remove state if not applicable
   const [recordsModalOpen, setRecordsModalOpen] = useState(false);
   const [leaveBalances, setLeaveBalances] = useState<ApiLeaveBalance[]>([]);
   const [leaveHistory, setLeaveHistory] = useState<any[]>([]);
 
-  // Clock Ticker â€” starts after mount so SSR HTML matches (no hydration mismatch).
+  // Clock Ticker — starts after mount so SSR HTML matches (no hydration mismatch).
   useEffect(() => {
     setCurrentTime(new Date());
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -302,11 +299,11 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         month: "long",
         day: "numeric",
       })
-    : "Loadingâ€¦";
+    : "Loading…";
 
   const todayDayName = currentTime ? currentTime.toLocaleDateString("en-US", { weekday: "long" }) : "";
 
-  // DTR history â€” admin-consistent searchable + paginated table
+  // DTR history — admin-consistent searchable + paginated table
   const dtrRecords = useMemo(() => {
     if (attendanceLogs.length > 0) return attendanceLogs;
     return myAttendance.history.map((h) => ({
@@ -318,7 +315,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
     }));
   }, [attendanceLogs]);
 
-  // Leave history â€” admin-consistent searchable + paginated table
+  // Leave history — admin-consistent searchable + paginated table
   const filteredLeaveHistory = useMemo(() => {
     const q = leaveSearch.trim().toLowerCase();
     if (!q) return leaveHistory;
@@ -350,22 +347,9 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
     });
   };
 
-  const handleRowClick = (req: any, category = "Attendance") => {
-    setSelectedRequest({
-      id: req.id || req.request_code,
-      type: req.type || req.request_type,
-      category: category,
-      date: req.date || (req.filed_at ? req.filed_at.slice(0, 10) : req.filedDate),
-      status: req.status,
-      assignedTo: req.assignedTo || "Executive Chef Marco / HR Admin",
-      details: req.details || req.reason || "Request filed in portal.",
-    });
-    setTimelineOpen(true);
-  };
-
   return (
     <div className="space-y-6">
-      {/* Metric cards â€” admin-consistent placement above tabs */}
+      {/* Metric cards — admin-consistent placement above tabs */}
       <div className="grid gap-4 sm:grid-cols-2">
         <StatCard
           label="Present Days"
@@ -499,13 +483,13 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                     <div className="space-y-2.5 pt-3.5 text-xs">
                       <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Assigned Shift:</span>
-                        <span className="font-semibold text-foreground">AM Shift (07:00 AM â€“ 04:00 PM)</span>
+                        <span className="font-semibold text-foreground">AM Shift (07:00 AM – 04:00 PM)</span>
                       </div>
 
                       <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Geolocation:</span>
                         <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                          Oxford Suites Makati (Main Kitchen) âœ“
+                          Oxford Suites Makati (Main Kitchen) ✓
                         </span>
                       </div>
 
@@ -556,7 +540,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
           </Card>
           <Card className="border-border/70 shadow-xs">
             <CardContent className="p-6">
-              {/* TRY: roster header + top-right records button â€” remove block if not applicable */}
+              {/* TRY: roster header + top-right records button — remove block if not applicable */}
               <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
                 <div>
                   <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
@@ -663,7 +647,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                   <div className="relative w-56">
                     <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      placeholder="Search leaveâ€¦"
+                      placeholder="Search leave…"
                       value={leaveSearch}
                       onChange={(e) => setLeaveSearch(e.target.value)}
                       className="pl-8"
@@ -687,23 +671,18 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                       <TableHead>Effective Dates</TableHead>
                       <TableHead>Reason / Details</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {leavePage.pageItems.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6}>
-                          <ListEmptyState placeholder="Search leaveâ€¦" subject="leave requests" />
+                        <TableCell colSpan={5}>
+                          <ListEmptyState placeholder="Search leave…" subject="leave requests" />
                         </TableCell>
                       </TableRow>
                     ) : (
                       leavePage.pageItems.map((item: any, idx: number) => (
-                        <TableRow
-                          key={idx}
-                          className="cursor-pointer transition-colors"
-                          onClick={() => handleRowClick(item, "Leave")}
-                        >
+                        <TableRow key={idx}>
                           <TableCell>
                             {(() => {
                               const { name, days } = splitLeaveType(item.request_type || item.type);
@@ -729,11 +708,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                           <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{item.details || item.reason}</TableCell>
                           <TableCell>
                             <EssStatusBadge status={item.status} />
-                          </TableCell>
-                          <TableCell className="text-right py-1">
-                            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-primary cursor-pointer">
-                              Timeline â†’
-                            </Button>
                           </TableCell>
                         </TableRow>
                       ))
@@ -774,21 +748,15 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         onOpenChange={setSwapModalOpen}
         onSubmitSwap={() => loadData()}
       />
-      <RequestTimelineModal
-        open={timelineOpen}
-        onOpenChange={setTimelineOpen}
-        request={selectedRequest}
-      />
-      {/* TRY: records dialog â€” remove block if not applicable */}
+      {/* TRY: records dialog — remove block if not applicable */}
       <ScheduleRecordsModal
         open={recordsModalOpen}
         onOpenChange={setRecordsModalOpen}
         dtrRecords={dtrRecords}
-        onRowClick={(row, category) => {
-          setRecordsModalOpen(false);
-          handleRowClick(row, category);
-        }}
       />
     </div>
   );
 }
+
+
+
