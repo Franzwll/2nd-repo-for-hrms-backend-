@@ -43,7 +43,7 @@ import { ShiftSwapModal } from "@/components/modules/ess/modals/ShiftSwapModal";
 import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
 import { ScheduleRecordsModal } from "@/components/modules/ess/modals/ScheduleRecordsModal";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
-import { essApi, type ApiScheduleDay, type ApiEssEmployee } from "@/lib/api";
+import { essApi, type ApiScheduleDay, type ApiEssEmployee, type ApiLeaveBalance } from "@/lib/api";
 import { toast } from "sonner";
 
 interface EssAttendanceTabProps {
@@ -224,6 +224,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   // TRY: top-right records modal â€” remove state if not applicable
   const [recordsModalOpen, setRecordsModalOpen] = useState(false);
+  const [leaveBalances, setLeaveBalances] = useState<ApiLeaveBalance[]>([]);
   const [leaveHistory, setLeaveHistory] = useState<any[]>([]);
 
   // Clock Ticker â€” starts after mount so SSR HTML matches (no hydration mismatch).
@@ -273,6 +274,9 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
     try {
       const leaveRes = await essApi.leaves();
       setLeaveHistory(leaveRes.history || []);
+      if (leaveRes?.balances) {
+        setLeaveBalances(leaveRes.balances);
+      }
     } catch {
       // ignore
     }
@@ -327,6 +331,21 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
   }, [leaveHistory, leaveSearch]);
 
   const leavePage = usePagination(filteredLeaveHistory);
+
+  // Match a history row to its entitlement: strip the filing duration
+  // suffix ("Type (2 days)") then fuzzy-match the balance type.
+  // Rows with no entitlement record (e.g. maternity) show "—".
+  const balanceForLeaveType = (t: any) => {
+    const base = String(t ?? "")
+      .replace(/\s*\(\d+\s*days?\)\s*$/i, "")
+      .trim()
+      .toLowerCase();
+    if (!base) return undefined;
+    return leaveBalances.find((b) => {
+      const bt = String(b.type ?? "").toLowerCase();
+      return base === bt || base.includes(bt) || bt.includes(base);
+    });
+  };
 
   const handleRowClick = (req: any, category = "Attendance") => {
     setSelectedRequest({
@@ -661,6 +680,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                   <TableHeader>
                     <TableRow>
                       <TableHead>Leave Type</TableHead>
+                      <TableHead>Availability</TableHead>
                       <TableHead>Effective Dates</TableHead>
                       <TableHead>Reason / Details</TableHead>
                       <TableHead>Status</TableHead>
@@ -670,7 +690,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                   <TableBody>
                     {leavePage.pageItems.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5}>
+                        <TableCell colSpan={6}>
                           <ListEmptyState placeholder="Search leaveâ€¦" subject="leave requests" />
                         </TableCell>
                       </TableRow>
@@ -682,6 +702,12 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                           onClick={() => handleRowClick(item, "Leave")}
                         >
                           <TableCell className="text-xs font-semibold">{item.request_type || item.type}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {(() => {
+                              const bal = balanceForLeaveType(item.request_type || item.type);
+                              return bal ? `${bal.available}/${bal.total} days left` : "—";
+                            })()}
+                          </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
                             {item.date_from || item.dateFrom} {item.date_to && item.date_to !== item.date_from ? `to ${item.date_to}` : ""}
                           </TableCell>
