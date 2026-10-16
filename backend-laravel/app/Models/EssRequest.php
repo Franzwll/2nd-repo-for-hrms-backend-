@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class EssRequest extends Model
 {
@@ -48,5 +49,26 @@ class EssRequest extends Model
     public function assignedTo(): BelongsTo
     {
         return $this->belongsTo(SystemUser::class, 'assigned_to_user_id', 'system_user_id');
+    }
+
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(EssRequestAttachment::class, 'ess_request_id', 'ess_request_id')
+            ->orderBy('ess_request_attachment_id');
+    }
+
+    public function statusHistory(): HasMany
+    {
+        return $this->hasMany(EssRequestStatusHistory::class, 'ess_request_id', 'ess_request_id')
+            ->orderBy('ess_request_status_history_id');
+    }
+
+    /**
+     * Convenience: the file HR sent back to the employee, if any.
+     */
+    public function fulfillmentAttachment(): ?EssRequestAttachment
+    {
+        return $this->attachments
+            ->firstWhere('direction', 'hr');
     }
 }

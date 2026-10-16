@@ -4,6 +4,16 @@ use Illuminate\Support\Facades\Route;
 use Modules\EmployeeSelfService\Http\Controllers\EssAdminController;
 use Modules\EmployeeSelfService\Http\Controllers\EssPortalController;
 
+/*
+ * File streaming uses token auth (?token=) because browser <iframe>/<a> opens
+ * cannot send an Authorization header. Ownership/permission is enforced inside
+ * the controller for each file.
+ */
+Route::prefix('v1/ess')->middleware('api')->group(function () {
+    Route::get('my-documents/{id}/file', [EssPortalController::class, 'documentFile']);
+    Route::get('requests/{id}/attachments/{attachmentId}/file', [EssPortalController::class, 'requestAttachmentFile']);
+});
+
 Route::middleware(['auth:sanctum', 'permission:ESS Management'])->prefix('v1/ess')->group(function () {
     // Employee Self-Service (Portal) Endpoints
     Route::get('my-overview', [EssPortalController::class, 'getOverview']);

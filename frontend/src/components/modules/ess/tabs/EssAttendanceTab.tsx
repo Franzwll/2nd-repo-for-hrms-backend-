@@ -5,7 +5,6 @@ import {
   Plus,
   Search,
   ArrowUpDown,
-  FileEdit,
   FileText,
   ArrowLeftRight,
   MapPin,
@@ -27,7 +26,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatCard } from "@/components/portal/StatCard";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -41,15 +39,14 @@ import { StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { myAttendance } from "@/data/ess";
-import { DtrCorrectionModal } from "@/components/modules/ess/modals/DtrCorrectionModal";
 import { ShiftSwapModal } from "@/components/modules/ess/modals/ShiftSwapModal";
 import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
-import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
+import { ScheduleRecordsModal } from "@/components/modules/ess/modals/ScheduleRecordsModal";
 import { essApi, type ApiScheduleDay, type ApiEssEmployee, type ApiLeaveBalance } from "@/lib/api";
 import { toast } from "sonner";
 
 interface EssAttendanceTabProps {
-  initialTab?: "clocking" | "roster" | "schedule" | "dtr" | "leave";
+  initialTab?: "clocking" | "roster" | "schedule" | "leave";
 }
 
 const DEFAULT_ROSTER: ApiScheduleDay[] = [
@@ -107,7 +104,7 @@ function getShiftVisual(shift: string, time: string) {
       type: "night" as const,
       label: "Night Shift",
       tag: "Evening / Night",
-      themeBorder: "border-indigo-500/35 hover:border-indigo-500/60",
+      themeBorder: "border-indigo-500/35",
       themeBg: "bg-indigo-500/5",
       themeAccent: "from-indigo-500/15 via-purple-500/5 to-transparent",
       badgeColor: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
@@ -129,7 +126,7 @@ function getShiftVisual(shift: string, time: string) {
       type: "mid" as const,
       label: "Mid Shift",
       tag: "Afternoon",
-      themeBorder: "border-orange-500/35 hover:border-orange-500/60",
+      themeBorder: "border-orange-500/35",
       themeBg: "bg-orange-500/5",
       themeAccent: "from-orange-500/15 via-amber-500/5 to-transparent",
       badgeColor: "bg-orange-500/10 text-orange-500 border-orange-500/30",
@@ -155,7 +152,7 @@ function getShiftVisual(shift: string, time: string) {
     type: "day" as const,
     label: "Day Shift",
     tag: "Morning / AM",
-    themeBorder: "border-amber-500/35 hover:border-amber-500/60",
+    themeBorder: "border-amber-500/35",
     themeBg: "bg-amber-500/5",
     themeAccent: "from-amber-500/15 via-primary/5 to-transparent",
     badgeColor: "bg-amber-500/10 text-amber-500 border-amber-500/30",
@@ -179,9 +176,8 @@ function getShiftVisual(shift: string, time: string) {
 
 export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabProps) {
   // Navigation tabs — admin-consistent: schedule (clocking + roster combined) / dtr / leave
-  type AttendanceTabValue = "schedule" | "dtr" | "leave";
+  type AttendanceTabValue = "schedule" | "leave";
   const normalizeTab = (t: string | undefined): AttendanceTabValue => {
-    if (t === "dtr") return "dtr";
     if (t === "leave") return "leave";
     return "schedule";
   };
@@ -208,27 +204,13 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
   // Attendance summary & history
   const [attSummary, setAttSummary] = useState({
     present_days: 18,
-    late_days: 1,
-    absent_days: 0,
-    overtime_hours: 4.5,
+    leave_days: 0,
     average_hours: 8.0,
   });
   const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
 
-  const [attRequests, setAttRequests] = useState([
-    { id: "REQ-4408", date: "Jul 20, 2026", isoDate: "2026-07-20", type: "Missed Time Out", status: "Pending", statusRank: 0, details: "Scanner offline at end of shift" },
-    { id: "REQ-4390", date: "Jun 12, 2026", isoDate: "2026-06-12", type: "Time In Correction", status: "Approved", statusRank: 1, details: "Late override approved by Chef Marco" },
-    { id: "REQ-4355", date: "May 22, 2026", isoDate: "2026-05-22", type: "Rest Day Work", status: "Approved", statusRank: 1, details: "Catering banquet support" },
-  ]);
-
-  const [attSearch, setAttSearch] = useState("");
-  const [attSort, setAttSort] = useState("date-desc");
-  const [dtrSearch, setDtrSearch] = useState("");
   const [leaveSearch, setLeaveSearch] = useState("");
-  const [correctionModalOpen, setCorrectionModalOpen] = useState(false);
   const [swapModalOpen, setSwapModalOpen] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
-  const [timelineOpen, setTimelineOpen] = useState(false);
 
   // Schedule state
   const [scheduleLoading, setScheduleLoading] = useState(true);
@@ -237,6 +219,8 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
 
   // Leave state
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
+  // TRY: top-right records modal — remove state if not applicable
+  const [recordsModalOpen, setRecordsModalOpen] = useState(false);
   const [leaveBalances, setLeaveBalances] = useState<ApiLeaveBalance[]>([]);
   const [leaveHistory, setLeaveHistory] = useState<any[]>([]);
 
@@ -287,7 +271,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
     try {
       const leaveRes = await essApi.leaves();
       setLeaveHistory(leaveRes.history || []);
-      if (leaveRes?.balances && leaveRes.balances.length > 0) {
+      if (leaveRes?.balances) {
         setLeaveBalances(leaveRes.balances);
       }
     } catch {
@@ -319,20 +303,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
 
   const todayDayName = currentTime ? currentTime.toLocaleDateString("en-US", { weekday: "long" }) : "";
 
-
-  const filteredAttRequests = useMemo(() => {
-    return attRequests
-      .filter((r) => !attSearch || r.type.toLowerCase().includes(attSearch.toLowerCase()) || r.status.toLowerCase().includes(attSearch.toLowerCase()))
-      .sort((a, b) => {
-        if (attSort === "date-desc") return b.isoDate.localeCompare(a.isoDate);
-        if (attSort === "date-asc") return a.isoDate.localeCompare(b.isoDate);
-        if (attSort === "status") return a.statusRank - b.statusRank;
-        return 0;
-      });
-  }, [attRequests, attSearch, attSort]);
-
-  const attPage = usePagination(filteredAttRequests);
-
   // DTR history — admin-consistent searchable + paginated table
   const dtrRecords = useMemo(() => {
     if (attendanceLogs.length > 0) return attendanceLogs;
@@ -344,19 +314,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
       status: h.remark.includes("Present") ? "Present" : h.remark.includes("Late") ? "Late" : h.remark,
     }));
   }, [attendanceLogs]);
-
-  const filteredDtrRecords = useMemo(() => {
-    const q = dtrSearch.trim().toLowerCase();
-    if (!q) return dtrRecords;
-    return dtrRecords.filter((h: any) =>
-      String(h.date ?? "").toLowerCase().includes(q) ||
-      String(h.status ?? "").toLowerCase().includes(q) ||
-      String(h.timeIn ?? "").toLowerCase().includes(q) ||
-      String(h.timeOut ?? "").toLowerCase().includes(q)
-    );
-  }, [dtrRecords, dtrSearch]);
-
-  const dtrPage = usePagination(filteredDtrRecords);
 
   // Leave history — admin-consistent searchable + paginated table
   const filteredLeaveHistory = useMemo(() => {
@@ -372,50 +329,28 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
 
   const leavePage = usePagination(filteredLeaveHistory);
 
-  const handleCorrectionSubmit = async (newCorrection: any) => {
-    const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    const isoStr = new Date().toISOString().slice(0, 10);
-    const req = {
-      id: `REQ-${Date.now().toString().slice(-4)}`,
-      date: todayStr,
-      isoDate: isoStr,
-      type: newCorrection.type || "DTR Correction",
-      status: "Pending",
-      statusRank: 0,
-      details: newCorrection.reason || "Time record adjustment requested",
-    };
-    setAttRequests([req, ...attRequests]);
-
-    try {
-      await essApi.createRequest({
-        category_code: "attendance",
-        category_name: "Attendance",
-        request_type: newCorrection.type || "DTR Correction",
-        date_from: newCorrection.date || isoStr,
-        details: newCorrection.reason || "Time record adjustment requested",
-      });
-    } catch {
-      // fallback
-    }
+  // Split "Type (N days)" filings into the clean type name + request duration.
+  // Match a history row to its entitlement using the clean name.
+  // Rows with no entitlement record (e.g. maternity) show "—".
+  const splitLeaveType = (t: any) => {
+    const s = String(t ?? "");
+    const m = s.match(/^(.*?)\s*\((\d+)\s*days?\)\s*$/i);
+    if (!m) return { name: s, days: null as number | null };
+    return { name: (m[1] ?? "").trim(), days: Number(m[2]) };
   };
-
-  const handleRowClick = (req: any, category = "Attendance") => {
-    setSelectedRequest({
-      id: req.id || req.request_code,
-      type: req.type || req.request_type,
-      category: category,
-      date: req.date || (req.filed_at ? req.filed_at.slice(0, 10) : req.filedDate),
-      status: req.status,
-      assignedTo: req.assignedTo || "Executive Chef Marco / HR Admin",
-      details: req.details || req.reason || "Request filed in portal.",
+  const balanceForLeaveType = (t: any) => {
+    const base = splitLeaveType(t).name.toLowerCase();
+    if (!base) return undefined;
+    return leaveBalances.find((b) => {
+      const bt = String(b.type ?? "").toLowerCase();
+      return base === bt || base.includes(bt) || bt.includes(base);
     });
-    setTimelineOpen(true);
   };
 
   return (
     <div className="space-y-6">
       {/* Metric cards — admin-consistent placement above tabs */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         <StatCard
           label="Present Days"
           value={attSummary.present_days}
@@ -423,22 +358,10 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
           tone="success"
         />
         <StatCard
-          label="Late Days"
-          value={attSummary.late_days}
-          icon={Clock}
-          tone="caution"
-        />
-        <StatCard
-          label="Absent Days"
-          value={attSummary.absent_days}
+          label="Leave Days"
+          value={attSummary.leave_days}
           icon={AlertCircle}
           tone="primary"
-        />
-        <StatCard
-          label="Overtime Hours"
-          value={`${attSummary.overtime_hours}h`}
-          icon={Sparkles}
-          tone="gold"
         />
       </div>
 
@@ -456,37 +379,20 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
           </TabsTrigger>
           <TabsTrigger
             className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-            value="dtr"
-          >
-            <FileText className="h-3.5 w-3.5" /> DTR &amp; Corrections
-          </TabsTrigger>
-          <TabsTrigger
-            className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
             value="leave"
           >
-            <Palmtree className="h-3.5 w-3.5" /> Leave &amp; Balances
+            <Palmtree className="h-3.5 w-3.5" /> Leave
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="schedule" className="mt-4 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-              <Clock className="h-4 w-4 text-primary" /> Attendance &amp; Schedule
-            </h2>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button
-                onClick={() => setSwapModalOpen(true)}
-                variant="outline"
-                size="sm"
-                className="gap-1.5 shadow-xs text-xs cursor-pointer"
-              >
-                <ArrowLeftRight className="h-4 w-4 text-purple-600" /> Request Shift Swap
-              </Button>
-            </div>
-          </div>
-          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+          <Card className="border-border/70 shadow-xs">
             <CardContent className="p-6">
-              <div className="flex flex-wrap items-center justify-end gap-2 pb-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
+                <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
+                  <Clock className="h-4 w-4 text-primary" /> Attendance &amp; Schedule
+                </h2>
+                <div className="flex flex-wrap items-center justify-end gap-2">
                 <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary text-xs font-medium px-2.5 py-1">
                   Station Active
                 </Badge>
@@ -507,6 +413,15 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                     Shift Completed / Clocked Out
                   </Badge>
                 )}
+                <Button
+                  onClick={() => setSwapModalOpen(true)}
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 shadow-xs text-xs cursor-pointer"
+                >
+                  <ArrowLeftRight className="h-4 w-4 text-purple-600" /> Request Shift Swap
+                </Button>
+                </div>
               </div>
 
             <div className="space-y-6">
@@ -534,19 +449,19 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
 
                   {/* Today's Punch Summary Grid */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center hover:border-primary/40 transition-colors shadow-2xs">
+                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
                       <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Time In</p>
                       <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.timeIn}</p>
                     </div>
-                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center hover:border-primary/40 transition-colors shadow-2xs">
+                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
                       <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Break Out</p>
                       <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.breakIn}</p>
                     </div>
-                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center hover:border-primary/40 transition-colors shadow-2xs">
+                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
                       <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Break In</p>
                       <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.breakOut}</p>
                     </div>
-                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center hover:border-primary/40 transition-colors shadow-2xs">
+                    <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
                       <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Time Out</p>
                       <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.timeOut}</p>
                     </div>
@@ -566,26 +481,26 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                     </div>
 
                     <div className="space-y-2.5 pt-3.5 text-xs">
-                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80 hover:border-primary/30 transition-colors">
+                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Assigned Shift:</span>
                         <span className="font-semibold text-foreground">AM Shift (07:00 AM – 04:00 PM)</span>
                       </div>
 
-                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80 hover:border-primary/30 transition-colors">
+                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Geolocation:</span>
                         <span className="font-semibold text-emerald-600 dark:text-emerald-400">
                           Oxford Suites Makati (Main Kitchen) ✓
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80 hover:border-primary/30 transition-colors">
+                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Supervisor:</span>
                         <span className="font-semibold text-foreground">
                           {employeeInfo?.supervisor || "Chef Marco D. Santos"}
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80 hover:border-primary/30 transition-colors">
+                      <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Department:</span>
                         <span className="font-semibold text-foreground">
                           {employeeInfo?.department || "Kitchen / Culinary"}
@@ -623,8 +538,29 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
             </div>
             </CardContent>
           </Card>
-          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+          <Card className="border-border/70 shadow-xs">
             <CardContent className="p-6">
+              {/* TRY: roster header + top-right records button — remove block if not applicable */}
+              <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
+                <div>
+                  <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
+                    <Calendar className="h-4 w-4 text-primary" /> Weekly Shift Schedule &amp; Roster
+                  </h2>
+                </div>
+                <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                  <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary text-xs font-medium px-2.5 py-1">
+                    This Week
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRecordsModalOpen(true)}
+                    className="gap-1.5 shadow-xs text-xs cursor-pointer"
+                  >
+                    <FileText className="h-4 w-4 text-primary" /> View Records
+                  </Button>
+                </div>
+              </div>
               {scheduleLoading ? (
                 <StatCardsSkeleton count={4} />
               ) : (
@@ -638,7 +574,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                     return (
                       <div
                         key={s.day}
-                        className={`group relative flex flex-col items-center text-center justify-between p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md min-h-[260px] bg-gradient-to-b ${visual.themeAccent} bg-card ${visual.themeBorder} ${
+                        className={`group relative flex flex-col items-center text-center justify-between p-4 rounded-2xl border transition-all duration-200 shadow-xs min-h-[260px] bg-gradient-to-b ${visual.themeAccent} bg-card ${visual.themeBorder} ${
                           isToday ? "ring-2 ring-primary/40 shadow-sm" : ""
                         }`}
                       >
@@ -699,179 +635,9 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
           </Card>
         </TabsContent>
 
-        <TabsContent value="dtr" className="mt-4 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-              <Clock className="h-4 w-4 text-primary" /> Attendance Logs &amp; Daily Time Record (DTR)
-            </h2>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button
-                size="sm"
-                onClick={() => setCorrectionModalOpen(true)}
-                className="gap-1.5 text-xs shadow-xs cursor-pointer"
-              >
-                <Plus className="h-4 w-4" /> File DTR Correction
-              </Button>
-            </div>
-          </div>
-
-          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
-            <CardContent className="p-6">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-                  <Calendar className="h-4 w-4 text-primary" /> Daily Time Record (DTR) History
-                </h2>
-                <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                  <div className="relative w-56">
-                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={dtrSearch}
-                      onChange={(e) => setDtrSearch(e.target.value)}
-                      placeholder="Search DTR records…"
-                      className="pl-8"
-                    />
-                  </div>
-                </div>
-              </div>
-              <ListBody className="mt-4">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[24%]">Date</TableHead>
-                      <TableHead className="w-[18%]">Time In</TableHead>
-                      <TableHead className="w-[18%]">Time Out</TableHead>
-                      <TableHead className="w-[22%]">Status &amp; Remark</TableHead>
-                      <TableHead className="w-[18%] text-right">Hours Worked</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dtrPage.pageItems.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5}>
-                          <ListEmptyState placeholder="Search DTR records…" subject="DTR records" />
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      dtrPage.pageItems.map((h: any, i: number) => (
-                        <TableRow key={i}>
-                          <TableCell className="font-medium text-xs text-foreground">{h.date}</TableCell>
-                          <TableCell className="text-xs font-mono">{h.timeIn}</TableCell>
-                          <TableCell className="text-xs font-mono">{h.timeOut}</TableCell>
-                          <TableCell>
-                            <EssStatusBadge status={h.status} />
-                          </TableCell>
-                          <TableCell className="text-right text-xs font-semibold font-mono text-foreground">
-                            {h.workedHours} hrs
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </ListBody>
-              <div className="shrink-0 border-t border-border/60 pt-3">
-                <TablePagination
-                  page={dtrPage.page}
-                  pageCount={dtrPage.pageCount}
-                  from={dtrPage.from}
-                  to={dtrPage.to}
-                  total={dtrPage.total}
-                  label="records"
-                  showRangeLabel={false}
-                  onPageChange={dtrPage.setPage}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
-            <CardContent className="p-6">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-                  <FileEdit className="h-4 w-4 text-primary" /> My Attendance Correction Requests
-                </h2>
-                <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                  <div className="relative w-56">
-                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      placeholder="Search requests…"
-                      value={attSearch}
-                      onChange={(e) => setAttSearch(e.target.value)}
-                      className="pl-8"
-                    />
-                  </div>
-                  <Select value={attSort} onValueChange={setAttSort}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="date-desc">Newest first</SelectItem>
-                      <SelectItem value="date-asc">Oldest first</SelectItem>
-                      <SelectItem value="status">Status</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <ListBody className="mt-4">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Request ID</TableHead>
-                  <TableHead>Date Filed</TableHead>
-                  <TableHead>Correction Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {attPage.pageItems.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5}>
-                      <ListEmptyState placeholder="Search requests…" subject="correction requests" />
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  attPage.pageItems.map((r, idx) => (
-                    <TableRow
-                      key={idx}
-                      className="cursor-pointer hover:bg-muted/50 transition-colors"
-                      onClick={() => handleRowClick(r, "Attendance")}
-                    >
-                      <TableCell className="text-xs font-mono font-medium text-foreground">{r.id}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{r.date}</TableCell>
-                      <TableCell className="text-xs font-medium">{r.type}</TableCell>
-                      <TableCell>
-                        <EssStatusBadge status={r.status} />
-                      </TableCell>
-                      <TableCell className="text-right py-1">
-                        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-primary cursor-pointer">
-                          Timeline →
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-              </ListBody>
-              <div className="shrink-0 border-t border-border/60 pt-3">
-                <TablePagination
-                  page={attPage.page}
-                  pageCount={attPage.pageCount}
-                  from={attPage.from}
-                  to={attPage.to}
-                  total={attPage.total}
-                  label="requests"
-                  showRangeLabel={false}
-                  onPageChange={attPage.setPage}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         <TabsContent value="leave" className="mt-4 space-y-4">
-          <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+          <Card className="border-border/70 shadow-xs">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
@@ -900,43 +666,48 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Request ID</TableHead>
                       <TableHead>Leave Type</TableHead>
+                      <TableHead>Availability</TableHead>
                       <TableHead>Effective Dates</TableHead>
                       <TableHead>Reason / Details</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {leavePage.pageItems.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6}>
+                        <TableCell colSpan={5}>
                           <ListEmptyState placeholder="Search leave…" subject="leave requests" />
                         </TableCell>
                       </TableRow>
                     ) : (
                       leavePage.pageItems.map((item: any, idx: number) => (
-                        <TableRow
-                          key={idx}
-                          className="cursor-pointer hover:bg-muted/50 transition-colors"
-                          onClick={() => handleRowClick(item, "Leave")}
-                        >
-                          <TableCell className="text-xs font-mono font-medium text-foreground">
-                            {item.request_code || item.id}
+                        <TableRow key={idx}>
+                          <TableCell>
+                            {(() => {
+                              const { name, days } = splitLeaveType(item.request_type || item.type);
+                              return (
+                                <>
+                                  <p className="text-xs font-semibold">{name}</p>
+                                  {days != null && (
+                                    <p className="text-[11px] text-muted-foreground">{days}-day request</p>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </TableCell>
-                          <TableCell className="text-xs font-semibold">{item.request_type || item.type}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {(() => {
+                              const bal = balanceForLeaveType(item.request_type || item.type);
+                              return bal ? `${bal.available}/${bal.total} days left` : "—";
+                            })()}
+                          </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
                             {item.date_from || item.dateFrom} {item.date_to && item.date_to !== item.date_from ? `to ${item.date_to}` : ""}
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{item.details || item.reason}</TableCell>
                           <TableCell>
                             <EssStatusBadge status={item.status} />
-                          </TableCell>
-                          <TableCell className="text-right py-1">
-                            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-primary cursor-pointer">
-                              Timeline →
-                            </Button>
                           </TableCell>
                         </TableRow>
                       ))
@@ -972,21 +743,20 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
           loadData();
         }}
       />
-      <DtrCorrectionModal
-        open={correctionModalOpen}
-        onOpenChange={setCorrectionModalOpen}
-        onSubmitCorrection={handleCorrectionSubmit}
-      />
       <ShiftSwapModal
         open={swapModalOpen}
         onOpenChange={setSwapModalOpen}
         onSubmitSwap={() => loadData()}
       />
-      <RequestTimelineModal
-        open={timelineOpen}
-        onOpenChange={setTimelineOpen}
-        request={selectedRequest}
+      {/* TRY: records dialog — remove block if not applicable */}
+      <ScheduleRecordsModal
+        open={recordsModalOpen}
+        onOpenChange={setRecordsModalOpen}
+        dtrRecords={dtrRecords}
       />
     </div>
   );
 }
+
+
+

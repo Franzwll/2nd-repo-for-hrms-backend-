@@ -67,7 +67,6 @@ function EmployeeDashboard() {
   const firstName = employeeName.split(" ")[0];
   const position = overview?.employee?.position || (user?.department_name ? `${user.department_name} Staff` : "Staff");
   const department = user?.department_name || overview?.employee?.department || "General";
-  const employmentType = overview?.employee?.employment_type || "Probationary";
 
   useEffect(() => {
     // 1. Fetch ESS Overview
@@ -136,7 +135,6 @@ function EmployeeDashboard() {
 
   const availableLeaves = overview?.monthly_attendance?.total_leave_available ?? (overview?.leave_balances?.reduce((acc, b) => acc + b.available, 0) || 15);
   const netPay = overview?.payroll_summary?.estimated_net ?? 28080;
-  const nextPayoutDate = overview?.payroll_summary?.next_payout ?? "August 30, 2026";
   const lmsDone = overview?.performance_summary?.lms_completed ?? 4;
   const lmsTotal = overview?.performance_summary?.lms_total ?? 4;
 
@@ -202,7 +200,6 @@ function EmployeeDashboard() {
         <StatCard
           label="Leave Balance"
           value={`${availableLeaves} days`}
-          hint="Available paid leave credits"
           icon={Clock}
           tone="primary"
           to="/employee/ess?category=Attendance"
@@ -210,7 +207,6 @@ function EmployeeDashboard() {
         <StatCard
           label="Take-Home Pay"
           value={`₱${netPay.toLocaleString()}`}
-          hint={`Next payout ${nextPayoutDate}`}
           icon={FileText}
           tone="success"
           to="/employee/ess?category=Payroll"
@@ -218,12 +214,11 @@ function EmployeeDashboard() {
         <StatCard
           label="LMS Training"
           value={`${lmsDone}/${lmsTotal}`}
-          hint={`${overview?.performance_summary?.competency_level ?? "Proficient"} competency`}
           icon={TrendingUp}
           tone="primary"
           to="/employee/ess?category=Performance"
         />
-        <StatCard label="Position" value={position} hint={employmentType} icon={ClipboardCheck} tone="gold" to="/employee/ess" />
+        <StatCard label="Position" value={position} icon={ClipboardCheck} tone="gold" to="/employee/ess" />
         </div>
       )}
 

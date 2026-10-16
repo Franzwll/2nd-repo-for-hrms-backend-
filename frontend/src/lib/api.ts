@@ -314,7 +314,6 @@ export interface ApiInterview {
   applicant_id: number;
   scheduled_date: string;
   scheduled_time: string;
-  scheduled_end_time: string | null;
   mode: "On-site" | "Virtual";
   facility_id: number | null;
   facility_status:
@@ -337,7 +336,6 @@ export interface ApiInterview {
   zoom_join_url: string | null;
   zoom_continue_url: string | null;
   zoom_password: string | null;
-  interview_notes?: string | null;
   status: "Scheduled" | "Completed" | "No Show";
   applicant?: {
     applicant_id: number;
@@ -817,29 +815,6 @@ export const interviewsApi = {
    *  automatically emails the applicant their confirmed schedule. */
   facilityApprove: (id: number | string) =>
     request<ApiInterview>(`/interviews/${id}/facility-approve`, { method: "POST" }),
-  /** Mint a Meeting SDK signature to embed the Zoom meeting in the HRMS popup.
-   *  Rejects (428/501) when the interview has no meeting yet or SDK keys are
-   *  missing — the caller falls back to local preview + join-link button. */
-  zoomSignature: (id: number | string, role: 0 | 1 = 0) =>
-    request<{
-      meeting_number: string;
-      password: string | null;
-      join_url: string | null;
-      sdk_key: string;
-      signature: string;
-      role: number;
-      user_name: string;
-    }>(`/interviews/${id}/zoom-signature`, {
-      method: "POST",
-      body: JSON.stringify({ role }),
-    }),
-
-  /** Save interviewer notes during/after the interview. */
-  saveNotes: (id: number | string, notes: string) =>
-    request<{ message: string; interview_notes: string | null }>(`/interviews/${id}/notes`, {
-      method: "PATCH",
-      body: JSON.stringify({ notes }),
-    }),
 };
 
 /* ========================================================================= */
@@ -1020,11 +995,6 @@ export interface ApiJobPost {
   department_id: number;
   department?: string;
   position_id: number | null;
-  /**
-   * Saved builder canvas arrangement (ordered block ids). null means the post
-   * was built before block order was persisted, so the default order applies.
-   */
-  blocks: string[] | null;
   employment_type: "Full-time" | "Part-time" | "Contract" | "Seasonal";
   schedule: string | null;
   salary_min: number | null;
@@ -1041,9 +1011,6 @@ export interface ApiJobPost {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
-  additional?: string[];
-  instructions?: string | null;
-  about?: string | null;
   platforms?: string[];
   picture: string | null;
   picture_url: string | null;
@@ -1074,8 +1041,6 @@ export interface JobDraftPayload {
   vacancies?: number | undefined;
   experience_level?: string | undefined;
   education_level?: string | undefined;
-  blocks?: string[] | undefined;
-  notes?: Record<string, string> | undefined;
 }
 
 export interface JobDraftResult {
@@ -1083,7 +1048,6 @@ export interface JobDraftResult {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
-  additional?: string[];
   instructions: string;
   about: string;
 }
@@ -2255,9 +2219,6 @@ export interface ApiLandingJob {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
-  additional?: string[];
-  instructions?: string | null;
-  about?: string | null;
   benefits: string[];
   picture?: string | null;
   picture_url?: string | null;
@@ -2484,9 +2445,7 @@ export interface ApiEssOverview {
   };
   monthly_attendance?: {
     present: number;
-    late: number;
-    absent: number;
-    overtime_hours: number;
+    leave: number;
     total_leave_available: number;
   };
   payroll_summary?: {
@@ -2539,6 +2498,36 @@ export interface ApiEssRequestItem {
   note?: string;
   returnedCount?: number;
   attachment_path?: string | null;
+  /** Files attached to the request — employee uploads and HR fulfilment. */
+  attachments?: ApiEssRequestAttachment[];
+  /** True once HR has attached the requested file. */
+  has_fulfillment?: boolean;
+  /** Filed -> Received -> Fulfilled timeline. */
+  timeline?: { status: string; note: string | null; at: string | null }[];
+}
+
+export interface ApiEssRequestAttachment {
+  id: number;
+  direction: "employee" | "hr";
+  original_name: string | null;
+  mime_type: string | null;
+  file_size_bytes: number | null;
+  has_file: boolean;
+}
+
+export interface ApiDocumentRequest extends ApiEssRequestItem {
+  employeeDbId?: number;
+  has_fulfillment: boolean;
+  attachments: ApiEssRequestAttachment[];
+  archive_options?: {
+    id: number;
+    code: string;
+    title: string;
+    category: string;
+    status: string;
+    document_date: string | null;
+    file_path: string | null;
+  }[];
 }
 
 export interface ApiEssCategory {
@@ -2559,9 +2548,7 @@ export const essApi = {
     request<{
       summary: {
         present_days: number;
-        late_days: number;
-        absent_days: number;
-        overtime_hours: number;
+        leave_days: number;
         average_hours: number;
       };
       records: {
@@ -2572,7 +2559,6 @@ export const essApi = {
         timeIn: string;
         timeOut: string;
         workedHours: number;
-        overtimeHours: number;
         status: string;
         device: string;
         remarks: string;
@@ -2718,6 +2704,20 @@ export const essApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  /** Same-origin URL to stream a file attached to the employee's own request
+   *  (their upload or HR's fulfilment) with ?token= auth for browser opens. */
+  /** Same-origin URL to stream the employee's own document file
+   *  with ?token= auth for browser opens. */
+  documentFileUrl: (documentId: string | number) => {
+    const token = getToken();
+    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `/api/v1/ess/my-documents/${documentId}/file${qs}`;
+  },
+  requestAttachmentUrl: (requestId: string | number, attachmentId: string | number) => {
+    const token = getToken();
+    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `/api/v1/ess/requests/${requestId}/attachments/${attachmentId}/file${qs}`;
+  },
   clock: (action: "clock_in" | "clock_out") =>
     request<{ message: string; record: any }>("/ess/clock", {
       method: "POST",
@@ -2784,6 +2784,40 @@ export const essApi = {
       method: "PUT",
     }),
   auditLogs: () => request<{ logs: any[] }>("/ess/admin/audit-logs"),
+};
+
+/* ========================================================================= */
+/* Employee Records Management (ERM) — ESS document-request fulfilment loop  */
+/* ========================================================================= */
+
+export const ermApi = {
+  /** Document requests filed by employees in ESS (hr_document category). */
+  documentRequests: (params?: Record<string, any>) => {
+    const qs = params ? new URLSearchParams(params).toString() : "";
+    return request<{
+      counts: { total: number; pending: number; fulfilled: number };
+      requests: ApiDocumentRequest[];
+    }>(`/erm/document-requests${qs ? `?${qs}` : ""}`);
+  },
+  documentRequest: (id: string | number) =>
+    request<{ request: ApiDocumentRequest }>(`/erm/document-requests/${id}`),
+  /** Fulfil a request: upload a fresh file and/or attach an archived
+   *  document (Team 8 seam) by id. */
+  fulfill: (id: string | number, data: { file?: File; document_id?: number; note?: string }) => {
+    const form = new FormData();
+    if (data.file) form.append("file", data.file);
+    if (data.document_id) form.append("document_id", String(data.document_id));
+    if (data.note) form.append("note", data.note);
+    return request<{ message: string; request: ApiDocumentRequest }>(
+      `/erm/document-requests/${id}/fulfill`,
+      { method: "POST", body: form },
+    );
+  },
+  attachmentFileUrl: (requestId: string | number, attachmentId: string | number) => {
+    const token = getToken();
+    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `/api/v1/erm/document-requests/${requestId}/attachments/${attachmentId}/file${qs}`;
+  },
 };
 
 export interface ApiChatbotSource {
