@@ -375,7 +375,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
             className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
             value="leave"
           >
-            <Palmtree className="h-3.5 w-3.5" /> Leave &amp; Balances
+            <Palmtree className="h-3.5 w-3.5" /> Leave
           </TabsTrigger>
         </TabsList>
 
