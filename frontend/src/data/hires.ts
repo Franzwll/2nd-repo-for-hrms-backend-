@@ -22,8 +22,8 @@ export type PendingHire = {
 };
 
 /** Hand-off for the "View Checklist" action on the New Hire Onboarding
- *  pipeline: opens the linked applicant's View profile → Requirements
- *  Checklist (with a "Back to New Hire Onboarding" action there). */
+ *  pipeline: opens the linked applicant profile Requirements Checklist
+ *  (with a "Back to New Hire Onboarding" action there). */
 export type ChecklistViewTarget = {
   /** Applicant database id — the profile to open (null when the hire has no
    *  linked applicant record). */
