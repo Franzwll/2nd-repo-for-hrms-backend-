@@ -397,10 +397,10 @@ export function EssPerformanceTab() {
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <h4 className="text-sm font-bold font-display text-foreground flex items-center gap-2">
+                      <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
                         <BookOpen className="h-4 w-4 text-primary" /> Learning Materials
-                      </h4>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                      </h2>
+                      <p className="text-xs text-muted-foreground mt-1">
                         {filteredMaterials.length === courses.length
                           ? `${courses.length} assigned modules — click a card to start, continue, or view certificate.`
                           : `${filteredMaterials.length} of ${courses.length} modules — click a card to start, continue, or view certificate.`}
@@ -449,7 +449,7 @@ export function EssPerformanceTab() {
                       </button>
                     </div>
                   ) : (
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       {filteredMaterials.map((c) => {
                         const i = courses.indexOf(c);
                         const pct = courseProgress(c);
@@ -458,7 +458,7 @@ export function EssPerformanceTab() {
                         return (
                           <div
                             key={c.id}
-                            className={`group relative flex min-h-[220px] flex-col justify-between rounded-xl bg-gradient-to-br ${courseTheme(i)} p-4 text-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md ${urgent ? "ring-2 ring-red-500/80" : ""}`}
+                            className={`group relative flex min-h-[260px] flex-col justify-between rounded-xl bg-gradient-to-br ${courseTheme(i)} p-5 text-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md ${urgent ? "ring-2 ring-red-500/80" : ""}`}
                           >
                             {urgent && (
                               <span title={urgent} aria-label={`Urgent: ${urgent}`} className="absolute -right-1.5 -top-1.5 z-10 h-4 w-4 rounded-full border-2 border-white/90 bg-red-600 shadow-sm" />
@@ -475,11 +475,11 @@ export function EssPerformanceTab() {
                               </span>
                             </div>
                             <div className="relative">
-                              <p className="text-lg font-extrabold leading-tight tracking-tight">{c.title}</p>
-                              <p className="mt-1 text-[11px] font-medium text-white/75">{c.category}</p>
+                              <p className="text-xl font-extrabold leading-tight tracking-tight">{c.title}</p>
+                              <p className="mt-1 text-xs font-medium text-white/75">{c.category}</p>
                             </div>
                             <div className="relative space-y-1.5">
-                              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-white/90">
+                              <div className="flex items-center gap-1.5 text-xs font-semibold text-white/90">
                                 <TrendingUp className="h-3.5 w-3.5" />
                                 <span>{pct}% complete</span>
                                 <span className="ml-auto font-mono opacity-80">{c.score}</span>
@@ -491,7 +491,7 @@ export function EssPerformanceTab() {
                                 type="button"
                                 disabled={startingCourseId === c.id}
                                 onClick={() => (isDone ? handleOpenCert(c) : handleStartCourse(c))}
-                                className="mt-1 w-full rounded-lg bg-white/15 py-1.5 text-[11px] font-bold backdrop-blur-xs transition-colors hover:bg-white/25 disabled:opacity-50 cursor-pointer"
+                                className="mt-1 w-full rounded-lg bg-white/15 py-2 text-xs font-bold backdrop-blur-xs transition-colors hover:bg-white/25 disabled:opacity-50 cursor-pointer"
                               >
                                 {startingCourseId === c.id ? "Saving…" : isDone ? "View Certificate" : String(c.status) === "Assigned" ? "Start Course →" : "Continue →"}
                               </button>
@@ -508,10 +508,10 @@ export function EssPerformanceTab() {
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <h4 className="text-sm font-bold font-display text-foreground flex items-center gap-2">
+                      <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
                         <Award className="h-4 w-4 text-primary" /> Assessment
-                      </h4>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                      </h2>
+                      <p className="text-xs text-muted-foreground mt-1">
                         {perfData.averageScore == null
                           ? "Awaiting assessment data"
                           : perfData.averageScore >= 85
@@ -568,7 +568,7 @@ export function EssPerformanceTab() {
                       </button>
                     </div>
                   ) : (
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       {filteredAssessments.map((c) => {
                         const i = courses.indexOf(c);
                         const pct = courseProgress(c);
@@ -577,7 +577,7 @@ export function EssPerformanceTab() {
                         return (
                           <div
                             key={c.id}
-                            className={`group relative flex min-h-[220px] flex-col justify-between rounded-xl bg-gradient-to-br ${courseTheme(i)} p-4 text-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md ${urgent ? "ring-2 ring-red-500/80" : ""}`}
+                            className={`group relative flex min-h-[260px] flex-col justify-between rounded-xl bg-gradient-to-br ${courseTheme(i)} p-5 text-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md ${urgent ? "ring-2 ring-red-500/80" : ""}`}
                           >
                             {urgent && (
                               <span title={urgent} aria-label={`Urgent: ${urgent}`} className="absolute -right-1.5 -top-1.5 z-10 h-4 w-4 rounded-full border-2 border-white/90 bg-red-600 shadow-sm" />
@@ -593,11 +593,11 @@ export function EssPerformanceTab() {
                               </span>
                             </div>
                             <div className="relative">
-                              <p className="text-lg font-extrabold leading-tight tracking-tight">{c.title}</p>
-                              <p className="mt-1 text-[11px] font-medium text-white/75">{c.category}{c.completedDate && c.completedDate !== "—" ? ` · ${c.completedDate}` : ""}</p>
+                              <p className="text-xl font-extrabold leading-tight tracking-tight">{c.title}</p>
+                              <p className="mt-1 text-xs font-medium text-white/75">{c.category}{c.completedDate && c.completedDate !== "—" ? ` · ${c.completedDate}` : ""}</p>
                             </div>
                             <div className="relative space-y-1.5">
-                              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-white/90">
+                              <div className="flex items-center gap-1.5 text-xs font-semibold text-white/90">
                                 <Award className="h-3.5 w-3.5" />
                                 <span>{isDone ? c.score : `${pct}% complete`}</span>
                               </div>
@@ -608,7 +608,7 @@ export function EssPerformanceTab() {
                                 type="button"
                                 disabled={startingCourseId === c.id}
                                 onClick={() => (isDone ? handleOpenCert(c) : handleStartCourse(c))}
-                                className="mt-1 w-full rounded-lg bg-white/15 py-1.5 text-[11px] font-bold backdrop-blur-xs transition-colors hover:bg-white/25 disabled:opacity-50 cursor-pointer"
+                                className="mt-1 w-full rounded-lg bg-white/15 py-2 text-xs font-bold backdrop-blur-xs transition-colors hover:bg-white/25 disabled:opacity-50 cursor-pointer"
                               >
                                 {startingCourseId === c.id ? "Saving…" : isDone ? "View Result" : "Take Assessment →"}
                               </button>
