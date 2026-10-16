@@ -1,19 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
-import { Award, BookOpen, Building, CheckCircle2, TrendingUp, Sparkles, Send, Clock, LayoutDashboard, ScrollText, Menu, Search } from "lucide-react";
+import { Award, BookOpen, Building, CheckCircle2, TrendingUp, Sparkles, Send, Clock, LayoutDashboard, Menu, Search } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { myPerformance, myLearningCourses, myProfile } from "@/data/ess";
 import { LmsCertificateModal } from "@/components/modules/ess/modals/LmsCertificateModal";
@@ -79,7 +71,7 @@ export function EssPerformanceTab() {
   const [promotionModalOpen, setPromotionModalOpen] = useState(false);
   const [activePromotionRequest, setActivePromotionRequest] = useState<any | null>(null);
   // Tabbed bottom section — promotion card above stays in place
-  const [activeTab, setActiveTab] = useState<"overview" | "materials" | "assessment" | "audit">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "materials" | "assessment" | "promotion">("overview");
   const [perfAudit, setPerfAudit] = useState<any[]>([]);
   const [startingCourseId, setStartingCourseId] = useState<string | null>(null);
   // Top-right filtering for Materials + Assessment cards
@@ -297,7 +289,7 @@ export function EssPerformanceTab() {
         </CardContent>
       </Card>
 
-      {/* Tab buttons — overview | materials | assessment | audit logs */}
+      {/* Tab buttons — overview | materials | assessment | promotion */}
       <div className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
         <button
           type="button"
@@ -346,17 +338,17 @@ export function EssPerformanceTab() {
         </button>
         <button
           type="button"
-          onClick={() => setActiveTab("audit")}
+          onClick={() => setActiveTab("promotion")}
           className={`flex items-center gap-1.5 rounded-lg border border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === "audit"
+            activeTab === "promotion"
               ? "bg-primary text-primary-foreground border-primary shadow-sm font-bold"
               : "hover:border-primary/40 hover:shadow-md"
           }`}
         >
-          <ScrollText className="h-3.5 w-3.5" />
-          <span>Audit Logs</span>
+          <Send className="h-3.5 w-3.5" />
+          <span>Apply for Promotion</span>
           {perfAudit.length > 0 && (
-            <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold leading-none ${activeTab === "audit" ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground border border-border/60"}`}>
+            <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold leading-none ${activeTab === "promotion" ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground border border-border/60"}`}>
               {perfAudit.length}
             </span>
           )}
@@ -712,45 +704,59 @@ export function EssPerformanceTab() {
                 </div>
               )}
 
-              {activeTab === "audit" && (
+              {activeTab === "promotion" && (
                 <div className="space-y-3">
-                  <div>
-                    <h4 className="text-sm font-bold font-display text-foreground flex items-center gap-2">
-                      <ScrollText className="h-4 w-4 text-primary" /> Audit Logs
-                    </h4>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">Performance, career and learning requests trail.</p>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-bold font-display text-foreground flex items-center gap-2">
+                        <Send className="h-4 w-4 text-primary" /> Apply for Promotion
+                      </h4>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">File your promotion request and track its review status.</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="gap-1.5 shrink-0 shadow-sm cursor-pointer"
+                      onClick={() => setPromotionModalOpen(true)}
+                    >
+                      <Send className="h-3.5 w-3.5" /> Apply for Promotion
+                    </Button>
                   </div>
-                  <div className="rounded-lg border border-border/70 overflow-hidden bg-background">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Request ID</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {perfAudit.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={4} className="h-24 text-center text-muted-foreground text-xs">
-                              No performance audit trail yet — promotion and training requests will appear here.
-                            </TableCell>
-                          </TableRow>
+                  <div className="grid gap-3 sm:grid-cols-2 text-xs">
+                    <div className="rounded-lg border border-border/70 bg-background p-3">
+                      <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Eligibility</p>
+                      <p className="mt-1 font-bold text-foreground text-sm">
+                        {perfData.averageScore == null
+                          ? "Awaiting assessment data"
+                          : perfData.averageScore >= 85
+                            ? "Qualified (Score ≥ 85%)"
+                            : `Developing (Score ${perfData.averageScore}%)`}
+                      </p>
+                      <p className="text-muted-foreground mt-0.5">{perfData.completedCount} Modules Completed</p>
+                    </div>
+                    <div className="rounded-lg border border-border/70 bg-background p-3">
+                      <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Active Request</p>
+                      <div className="mt-1">
+                        {activePromotionRequest ? (
+                          <Badge variant="outline" className="text-[10px] font-semibold">
+                            {activePromotionRequest.status} ({activePromotionRequest.id})
+                          </Badge>
                         ) : (
-                          perfAudit.map((r, idx) => (
-                            <TableRow key={idx}>
-                              <TableCell className="text-xs font-mono font-medium text-foreground">{r.id}</TableCell>
-                              <TableCell className="text-xs font-medium">{r.type}</TableCell>
-                              <TableCell className="text-xs text-muted-foreground">{r.date}</TableCell>
-                              <TableCell>
-                                <EssStatusBadge status={r.status} />
-                              </TableCell>
-                            </TableRow>
-                          ))
+                          <span className="text-muted-foreground font-medium text-sm">None pending</span>
                         )}
-                      </TableBody>
-                    </Table>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/70 bg-background p-3 text-xs">
+                    <p className="font-semibold text-foreground">Request history</p>
+                    <div className="mt-2 space-y-1.5">
+                      {perfAudit.map((r, idx) => (
+                        <div key={idx} className="flex items-center justify-between gap-2">
+                          <span className="truncate text-muted-foreground">{r.type} · {r.date}</span>
+                          <EssStatusBadge status={r.status} />
+                        </div>
+                      ))}
+                      {perfAudit.length === 0 && <p className="text-muted-foreground">No promotion requests filed yet.</p>}
+                    </div>
                   </div>
                 </div>
               )}
