@@ -660,7 +660,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Request ID</TableHead>
                       <TableHead>Leave Type</TableHead>
                       <TableHead>Effective Dates</TableHead>
                       <TableHead>Reason / Details</TableHead>
@@ -671,7 +670,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                   <TableBody>
                     {leavePage.pageItems.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6}>
+                        <TableCell colSpan={5}>
                           <ListEmptyState placeholder="Search leaveâ€¦" subject="leave requests" />
                         </TableCell>
                       </TableRow>
@@ -682,9 +681,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                           className="cursor-pointer transition-colors"
                           onClick={() => handleRowClick(item, "Leave")}
                         >
-                          <TableCell className="text-xs font-mono font-medium text-foreground">
-                            {item.request_code || item.id}
-                          </TableCell>
                           <TableCell className="text-xs font-semibold">{item.request_type || item.type}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">
                             {item.date_from || item.dateFrom} {item.date_to && item.date_to !== item.date_from ? `to ${item.date_to}` : ""}
