@@ -1,6 +1,6 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, FileText } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { PublicShell } from "@/components/public/PublicShell";
@@ -72,11 +72,16 @@ function JobDetail() {
   const [extracting, setExtracting] = useState(false);
   /**
    * Single smart upload box: resume + supporting docs in any order.
-   * Each file is recognized by content (rule + filename + content check);
-   * the highest Resume-score file becomes the resume pick, the rest are
-   * supporting docs. First upload is expected to be the resume.
+   * Every file is auto-recognized by content (rule + filename + content
+   * check); the highest Resume-score file becomes the resume pick, the rest
+   * are supporting docs. Details are auto-filled once, from the FIRST file
+   * actually recognized as a resume.
    */
   const [unifiedDocs, setUnifiedDocs] = useState<UnifiedDoc[]>([]);
+  /** True while any uploaded file is still being auto-recognized. */
+  const recognizingDocs = unifiedDocs.some(
+    (d) => d.status === "pending" || d.status === "classifying",
+  );
   const resumePick = pickResumeDoc(unifiedDocs);
   const resumeFile = resumePick?.file ?? null;
   const verifyDocs = unifiedDocs
@@ -99,8 +104,7 @@ function JobDetail() {
     return digits;
   };
 
-  const handleResumeExtract = async (file: File | null) => {
-    if (!file) return;
+  const handleResumeExtract = async (file: File) => {
     // Validate type/size before extraction — same allow-list as the unified uploader
     const okType = /\.(pdf|docx?|png|jpe?g|webp|heic|heif|bmp|gif|tiff?|avif|svg|txt)$/i.test(file.name);
     if (!okType) {
@@ -120,19 +124,13 @@ function JobDetail() {
       const pi = res.personal_information ?? {};
       const filled: string[] = [];
       // Only auto-fill the 4 fields: full name, email, phone, location(address)
-      // Apply same sanitization/validation as ApplicantManagement add applicant step 2
-      if (pi.name?.trim() && isValidName(sanitizeName(pi.name.trim()))) {
-        setName(sanitizeName(pi.name.trim()));
-        filled.push("Full Name");
-      } else if (pi.name?.trim()) {
+      // Apply same sanitization as ApplicantManagement add applicant step 2.
+      // Invalid values are still filled so the submit-time validators flag them.
+      if (pi.name?.trim()) {
         setName(sanitizeName(pi.name.trim()));
         filled.push("Full Name");
       }
-      if (pi.email?.trim() && isValidEmail(pi.email.trim())) {
-        setEmail(pi.email.trim());
-        filled.push("Email");
-      } else if (pi.email?.trim()) {
-        // still fill but will be flagged on submit
+      if (pi.email?.trim()) {
         setEmail(pi.email.trim());
         filled.push("Email");
       }
@@ -154,18 +152,6 @@ function JobDetail() {
       setExtracting(false);
     }
   };
-
-  // Resume pick preview URL (object URL per picked file, revoked on change)
-  const [resumePreviewUrl, setResumePreviewUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!resumeFile) {
-      setResumePreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(resumeFile);
-    setResumePreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [resumeFile]);
 
   return (
     <PublicShell>
@@ -455,43 +441,10 @@ function JobDetail() {
                         <UnifiedDocumentsUploader
                           docs={unifiedDocs}
                           onChange={setUnifiedDocs}
-                          onResumePick={(file) => handleResumeExtract(file)}
+                          onResumeRecognized={(file) => void handleResumeExtract(file)}
                           title="Drop resume + COE + certificates here"
-                          hint="Any order, no tags needed — first file is expected to be the resume, but every file is recognized by content. Press Recognize files, then the resume auto-fills your details."
+                          hint="Any order — every file is auto-recognized. Your name, email, phone and address are filled from the first recognized resume."
                         />
-                        {/* Resume pick preview — opens in new tab / downloads */}
-                        {resumeFile && resumePreviewUrl && (
-                          <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2">
-                            <div className="flex items-center gap-2 overflow-hidden">
-                              <FileText className="h-4 w-4 shrink-0 text-gold" />
-                              <a
-                                href={resumePreviewUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                download={resumeFile.name}
-                                className="truncate text-xs font-medium text-primary underline underline-offset-2 hover:text-primary/80"
-                                title="Recognized resume — click to open in new tab or download"
-                              >
-                                {resumeFile.name}
-                              </a>
-                              <span className="shrink-0 text-[11px] text-muted-foreground">
-                                {(resumeFile.size / 1024).toFixed(0)} KB
-                              </span>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 shrink-0 text-xs text-muted-foreground"
-                              onClick={() => {
-                                const pick = pickResumeDoc(unifiedDocs);
-                                if (pick) setUnifiedDocs(unifiedDocs.filter((d) => d.id !== pick.id));
-                              }}
-                            >
-                              Remove
-                            </Button>
-                          </div>
-                        )}
                       </div>
 
                       {/* Recognized supporting docs ride along automatically —
@@ -499,8 +452,18 @@ function JobDetail() {
                           verification_docs. No manual tagging needed. */}
                     </div>
 
-                    <Button type="submit" className="mt-5 w-full" disabled={applying || extracting}>
-                      {extracting ? "Extracting…" : applying ? "Submitting…" : "Submit Application"}
+                    <Button
+                      type="submit"
+                      className="mt-5 w-full"
+                      disabled={applying || extracting || recognizingDocs}
+                    >
+                      {extracting
+                        ? "Extracting…"
+                        : recognizingDocs
+                          ? "Recognizing files…"
+                          : applying
+                            ? "Submitting…"
+                            : "Submit Application"}
                     </Button>
                     <p className="mt-3 text-xs text-muted-foreground">
                       By submitting, you consent to the processing of your data for recruitment
