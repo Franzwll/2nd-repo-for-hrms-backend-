@@ -659,17 +659,15 @@ export function EssPerformanceTab() {
               )}
 
               {activeTab === "promotion" && (
-                <div className="rounded-lg border border-border/70 bg-background p-4">
-                  <PromotionRequestForm
-                    competencyScore={
-                      perfData.averageScore != null ? `${perfData.averageScore} / 100` : undefined
-                    }
-                    lmsCompletedCount={perfData.completedCount}
-                    onSubmitSuccess={(req) => {
-                      if (req) setActivePromotionRequest(req);
-                    }}
-                  />
-                </div>
+                <PromotionRequestForm
+                  competencyScore={
+                    perfData.averageScore != null ? `${perfData.averageScore} / 100` : undefined
+                  }
+                  lmsCompletedCount={perfData.completedCount}
+                  onSubmitSuccess={(req) => {
+                    if (req) setActivePromotionRequest(req);
+                  }}
+                />
               )}
             </div>
         </CardContent>
