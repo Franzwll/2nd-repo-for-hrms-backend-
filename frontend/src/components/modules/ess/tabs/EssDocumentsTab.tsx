@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
-import { EssStatusBadge, docCategoryTint } from "@/components/modules/ess/shared/EssStatusBadge";
+import { EssStatusBadge, docCategoryTint, ON_FILE_STATUSES } from "@/components/modules/ess/shared/EssStatusBadge";
 import { ReportMenu } from "@/components/ui/report-menu";
 import { myEmployeeDocuments } from "@/data/ess";
 import { DocumentRequestModal } from "@/components/modules/ess/modals/DocumentRequestModal";
@@ -179,7 +179,7 @@ export function EssDocumentsTab() {
               </div>
             </div>
             <p className="mt-1 font-bold font-display text-emerald-600 dark:text-emerald-400">
-              <span className="text-4xl">{documents.filter((d) => d.status === "Submitted" || d.status === "Available" || d.status === "Released").length}</span>{" "}
+              <span className="text-4xl">{documents.filter((d) => ON_FILE_STATUSES.includes(d.status)).length}</span>{" "}
               <span className="text-base">File(s)</span>
             </p>
           </CardContent>
@@ -349,6 +349,13 @@ export function EssDocumentsTab() {
                   .map((doc) => {
                     const missing = doc.status === "Missing";
                     const tint = docCategoryTint(doc.category);
+                    const expiryRaw = (doc as any).expiry;
+                    const expDate = expiryRaw && expiryRaw !== "No Expiry" ? new Date(expiryRaw) : null;
+                    const isExpiring =
+                      !missing &&
+                      expDate != null &&
+                      !isNaN(expDate.getTime()) &&
+                      Math.ceil((expDate.getTime() - Date.now()) / 86400000) <= 60;
                     return (
                       <button
                         key={doc.id}
@@ -377,10 +384,20 @@ export function EssDocumentsTab() {
                         </div>
                         <div className="mt-3">
                           <p className="text-xs font-bold text-foreground leading-snug line-clamp-2 min-h-[2rem]">{doc.title}</p>
-                          <p className="mt-0.5 text-[11px] text-muted-foreground">{doc.category}</p>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{doc.category}</span>
+                            <span className="rounded-full border border-border/60 px-2 py-0.5 font-mono text-[10px] font-medium text-muted-foreground">
+                              {String((doc as any).fileType ?? "PDF Document").split(" ")[0]}
+                            </span>
+                          </div>
                         </div>
                         <div className="mt-2 flex items-center justify-between border-t border-border/50 pt-2 text-[11px] text-muted-foreground">
-                          <span className="truncate">{doc.date}</span>
+                          <span
+                            className={`truncate ${isExpiring ? "font-semibold text-amber-600 dark:text-amber-400" : ""}`}
+                            title={isExpiring ? `Renews ${expiryRaw}` : undefined}
+                          >
+                            {isExpiring ? `Renews ${expiryRaw}` : doc.date}
+                          </span>
                           <span className="font-mono shrink-0 ml-2">{doc.size}</span>
                         </div>
                         <span className="mt-2 text-[11px] font-semibold text-primary/70">
