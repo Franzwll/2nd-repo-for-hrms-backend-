@@ -269,10 +269,7 @@ export function EssPerformanceTab() {
           <BookOpen className="h-3.5 w-3.5" />
           <span>Materials</span>
           {courses.some(isCourseUrgent) && (
-            <span className="relative flex h-2 w-2" title="Urgent module needs attention">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-red-600" />
-            </span>
+            <span className="h-2 w-2 rounded-full bg-red-600" title="Needs attention" />
           )}
           <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold leading-none ${activeTab === "materials" ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground border border-border/60"}`}>
             {courses.length}
@@ -355,10 +352,7 @@ export function EssPerformanceTab() {
                           <p className="font-bold text-foreground flex items-center gap-1.5">
                             <BookOpen className="h-3.5 w-3.5 text-primary" /> Materials
                             {courses.some(isCourseUrgent) && (
-                              <span className="relative flex h-2 w-2" title="Urgent module needs attention">
-                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-                                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-600" />
-                              </span>
+                              <span className="h-2 w-2 rounded-full bg-red-600" title="Needs attention" />
                             )}
                           </p>
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold leading-none bg-muted text-muted-foreground border border-border/60">
@@ -367,7 +361,7 @@ export function EssPerformanceTab() {
                         </div>
                         <p className="text-muted-foreground mt-1">
                           {courses.filter(isCourseUrgent).length > 0
-                            ? `${courses.filter(isCourseUrgent).length} urgent · ${perfData.completedCount} of ${perfData.totalCount} done`
+                            ? `${courses.filter(isCourseUrgent).length} due soon · ${perfData.completedCount} of ${perfData.totalCount} done`
                             : `${perfData.completedCount} of ${perfData.totalCount} completed`}
                         </p>
                         <Button size="sm" variant="outline" className="mt-2 w-full text-xs cursor-pointer" onClick={() => setActiveTab("materials")}>
@@ -413,15 +407,6 @@ export function EssPerformanceTab() {
                       </p>
                     </div>
                     <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                      {courses.some(isCourseUrgent) && (
-                        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[10px] font-bold text-red-600 dark:text-red-400">
-                          <span className="relative flex h-2 w-2">
-                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-                            <span className="relative inline-flex h-2 w-2 rounded-full bg-red-600" />
-                          </span>
-                          {courses.filter(isCourseUrgent).length} urgent
-                        </span>
-                      )}
                       <div className="relative w-44">
                         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                         <Input
@@ -440,7 +425,7 @@ export function EssPerformanceTab() {
                           <SelectItem value="Completed">Completed</SelectItem>
                           <SelectItem value="In Progress">In Progress</SelectItem>
                           <SelectItem value="Assigned">Assigned</SelectItem>
-                          <SelectItem value="urgent">Urgent only</SelectItem>
+                          <SelectItem value="urgent">Due soon</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -451,7 +436,7 @@ export function EssPerformanceTab() {
                     </div>
                   ) : filteredMaterials.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-border/70 p-8 text-center text-xs text-muted-foreground">
-                      No modules match “{materialsSearch}”{materialsStatus !== "all" ? ` with status “${materialsStatus}”` : ""}.{" "}
+                      No modules match “{materialsSearch}”{materialsStatus !== "all" ? ` with status “${materialsStatus === "urgent" ? "Due soon" : materialsStatus}”` : ""}.{" "}
                       <button
                         type="button"
                         onClick={() => {
@@ -473,21 +458,18 @@ export function EssPerformanceTab() {
                         return (
                           <div
                             key={c.id}
-                            className={`group relative flex min-h-[220px] flex-col justify-between overflow-hidden rounded-xl bg-gradient-to-br ${courseTheme(i)} p-4 text-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md ${urgent ? "ring-2 ring-red-500/80" : ""}`}
+                            className={`group relative flex min-h-[220px] flex-col justify-between rounded-xl bg-gradient-to-br ${courseTheme(i)} p-4 text-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md ${urgent ? "ring-2 ring-red-500/80" : ""}`}
                           >
                             {urgent && (
-                              <span title={urgent} aria-label={`Urgent: ${urgent}`} className="absolute left-3 top-3 z-10 flex h-3 w-3">
-                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-                                <span className="relative inline-flex h-3 w-3 rounded-full border-2 border-white/80 bg-red-600" />
-                              </span>
+                              <span title={urgent} aria-label={`Urgent: ${urgent}`} className="absolute -right-1.5 -top-1.5 z-10 h-4 w-4 rounded-full border-2 border-white/90 bg-red-600 shadow-sm" />
                             )}
                             {/* geometric overlay */}
-                            <div className="pointer-events-none absolute inset-0 opacity-25">
+                            <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl opacity-25">
                               <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full border-[10px] border-white/15" />
                               <div className="absolute right-10 top-16 h-16 w-16 rotate-45 border-[6px] border-white/10" />
                               <div className="absolute -left-6 bottom-10 h-24 w-24 rotate-12 bg-white/[0.06]" style={{ clipPath: "polygon(50% 0%, 100% 100%, 0% 100%)" }} />
                             </div>
-                            <div className={`relative flex items-start justify-between gap-2 ${urgent ? "pl-5" : ""}`}>
+                            <div className="relative flex items-start justify-between gap-2">
                               <span className="inline-flex items-center rounded-full bg-black/30 px-2 py-0.5 text-[10px] font-semibold backdrop-blur-xs">
                                 {c.status}
                               </span>
@@ -570,7 +552,7 @@ export function EssPerformanceTab() {
                           <SelectItem value="Completed">Completed</SelectItem>
                           <SelectItem value="In Progress">In Progress</SelectItem>
                           <SelectItem value="Assigned">Assigned</SelectItem>
-                          <SelectItem value="urgent">Urgent only</SelectItem>
+                          <SelectItem value="urgent">Due soon</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -581,7 +563,7 @@ export function EssPerformanceTab() {
                     </div>
                   ) : filteredAssessments.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-border/70 p-8 text-center text-xs text-muted-foreground">
-                      No assessments match “{assessmentSearch}”{assessmentStatus !== "all" ? ` with status “${assessmentStatus}”` : ""}.{" "}
+                      No assessments match “{assessmentSearch}”{assessmentStatus !== "all" ? ` with status “${assessmentStatus === "urgent" ? "Due soon" : assessmentStatus}”` : ""}.{" "}
                       <button
                         type="button"
                         onClick={() => {
@@ -603,20 +585,17 @@ export function EssPerformanceTab() {
                         return (
                           <div
                             key={c.id}
-                            className={`group relative flex min-h-[220px] flex-col justify-between overflow-hidden rounded-xl bg-gradient-to-br ${courseTheme(i)} p-4 text-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md ${urgent ? "ring-2 ring-red-500/80" : ""}`}
+                            className={`group relative flex min-h-[220px] flex-col justify-between rounded-xl bg-gradient-to-br ${courseTheme(i)} p-4 text-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md ${urgent ? "ring-2 ring-red-500/80" : ""}`}
                           >
                             {urgent && (
-                              <span title={urgent} aria-label={`Urgent: ${urgent}`} className="absolute left-3 top-3 z-10 flex h-3 w-3">
-                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-                                <span className="relative inline-flex h-3 w-3 rounded-full border-2 border-white/80 bg-red-600" />
-                              </span>
+                              <span title={urgent} aria-label={`Urgent: ${urgent}`} className="absolute -right-1.5 -top-1.5 z-10 h-4 w-4 rounded-full border-2 border-white/90 bg-red-600 shadow-sm" />
                             )}
-                            <div className="pointer-events-none absolute inset-0 opacity-25">
+                            <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl opacity-25">
                               <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full border-[10px] border-white/15" />
                               <div className="absolute right-10 top-16 h-16 w-16 rotate-45 border-[6px] border-white/10" />
                               <div className="absolute -left-6 bottom-10 h-24 w-24 rotate-12 bg-white/[0.06]" style={{ clipPath: "polygon(50% 0%, 100% 100%, 0% 100%)" }} />
                             </div>
-                            <div className={`relative flex items-start justify-between gap-2 ${urgent ? "pl-5" : ""}`}>
+                            <div className="relative flex items-start justify-between gap-2">
                               <span className="inline-flex items-center rounded-full bg-black/30 px-2 py-0.5 text-[10px] font-semibold backdrop-blur-xs">
                                 {c.status}
                               </span>
