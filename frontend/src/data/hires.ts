@@ -21,17 +21,6 @@ export type PendingHire = {
   applicantId?: number;
 };
 
-/** Hand-off for the "View Checklist" action on the New Hire Onboarding
- *  pipeline: opens the linked applicant's View profile → Requirements
- *  Checklist (with a "Back to New Hire Onboarding" action there). */
-export type ChecklistViewTarget = {
-  /** Applicant database id — the profile to open (null when the hire has no
-   *  linked applicant record). */
-  applicantId: number | null;
-  /** Hire name, used in the message shown when no applicant is linked. */
-  applicantName: string;
-};
-
 export type MasterChecklistItem = {
   item_text: string;
   instructions?: string;
@@ -111,7 +100,6 @@ function transformApiTemplate(t: ApiChecklistTemplate): MasterChecklistTemplate 
 let hires: NewHire[] = [];
 let hireEmployees: Employee[] = [];
 let pendingHire: PendingHire | null = null;
-let pendingChecklistView: ChecklistViewTarget | null = null;
 
 let masterChecklists: MasterChecklistTemplate[] = [];
 
@@ -298,18 +286,6 @@ export const hireStore = {
     pendingHire = null;
     if (p) emit();
     return p;
-  },
-  /** Queues the "View Checklist" hand-off from New Hire Onboarding. */
-  setPendingChecklistView: (t: ChecklistViewTarget | null) => {
-    pendingChecklistView = t;
-    emit();
-  },
-  /** Atomically takes the queued checklist view (returns null if none). */
-  consumePendingChecklistView: () => {
-    const t = pendingChecklistView;
-    pendingChecklistView = null;
-    if (t) emit();
-    return t;
   },
   /** True when a hire with the same name + position already exists. */
   exists: (name: string, position: string) =>

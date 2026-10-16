@@ -314,6 +314,7 @@ export interface ApiInterview {
   applicant_id: number;
   scheduled_date: string;
   scheduled_time: string;
+  scheduled_end_time: string | null;
   mode: "On-site" | "Virtual";
   facility_id: number | null;
   facility_status:

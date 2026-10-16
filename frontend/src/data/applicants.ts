@@ -506,6 +506,8 @@ export type Interview = {
   position: string;
   date: string;
   time: string;
+  /** Explicit end time for custom ranges ("10:00 AM – 11:00 AM"); null = slot interval. */
+  endTime?: string | null;
   mode: "On-site" | "Virtual";
   interviewer: string;
   status: "Scheduled" | "Completed" | "Cancelled" | "No Show";

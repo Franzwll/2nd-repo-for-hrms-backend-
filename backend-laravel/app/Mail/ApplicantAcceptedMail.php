@@ -23,6 +23,7 @@ class ApplicantAcceptedMail extends Mailable
         public ?string $zoomJoinUrl = null,
         public ?string $zoomContinueUrl = null,
         public ?string $zoomPassword = null,
+        public ?string $interviewEndTime = null,
     ) {
     }
 
@@ -42,6 +43,7 @@ class ApplicantAcceptedMail extends Mailable
                 'position'      => $this->position,
                 'interviewDate' => $this->interviewDate,
                 'interviewTime' => $this->interviewTime,
+                'interviewEndTime' => $this->interviewEndTime,
                 'interviewMode' => $this->interviewMode,
                 'interviewerName'   => $this->interviewerName,
                 'zoomJoinUrl'       => $this->zoomJoinUrl,

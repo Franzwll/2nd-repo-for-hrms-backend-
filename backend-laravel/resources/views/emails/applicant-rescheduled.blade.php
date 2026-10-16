@@ -37,7 +37,7 @@
               @if(!empty($previousDate))
               <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px;margin:16px 0;">
                 <p style="margin:0 0 6px;font-size:11px;font-weight:bold;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;">Previous Schedule</p>
-                <p style="margin:2px 0;font-size:13px;color:#6b7280;"><strong>Date:</strong> {{ $previousDate }} @if(!empty($previousTime)) &nbsp;&bull;&nbsp; <strong>Time:</strong> {{ $previousTime }} @endif</p>
+                <p style="margin:2px 0;font-size:13px;color:#6b7280;"><strong>Date:</strong> {{ $previousDate }} @if(!empty($previousTime)) &nbsp;&bull;&nbsp; <strong>Time:</strong> {{ \Illuminate\Support\Carbon::parse($previousTime)->format('h:i A') }} @endif</p>
               </div>
               @endif
               @if(!empty($interviewDate))
@@ -45,7 +45,7 @@
                 <p style="margin:0 0 8px;font-size:13px;font-weight:bold;color:#92400e;text-transform:uppercase;letter-spacing:0.05em;">New Interview Schedule</p>
                 <p style="margin:4px 0;font-size:13px;color:#b45309;"><strong>Date:</strong> {{ $interviewDate }}</p>
                 @if(!empty($interviewTime))
-                <p style="margin:4px 0;font-size:13px;color:#b45309;"><strong>Time:</strong> {{ $interviewTime }}</p>
+                <p style="margin:4px 0;font-size:13px;color:#b45309;"><strong>Time:</strong> {{ \Illuminate\Support\Carbon::parse($interviewTime)->format('h:i A') }}{{ !empty($interviewEndTime) ? ' – ' . \Illuminate\Support\Carbon::parse($interviewEndTime)->format('h:i A') : '' }}</p>
                 @endif
                 @if(!empty($interviewMode))
                 <p style="margin:4px 0;font-size:13px;color:#b45309;"><strong>Mode:</strong> {{ $interviewMode }}</p>

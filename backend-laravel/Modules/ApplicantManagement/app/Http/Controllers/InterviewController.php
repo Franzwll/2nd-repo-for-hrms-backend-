@@ -78,6 +78,12 @@ class InterviewController extends Controller
         $data['status'] = $data['status'] ?? 'Scheduled';
         $data['interview_code'] = Interview::generateCode();
 
+        // Virtual interviews are held over Zoom and never reserve a room, so
+        // any facility supplied by the client is ignored for them.
+        if (($data['mode'] ?? null) === 'Virtual') {
+            $data['facility_id'] = null;
+        }
+
         // Facility request: when a facility is reserved for the interview the
         // schedule starts in "Waiting for Facility Approval". Confirmation of
         // the facility request (mock auto-approval from the UI after 3s, or
@@ -140,6 +146,7 @@ class InterviewController extends Controller
                     position: $applicant->jobPost?->title ?? 'Position',
                     interviewDate: $interview->scheduled_date,
                     interviewTime: $interview->scheduled_time,
+                    interviewEndTime: $interview->scheduled_end_time,
                     interviewMode: $interview->mode,
                     interviewerName: $interview->interviewer_name,
                     zoomJoinUrl: $interview->zoom_join_url,
@@ -204,6 +211,7 @@ class InterviewController extends Controller
                     facilityName: $model->facility->name,
                     interviewDate: (string) $model->scheduled_date,
                     interviewTime: (string) $model->scheduled_time,
+                    interviewEndTime: $model->scheduled_end_time,
                     facilityLocation: $model->facility->location,
                     interviewerName: $model->interviewer_name,
                     interviewMode: $model->mode,
@@ -254,6 +262,12 @@ class InterviewController extends Controller
                 'sdk_configured' => false,
             ], 501);
         }
+
+        // Meetings created before the waiting room was disabled still put the
+        // applicant outside until the host admits them — which the embedded
+        // view cannot do. Repair the meeting each time the host opens the
+        // room (no-op without the matching Zoom update scope).
+        ZoomMeetingService::disableWaitingRoom((string) $model->zoom_meeting_id);
 
         $role = (int) $request->input('role', 0);
         $role = $role === 1 ? 1 : 0;
@@ -315,23 +329,35 @@ class InterviewController extends Controller
     {
         $model = Interview::with('applicant')->findOrFail($interview);
 
-        $previousDate = $model->scheduled_date;
-        $previousTime = $model->scheduled_time;
+        // Snapshot the schedule as plain values — Carbon instances never
+        // compare identical with !==, so a value comparison is required.
+        $previousDate = $model->scheduled_date?->toDateString();
+        $previousTime = $model->scheduled_time === null ? null : (string) $model->scheduled_time;
+        $previousEndTime = $model->scheduled_end_time === null ? null : (string) $model->scheduled_end_time;
         $previousMode = $model->mode;
         $previousStatus = $model->status;
 
-        $model->update($request->validated());
+        $data = $request->validated();
 
-        // Switching to Virtual (or missing links) auto-generates Zoom links so
-        // the reschedule email always has fresh Join + Continue + password.
-        $model->refresh();
-        if ($model->mode === 'Virtual' && empty($model->zoom_join_url)) {
-            ZoomMeetingService::ensureForModel($model, $applicant?->jobPost?->title);
-            $model->save();
-            $model->refresh();
+        // Virtual interviews are hosted on Zoom — moving an interview to
+        // Virtual drops any room reservation and its approval state.
+        if (array_key_exists('mode', $data) && $data['mode'] === 'Virtual') {
+            $data['facility_id'] = null;
+            $data['facility_status'] = 'Not Required';
         }
 
+        $model->update($data);
+        $model->refresh();
+
         $applicant = $model->applicant;
+
+        $currentTime = $model->scheduled_time === null ? null : (string) $model->scheduled_time;
+        $currentEndTime = $model->scheduled_end_time === null ? null : (string) $model->scheduled_end_time;
+
+        $scheduleChanged = $model->scheduled_date?->toDateString() !== $previousDate
+            || $currentTime !== $previousTime
+            || $currentEndTime !== $previousEndTime
+            || $model->mode !== $previousMode;
 
         /* --- Cancellation via status update ------------------------------- */
         /* The interview record is KEPT and labelled "Cancelled"; the          */
@@ -389,9 +415,18 @@ class InterviewController extends Controller
             }
         }
 
-        $scheduleChanged = $model->scheduled_date !== $previousDate
-            || $model->scheduled_time !== $previousTime
-            || $model->mode !== $previousMode;
+        /* Fresh Zoom link on reschedule                                   */
+        /* Virtual interviews auto-generate Zoom links; a RESCHEDULED one  */
+        /* (date/time/mode changed) gets a BRAND-NEW meeting — the previous */
+        /* link is retired — so the email below always carries fresh Join   */
+        /* + Continue + password. Switching to Virtual without links still  */
+        /* generates them on the spot.                                      */
+        if ($model->mode === 'Virtual' && ($scheduleChanged || empty($model->zoom_join_url))) {
+            if (ZoomMeetingService::ensureForModel($model, $applicant?->jobPost?->title, force: $scheduleChanged)) {
+                $model->save();
+                $model->refresh();
+            }
+        }
 
         if ($scheduleChanged && $applicant?->email) {
             try {
@@ -399,8 +434,9 @@ class InterviewController extends Controller
                     recipientEmail: $applicant->email,
                     applicantName: $applicant->name,
                     position: $applicant->jobPost?->title ?? 'Position',
-                    interviewDate: $model->scheduled_date,
+                    interviewDate: $model->scheduled_date?->toDateString(),
                     interviewTime: $model->scheduled_time,
+                    interviewEndTime: $model->scheduled_end_time,
                     interviewMode: $model->mode,
                     previousDate: $previousDate,
                     previousTime: $previousTime,

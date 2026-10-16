@@ -16,6 +16,7 @@ class UpdateInterviewRequest extends FormRequest
         return [
             'scheduled_date'          => ['sometimes', 'date'],
             'scheduled_time'          => ['sometimes', 'date_format:H:i'],
+            'scheduled_end_time'      => ['nullable', 'date_format:H:i'],
             'mode'                    => ['sometimes', 'string', 'in:On-site,Virtual'],
             'interviewer_employee_id' => ['nullable', 'integer', 'exists:employees,employee_id'],
             'interviewer_name'        => ['nullable', 'string', 'max:160'],

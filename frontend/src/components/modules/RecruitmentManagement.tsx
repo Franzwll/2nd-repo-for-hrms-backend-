@@ -2983,9 +2983,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   const [addStep, setAddStep] = useState<1 | 2>(1);
   /**
    * Single smart upload box (Step 1): resume + supporting docs in any order.
-   * Each file is recognized by content (rule + filename + content check);
-   * the highest Resume-score file becomes the resume pick, the rest are
-   * supporting docs. First upload is expected to be the resume.
+   * Every file is auto-recognized on upload (rule + filename + content
+   * check); the highest Resume-score file becomes the resume pick, the rest
+   * are supporting docs. Details are auto-filled once, from the FIRST file
+   * actually recognized as a resume.
    * Derived bridges keep every downstream consumer (auto-fill, screening,
    * save, replace-confirm) working unchanged.
    */
@@ -8289,34 +8290,27 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
 
               <UnifiedDocumentsUploader
                 docs={unifiedDocs}
-                onChange={(next) => {
-                  // Route each newly added file through the replace-confirm
-                  // guard (protects typed / previously extracted details).
-                  // Files are always kept — only the auto-fill waits for confirm,
-                  // so the staged resume is never lost.
-                  const prevIds = new Set(unifiedDocs.map((d) => d.id));
-                  const added = next.filter((d) => !prevIds.has(d.id));
-                  setUnifiedDocs(next);
-                  if (added.length === 0) {
-                    return;
-                  }
-                  const hasExistingDetails = [addForm.name, addForm.email, addForm.phone, addForm.address].some(
-                    (v) => v.trim().length > 0,
-                  );
-                  const firstAdded = added[0];
-                  if (hasExistingDetails && firstAdded) {
-                    setPendingResume(firstAdded.file);
+                onChange={setUnifiedDocs}
+                onResumeRecognized={(file) => {
+                  // Fires once, only when a file is actually RECOGNIZED as the
+                  // resume (not merely the first upload). Details already on
+                  // the form are protected by the replace-confirm guard;
+                  // otherwise the four fields are filled once, automatically.
+                  const hasExistingDetails = [
+                    addForm.name,
+                    addForm.email,
+                    addForm.phone,
+                    addForm.address,
+                  ].some((v) => v.trim().length > 0);
+                  if (hasExistingDetails) {
+                    setPendingResume(file);
                     setReplaceOpen(true);
                     return;
                   }
-                  const pick = pickResumeDoc(next);
-                  if (pick) void autofillFromResume(pick.file, { overwrite: false });
-                }}
-                onResumePick={(file) => {
-                  if (file) void autofillFromResume(file, { overwrite: false });
+                  void autofillFromResume(file, { overwrite: false });
                 }}
                 title="Resume + supporting documents"
-                hint="Drop the resume + COE + certificates in any order — first file is expected to be the resume, but every file is recognized by content. Press Recognize files, then Run resume screening."
+                hint="Drop the resume + COE + certificates in any order — every file is auto-recognized. Details are filled from the first recognized resume, then you can run resume screening."
               />
               {resumeAutofilling && (
                 <p className="text-xs text-muted-foreground">Reading resume — filling contact fields…</p>
@@ -8329,6 +8323,9 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                 <Button
                   disabled={
                     screeningLoading ||
+                    // Files are auto-recognized right after upload — wait for
+                    // that to settle so the resume pick is always accurate.
+                    unifiedDocs.some((d) => d.status === "pending" || d.status === "classifying") ||
                     (!addPresetJob &&
                       addForm.position !== "" &&
                       addDept !== "" &&
@@ -9158,31 +9155,15 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               className="min-w-0 max-w-full break-words"
               style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
             >
-              The form already has details
-              {addResumeFile ? (
-                <>
-                  {" "}
-                  from "
-                  <span
-                    className="break-words"
-                    style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
-                  >
-                    {addFileName}
-                  </span>
-                  "
-                </>
-              ) : (
-                " you"
-              )}{" "}
-              entered. Uploading "
+              The form already has details entered. Using "
               <span
                 className="break-words"
                 style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
               >
                 {pendingResume?.name ?? "this resume"}
               </span>
-              " will overwrite Full name, Email, Contact number and Address with the values
-              extracted from it.
+              " — recognized as a resume — will overwrite Full name, Email, Contact number and
+              Address with the values extracted from it.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
