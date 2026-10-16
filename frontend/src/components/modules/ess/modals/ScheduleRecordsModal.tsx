@@ -89,7 +89,7 @@ export function ScheduleRecordsModal({
           className="flex flex-col min-h-0 flex-1"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <TabsList className="h-9">
+            <TabsList className="shrink-0">
               <TabsTrigger value="attendance" className="gap-1.5 text-xs">
                 <Calendar className="h-3.5 w-3.5" /> Attendance
               </TabsTrigger>
@@ -113,7 +113,7 @@ export function ScheduleRecordsModal({
           </div>
 
           <TabsContent value="attendance" className="mt-3 min-h-0 flex-1 overflow-y-auto">
-            <ListBody>
+            <ListBody rows={5}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -158,22 +158,10 @@ export function ScheduleRecordsModal({
                 </TableBody>
               </Table>
             </ListBody>
-            <div className="shrink-0 border-t border-border/60 pt-3 mt-3">
-              <TablePagination
-                page={attPage.page}
-                pageCount={attPage.pageCount}
-                from={attPage.from}
-                to={attPage.to}
-                total={attPage.total}
-                label="records"
-                showRangeLabel={false}
-                onPageChange={attPage.setPage}
-              />
-            </div>
           </TabsContent>
 
           <TabsContent value="leave" className="mt-3 min-h-0 flex-1 overflow-y-auto">
-            <ListBody>
+            <ListBody rows={5}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -221,7 +209,21 @@ export function ScheduleRecordsModal({
                 </TableBody>
               </Table>
             </ListBody>
-            <div className="shrink-0 border-t border-border/60 pt-3 mt-3">
+          </TabsContent>
+
+          <div className="shrink-0 border-t border-border/60 pt-3">
+            {tab === "attendance" ? (
+              <TablePagination
+                page={attPage.page}
+                pageCount={attPage.pageCount}
+                from={attPage.from}
+                to={attPage.to}
+                total={attPage.total}
+                label="records"
+                showRangeLabel={false}
+                onPageChange={attPage.setPage}
+              />
+            ) : (
               <TablePagination
                 page={leavePage.page}
                 pageCount={leavePage.pageCount}
@@ -232,8 +234,8 @@ export function ScheduleRecordsModal({
                 showRangeLabel={false}
                 onPageChange={leavePage.setPage}
               />
-            </div>
-          </TabsContent>
+            )}
+          </div>
         </Tabs>
       </DialogContent>
     </Dialog>
