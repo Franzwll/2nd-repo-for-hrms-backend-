@@ -22,13 +22,17 @@ export default defineConfig({
   // instead of downloading them (cross-origin PDFs are forced to download).
   server: {
     host: "0.0.0.0",
-    allowedHosts: ["hrms1.oxfordsuitesmakati.io", "localhost"],
+    allowedHosts: [
+      "hrms1.oxfordsuitesmakati.io",
+      "testhrms1.oxfordsuitesmakati.io",
+      "localhost",
+    ],
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8000",
+        target: "http://127.0.0.1:8000/",
         changeOrigin: true,
-        // PHP's built-in dev server never answers `100 Continue`, so
-        // Chromium file uploads (>~1KB, sent with `Expect: 100-continue`)
+        // PHP's built-in dev server never answers 100 Continue, so
+        // Chromium file uploads (>~1KB, sent with Expect: 100-continue)
         // hang forever. Strip the header at the proxy so the body streams
         // straight through to Laravel.
         configure: (proxy) => {
@@ -42,6 +46,9 @@ export default defineConfig({
   preview: {
     host: "0.0.0.0",
     port: 3000,
-    allowedHosts: ["hrms1.oxfordsuitesmakati.io"],
+    allowedHosts: [
+      "hrms1.oxfordsuitesmakati.io",
+      "testhrms1.oxfordsuitesmakati.io",
+    ],
   },
 });
