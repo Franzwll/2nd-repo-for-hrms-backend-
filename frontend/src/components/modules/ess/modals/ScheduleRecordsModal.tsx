@@ -175,12 +175,29 @@ export function ScheduleRecordsModal({
     };
   }, [byDate]);
 
-  const [month, setMonth] = useState<Date>(coverage.to);
+  // Browsing window: first record month → current real month.
+  // Months without records render empty (future `?month=` fetch can fill them).
+  const window = useMemo(() => {
+    const now = new Date();
+    return {
+      from: coverage.from,
+      to: new Date(now.getFullYear(), now.getMonth(), 1),
+    };
+  }, [coverage]);
+
+  const [month, setMonth] = useState<Date>(() =>
+    coverage.to > window.to ? window.to : coverage.to
+  );
   const [selectedKey, setSelectedKey] = useState<string | null>(coverage.latestKey);
 
-  // Records can arrive after first render — resync month/selection then.
+  // Records can arrive after first render — resync selection, and clamp
+  // the viewed month into the window instead of yanking it back.
   useEffect(() => {
-    setMonth(coverage.to);
+    setMonth((m) => {
+      if (m < window.from) return window.from;
+      if (m > window.to) return window.to;
+      return m;
+    });
     if (!selectedKey || !byDate.has(selectedKey)) setSelectedKey(coverage.latestKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coverage]);
@@ -249,8 +266,8 @@ export function ScheduleRecordsModal({
                 mode="single"
                 month={month}
                 onMonthChange={setMonth}
-                startMonth={coverage.from}
-                endMonth={coverage.to}
+                startMonth={window.from}
+                endMonth={window.to}
                 selected={selected ? selected.date : undefined}
                 onSelect={(_, selectedDay) => {
                   if (selectedDay) setSelectedKey(dayKey(selectedDay));
