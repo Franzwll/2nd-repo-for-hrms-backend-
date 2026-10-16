@@ -400,11 +400,6 @@ export function EssPerformanceTab() {
                       <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
                         <BookOpen className="h-4 w-4 text-primary" /> Learning Materials
                       </h2>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {filteredMaterials.length === courses.length
-                          ? `${courses.length} assigned modules — click a card to start, continue, or view certificate.`
-                          : `${filteredMaterials.length} of ${courses.length} modules — click a card to start, continue, or view certificate.`}
-                      </p>
                     </div>
                     <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                       <div className="relative w-44">
@@ -511,14 +506,6 @@ export function EssPerformanceTab() {
                       <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
                         <Award className="h-4 w-4 text-primary" /> Assessment
                       </h2>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {perfData.averageScore == null
-                          ? "Awaiting assessment data"
-                          : perfData.averageScore >= 85
-                            ? `Qualified (Score ${perfData.averageScore}%) · ${perfData.completedCount} modules`
-                            : `Developing (Score ${perfData.averageScore}%) · ${perfData.completedCount} modules`}
-                        {filteredAssessments.length !== courses.length && ` · showing ${filteredAssessments.length} of ${courses.length}`}
-                      </p>
                     </div>
                     <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                       {activePromotionRequest ? (
