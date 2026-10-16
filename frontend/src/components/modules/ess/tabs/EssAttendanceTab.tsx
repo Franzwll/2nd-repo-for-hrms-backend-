@@ -22,7 +22,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatCard } from "@/components/portal/StatCard";
 import { ListBody } from "@/components/portal/ListBody";
@@ -44,7 +43,7 @@ import { ShiftSwapModal } from "@/components/modules/ess/modals/ShiftSwapModal";
 import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
 import { ScheduleRecordsModal } from "@/components/modules/ess/modals/ScheduleRecordsModal";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
-import { essApi, type ApiScheduleDay, type ApiEssEmployee, type ApiLeaveBalance } from "@/lib/api";
+import { essApi, type ApiScheduleDay, type ApiEssEmployee } from "@/lib/api";
 import { toast } from "sonner";
 
 interface EssAttendanceTabProps {
@@ -225,7 +224,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   // TRY: top-right records modal â€” remove state if not applicable
   const [recordsModalOpen, setRecordsModalOpen] = useState(false);
-  const [leaveBalances, setLeaveBalances] = useState<ApiLeaveBalance[]>([]);
   const [leaveHistory, setLeaveHistory] = useState<any[]>([]);
 
   // Clock Ticker â€” starts after mount so SSR HTML matches (no hydration mismatch).
@@ -275,9 +273,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
     try {
       const leaveRes = await essApi.leaves();
       setLeaveHistory(leaveRes.history || []);
-      if (leaveRes?.balances && leaveRes.balances.length > 0) {
-        setLeaveBalances(leaveRes.balances);
-      }
     } catch {
       // ignore
     }
@@ -661,19 +656,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                   </Button>
                 </div>
               </div>
-              {leaveBalances.length > 0 && (
-                <div className="grid gap-3 sm:grid-cols-3 mt-4">
-                  {leaveBalances.map((b) => (
-                    <div key={b.id ?? b.type} className="rounded-lg border border-border/70 bg-background p-3 text-xs">
-                      <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{b.type}</p>
-                      <p className="mt-1 font-bold text-foreground text-sm">
-                        {b.available} <span className="font-normal text-muted-foreground">/ {b.total} days left</span>
-                      </p>
-                      <Progress value={(Number(b.available) / Math.max(1, Number(b.total))) * 100} className="mt-2 h-1.5" />
-                    </div>
-                  ))}
-                </div>
-              )}
               <ListBody className="mt-4">
                 <Table>
                   <TableHeader>
