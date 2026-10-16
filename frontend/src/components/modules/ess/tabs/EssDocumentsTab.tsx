@@ -38,6 +38,7 @@ export function EssDocumentsTab() {
           setDocuments(
             res.documents.map((d) => ({
               id: d.code || `DOC-${d.id}`,
+              dbId: d.id,
               title: d.title,
               category: d.category,
               status: d.status,

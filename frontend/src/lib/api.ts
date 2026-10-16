@@ -2706,6 +2706,13 @@ export const essApi = {
     }),
   /** Same-origin URL to stream a file attached to the employee's own request
    *  (their upload or HR's fulfilment) with ?token= auth for browser opens. */
+  /** Same-origin URL to stream the employee's own document file
+   *  with ?token= auth for browser opens. */
+  documentFileUrl: (documentId: string | number) => {
+    const token = getToken();
+    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `/api/v1/ess/my-documents/${documentId}/file${qs}`;
+  },
   requestAttachmentUrl: (requestId: string | number, attachmentId: string | number) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
