@@ -83,7 +83,7 @@ function StatusDayButton({ day, modifiers, className, ...props }: React.Componen
       type="button"
       {...props}
       className={cn(
-        "flex h-full w-full flex-col items-center justify-center gap-1 rounded-xl text-sm transition-all",
+        "flex h-16 w-full flex-col items-center justify-center gap-1 rounded-xl text-sm transition-all",
         !modifiers["selected"] && "hover:bg-muted",
         tint,
         modifiers["selected"] && "bg-primary font-bold text-primary-foreground shadow-sm",
@@ -258,11 +258,18 @@ export function ScheduleRecordsModal({
                 modifiers={modifiers}
                 components={{ DayButton: StatusDayButton }}
                 classNames={{
-                  month_caption: "text-base font-display font-bold",
-                  weekday: "text-[11px] font-bold uppercase tracking-wider",
+                  months: "relative mx-auto flex w-full max-w-md flex-col",
+                  month: "w-full",
+                  month_grid: "w-full border-separate border-spacing-1",
+                  month_caption: "relative flex h-10 w-full items-center justify-center",
+                  caption_label: "text-base font-display font-bold",
+                  weekdays: "",
+                  weekday: "p-1 text-center text-[11px] font-bold uppercase tracking-wider text-muted-foreground",
+                  week: "",
+                  day: "p-0 text-center align-top",
                   today: "bg-transparent",
                 }}
-                className="mx-auto w-full max-w-md [--cell-size:3rem]"
+                className="[--cell-size:2.5rem]"
               />
             </div>
             <div className="mt-3 rounded-xl border border-border/70 bg-gradient-to-r from-primary/[0.07] via-card to-card p-4 text-xs shadow-xs">
