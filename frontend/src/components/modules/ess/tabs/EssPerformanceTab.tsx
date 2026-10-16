@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { Award, BookOpen, Building, CheckCircle2, TrendingUp, Sparkles, Send, Clock, LayoutDashboard, Menu, Search } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Award, BookOpen, Building, TrendingUp, Send, LayoutDashboard, Menu, Search } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -243,51 +243,6 @@ export function EssPerformanceTab() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Career Advancement & Promotion Application Card */}
-      <Card className="border-primary/30 bg-gradient-to-r from-primary/5 via-primary/[0.02] to-transparent shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
-        <CardHeader className="pb-3">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <CardTitle className="font-display text-lg font-semibold flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary" />
-                Career Advancement &amp; Promotion Application
-              </CardTitle>
-            </div>
-            <Button
-              size="sm"
-              className="gap-1.5 shrink-0 shadow-sm"
-              onClick={() => setPromotionModalOpen(true)}
-            >
-              <Send className="h-3.5 w-3.5" /> Apply for Promotion
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 pt-1 border-t border-border/60 text-xs">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
-              <div>
-                <span className="text-muted-foreground">Required Training:</span>{" "}
-                <strong className="text-foreground">{perfData.completedCount} Modules Completed</strong>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-              <div>
-                <span className="text-muted-foreground">Active Request:</span>{" "}
-                {activePromotionRequest ? (
-                  <Badge variant="outline" className="ml-1 text-[10px] font-semibold">
-                    {activePromotionRequest.status} ({activePromotionRequest.id})
-                  </Badge>
-                ) : (
-                  <span className="text-muted-foreground font-medium">None pending</span>
-                )}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Tab buttons — overview | materials | assessment | promotion */}
       <div className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
