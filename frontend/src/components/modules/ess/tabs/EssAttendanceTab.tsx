@@ -992,7 +992,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         open={recordsModalOpen}
         onOpenChange={setRecordsModalOpen}
         dtrRecords={dtrRecords}
-        leaveHistory={leaveHistory}
         onRowClick={(row, category) => {
           setRecordsModalOpen(false);
           handleRowClick(row, category);
