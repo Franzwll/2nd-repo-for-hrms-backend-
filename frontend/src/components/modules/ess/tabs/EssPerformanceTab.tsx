@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Award, BookOpen, Building, TrendingUp, Send, LayoutDashboard, Menu, Search } from "lucide-react";
+import { Award, BookOpen, Building, TrendingUp, Send, LayoutDashboard, Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -473,14 +473,6 @@ export function EssPerformanceTab() {
                               <span className="inline-flex items-center rounded-full bg-black/30 px-2 py-0.5 text-[10px] font-semibold backdrop-blur-xs">
                                 {c.status}
                               </span>
-                              <button
-                                type="button"
-                                aria-label="Course options"
-                                onClick={() => (isDone ? handleOpenCert(c) : handleStartCourse(c))}
-                                className="rounded-md bg-black/30 p-1.5 backdrop-blur-xs transition-colors hover:bg-black/50 cursor-pointer"
-                              >
-                                <Menu className="h-3.5 w-3.5" />
-                              </button>
                             </div>
                             <div className="relative">
                               <p className="text-lg font-extrabold leading-tight tracking-tight">{c.title}</p>
@@ -599,14 +591,6 @@ export function EssPerformanceTab() {
                               <span className="inline-flex items-center rounded-full bg-black/30 px-2 py-0.5 text-[10px] font-semibold backdrop-blur-xs">
                                 {c.status}
                               </span>
-                              <button
-                                type="button"
-                                aria-label="Assessment options"
-                                onClick={() => (isDone ? handleOpenCert(c) : handleStartCourse(c))}
-                                className="rounded-md bg-black/30 p-1.5 backdrop-blur-xs transition-colors hover:bg-black/50 cursor-pointer"
-                              >
-                                <Menu className="h-3.5 w-3.5" />
-                              </button>
                             </div>
                             <div className="relative">
                               <p className="text-lg font-extrabold leading-tight tracking-tight">{c.title}</p>
