@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { LayoutGrid, List, Search } from "lucide-react";
+import { CalendarCheck, LayoutGrid, List, Search } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -69,20 +69,36 @@ function StatusDayButton({ day, modifiers, className, ...props }: React.Componen
     : modifiers["absent"] ? "absent"
     : modifiers["rest"] ? "rest"
     : null;
+  const tint =
+    !modifiers["selected"] && status
+      ? {
+          present: "bg-emerald-500/10 hover:bg-emerald-500/20",
+          late: "bg-amber-500/10 hover:bg-amber-500/20",
+          absent: "bg-red-500/10 hover:bg-red-500/20",
+          rest: "bg-muted/50 hover:bg-muted",
+        }[status]
+      : "";
   return (
     <button
       type="button"
       {...props}
       className={cn(
-        "flex h-full w-full flex-col items-center justify-center gap-1 rounded-md text-xs transition-colors",
-        modifiers["today"] && !modifiers["selected"] && "font-bold text-primary",
-        modifiers["selected"] && "bg-primary font-bold text-primary-foreground",
+        "flex h-full w-full flex-col items-center justify-center gap-1 rounded-xl text-sm transition-all",
+        !modifiers["selected"] && "hover:bg-muted",
+        tint,
+        modifiers["selected"] && "bg-primary font-bold text-primary-foreground shadow-sm",
+        !modifiers["selected"] && modifiers["today"] && "font-bold text-primary ring-1 ring-inset ring-primary/50",
         modifiers["outside"] && "opacity-40",
         className
       )}
     >
-      <span>{day.date.getDate()}</span>
-      <span className={cn("h-1.5 w-1.5 rounded-full", status ? DOT_CLASS[status] : "bg-transparent")} />
+      <span className="font-semibold leading-none">{day.date.getDate()}</span>
+      <span
+        className={cn(
+          "h-1.5 w-1.5 rounded-full",
+          modifiers["selected"] ? "bg-white" : status ? DOT_CLASS[status] : "bg-transparent"
+        )}
+      />
     </button>
   );
 }
@@ -215,9 +231,9 @@ export function ScheduleRecordsModal({
             </div>
           )}
           {view === "calendar" && (
-            <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
               {LEGEND.map((l) => (
-                <span key={l.status} className="inline-flex items-center gap-1.5">
+                <span key={l.status} className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-2 py-0.5 font-medium">
                   <span className={cn("h-2 w-2 rounded-full", DOT_CLASS[l.status])} />
                   {l.label}
                 </span>
@@ -228,7 +244,7 @@ export function ScheduleRecordsModal({
 
         {view === "calendar" ? (
           <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
-            <div className="flex justify-center">
+            <div className="rounded-xl border border-border/60 bg-card p-4 shadow-xs">
               <Calendar
                 mode="single"
                 month={month}
@@ -241,19 +257,29 @@ export function ScheduleRecordsModal({
                 }}
                 modifiers={modifiers}
                 components={{ DayButton: StatusDayButton }}
-                className="[--cell-size:2.75rem]"
+                classNames={{
+                  month_caption: "text-base font-display font-bold",
+                  weekday: "text-[11px] font-bold uppercase tracking-wider",
+                  today: "bg-transparent",
+                }}
+                className="mx-auto w-full max-w-md [--cell-size:3rem]"
               />
             </div>
-            <div className="mt-3 rounded-lg border border-border/70 bg-background p-3 text-xs">
+            <div className="mt-3 rounded-xl border border-border/70 bg-gradient-to-r from-primary/[0.07] via-card to-card p-4 text-xs shadow-xs">
               {selected ? (
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                    <span className="font-bold text-foreground">{selected.record.date}</span>
-                    <span className="text-muted-foreground">
-                      In <strong className="font-mono text-foreground">{selected.record.timeIn}</strong>
-                      {" · "}Out <strong className="font-mono text-foreground">{selected.record.timeOut}</strong>
-                      {" · "}<strong className="font-mono text-foreground">{selected.record.workedHours} hrs</strong>
-                    </span>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <CalendarCheck className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-foreground">{selected.record.date}</p>
+                      <p className="mt-0.5 text-muted-foreground">
+                        In <strong className="font-mono text-foreground">{selected.record.timeIn}</strong>
+                        {" · "}Out <strong className="font-mono text-foreground">{selected.record.timeOut}</strong>
+                        {" · "}<strong className="font-mono text-foreground">{selected.record.workedHours} hrs</strong>
+                      </p>
+                    </div>
                     <EssStatusBadge status={selected.record.status} />
                   </div>
                   {onRowClick && (
