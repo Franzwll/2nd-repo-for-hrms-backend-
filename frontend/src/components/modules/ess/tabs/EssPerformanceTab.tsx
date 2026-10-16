@@ -389,28 +389,78 @@ export function EssPerformanceTab() {
                     </h4>
                     <p className="text-[11px] text-muted-foreground mt-0.5">Snapshot of rating, training and promotion readiness.</p>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2 text-xs">
-                    <div className="rounded-lg border border-border/70 bg-background p-3">
-                      <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Competency</p>
-                      <p className="mt-1 font-bold text-foreground text-sm">{perfData.competencyLevel ?? "Not yet rated"}</p>
-                      <p className="text-muted-foreground mt-0.5">Avg: <strong className="text-emerald-600">{perfData.averageScore != null ? `${perfData.averageScore} / 100` : "—"}</strong></p>
-                    </div>
-                    <div className="rounded-lg border border-border/70 bg-background p-3">
-                      <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">LMS Progress</p>
-                      <p className="mt-1 font-bold text-foreground text-sm">{perfData.completedCount} of {perfData.totalCount} Completed</p>
-                      <Progress value={(perfData.completedCount / Math.max(1, perfData.totalCount)) * 100} className="mt-2 h-1.5" />
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-border/70 bg-background p-3 text-xs">
-                    <p className="font-semibold text-foreground">Recent learning</p>
-                    <div className="mt-2 space-y-1.5">
-                      {courses.slice(0, 2).map((c) => (
-                        <div key={c.id} className="flex items-center justify-between gap-2">
-                          <span className="truncate text-muted-foreground">{c.title}</span>
-                          <EssStatusBadge status={c.status} />
+                  <div className="grid gap-3 lg:grid-cols-3">
+                    <div className="space-y-3 lg:col-span-2">
+                      <div className="grid gap-3 sm:grid-cols-2 text-xs">
+                        <div className="rounded-lg border border-border/70 bg-background p-3">
+                          <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Competency</p>
+                          <p className="mt-1 font-bold text-foreground text-sm">{perfData.competencyLevel ?? "Not yet rated"}</p>
+                          <p className="text-muted-foreground mt-0.5">Avg: <strong className="text-emerald-600">{perfData.averageScore != null ? `${perfData.averageScore} / 100` : "—"}</strong></p>
                         </div>
-                      ))}
-                      {courses.length === 0 && <p className="text-muted-foreground">No courses assigned yet.</p>}
+                        <div className="rounded-lg border border-border/70 bg-background p-3">
+                          <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">LMS Progress</p>
+                          <p className="mt-1 font-bold text-foreground text-sm">{perfData.completedCount} of {perfData.totalCount} Completed</p>
+                          <Progress value={(perfData.completedCount / Math.max(1, perfData.totalCount)) * 100} className="mt-2 h-1.5" />
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-border/70 bg-background p-3 text-xs">
+                        <p className="font-semibold text-foreground">Recent learning</p>
+                        <div className="mt-2 space-y-1.5">
+                          {courses.slice(0, 2).map((c) => (
+                            <div key={c.id} className="flex items-center justify-between gap-2">
+                              <span className="truncate text-muted-foreground">{c.title}</span>
+                              <EssStatusBadge status={c.status} />
+                            </div>
+                          ))}
+                          {courses.length === 0 && <p className="text-muted-foreground">No courses assigned yet.</p>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="rounded-lg border border-border/70 bg-background p-3 text-xs transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-bold text-foreground flex items-center gap-1.5">
+                            <BookOpen className="h-3.5 w-3.5 text-primary" /> Materials
+                            {courses.some(isCourseUrgent) && (
+                              <span className="relative flex h-2 w-2" title="Urgent module needs attention">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-600" />
+                              </span>
+                            )}
+                          </p>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold leading-none bg-muted text-muted-foreground border border-border/60">
+                            {courses.length}
+                          </span>
+                        </div>
+                        <p className="text-muted-foreground mt-1">
+                          {courses.filter(isCourseUrgent).length > 0
+                            ? `${courses.filter(isCourseUrgent).length} urgent · ${perfData.completedCount} of ${perfData.totalCount} done`
+                            : `${perfData.completedCount} of ${perfData.totalCount} completed`}
+                        </p>
+                        <Button size="sm" variant="outline" className="mt-2 w-full text-xs cursor-pointer" onClick={() => setActiveTab("materials")}>
+                          Open Materials →
+                        </Button>
+                      </div>
+                      <div className="rounded-lg border border-border/70 bg-background p-3 text-xs transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-bold text-foreground flex items-center gap-1.5">
+                            <Award className="h-3.5 w-3.5 text-primary" /> Assessment
+                          </p>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold leading-none bg-muted text-muted-foreground border border-border/60">
+                            {perfData.averageScore != null ? `${perfData.averageScore}%` : "—"}
+                          </span>
+                        </div>
+                        <p className="text-muted-foreground mt-1">
+                          {perfData.averageScore == null
+                            ? "Awaiting assessment data"
+                            : perfData.averageScore >= 85
+                              ? `Qualified · ${perfData.completedCount} modules`
+                              : `Developing · ${perfData.completedCount} modules`}
+                        </p>
+                        <Button size="sm" variant="outline" className="mt-2 w-full text-xs cursor-pointer" onClick={() => setActiveTab("assessment")}>
+                          Open Assessment →
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
