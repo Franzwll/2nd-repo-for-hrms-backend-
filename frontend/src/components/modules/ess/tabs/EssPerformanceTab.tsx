@@ -377,13 +377,6 @@ export function EssPerformanceTab() {
                             {perfData.averageScore != null ? `${perfData.averageScore}%` : "—"}
                           </span>
                         </div>
-                        <p className="text-muted-foreground mt-1">
-                          {perfData.averageScore == null
-                            ? "Awaiting assessment data"
-                            : perfData.averageScore >= 85
-                              ? `Qualified · ${perfData.completedCount} modules`
-                              : `Developing · ${perfData.completedCount} modules`}
-                        </p>
                         <Button size="sm" variant="outline" className="mt-2 w-full text-xs cursor-pointer" onClick={() => setActiveTab("assessment")}>
                           Open Assessment →
                         </Button>
