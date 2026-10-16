@@ -332,14 +332,17 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
 
   const leavePage = usePagination(filteredLeaveHistory);
 
-  // Match a history row to its entitlement: strip the filing duration
-  // suffix ("Type (2 days)") then fuzzy-match the balance type.
+  // Split "Type (N days)" filings into the clean type name + request duration.
+  // Match a history row to its entitlement using the clean name.
   // Rows with no entitlement record (e.g. maternity) show "—".
+  const splitLeaveType = (t: any) => {
+    const s = String(t ?? "");
+    const m = s.match(/^(.*?)\s*\((\d+)\s*days?\)\s*$/i);
+    if (!m) return { name: s, days: null as number | null };
+    return { name: (m[1] ?? "").trim(), days: Number(m[2]) };
+  };
   const balanceForLeaveType = (t: any) => {
-    const base = String(t ?? "")
-      .replace(/\s*\(\d+\s*days?\)\s*$/i, "")
-      .trim()
-      .toLowerCase();
+    const base = splitLeaveType(t).name.toLowerCase();
     if (!base) return undefined;
     return leaveBalances.find((b) => {
       const bt = String(b.type ?? "").toLowerCase();
@@ -701,7 +704,19 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                           className="cursor-pointer transition-colors"
                           onClick={() => handleRowClick(item, "Leave")}
                         >
-                          <TableCell className="text-xs font-semibold">{item.request_type || item.type}</TableCell>
+                          <TableCell>
+                            {(() => {
+                              const { name, days } = splitLeaveType(item.request_type || item.type);
+                              return (
+                                <>
+                                  <p className="text-xs font-semibold">{name}</p>
+                                  {days != null && (
+                                    <p className="text-[11px] text-muted-foreground">{days}-day request</p>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
                             {(() => {
                               const bal = balanceForLeaveType(item.request_type || item.type);
