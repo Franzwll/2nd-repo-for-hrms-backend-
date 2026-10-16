@@ -237,17 +237,6 @@ export function EssDocumentsTab() {
                 <List className="h-4 w-4" />
               </button>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 text-xs"
-              onClick={() => {
-                setUploadTargetTitle("Additional Employment Document");
-                setUploadModalOpen(true);
-              }}
-            >
-              <Upload className="h-3.5 w-3.5" /> Upload File
-            </Button>
             <Button size="sm" className="gap-1.5 text-xs" onClick={() => setRequestModalOpen(true)}>
               <Plus className="h-4 w-4" /> Request Official Document
             </Button>
