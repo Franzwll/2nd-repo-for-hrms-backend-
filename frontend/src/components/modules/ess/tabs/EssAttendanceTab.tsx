@@ -44,6 +44,7 @@ import { myAttendance } from "@/data/ess";
 import { DtrCorrectionModal } from "@/components/modules/ess/modals/DtrCorrectionModal";
 import { ShiftSwapModal } from "@/components/modules/ess/modals/ShiftSwapModal";
 import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
+import { ScheduleRecordsModal } from "@/components/modules/ess/modals/ScheduleRecordsModal";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
 import { essApi, type ApiScheduleDay, type ApiEssEmployee, type ApiLeaveBalance } from "@/lib/api";
 import { toast } from "sonner";
@@ -208,9 +209,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
   // Attendance summary & history
   const [attSummary, setAttSummary] = useState({
     present_days: 18,
-    late_days: 1,
-    absent_days: 0,
-    overtime_hours: 4.5,
+    leave_days: 0,
     average_hours: 8.0,
   });
   const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
@@ -237,6 +236,8 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
 
   // Leave state
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
+  // TRY: top-right records modal — remove state if not applicable
+  const [recordsModalOpen, setRecordsModalOpen] = useState(false);
   const [leaveBalances, setLeaveBalances] = useState<ApiLeaveBalance[]>([]);
   const [leaveHistory, setLeaveHistory] = useState<any[]>([]);
 
@@ -318,6 +319,20 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
     : "Loading…";
 
   const todayDayName = currentTime ? currentTime.toLocaleDateString("en-US", { weekday: "long" }) : "";
+
+  // TRY: week-range label for roster header — remove if modal removed
+  const weekRangeLabel = useMemo(() => {
+    const base = currentTime ?? new Date();
+    const day = base.getDay(); // 0 Sun … 6 Sat
+    const mondayOffset = (day + 6) % 7;
+    const monday = new Date(base);
+    monday.setDate(base.getDate() - mondayOffset);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const fmt = (d: Date) =>
+      d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return `${fmt(monday)} – ${fmt(sunday)}`;
+  }, [currentTime]);
 
 
   const filteredAttRequests = useMemo(() => {
@@ -415,7 +430,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
   return (
     <div className="space-y-6">
       {/* Metric cards — admin-consistent placement above tabs */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         <StatCard
           label="Present Days"
           value={attSummary.present_days}
@@ -423,22 +438,10 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
           tone="success"
         />
         <StatCard
-          label="Late Days"
-          value={attSummary.late_days}
-          icon={Clock}
-          tone="caution"
-        />
-        <StatCard
-          label="Absent Days"
-          value={attSummary.absent_days}
+          label="Leave Days"
+          value={attSummary.leave_days}
           icon={AlertCircle}
           tone="primary"
-        />
-        <StatCard
-          label="Overtime Hours"
-          value={`${attSummary.overtime_hours}h`}
-          icon={Sparkles}
-          tone="gold"
         />
       </div>
 
@@ -623,6 +626,30 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
           </Card>
           <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
             <CardContent className="p-6">
+              {/* TRY: roster header + top-right records button — remove block if not applicable */}
+              <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
+                <div>
+                  <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
+                    <Calendar className="h-4 w-4 text-primary" /> Weekly Shift Schedule &amp; Roster
+                  </h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {weekRangeLabel} · {employeeInfo?.department || "Main Hotel Front Desk"} · Mon–Sun roster
+                  </p>
+                </div>
+                <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                  <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary text-xs font-medium px-2.5 py-1">
+                    This Week
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRecordsModalOpen(true)}
+                    className="gap-1.5 shadow-xs text-xs cursor-pointer"
+                  >
+                    <FileText className="h-4 w-4 text-primary" /> View Records
+                  </Button>
+                </div>
+              </div>
               {scheduleLoading ? (
                 <StatCardsSkeleton count={4} />
               ) : (
@@ -977,6 +1004,17 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         open={timelineOpen}
         onOpenChange={setTimelineOpen}
         request={selectedRequest}
+      />
+      {/* TRY: records dialog — remove block if not applicable */}
+      <ScheduleRecordsModal
+        open={recordsModalOpen}
+        onOpenChange={setRecordsModalOpen}
+        dtrRecords={dtrRecords}
+        leaveHistory={leaveHistory}
+        onRowClick={(row, category) => {
+          setRecordsModalOpen(false);
+          handleRowClick(row, category);
+        }}
       />
     </div>
   );

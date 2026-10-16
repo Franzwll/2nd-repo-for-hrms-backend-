@@ -896,16 +896,15 @@ class EssPortalController extends Controller
         }
 
         $presentCount = $records->where('status', 'Present')->count();
-        $lateCount = $records->where('status', 'Late')->count();
-        $absentCount = $records->where('status', 'Absent')->count();
-        $totalOvertime = (float) $records->sum('overtime_hours');
+        $leaveCount = EssRequest::where('employee_id', $employee->employee_id)
+            ->where('status', 'Approved')
+            ->where('request_type', 'like', '%Leave%')
+            ->count();
 
         return response()->json([
             'summary' => [
                 'present_days' => $presentCount,
-                'late_days' => $lateCount,
-                'absent_days' => $absentCount,
-                'overtime_hours' => $totalOvertime,
+                'leave_days' => $leaveCount,
                 'average_hours' => 8.0,
             ],
             'records' => $records->map(fn ($r) => [
@@ -916,7 +915,6 @@ class EssPortalController extends Controller
                 'timeIn' => $r->time_in ? Carbon::parse($r->time_in)->format('h:i A') : '—',
                 'timeOut' => $r->time_out ? Carbon::parse($r->time_out)->format('h:i A') : '—',
                 'workedHours' => (float) $r->hours_worked,
-                'overtimeHours' => (float) $r->overtime_hours,
                 'status' => $r->status,
                 'device' => $r->biometric_device_id ?: 'Web Portal / Mobile Clock',
                 'remarks' => $r->remarks ?: 'Verified via HR Biometric Sync',

@@ -272,11 +272,9 @@ export const myAttendance = {
     breakIn: "12:00 PM",
     breakOut: "12:58 PM",
     hours: "6.2",
-    late: "0",
     undertime: "0",
-    overtime: "0",
   },
-  monthly: { present: 21, late: 2, absent: 0, leave: 1, overtimeHours: 12.5 },
+  monthly: { present: 21, leave: 1 },
   history: [
     { date: "2026-07-25", in: "07:48 AM", out: "04:32 PM", hours: 8.2, remark: "Present" },
     { date: "2026-07-24", in: "08:07 AM", out: "05:10 PM", hours: 8.5, remark: "Late 7 mins" },

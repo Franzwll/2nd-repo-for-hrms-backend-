@@ -2445,9 +2445,7 @@ export interface ApiEssOverview {
   };
   monthly_attendance?: {
     present: number;
-    late: number;
-    absent: number;
-    overtime_hours: number;
+    leave: number;
     total_leave_available: number;
   };
   payroll_summary?: {
@@ -2520,9 +2518,7 @@ export const essApi = {
     request<{
       summary: {
         present_days: number;
-        late_days: number;
-        absent_days: number;
-        overtime_hours: number;
+        leave_days: number;
         average_hours: number;
       };
       records: {
@@ -2533,7 +2529,6 @@ export const essApi = {
         timeIn: string;
         timeOut: string;
         workedHours: number;
-        overtimeHours: number;
         status: string;
         device: string;
         remarks: string;

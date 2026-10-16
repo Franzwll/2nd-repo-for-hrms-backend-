@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { FileCheck, Download, Upload, Plus, Search, ArrowUpDown, Send, AlertCircle, FileText } from "lucide-react";
+import { FileCheck, Download, Upload, Plus, Search, ArrowUpDown, Send, FileText, LayoutGrid, List } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import { ReportMenu } from "@/components/ui/report-menu";
 import { myEmployeeDocuments } from "@/data/ess";
 import { DocumentRequestModal } from "@/components/modules/ess/modals/DocumentRequestModal";
 import { DocumentUploadModal } from "@/components/modules/ess/modals/DocumentUploadModal";
+import { DocumentViewerModal } from "@/components/modules/ess/modals/DocumentViewerModal";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
 import { essApi } from "@/lib/api";
 import { toast } from "sonner";
@@ -79,6 +80,11 @@ export function EssDocumentsTab() {
   const [uploadTargetTitle, setUploadTargetTitle] = useState("Updated NBI Clearance (2026)");
   const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
+  // TRY: card-grid view — remove block to revert to table-only
+  const [docViewMode, setDocViewMode] = useState<"grid" | "list">("grid");
+  const [docCardSearch, setDocCardSearch] = useState("");
+  const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   const filteredDocRequests = useMemo(() => {
     return docRequests
@@ -143,8 +149,8 @@ export function EssDocumentsTab() {
 
   return (
     <div className="space-y-6">
-      {/* 3 Metric Cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      {/* Metric Card */}
+      <div className="grid gap-4 sm:grid-cols-1">
         <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -156,36 +162,6 @@ export function EssDocumentsTab() {
             <p className="mt-1 font-bold font-display text-emerald-600 dark:text-emerald-400">
               <span className="text-4xl">{documents.filter((d) => d.status === "Submitted" || d.status === "Available" || d.status === "Released").length}</span>{" "}
               <span className="text-base">File(s)</span>
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Missing Action Item</p>
-              <div className="rounded-lg bg-rose-500/10 p-2 text-rose-600 dark:text-rose-400">
-                <AlertCircle className="h-4 w-4" />
-              </div>
-            </div>
-            <p className="mt-1 font-bold font-display text-rose-600 dark:text-rose-400">
-              <span className="text-4xl">{documents.filter((d) => d.status === "Missing").length}</span>{" "}
-              <span className="text-base">Action Item</span>
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Available for Download</p>
-              <div className="rounded-lg bg-primary/10 p-2 text-primary">
-                <Download className="h-4 w-4" />
-              </div>
-            </div>
-            <p className="mt-1 font-bold font-display text-primary">
-              <span className="text-4xl">{documents.filter((d) => d.status === "Available" || d.status === "Released").length}</span>{" "}
-              <span className="text-base">Records</span>
             </p>
           </CardContent>
         </Card>
@@ -231,7 +207,7 @@ export function EssDocumentsTab() {
         </div>
       </div>
 
-      {/* Employment Documents Table */}
+      {/* Employment Documents — TRY: grid cards + viewer modal, list = old table fallback */}
       <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3">
           <div>
@@ -241,7 +217,26 @@ export function EssDocumentsTab() {
             </CardTitle>
             <p className="text-xs text-muted-foreground">Compliance documents, statutory IDs, and official company clearances.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* TRY: view toggle — remove to revert */}
+            <div className="flex items-center rounded-lg border border-border/70 bg-muted/20 p-0.5">
+              <button
+                type="button"
+                onClick={() => setDocViewMode("grid")}
+                aria-label="Grid view"
+                className={`rounded-md p-1.5 transition-colors cursor-pointer ${docViewMode === "grid" ? "bg-background shadow-xs text-primary" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setDocViewMode("list")}
+                aria-label="List view"
+                className={`rounded-md p-1.5 transition-colors cursor-pointer ${docViewMode === "list" ? "bg-background shadow-xs text-primary" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <List className="h-4 w-4" />
+              </button>
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -259,6 +254,74 @@ export function EssDocumentsTab() {
           </div>
         </CardHeader>
         <CardContent>
+          {/* TRY: grid view — remove block to revert to table-only */}
+          {docViewMode === "grid" ? (
+            <div className="space-y-3">
+              <div className="relative w-full sm:max-w-xs">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={docCardSearch}
+                  onChange={(e) => setDocCardSearch(e.target.value)}
+                  placeholder="Search documents…"
+                  className="pl-8 h-9"
+                />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {documents
+                  .filter((d) => {
+                    const q = docCardSearch.trim().toLowerCase();
+                    if (!q) return true;
+                    return (
+                      String(d.title ?? "").toLowerCase().includes(q) ||
+                      String(d.category ?? "").toLowerCase().includes(q) ||
+                      String(d.status ?? "").toLowerCase().includes(q)
+                    );
+                  })
+                  .map((doc) => {
+                    const missing = doc.status === "Missing";
+                    return (
+                      <button
+                        key={doc.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedDoc(doc);
+                          setViewerOpen(true);
+                        }}
+                        className={`group/doc relative flex flex-col justify-between rounded-xl border bg-card p-4 text-left shadow-2xs transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer ${missing ? "border-dashed border-amber-500/50 hover:border-amber-500" : "border-border/70 hover:border-primary/50"}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          {/* Doc icon like reference: white tile, folded corner, red doc glyph */}
+                          <div className="relative shrink-0">
+                            <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-black/10 bg-white shadow-sm">
+                              <span className="absolute right-0 top-0 h-3 w-3 rounded-bl-md rounded-tr-xl border-l border-b border-black/10 bg-muted" />
+                              <FileText className="h-6 w-6 text-red-500" strokeWidth={2} />
+                            </div>
+                            {missing && (
+                              <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600 ring-2 ring-white" />
+                              </span>
+                            )}
+                          </div>
+                          <EssStatusBadge status={doc.status} />
+                        </div>
+                        <div className="mt-3">
+                          <p className="text-xs font-bold text-foreground leading-snug line-clamp-2 min-h-[2rem]">{doc.title}</p>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">{doc.category}</p>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between border-t border-border/50 pt-2 text-[11px] text-muted-foreground">
+                          <span className="truncate">{doc.date}</span>
+                          <span className="font-mono shrink-0 ml-2">{doc.size}</span>
+                        </div>
+                        <span className="mt-2 text-[11px] font-semibold text-primary opacity-0 transition-opacity group-hover/doc:opacity-100">
+                          Click to open →
+                        </span>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -305,6 +368,7 @@ export function EssDocumentsTab() {
               ))}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
 
@@ -399,6 +463,14 @@ export function EssDocumentsTab() {
         open={timelineOpen}
         onOpenChange={setTimelineOpen}
         request={selectedRequest}
+      />
+      {/* TRY: viewer modal — remove to revert */}
+      <DocumentViewerModal
+        open={viewerOpen}
+        onOpenChange={setViewerOpen}
+        doc={selectedDoc}
+        onDownload={handleDownloadDoc}
+        onUpload={openUploadForDoc}
       />
     </div>
   );
