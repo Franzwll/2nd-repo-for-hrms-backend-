@@ -51,8 +51,6 @@ nlp-service/test_blur_enhance*.py
 TRASH/
 0001_01_01_000002_create_jobs_table.php
 *.log
-38
-"witch main"
 
 # Local reference datasets with >260-char paths (Windows "Filename too long"
 # on push/fetch) вЂ” never commit these; they are untracked test fixtures.
