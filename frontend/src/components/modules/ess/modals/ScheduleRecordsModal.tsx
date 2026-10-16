@@ -270,7 +270,10 @@ export function ScheduleRecordsModal({
                 endMonth={window.to}
                 selected={selected ? selected.date : undefined}
                 onSelect={(_, selectedDay) => {
-                  if (selectedDay) setSelectedKey(dayKey(selectedDay));
+                  if (selectedDay) {
+                    setSelectedKey(dayKey(selectedDay));
+                    setMonth(new Date(selectedDay.getFullYear(), selectedDay.getMonth(), 1));
+                  }
                 }}
                 modifiers={modifiers}
                 components={{ DayButton: StatusDayButton }}
