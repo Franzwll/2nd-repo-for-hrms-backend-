@@ -208,7 +208,7 @@ export function EssDocumentsTab() {
       </div>
 
       {/* Employment Documents — TRY: grid cards + viewer modal, list = old table fallback */}
-      <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+      <Card className="border-border/70 shadow-xs">
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3">
           <div>
             <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
@@ -276,7 +276,7 @@ export function EssDocumentsTab() {
                           setSelectedDoc(doc);
                           setViewerOpen(true);
                         }}
-                        className={`group/doc relative flex flex-col justify-between rounded-xl border bg-card p-4 text-left shadow-2xs transition-all hover:-translate-y-0.5 hover:shadow-md cursor-pointer ${missing ? "border-dashed border-amber-500/50 hover:border-amber-500" : "border-border/70 hover:border-primary/50"}`}
+                        className={`group/doc relative flex flex-col justify-between rounded-xl border bg-card p-4 text-left shadow-2xs cursor-pointer ${missing ? "border-dashed border-amber-500/50" : "border-border/70"}`}
                       >
                         <div className="flex items-start justify-between gap-2">
                           {/* Doc icon like reference: white tile, folded corner, red doc glyph */}
@@ -302,7 +302,7 @@ export function EssDocumentsTab() {
                           <span className="truncate">{doc.date}</span>
                           <span className="font-mono shrink-0 ml-2">{doc.size}</span>
                         </div>
-                        <span className="mt-2 text-[11px] font-semibold text-primary opacity-0 transition-opacity group-hover/doc:opacity-100">
+                        <span className="mt-2 text-[11px] font-semibold text-primary/70">
                           Click to open →
                         </span>
                       </button>
@@ -362,7 +362,7 @@ export function EssDocumentsTab() {
       </Card>
 
       {/* Document Requests History */}
-      <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+      <Card className="border-border/70 shadow-xs">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
           <div>
             <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
@@ -405,7 +405,7 @@ export function EssDocumentsTab() {
               {docPage.pageItems.map((r, idx) => (
                 <TableRow
                   key={idx}
-                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  className="cursor-pointer transition-colors"
                   onClick={() => handleRowClick(r)}
                 >
                   <TableCell className="text-xs font-mono font-medium text-foreground">{r.id}</TableCell>
