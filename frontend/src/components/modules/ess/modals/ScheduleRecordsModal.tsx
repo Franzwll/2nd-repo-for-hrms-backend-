@@ -244,6 +244,7 @@ export function ScheduleRecordsModal({
         {view === "calendar" ? (
           <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
             <div className="rounded-xl border border-border/60 bg-card p-4 shadow-xs">
+              <div className="mx-auto w-full max-w-md">
               <Calendar
                 mode="single"
                 month={month}
@@ -257,9 +258,9 @@ export function ScheduleRecordsModal({
                 modifiers={modifiers}
                 components={{ DayButton: StatusDayButton }}
                 classNames={{
-                  months: "relative mx-auto flex w-full max-w-md flex-col",
+                  months: "relative flex w-full flex-col",
                   month: "w-full",
-                  month_grid: "w-full border-separate border-spacing-1",
+                  month_grid: "w-full table-fixed border-separate border-spacing-1",
                   month_caption: "relative flex h-10 w-full items-center justify-center",
                   caption_label: "text-base font-display font-bold",
                   weekdays: "",
@@ -270,13 +271,14 @@ export function ScheduleRecordsModal({
                 }}
                 className="[--cell-size:2.5rem]"
               />
+              </div>
             </div>
-            <div className="mt-3 rounded-xl border border-border/70 bg-gradient-to-r from-primary/[0.07] via-card to-card p-4 text-xs shadow-xs">
+            <div className="mx-auto mt-3 w-full max-w-md rounded-xl border border-border/70 bg-gradient-to-r from-primary/[0.07] via-card to-card p-3 text-xs shadow-xs">
               {selected ? (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <CalendarCheck className="h-5 w-5" />
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <CalendarCheck className="h-4 w-4" />
                     </div>
                     <div>
                       <p className="text-sm font-bold text-foreground">{selected.record.date}</p>
