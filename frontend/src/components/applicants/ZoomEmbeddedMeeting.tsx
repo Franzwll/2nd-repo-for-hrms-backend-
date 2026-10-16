@@ -100,6 +100,13 @@ export function ZoomEmbeddedMeeting({
         return;
       }
 
+      // A remount (dev hot-reloads included) can retire this effect run while
+      // the signature request is in flight. Bail before booting an iframe:
+      // a discarded run's embed would otherwise join invisibly and claim the
+      // host slot, making the instance actually on screen fail with Zoom's
+      // "Already has other meetings in progress".
+      if (cancelled) return;
+
       // 2) Boot the SDK inside a same-origin <iframe> (plain document, no
       // React) — the package's ESM entry pulls its own React copy, which
       // crashes on our React 19 app ("ReactCurrentOwner" undefined).
@@ -155,13 +162,20 @@ export function ZoomEmbeddedMeeting({
         };
         await new Promise<void>((resolve, reject) => {
           let settled = false;
+          // One deadline covers two distinct phases; the failure message must
+          // say which one ran out — "ready never arrived" (embed page/SDK
+          // problem) versus "join never finished" (e.g. the Zoom account is
+          // already inside another meeting and refuses a second one).
+          let phase: "load" | "join" = "load";
           const timer = window.setTimeout(() => {
             if (settled) return;
             settled = true;
             window.removeEventListener("message", onMsg);
             reject(
               new Error(
-                "Timed out loading Zoom embed page (/zoom-embed.html never signalled ready — hard-refresh, then open F12 Console for the [zoom-embed] error)",
+                phase === "load"
+                  ? "Timed out loading Zoom embed page (/zoom-embed.html never signalled ready — hard-refresh, then open F12 Console for the [zoom-embed] error)"
+                  : "Timed out joining the Zoom meeting — the account may already be inside another Zoom room (close any other open interview rooms) or the network is slow. Retry, or use the Join link below.",
               ),
             );
           }, 45000);
@@ -176,6 +190,11 @@ export function ZoomEmbeddedMeeting({
             };
             if (!data || typeof data !== "object") return;
             if (data.zoomEmbedReady) {
+              // Superseded run (a remount raced us) — never join from here.
+              // A discarded instance's join makes the on-screen instance
+              // fail with "Already has other meetings in progress".
+              if (cancelled) return;
+              phase = "join";
               try {
                 // Post to the iframe's actual origin ("*" is safe here: the
                 // payload is a single-use join signature for this meeting).

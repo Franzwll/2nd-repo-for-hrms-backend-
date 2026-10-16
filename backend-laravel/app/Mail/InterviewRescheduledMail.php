@@ -25,13 +25,25 @@ class InterviewRescheduledMail extends Mailable
         public ?string $zoomJoinUrl = null,
         public ?string $zoomContinueUrl = null,
         public ?string $zoomPassword = null,
+        public ?string $interviewEndTime = null,
     ) {
     }
 
     public function envelope(): Envelope
     {
+        // Include the NEW schedule in the subject so every reschedule lands
+        // as its own email thread. Identical subjects made Gmail collapse
+        // successive reschedules into one conversation, so a fresh email
+        // (with the fresh Zoom link) looked like it never arrived.
+        $when = trim(implode(' ', array_filter([
+            $this->interviewDate,
+            $this->interviewTime ? substr($this->interviewTime, 0, 5) : null,
+        ])));
+
         return new Envelope(
-            subject: "Interview Rescheduled: {$this->position} — Oxford Suites Makati",
+            subject: $when !== ''
+                ? "Interview Rescheduled: {$this->position} — {$when} — Oxford Suites Makati"
+                : "Interview Rescheduled: {$this->position} — Oxford Suites Makati",
         );
     }
 
@@ -44,6 +56,7 @@ class InterviewRescheduledMail extends Mailable
                 'position'      => $this->position,
                 'interviewDate' => $this->interviewDate,
                 'interviewTime' => $this->interviewTime,
+                'interviewEndTime' => $this->interviewEndTime,
                 'interviewMode' => $this->interviewMode,
                 'previousDate'  => $this->previousDate,
                 'previousTime'  => $this->previousTime,
