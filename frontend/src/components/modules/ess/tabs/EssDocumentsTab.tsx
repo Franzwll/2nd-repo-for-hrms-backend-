@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { FileCheck, Download, Upload, Plus, Search, ArrowUpDown, Send, FileText, LayoutGrid, List } from "lucide-react";
+import { FileCheck, Download, Upload, Plus, Search, ArrowUpDown, Send, FileText, LayoutGrid, List, AlertTriangle, Clock, CalendarClock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +44,7 @@ export function EssDocumentsTab() {
               status: d.status,
               date: d.issuedDate,
               size: d.fileSize,
+              expiry: (d as any).expiryDate ?? null,
               downloadUrl: d.downloadUrl,
             }))
           );
@@ -83,6 +84,7 @@ export function EssDocumentsTab() {
   const [timelineOpen, setTimelineOpen] = useState(false);
   // TRY: card-grid view — remove block to revert to table-only
   const [docViewMode, setDocViewMode] = useState<"grid" | "list">("grid");
+  const [docStatusFilter, setDocStatusFilter] = useState("all");
   const [docCardSearch, setDocCardSearch] = useState("");
   const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -148,10 +150,26 @@ export function EssDocumentsTab() {
     setTimelineOpen(true);
   };
 
+  const missingDocs = documents.filter((d) => d.status === "Missing");
+  const pendingDocRequests = docRequests.filter((r) =>
+    ["Pending", "Under Review", "In Progress"].includes(r.status)
+  );
+  const expiringDocs = documents.filter((d) => {
+    if (d.status === "Missing" || !(d as any).expiry) return false;
+    const exp = new Date((d as any).expiry);
+    if (isNaN(exp.getTime())) return false;
+    const days = Math.ceil((exp.getTime() - Date.now()) / 86400000);
+    return days >= 0 && days <= 60;
+  });
+
+  const scrollToDocRequests = () => {
+    document.getElementById("doc-request-history")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+
   return (
     <div className="space-y-6">
-      {/* Metric Card */}
-      <div className="grid gap-4 sm:grid-cols-1">
+      {/* Metric Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -163,6 +181,66 @@ export function EssDocumentsTab() {
             <p className="mt-1 font-bold font-display text-emerald-600 dark:text-emerald-400">
               <span className="text-4xl">{documents.filter((d) => d.status === "Submitted" || d.status === "Available" || d.status === "Released").length}</span>{" "}
               <span className="text-base">File(s)</span>
+            </p>
+          </CardContent>
+        </Card>
+        <button
+          type="button"
+          onClick={() => setDocStatusFilter((f) => (f === "Missing" ? "all" : "Missing"))}
+          title={docStatusFilter === "Missing" ? "Clear missing filter" : "Show missing documents"}
+          className={`text-left rounded-xl outline-none transition-all cursor-pointer ${docStatusFilter === "Missing" ? "ring-2 ring-amber-500/70" : ""}`}
+        >
+          <Card className={`border-border/70 shadow-xs transition-all group hover:-translate-y-0.5 hover:border-amber-500/50 hover:shadow-md ${docStatusFilter === "Missing" ? "border-amber-500/50" : ""}`}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Action Needed</p>
+                <div className="rounded-lg bg-amber-500/10 p-2 text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-4 w-4" />
+                </div>
+              </div>
+              <p className="mt-1 font-bold font-display text-amber-600 dark:text-amber-400">
+                <span className="text-4xl">{missingDocs.length}</span>{" "}
+                <span className="text-base">Missing</span>
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                {docStatusFilter === "Missing" ? "Filtered — click to clear" : "Click to view"}
+              </p>
+            </CardContent>
+          </Card>
+        </button>
+        <button
+          type="button"
+          onClick={scrollToDocRequests}
+          title="Jump to document requests"
+          className="text-left rounded-xl outline-none transition-all cursor-pointer"
+        >
+          <Card className="border-border/70 shadow-xs transition-all group hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Pending Requests</p>
+                <div className="rounded-lg bg-primary/10 p-2 text-primary">
+                  <Clock className="h-4 w-4" />
+                </div>
+              </div>
+              <p className="mt-1 font-bold font-display text-foreground">
+                <span className="text-4xl">{pendingDocRequests.length}</span>{" "}
+                <span className="text-base font-medium text-muted-foreground">Awaiting HR</span>
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Click to track</p>
+            </CardContent>
+          </Card>
+        </button>
+        <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Expiring Soon</p>
+              <div className="rounded-lg bg-sky-500/10 p-2 text-sky-600 dark:text-sky-400">
+                <CalendarClock className="h-4 w-4" />
+              </div>
+            </div>
+            <p className="mt-1 font-bold font-display text-sky-600 dark:text-sky-400">
+              <span className="text-4xl">{expiringDocs.length}</span>{" "}
+              <span className="text-base">Within 60 days</span>
             </p>
           </CardContent>
         </Card>
@@ -259,6 +337,7 @@ export function EssDocumentsTab() {
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {documents
                   .filter((d) => {
+                    if (docStatusFilter !== "all" && d.status !== docStatusFilter) return false;
                     const q = docCardSearch.trim().toLowerCase();
                     if (!q) return true;
                     return (
@@ -324,7 +403,9 @@ export function EssDocumentsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {documents.map((doc) => (
+              {documents
+                .filter((doc) => docStatusFilter === "all" || doc.status === docStatusFilter)
+                .map((doc) => (
                 <TableRow key={doc.id}>
                   <TableCell className="font-semibold text-xs text-foreground">{doc.title}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{doc.category}</TableCell>
@@ -363,7 +444,7 @@ export function EssDocumentsTab() {
       </Card>
 
       {/* Document Requests History */}
-      <Card className="border-border/70 shadow-xs">
+      <Card id="doc-request-history" className="border-border/70 shadow-xs scroll-mt-4">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
           <div>
             <CardTitle className="font-display text-xl font-semibold flex items-center gap-2">
