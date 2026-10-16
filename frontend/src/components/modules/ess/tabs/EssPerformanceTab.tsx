@@ -317,7 +317,6 @@ export function EssPerformanceTab() {
                     <h4 className="text-sm font-bold font-display text-foreground flex items-center gap-2">
                       <LayoutDashboard className="h-4 w-4 text-primary" /> Performance Overview
                     </h4>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">Snapshot of rating, training and promotion readiness.</p>
                   </div>
                   <div className="grid gap-3 lg:grid-cols-3">
                     <div className="space-y-3 lg:col-span-2">
