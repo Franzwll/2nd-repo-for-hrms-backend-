@@ -22,7 +22,11 @@ export default defineConfig({
   // instead of downloading them (cross-origin PDFs are forced to download).
   server: {
     host: "0.0.0.0",
-    allowedHosts: ["hrms1.oxfordsuitesmakati.io", "localhost"],
+    allowedHosts: [
+      "hrms1.oxfordsuitesmakati.io",
+      "testhrms1.oxfordsuitesmakati.io",
+      "localhost",
+    ],
     proxy: {
       "/api": {
         target: "http://127.0.0.1:8000",
@@ -42,6 +46,9 @@ export default defineConfig({
   preview: {
     host: "0.0.0.0",
     port: 3000,
-    allowedHosts: ["hrms1.oxfordsuitesmakati.io"],
+    allowedHosts: [
+      "hrms1.oxfordsuitesmakati.io",
+      "testhrms1.oxfordsuitesmakati.io",
+    ],
   },
 });

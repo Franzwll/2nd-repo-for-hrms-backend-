@@ -5,6 +5,14 @@ namespace Modules\CoreHCM\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
+/**
+ * Employment-focused employee representation owned by Core HCM.
+ *
+ * Personal / 201-dossier data (government IDs, birth date, personal contact
+ * details, documents, emergency contacts, leave) is intentionally absent — it
+ * is served by the Employee Records dossier resource. This also removes the
+ * previous PII leak where government IDs were returned to any Core HCM viewer.
+ */
 class EmployeeResource extends JsonResource
 {
     public function toArray(Request $request): array
@@ -19,52 +27,18 @@ class EmployeeResource extends JsonResource
             'last_name' => $this->last_name,
             'full_name' => $this->full_name,
             'email' => $this->email,
-            'personal_email' => $this->personal_email,
-            'phone' => $this->phone,
-            'address' => $this->address,
-            'birth_date' => $this->birth_date?->toDateString(),
-            'gender' => $this->gender,
-            'civil_status' => $this->civil_status,
-            'nationality' => $this->nationality,
             'department_id' => $this->department_id,
             'department_name' => $this->department?->name,
             'position_id' => $this->position_id,
             'position_title' => $this->position?->title,
             'salary_grade_id' => $this->salary_grade_id,
+            'salary_step' => $this->salary_step,
             'supervisor_employee_id' => $this->supervisor_employee_id,
             'employment_type' => $this->employment_type,
             'status' => $this->status,
             'date_hired' => $this->date_hired?->toDateString(),
             'onboarding_complete' => $this->onboarding_complete,
-            'sss_number' => $this->sss_number,
-            'philhealth_number' => $this->philhealth_number,
-            'pagibig_number' => $this->pagibig_number,
-            'tin_number' => $this->tin_number,
-            'salary_step' => $this->salary_step,
             'employee_record_last_updated_at' => $this->employee_record_last_updated_at?->toDateString(),
-            'emergency_contacts' => EmergencyContactResource::collection($this->whenLoaded('emergencyContacts')),
-            'documents' => DocumentResource::collection($this->whenLoaded('documents')),
-            'position_history' => PositionHistoryResource::collection($this->whenLoaded('positionHistory')),
-            'exit_record' => $this->whenLoaded('exitRecord', fn () => $this->exitRecord ? new ExitRecordResource($this->exitRecord) : null),
-            'leave_balances' => $this->whenLoaded('leaveBalances', fn () => $this->leaveBalances->map(fn ($b) => [
-                'leave_balance_id' => $b->leave_balance_id,
-                'leave_type' => $b->leave_type,
-                'period_year' => $b->period_year,
-                'total_days' => (float) $b->total_days,
-                'used_days' => (float) $b->used_days,
-                'available_days' => max(0, (float) $b->total_days - (float) $b->used_days),
-            ])->values()),
-            'leave_requests' => $this->whenLoaded('essRequests', fn () => $this->essRequests
-                ->filter(fn ($r) => stripos((string) $r->request_type, 'leave') !== false)
-                ->take(20)
-                ->map(fn ($r) => [
-                    'request_code' => $r->request_code,
-                    'request_type' => $r->request_type,
-                    'status' => $r->status,
-                    'date_from' => $r->date_from?->toDateString(),
-                    'date_to' => $r->date_to?->toDateString(),
-                    'filed_at' => $r->filed_at?->toDateString(),
-                ])->values()),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

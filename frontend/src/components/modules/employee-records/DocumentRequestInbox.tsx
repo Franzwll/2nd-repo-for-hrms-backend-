@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Archive,
-  CheckCircle2,
-  Clock,
   Download,
   FileText,
-  Inbox,
   Paperclip,
   RefreshCw,
   Search,
@@ -34,7 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { StatCard } from "@/components/portal/StatCard";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import {
@@ -46,6 +42,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { ermApi, type ApiDocumentRequest } from "@/lib/api";
 
 const statusClass: Record<string, string> = {
@@ -78,7 +75,6 @@ function formatSize(bytes: number | null | undefined) {
 export function DocumentRequestInbox() {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<ApiDocumentRequest[]>([]);
-  const [counts, setCounts] = useState({ total: 0, pending: 0, fulfilled: 0 });
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
 
@@ -97,7 +93,6 @@ export function DocumentRequestInbox() {
     try {
       const res = await ermApi.documentRequests();
       setRows(res.requests ?? []);
-      setCounts(res.counts ?? { total: 0, pending: 0, fulfilled: 0 });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load document requests.");
     } finally {
@@ -165,18 +160,7 @@ export function DocumentRequestInbox() {
   return (
     <Card className="border-border/70">
       <CardContent className="p-6">
-        <div className="grid items-stretch gap-4 sm:grid-cols-3">
-          <StatCard label="Total requests" value={counts.total} icon={Inbox} tone="primary" />
-          <StatCard
-            label="Awaiting fulfilment"
-            value={counts.pending}
-            icon={Clock}
-            tone="caution"
-          />
-          <StatCard label="Fulfilled" value={counts.fulfilled} icon={CheckCircle2} tone="success" />
-        </div>
-
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
             <Send className="h-5 w-5 text-primary" /> Document Requests
           </h2>
@@ -226,16 +210,7 @@ export function DocumentRequestInbox() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loading && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={7}
-                      className="py-8 text-center text-sm text-muted-foreground"
-                    >
-                      Loading…
-                    </TableCell>
-                  </TableRow>
-                )}
+                {loading && <TableRowsSkeleton cols={7} rows={5} />}
                 {!loading &&
                   filtered.map((r) => {
                     const hr = r.attachments?.find((a) => a.direction === "hr");

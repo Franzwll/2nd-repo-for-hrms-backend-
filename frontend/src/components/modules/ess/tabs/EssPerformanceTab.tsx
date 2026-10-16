@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
-import { Award, BookOpen, Building, CheckCircle2, TrendingUp, Sparkles, Send, ShieldCheck, Clock } from "lucide-react";
+import { Award, BookOpen, Building, CheckCircle2, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -13,9 +12,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { myPerformance, myLearningCourses, myProfile } from "@/data/ess";
 import { LmsCertificateModal } from "@/components/modules/ess/modals/LmsCertificateModal";
-import { PromotionRequestModal } from "@/components/modules/ess/modals/PromotionRequestModal";
 import { essApi } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -36,27 +35,8 @@ export function EssPerformanceTab() {
   });
   const [selectedCourse, setSelectedCourse] = useState<any | null>(null);
   const [certModalOpen, setCertModalOpen] = useState(false);
-  const [promotionModalOpen, setPromotionModalOpen] = useState(false);
-  const [activePromotionRequest, setActivePromotionRequest] = useState<any | null>(null);
   const [startingCourseId, setStartingCourseId] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Check if there are active promotion requests on file
-    essApi
-      .myRequests()
-      .then((res) => {
-        if (res?.requests?.length) {
-          const promo = res.requests.find((r) =>
-            r.type?.toLowerCase().includes("promotion") ||
-            r.category?.toLowerCase().includes("career")
-          );
-          if (promo) {
-            setActivePromotionRequest(promo);
-          }
-        }
-      })
-      .catch(() => {});
-  }, []);
+  const [loading, setLoading] = useState(true);
 
   // Canonical backend mapping, reused by the initial load and refetches.
   // Nulls mean "no record yet" (never reviewed / never scored) — the UI
@@ -90,7 +70,8 @@ export function EssPerformanceTab() {
     essApi
       .myPerformance()
       .then(applyPerformance)
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   // Start / resume a course — real write (Assigned -> In Progress), then refetch.
@@ -162,67 +143,6 @@ export function EssPerformanceTab() {
         </Card>
       </div>
 
-      {/* Career Advancement & Promotion Application Card */}
-      <Card className="border-primary/30 bg-gradient-to-r from-primary/5 via-primary/[0.02] to-transparent shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
-        <CardHeader className="pb-3">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <CardTitle className="font-display text-lg font-semibold flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary" />
-                Career Advancement &amp; Promotion Application
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Apply for a position upgrade, merit promotion, or rank progression. Submissions feed into Core HCM and initiate an HR3 performance evaluation.
-              </p>
-            </div>
-            <Button
-              size="sm"
-              className="gap-1.5 shrink-0 shadow-sm"
-              onClick={() => setPromotionModalOpen(true)}
-            >
-              <Send className="h-3.5 w-3.5" /> Apply for Promotion
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 sm:grid-cols-3 pt-1 border-t border-border/60 text-xs">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <div>
-                <span className="text-muted-foreground">Appraisal Eligibility:</span>{" "}
-                <strong className="text-foreground">
-                  {perfData.averageScore == null
-                    ? "Awaiting assessment data"
-                    : perfData.averageScore >= 85
-                      ? "Qualified (Score ≥ 85%)"
-                      : `Developing (Score ${perfData.averageScore}%)`}
-                </strong>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
-              <div>
-                <span className="text-muted-foreground">Required Training:</span>{" "}
-                <strong className="text-foreground">{perfData.completedCount} Modules Completed</strong>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-              <div>
-                <span className="text-muted-foreground">Active Request:</span>{" "}
-                {activePromotionRequest ? (
-                  <Badge variant="outline" className="ml-1 text-[10px] font-semibold">
-                    {activePromotionRequest.status} ({activePromotionRequest.id})
-                  </Badge>
-                ) : (
-                  <span className="text-muted-foreground font-medium">None pending</span>
-                )}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Learning Modules Table */}
       <Card className="border-border/70 shadow-xs transition-all group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
         <CardHeader className="pb-3">
@@ -245,7 +165,9 @@ export function EssPerformanceTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {courses.length === 0 ? (
+              {loading ? (
+                <TableRowsSkeleton cols={6} rows={5} />
+              ) : courses.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="h-24 text-center text-muted-foreground text-xs">
                     No training courses assigned yet — HR will assign your learning plan.
@@ -308,18 +230,6 @@ export function EssPerformanceTab() {
         />
       )}
 
-      {/* Promotion Request Modal */}
-      <PromotionRequestModal
-        open={promotionModalOpen}
-        onOpenChange={setPromotionModalOpen}
-        competencyScore={
-          perfData.averageScore != null ? `${perfData.averageScore} / 100` : undefined
-        }
-        lmsCompletedCount={perfData.completedCount}
-        onSubmitSuccess={(req) => {
-          if (req) setActivePromotionRequest(req);
-        }}
-      />
     </div>
   );
 }

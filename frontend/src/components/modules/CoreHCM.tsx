@@ -29,6 +29,8 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
+import { StatCard } from "@/components/portal/StatCard";
+import { StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 import { Logo } from "@/components/brand/Logo";
 import {
   AlertDialog,
@@ -152,7 +154,7 @@ const APPLICABLE_STATUSES = [
  */
 function EmployeeStatusTab({ employeeCode, employeeId }: { employeeCode: string; employeeId: number | null }) {
   const [detail, setDetail] = useState<ApiEmployee | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!employeeId) return;
@@ -1060,6 +1062,7 @@ function EmployeeListManager({
   const [acknowledgedIds, setAcknowledgedIds] = useState<Set<string>>(new Set());
   const [showViewAllRecs, setShowViewAllRecs] = useState(false);
   const [recommendations, setRecommendations] = useState<HR3Recommendation[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -1070,6 +1073,9 @@ function EmployeeListManager({
       })
       .catch(() => {
         if (!cancelled) setRecommendations([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
@@ -1646,7 +1652,9 @@ function EmployeeListManager({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recPage.pageItems.map((rec) => (
+                {loading && <TableRowsSkeleton cols={7} rows={6} />}
+                {!loading &&
+                  recPage.pageItems.map((rec) => (
                   <TableRow key={rec.id}>
                     <TableCell className="font-mono text-xs font-semibold text-muted-foreground">
                       {rec.id}
@@ -3507,6 +3515,13 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
   /** Slot each tab portals its Generate Report control into (page header). */
   const [headerActionsEl, setHeaderActionsEl] = useState<HTMLDivElement | null>(null);
 
+  const hcm = useHcmData();
+  const hcmLoading = useHcmLoading();
+  const employees = useMemo(
+    () => hcm.employees.map((e) => toUiEmployee(e, hcm.employees, hcm.salaryGrades)),
+    [hcm],
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -3514,6 +3529,32 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
         description="Departments, position master list, salary grade management and vacancy requisitions."
         actions={<div ref={setHeaderActionsEl} className="flex flex-wrap items-center gap-2" />}
       />
+
+      {hcmLoading && employees.length === 0 ? (
+        <StatCardsSkeleton count={4} />
+      ) : (
+        <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard label="Total Employees" value={employees.length} icon={Users} tone="primary" />
+          <StatCard
+            label="Regular"
+            value={employees.filter((e) => e.employmentType === "Regular").length}
+            icon={UserCheck}
+            tone="success"
+          />
+          <StatCard
+            label="Probationary"
+            value={employees.filter((e) => e.employmentType === "Probationary").length}
+            icon={ClipboardList}
+            tone="gold"
+          />
+          <StatCard
+            label="Inactive"
+            value={employees.filter((e) => e.status === "Inactive").length}
+            icon={UserX}
+            tone="caution"
+          />
+        </div>
+      )}
 
       <HeaderActionsContext.Provider value={headerActionsEl}>
       <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">

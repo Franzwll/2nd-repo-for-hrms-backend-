@@ -16,6 +16,10 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { FileCheck, Send, Clock, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { essApi } from "@/lib/api";
+import { subtypesFor } from "@/data/essRequestCatalogue";
+
+/** HR-document sub-items from the shared categorized request template. */
+const DOCUMENT_TYPES = subtypesFor("HR Document");
 
 interface DocumentRequestModalProps {
   open: boolean;
@@ -76,14 +80,11 @@ export function DocumentRequestModal({ open, onOpenChange, onRequestSuccess }: D
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Certificate of Employment (with Salary)">Certificate of Employment (with Salary)</SelectItem>
-                <SelectItem value="Certificate of Employment (without Salary)">Certificate of Employment (without Salary)</SelectItem>
-                <SelectItem value="BIR Form 2316 (Certified Copy)">BIR Form 2316 (Certified Copy)</SelectItem>
-                <SelectItem value="Certificate of Compensation & Benefits">Certificate of Compensation &amp; Benefits</SelectItem>
-                <SelectItem value="Service Record Certificate">Service Record Certificate</SelectItem>
-                <SelectItem value="Certificate of No Pending Administrative Case">Certificate of No Pending Case</SelectItem>
-                <SelectItem value="HMO Coverage Certificate">HMO Coverage Certificate</SelectItem>
-                <SelectItem value="Employment Contract Copy">Employment Contract Copy</SelectItem>
+                {DOCUMENT_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

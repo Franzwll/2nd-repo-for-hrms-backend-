@@ -24,6 +24,7 @@ use App\Models\SystemUser;
 use Modules\EmployeeSelfService\Events\EssRequestFiled;
 use Modules\EmployeeSelfService\Models\RecognitionReaction;
 use Modules\EmployeeSelfService\Models\SocialRecognition;
+use Modules\EmployeeRecords\Services\EmployeeDocumentCodeGenerator;
 use Modules\Settings\Models\SystemSetting;
 
 class EssPortalController extends Controller
@@ -990,35 +991,6 @@ class EssPortalController extends Controller
 
         $documents = EmployeeDocument::where('employee_id', $employee->employee_id)->get();
 
-        // If no documents exist in database yet, auto-provision initial employment document records
-        if ($documents->isEmpty()) {
-            $defaultDocs = [
-                ['title' => 'Certificate of Employment (Latest)', 'category' => 'COE', 'code' => 'DOC-COE-01', 'status' => 'Verified', 'date' => Carbon::today()->subMonths(1)],
-                ['title' => 'BIR Form 2316 (Annual Tax Return)', 'category' => 'Tax', 'code' => 'DOC-BIR-2316', 'status' => 'Verified', 'date' => Carbon::today()->subMonths(7)],
-                ['title' => 'Social Security System (SSS E-1 Form)', 'category' => 'Statutory', 'code' => 'DOC-SSS-01', 'status' => 'Verified', 'date' => Carbon::today()->subMonths(12)],
-                ['title' => 'PhilHealth Member Data Record (MDR)', 'category' => 'Statutory', 'code' => 'DOC-PH-01', 'status' => 'Verified', 'date' => Carbon::today()->subMonths(12)],
-                ['title' => 'HDMF / Pag-IBIG Member ID & Registration', 'category' => 'Statutory', 'code' => 'DOC-HDMF-01', 'status' => 'Verified', 'date' => Carbon::today()->subMonths(12)],
-                ['title' => 'Annual Medical & Sanitation Clearance', 'category' => 'Medical', 'code' => 'DOC-MED-01', 'status' => 'Verified', 'date' => Carbon::today()->subMonths(3)],
-            ];
-
-            foreach ($defaultDocs as $d) {
-                EmployeeDocument::create([
-                    'employee_id' => $employee->employee_id,
-                    'document_code' => $d['code'],
-                    'title' => $d['title'],
-                    'category' => $d['category'],
-                    'file_path' => '/storage/documents/' . strtolower(str_replace([' ', '/'], '_', $d['category'])) . '.pdf',
-                    'mime_type' => 'application/pdf',
-                    'file_size_bytes' => 1258291, // ~1.2 MB
-                    'document_status' => $d['status'],
-                    'document_date' => $d['date'],
-                    'expiry_date' => $d['category'] === 'Medical' ? Carbon::today()->addMonths(9) : null,
-                ]);
-            }
-
-            $documents = EmployeeDocument::where('employee_id', $employee->employee_id)->get();
-        }
-
         return response()->json([
             'documents' => $documents->map(function ($doc) {
                 $relative = ltrim((string) $doc->file_path, '/');
@@ -1076,15 +1048,12 @@ class EssPortalController extends Controller
             $fileSize = $file->getSize() ?: 0;
         }
 
-        $nextNum = (EmployeeDocument::max('document_id') ?? 0) + 1;
-        $code = 'DOC-UPL-' . str_pad((string) $nextNum, 4, '0', STR_PAD_LEFT);
-
-        $doc = EmployeeDocument::create([
-            'employee_id' => $employee->employee_id,
-            'document_code' => $code,
+        // Code minted through the shared, lock-serialised generator so ESS
+        // uploads and ERM uploads can never collide.
+        $doc = app(EmployeeDocumentCodeGenerator::class)->create($employee, [
             'title' => $validated['title'],
             'category' => $validated['category'],
-            'file_path' => $storedPath ?? $validated['file_path'] ?? '/storage/documents/uploaded_doc.pdf',
+            'file_path' => $storedPath ?? ($validated['file_path'] ?? null),
             'mime_type' => $mimeType,
             'file_size_bytes' => $fileSize,
             'document_status' => 'Pending Verification',

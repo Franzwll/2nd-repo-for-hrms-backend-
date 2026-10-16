@@ -22,7 +22,9 @@ class EmployeeRecordsServiceProvider extends ModuleServiceProvider
      *
      * @var string[]
      */
-    // protected array $commands = [];
+    protected array $commands = [
+        \Modules\EmployeeRecords\Console\NotifyExpiringDocuments::class,
+    ];
 
     /**
      * Provider classes to register.
@@ -36,11 +38,9 @@ class EmployeeRecordsServiceProvider extends ModuleServiceProvider
 
     /**
      * Define module schedules.
-     * 
-     * @param $schedule
      */
-    // protected function configureSchedules(Schedule $schedule): void
-    // {
-    //     $schedule->command('inspire')->hourly();
-    // }
+    protected function configureSchedules(Schedule $schedule): void
+    {
+        $schedule->command('erm:notify-expiring-documents')->dailyAt('07:00');
+    }
 }

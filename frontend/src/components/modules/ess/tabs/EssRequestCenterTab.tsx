@@ -30,7 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { TableSkeleton } from "@/components/ui/loading-skeletons";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { requestCategories } from "@/data/ess";
@@ -198,10 +198,6 @@ export function EssRequestCenterTab() {
           </div>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <TableSkeleton cols={7} rows={5} />
-          ) : (
-            <>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -215,7 +211,9 @@ export function EssRequestCenterTab() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reqPage.pageItems.length === 0 ? (
+                  {loading ? (
+                    <TableRowsSkeleton cols={7} rows={5} />
+                  ) : reqPage.pageItems.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                         No requests found matching criteria.
@@ -265,8 +263,6 @@ export function EssRequestCenterTab() {
                 label="requests"
                 onPageChange={reqPage.setPage}
               />
-            </>
-          )}
         </CardContent>
       </Card>
 

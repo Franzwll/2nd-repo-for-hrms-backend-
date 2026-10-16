@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { Employee } from "@/data/hr";
-import { hcmApi, type ApiDepartment, type ApiEmployee, type ApiPosition } from "./api";
+import { hcmApi, ermApi, type ApiDepartment, type ApiEmployee, type ApiPosition } from "./api";
 import { onHcmChanged, notifyHcmChanged } from "./hcm-sync";
 
 type RosterState = {
@@ -45,7 +45,9 @@ async function loadDetail(employeeCode: string) {
   if (!api) return;
   detailLoading.add(employeeCode);
   try {
-    const res = await hcmApi.employees.get(api.employee_id);
+    // The 201 dossier is owned by Employee Records (ERM), which composes the
+    // Core HCM employment master with the personal/gov data and relations.
+    const res = await ermApi.employees.dossier(api.employee_id);
     detailCache.set(employeeCode, res.data);
   } catch (err) {
     console.warn(`Could not load 201 file for ${employeeCode}.`, err);

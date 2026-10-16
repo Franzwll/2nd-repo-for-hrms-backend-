@@ -51,6 +51,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import {
   Select,
   SelectContent,
@@ -449,6 +450,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
   const [backupSchedule, setBackupSchedule] = useState("daily");
   const [backups, setBackups] = useState<BackupEntry[]>([]);
+  const [loadingBackups, setLoadingBackups] = useState(true);
   const [backupInProgress, setBackupInProgress] = useState(false);
   const [restoreInProgress, setRestoreInProgress] = useState(false);
   const [backupProgress, setBackupProgress] = useState(0);
@@ -557,7 +559,8 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
       })
       .catch((err) => {
         console.warn("Could not fetch settings from database:", err);
-      });
+      })
+      .finally(() => setLoadingBackups(false));
 
     // Per-user designated values — this user's own preferences
     // (merged over the system defaults above) and their personal OTP flag.
@@ -1347,7 +1350,8 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {backups.map((b) => (
+                    {loadingBackups && <TableRowsSkeleton cols={5} rows={5} />}
+                    {!loadingBackups && backups.map((b) => (
                       <TableRow key={b.id}>
                         <TableCell className="text-sm font-medium">{b.id}</TableCell>
                         <TableCell className="text-xs">{b.timestamp}</TableCell>

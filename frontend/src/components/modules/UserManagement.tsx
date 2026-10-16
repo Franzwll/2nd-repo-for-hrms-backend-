@@ -1015,7 +1015,8 @@ export function UserManagement() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(["Super Admin", "Admin", "Employee"] as const).map((role) => {
+                    {loadingUsers && <TableRowsSkeleton cols={permissionGroups.length + 1} rows={5} />}
+                    {!loadingUsers && (["Super Admin", "Admin", "Employee"] as const).map((role) => {
                       const isProtected = roleProtectedByName[role] ?? false;
                       return (
                         <TableRow key={role}>

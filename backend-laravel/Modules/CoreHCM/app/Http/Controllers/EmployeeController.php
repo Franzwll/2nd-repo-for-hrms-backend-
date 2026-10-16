@@ -4,14 +4,13 @@ namespace Modules\CoreHCM\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
-use App\Models\EmployeeEmergencyContact;
 use App\Models\EmployeeExitRecord;
 use App\Models\EmployeePositionHistory;
 use App\Models\EssRequest;
 use App\Models\Hr3Recommendation;
 use App\Models\Position;
-use App\Services\AuditLogger;
 use App\Observers\ActivityObserver;
+use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,16 +20,16 @@ use Modules\CoreHCM\Http\Requests\EmployeeLifecycleRequest;
 use Modules\CoreHCM\Http\Requests\StoreEmployeeRequest;
 use Modules\CoreHCM\Http\Requests\UpdateEmployeeRequest;
 use Modules\CoreHCM\Http\Resources\EmployeeResource;
+use Modules\CoreHCM\Services\EmployeeLifecycleService;
 
 class EmployeeController extends Controller
 {
     use AppliesTableQuery;
 
+    public function __construct(private readonly EmployeeLifecycleService $lifecycle) {}
+
     public function index(Request $request): JsonResponse
     {
-        // Dept-pos mounts this with per_page=500 for headcounts. Cache the
-        // default listing 60s — filtered/search/sorted pages bypass the
-        // cache via rememberHcmIndex so they stay correct.
         $payload = $this->rememberHcmIndex($request, 'hcm:employees', function () use ($request) {
             $query = Employee::query()->with(['department', 'position']);
 
@@ -43,22 +42,6 @@ class EmployeeController extends Controller
                         ->orWhere('employee_code', 'like', "%{$search}%")
                         ->orWhere('email', 'like', "%{$search}%");
                 });
-            }
-
-            if ($request->filled('department_id')) {
-                $query->where('department_id', $request->integer('department_id'));
-            }
-
-            if ($request->filled('position_id')) {
-                $query->where('position_id', $request->integer('position_id'));
-            }
-
-            if ($request->filled('status')) {
-                $query->where('status', $request->string('status'));
-            }
-
-            if ($request->filled('employment_type')) {
-                $query->where('employment_type', $request->string('employment_type'));
             }
 
             $this->applyFilters($request, $query, [
@@ -98,23 +81,14 @@ class EmployeeController extends Controller
     public function store(StoreEmployeeRequest $request): JsonResponse
     {
         $validated = $request->validated();
-        $contacts = $validated['emergency_contacts'] ?? [];
-        unset($validated['emergency_contacts']);
 
-        $employee = DB::transaction(function () use ($validated, $contacts) {
+        $employee = DB::transaction(function () use ($validated) {
             $employee = Employee::create([
                 ...$validated,
-                'employee_code' => $this->nextEmployeeCode(),
-                'onboarding_complete' => false,
+                'employee_code' => $this->lifecycle->generateEmployeeCode(),
+                'onboarding_complete' => $validated['onboarding_complete'] ?? false,
+                'employee_record_last_updated_at' => now()->toDateString(),
             ]);
-
-            foreach ($contacts as $index => $contact) {
-                EmployeeEmergencyContact::create([
-                    ...$contact,
-                    'employee_id' => $employee->employee_id,
-                    'is_primary' => $contact['is_primary'] ?? ($index === 0 ? 1 : 0),
-                ]);
-            }
 
             Position::where('position_id', $employee->position_id)->increment('filled_count');
 
@@ -124,13 +98,13 @@ class EmployeeController extends Controller
 
         return response()->json([
             'message' => 'Employee created successfully.',
-            'data' => new EmployeeResource($employee->load('department', 'position', 'emergencyContacts')),
+            'data' => new EmployeeResource($employee->load('department', 'position')),
         ], 201);
     }
 
     public function show(Employee $employee): JsonResponse
     {
-        $employee->load('department', 'position', 'emergencyContacts', 'documents', 'positionHistory', 'exitRecord', 'leaveBalances', 'essRequests');
+        $employee->load('department', 'position');
 
         return response()->json([
             'data' => new EmployeeResource($employee),
@@ -140,51 +114,75 @@ class EmployeeController extends Controller
     public function update(UpdateEmployeeRequest $request, Employee $employee): JsonResponse
     {
         $validated = $request->validated();
-        $contacts = $validated['emergency_contacts'] ?? [];
-        unset($validated['emergency_contacts']);
-        $hasEmergencyContacts = array_key_exists('emergency_contacts', $request->validated());
 
-        DB::transaction(function () use ($validated, $contacts, $employee, $hasEmergencyContacts) {
-            $employee->update($validated);
+        $previousStatus = $employee->status;
+        $previousEmploymentType = $employee->employment_type;
 
-            if ($hasEmergencyContacts) {
-                $employee->emergencyContacts()->delete();
+        $newPositionId = array_key_exists('position_id', $validated)
+            ? (int) $validated['position_id']
+            : (int) $employee->position_id;
+        $newDepartmentId = array_key_exists('department_id', $validated)
+            ? (int) $validated['department_id']
+            : $employee->department_id;
 
-                foreach ($contacts as $index => $contact) {
-                    EmployeeEmergencyContact::create([
-                        ...$contact,
-                        'employee_id' => $employee->employee_id,
-                        'is_primary' => $contact['is_primary'] ?? ($index === 0 ? 1 : 0),
-                    ]);
-                }
+        $positionChanged = $newPositionId !== (int) $employee->position_id;
+        $departmentChanged = (int) $newDepartmentId !== (int) $employee->department_id;
+        $gradeChanged = array_key_exists('salary_grade_id', $validated)
+            && (int) $validated['salary_grade_id'] !== (int) $employee->salary_grade_id;
+
+        DB::transaction(function () use ($validated, $employee, $newPositionId, $newDepartmentId, $positionChanged, $departmentChanged, $gradeChanged) {
+            if ($positionChanged || $departmentChanged || $gradeChanged) {
+                // Structural change: route through the lifecycle service so the
+                // position history and filled_count stay consistent.
+                $employee->update(collect($validated)
+                    ->except(['position_id', 'department_id', 'salary_grade_id'])
+                    ->all());
+
+                $changeType = $positionChanged
+                    ? 'Transfer'
+                    : ($departmentChanged ? 'Transfer' : 'Salary Adjustment');
+
+                $this->lifecycle->applyPositionChange(
+                    $employee,
+                    $newPositionId,
+                    $newDepartmentId,
+                    $validated['salary_grade_id'] ?? null,
+                    $changeType,
+                    now()->toDateString(),
+                    'Updated via employee record edit.',
+                    'update',
+                );
+            } else {
+                $employee->update($validated);
             }
+
+            $employee->forceFill(['employee_record_last_updated_at' => now()->toDateString()])->save();
         });
+
+        if ($previousStatus !== $employee->status || $previousEmploymentType !== $employee->employment_type) {
+            $this->lifecycle->notifyStatusChange($employee, 'update', $previousStatus, $previousEmploymentType);
+        }
 
         HcmCache::flush();
 
         return response()->json([
             'message' => 'Employee updated successfully.',
-            'data' => new EmployeeResource($employee->load('department', 'position', 'emergencyContacts')),
+            'data' => new EmployeeResource($employee->load('department', 'position')),
         ]);
     }
 
     public function destroy(Employee $employee): JsonResponse
     {
-        if ($employee->status === 'Active' || $employee->status === 'On Leave') {
+        if (in_array($employee->status, ['Active', 'On Leave'], true)) {
             return response()->json(['message' => 'Use the exit process to off-board an active employee.'], 422);
         }
 
-        DB::transaction(function () use ($employee) {
-            Position::where('position_id', $employee->position_id)->decrement('filled_count');
-            $employee->exitRecord?->delete();
-            $employee->positionHistory()->delete();
-            $employee->emergencyContacts()->delete();
-            $employee->delete();
-        });
-
+        // Archive, never hard-delete: statutory 201-file retention and the
+        // employee's position history / documents must survive.
+        $employee->delete();
         HcmCache::flush();
 
-        return response()->json(['message' => 'Employee deleted successfully.']);
+        return response()->json(['message' => 'Employee record archived successfully.']);
     }
 
     public function regularize(EmployeeLifecycleRequest $request, Employee $employee): JsonResponse
@@ -198,19 +196,24 @@ class EmployeeController extends Controller
             return $recommendation;
         }
 
-        ActivityObserver::withoutLogging(fn () => $employee->update(['employment_type' => 'Regular']));
+        $previousEmploymentType = $employee->employment_type;
+
+        DB::transaction(function () use ($request, $employee, $recommendation) {
+            ActivityObserver::withoutLogging(fn () => $employee->update(['employment_type' => 'Regular']));
+
+            $this->lifecycle->applyPositionChange(
+                $employee,
+                (int) $employee->position_id,
+                $employee->department_id,
+                null,
+                'Regularization',
+                $request->date('effective_date')->toDateString(),
+                $request->string('notes') ?: ('Regularized via performance evaluation (' . $recommendation->evaluation_score . '%).'),
+                'regularize',
+            );
+        });
 
         $this->markRecommendationProcessed($recommendation);
-
-        EmployeePositionHistory::create([
-            'employee_id' => $employee->employee_id,
-            'effective_date' => $request->date('effective_date'),
-            'change_type' => 'Regularization',
-            'old_position_id' => $employee->position_id,
-            'new_position_id' => $employee->position_id,
-            'notes' => $request->string('notes') ?: ('Regularized via performance evaluation (' . $recommendation->evaluation_score . '%).'),
-        ]);
-
         HcmCache::flush();
 
         AuditLogger::log(
@@ -221,6 +224,8 @@ class EmployeeController extends Controller
             $employee->employee_code,
             'Regularized ' . $employee->full_name,
         );
+
+        $this->lifecycle->notifyStatusChange($employee, 'regularize', $employee->status, $previousEmploymentType);
 
         return response()->json([
             'message' => 'Employee regularized successfully.',
@@ -239,36 +244,22 @@ class EmployeeController extends Controller
         $newDepartmentId = $request->filled('new_department_id') ? $request->integer('new_department_id') : $employee->department_id;
         $newSalaryGradeId = $request->filled('new_salary_grade_id') ? $request->integer('new_salary_grade_id') : null;
 
-        $oldPositionId = $employee->position_id;
-        $oldSalaryGradeId = $employee->salary_grade_id;
-
-        DB::transaction(function () use ($employee, $newPositionId, $newDepartmentId, $newSalaryGradeId, $request, $oldPositionId, $oldSalaryGradeId) {
-            EmployeePositionHistory::create([
-                'employee_id' => $employee->employee_id,
-                'effective_date' => $request->date('effective_date'),
-                'change_type' => $newPositionId !== $oldPositionId ? 'Promotion' : 'Salary Adjustment',
-                'old_position_id' => $oldPositionId,
-                'new_position_id' => $newPositionId,
-                'old_salary_grade_id' => $oldSalaryGradeId,
-                'new_salary_grade_id' => $newSalaryGradeId,
-                'notes' => $request->string('notes'),
-            ]);
-
-            if ($newPositionId !== $oldPositionId) {
-                Position::where('position_id', $oldPositionId)->decrement('filled_count');
-                Position::where('position_id', $newPositionId)->increment('filled_count');
-            }
-
-            ActivityObserver::withoutLogging(fn () => $employee->forceFill([
-                'position_id' => $newPositionId,
-                'department_id' => $newDepartmentId,
-                'salary_grade_id' => $newSalaryGradeId ?: $employee->salary_grade_id,
-            ])->save());
+        DB::transaction(function () use ($employee, $request, $newPositionId, $newDepartmentId, $newSalaryGradeId) {
+            $this->lifecycle->applyPositionChange(
+                $employee,
+                $newPositionId,
+                $newDepartmentId,
+                $newSalaryGradeId,
+                $newPositionId !== (int) $employee->position_id ? 'Promotion' : 'Salary Adjustment',
+                $request->date('effective_date')->toDateString(),
+                $request->string('notes'),
+                'promote',
+            );
         });
 
         $this->markRecommendationProcessed($recommendation);
 
-        // Resolve any active ESS Promotion Requests for this employee
+        // Resolve any active ESS Promotion Requests for this employee.
         EssRequest::where('employee_id', $employee->employee_id)
             ->whereIn('status', ['Pending', 'Under Review'])
             ->where(function ($q) {
@@ -297,27 +288,76 @@ class EmployeeController extends Controller
         ]);
     }
 
+    /**
+     * Lateral move (department and/or position) without a performance
+     * evaluation requirement. Distinct from promote(), which is merit-based.
+     */
+    public function transfer(EmployeeLifecycleRequest $request, Employee $employee): JsonResponse
+    {
+        $newPositionId = $request->filled('new_position_id') ? $request->integer('new_position_id') : (int) $employee->position_id;
+        $newDepartmentId = $request->filled('new_department_id') ? $request->integer('new_department_id') : $employee->department_id;
+
+        if ($newPositionId === (int) $employee->position_id && (int) $newDepartmentId === (int) $employee->department_id) {
+            return response()->json(['message' => 'Select a different position or department to transfer to.'], 422);
+        }
+
+        DB::transaction(function () use ($request, $employee, $newPositionId, $newDepartmentId) {
+            $this->lifecycle->applyPositionChange(
+                $employee,
+                $newPositionId,
+                $newDepartmentId,
+                null,
+                'Transfer',
+                $request->date('effective_date')->toDateString(),
+                $request->string('notes') ?: 'Lateral transfer.',
+                'transfer',
+            );
+        });
+
+        HcmCache::flush();
+
+        AuditLogger::log(
+            'Employee transferred',
+            'Core HCM',
+            'Info',
+            'employee',
+            $employee->employee_code,
+            'Transferred ' . $employee->full_name . ' to position ' . $newPositionId,
+        );
+
+        return response()->json([
+            'message' => 'Employee transferred successfully.',
+            'data' => new EmployeeResource($employee->load('department', 'position')),
+        ]);
+    }
+
     public function exit(EmployeeLifecycleRequest $request, Employee $employee): JsonResponse
     {
-        if ($employee->status === 'Resigned' || $employee->status === 'Terminated') {
+        if (in_array($employee->status, ['Resigned', 'Terminated', 'Retired'], true)) {
             return response()->json(['message' => 'Employee already has an exit record.'], 422);
         }
 
-        DB::transaction(function () use ($request, $employee) {
+        $previousStatus = $employee->status;
+        $exitType = $request->string('exit_type')->toString();
+
+        DB::transaction(function () use ($request, $employee, $exitType) {
+            // Core HCM owns the status change; Employee Records owns the exit
+            // paperwork (clearance / COE). ERM fills those in via its own
+            // endpoint once it receives EmployeeStatusChanged.
             EmployeeExitRecord::updateOrCreate(
                 ['employee_id' => $employee->employee_id],
                 [
-                    'exit_type' => $request->string('exit_type'),
+                    'exit_type' => $exitType,
                     'exit_date' => $request->date('exit_date'),
-                    'clearance_status' => $request->string('clearance_status', 'Pending'),
-                    'coe_status' => $request->string('coe_status', 'Pending'),
+                    'clearance_status' => 'Pending',
+                    'coe_status' => 'Pending',
                     'notes' => $request->string('notes'),
                 ]
             );
 
             EmployeePositionHistory::create([
                 'employee_id' => $employee->employee_id,
-                'effective_date' => $request->date('effective_date'),
+                'effective_date' => $request->date('effective_date')->toDateString(),
                 'change_type' => 'Exit',
                 'old_position_id' => $employee->position_id,
                 'new_position_id' => $employee->position_id,
@@ -327,8 +367,9 @@ class EmployeeController extends Controller
             Position::where('position_id', $employee->position_id)->decrement('filled_count');
 
             ActivityObserver::withoutLogging(fn () => $employee->forceFill([
-                'status' => $request->string('exit_type'),
+                'status' => $exitType,
                 'supervisor_employee_id' => null,
+                'employee_record_last_updated_at' => now()->toDateString(),
             ])->save());
         });
 
@@ -340,28 +381,71 @@ class EmployeeController extends Controller
             'Warning',
             'employee',
             $employee->employee_code,
-            $request->string('exit_type') . ' ' . $employee->full_name,
+            $exitType . ' ' . $employee->full_name,
         );
+
+        $this->lifecycle->notifyStatusChange($employee, 'exit', $previousStatus, null, [
+            'exit_type' => $exitType,
+            'exit_date' => $request->date('exit_date')->toDateString(),
+        ]);
 
         return response()->json([
             'message' => 'Employee exit processed successfully.',
-            'data' => new EmployeeResource($employee->load('department', 'position', 'exitRecord')),
+            'data' => new EmployeeResource($employee->load('department', 'position')),
         ]);
     }
 
-    private function nextEmployeeCode(): string
+    /**
+     * Return a separated employee to active service, reusing the original
+     * record (code, tenure, documents) rather than creating a new one.
+     */
+    public function rehire(EmployeeLifecycleRequest $request, Employee $employee): JsonResponse
     {
-        return DB::transaction(function () {
-            DB::selectOne('SELECT GET_LOCK(?, 5)', ['employee_code_gen']);
-            try {
-                $last = Employee::max('employee_code');
-                $next = $last ? ((int) substr($last, 4)) + 1 : 1;
+        if (! in_array($employee->status, ['Resigned', 'Terminated', 'Retired'], true)) {
+            return response()->json(['message' => 'Only separated employees can be rehired.'], 422);
+        }
 
-                return 'EMP-' . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
-            } finally {
-                DB::selectOne('SELECT RELEASE_LOCK(?)', ['employee_code_gen']);
-            }
+        $previousStatus = $employee->status;
+        $employmentType = $request->string('employment_type')->toString() ?: 'Probationary';
+
+        DB::transaction(function () use ($request, $employee, $employmentType) {
+            EmployeePositionHistory::create([
+                'employee_id' => $employee->employee_id,
+                'effective_date' => $request->date('effective_date')->toDateString(),
+                'change_type' => 'Rehire',
+                'old_position_id' => $employee->position_id,
+                'new_position_id' => $employee->position_id,
+                'notes' => $request->string('notes') ?: 'Rehired.',
+            ]);
+
+            Position::where('position_id', $employee->position_id)->increment('filled_count');
+
+            $employee->exitRecord?->delete();
+
+            ActivityObserver::withoutLogging(fn () => $employee->forceFill([
+                'status' => 'Active',
+                'employment_type' => $employmentType,
+                'employee_record_last_updated_at' => now()->toDateString(),
+            ])->save());
         });
+
+        HcmCache::flush();
+
+        AuditLogger::log(
+            'Employee rehired',
+            'Core HCM',
+            'Info',
+            'employee',
+            $employee->employee_code,
+            'Rehired ' . $employee->full_name,
+        );
+
+        $this->lifecycle->notifyStatusChange($employee, 'rehire', $previousStatus, null);
+
+        return response()->json([
+            'message' => 'Employee rehired successfully.',
+            'data' => new EmployeeResource($employee->load('department', 'position')),
+        ]);
     }
 
     /**

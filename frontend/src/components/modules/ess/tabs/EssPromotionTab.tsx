@@ -15,10 +15,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ListSkeleton } from "@/components/ui/loading-skeletons";
 import { essApi, hcmApi, type ApiPromotionRequest } from "@/lib/api";
+import { EssPerformanceTab } from "./EssPerformanceTab";
 
 /**
- * ESS Promotion tab — employees request status/position promotion.
- * HR reviews in Core HCM → Promotion Requests tab.
+ * ESS "Promotion & Evaluation Request" tab — employees review their performance
+ * evaluation and request a status/position promotion here. HR reviews in Core HCM
+ * → Promotion Requests tab.
  */
 export function EssPromotionTab() {
   const [rows, setRows] = useState<ApiPromotionRequest[]>([]);
@@ -89,10 +91,12 @@ export function EssPromotionTab() {
 
   return (
     <div className="space-y-6">
+      <EssPerformanceTab />
+
       <Card className="border-border/70 shadow-xs">
         <CardHeader className="border-b border-border/60 pb-3">
           <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold">
-            <TrendingUp className="h-5 w-5 text-primary" /> Request Promotion
+            <TrendingUp className="h-5 w-5 text-primary" /> Promotion &amp; Evaluation Request
           </CardTitle>
           <p className="text-xs text-muted-foreground">
             Ask HR to review you for a higher position or salary grade. One active request at a

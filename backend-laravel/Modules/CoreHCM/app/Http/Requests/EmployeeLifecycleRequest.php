@@ -25,6 +25,7 @@ class EmployeeLifecycleRequest extends FormRequest
             'exit_date' => ['required_if:action,exit', 'date'],
             'clearance_status' => ['nullable', Rule::in(['Pending', 'Cleared', 'Partial'])],
             'coe_status' => ['nullable', Rule::in(['Pending', 'Issued', 'Declined'])],
+            'employment_type' => ['nullable', Rule::in(['Regular', 'Contractual', 'Probationary'])],
         ];
     }
 }

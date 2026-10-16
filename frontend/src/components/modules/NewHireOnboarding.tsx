@@ -73,7 +73,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { ListSkeleton } from "@/components/ui/loading-skeletons";
+import { ListSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -90,6 +90,7 @@ import {
   DEFAULT_ACCOUNT_PASSWORD,
   hireStore,
   useHires,
+  useHiresLoading,
   useMasterChecklists,
   usePendingHire,
 } from "@/data/hires";
@@ -289,6 +290,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const isSuperAdmin = role === "superadmin";
   const navigate = useNavigate();
   const hires = useHires();
+  const loading = useHiresLoading();
   const setHires = (updater: (prev: NewHire[]) => NewHire[]) => hireStore.setHires(updater);
   const pending = usePendingHire();
   const masterChecklists = useMasterChecklists();
@@ -435,7 +437,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const [tab, setTab] = useState("pipeline");
   /** HR review queue: submitted-but-unverified onboarding items across hires. */
   const [submissions, setSubmissions] = useState<ApiOnboardingSubmission[]>([]);
-  const [subLoading, setSubLoading] = useState(false);
+  const [subLoading, setSubLoading] = useState(true);
   const [verifyingId, setVerifyingId] = useState<number | null>(null);
   /** Submission being returned for correction + the HR note. */
   const [returnTarget, setReturnTarget] = useState<ApiOnboardingSubmission | null>(null);
@@ -1318,7 +1320,8 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {hirePage.pageItems.map((h) => {
+                        {loading && <TableRowsSkeleton cols={7} rows={5} />}
+                        {!loading && hirePage.pageItems.map((h) => {
                           const pct = progress(h);
                           const complete = pct === 100;
                           const awaiting = evaluationRequested.includes(h.id);
@@ -1446,7 +1449,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             </TableRow>
                           );
                         })}
-                        {visible.length === 0 && (
+                        {!loading && visible.length === 0 && (
                           <TableRow>
                             <TableCell colSpan={7} className="py-8">
                               <ListEmptyState placeholder="Search name, position..." />
@@ -2224,9 +2227,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               </Button>
             </CardHeader>
             <CardContent>
-              {subLoading ? (
-                <ListSkeleton items={4} />
-              ) : submissions.length === 0 ? (
+              {!subLoading && submissions.length === 0 ? (
                 <ListEmptyState
                   subject="submissions awaiting review"
                 />
@@ -2241,7 +2242,8 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {submissions.map((s) => (
+                    {subLoading && <TableRowsSkeleton cols={4} rows={5} />}
+                    {!subLoading && submissions.map((s) => (
                       <TableRow key={s.employee_onboarding_item_id}>
                         <TableCell>
                           <p className="text-sm font-semibold">{s.hire_name}</p>
