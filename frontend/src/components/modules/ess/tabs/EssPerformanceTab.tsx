@@ -474,14 +474,19 @@ export function EssPerformanceTab() {
                               <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/50">
                                 <div className="h-full rounded-full bg-white/90 transition-all" style={{ width: `${pct}%` }} />
                               </div>
-                              <button
-                                type="button"
-                                disabled={startingCourseId === c.id}
-                                onClick={() => (isDone ? handleOpenCert(c) : handleStartCourse(c))}
-                                className="mt-1 w-full rounded-lg bg-white/15 py-2 text-xs font-bold backdrop-blur-xs transition-colors hover:bg-white/25 disabled:opacity-50 cursor-pointer"
-                              >
-                                {startingCourseId === c.id ? "Saving…" : isDone ? "View Certificate" : String(c.status) === "Assigned" ? "Start Course →" : "Continue →"}
-                              </button>
+                              {c.status.toLowerCase() !== "complet" && (
+                                <p className="text-[10px] uppercase font-bold tracking-wider text-white/70 mb-1">
+                                  {String(c.status).toLowerCase() === "assigned" ? "Action: start course" : "Action: continue course"}
+                                </p>
+                              )}
+                                <button
+                                  type="button"
+                                  disabled={startingCourseId === c.id}
+                                  onClick={() => (isDone ? handleOpenCert(c) : handleStartCourse(c))}
+                                  className={`mt-1 w-full rounded-lg py-2 text-sm font-bold transition-all ${isDone ? "bg-white/20 hover:bg-white/30" : "bg-white/10 hover:bg-white/20"} disabled:opacity-50 cursor-pointer`}
+                                >
+                                  {startingCourseId === c.id ? "Saving…" : isDone ? "View Certificate" : String(c.status) === "Assigned" ? "Start Course →" : "Continue →"}
+                                </button>
                             </div>
                           </div>
                         );
@@ -583,6 +588,11 @@ export function EssPerformanceTab() {
                               <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/50">
                                 <div className="h-full rounded-full bg-white/90 transition-all" style={{ width: `${isDone ? 100 : pct}%` }} />
                               </div>
+                              {c.status.toLowerCase() !== "complet" && (
+                                <p className="text-[10px] uppercase font-bold tracking-wider text-white/70 mb-1">
+                                  {String(c.status).toLowerCase() === "assigned" ? "Action: start assessment" : "Action: take assessment"}
+                                </p>
+                              )}
                               <button
                                 type="button"
                                 disabled={startingCourseId === c.id}
