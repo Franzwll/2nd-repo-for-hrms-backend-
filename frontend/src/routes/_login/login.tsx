@@ -357,7 +357,7 @@ function LoginPage() {
       <div className="flex items-center justify-center bg-background px-5 py-12 sm:px-10">
         <div className="w-full max-w-md">
           <Link to="/" className="mb-10 flex items-center gap-3 lg:hidden">
-            <Logo mark="white" />
+            <Logo mark="maroon" />
           </Link>
 
           <p className="eyebrow">Staff Portal Access</p>

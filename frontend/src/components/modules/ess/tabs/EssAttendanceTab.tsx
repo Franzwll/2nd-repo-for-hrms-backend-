@@ -370,7 +370,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         onValueChange={(v) => setActiveSubTab(v as typeof activeSubTab)}
         className="mt-6"
       >
-        <TabsList className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
+        <TabsList>
           <TabsTrigger
             className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
             value="schedule"
@@ -643,8 +643,8 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                 <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
                   <FileText className="h-4 w-4 text-primary" /> Leave Filing History &amp; Approvals
                 </h2>
-                <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                  <div className="relative w-56">
+                <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+                  <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                     <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       placeholder="Search leave…"

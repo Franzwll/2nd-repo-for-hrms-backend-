@@ -198,8 +198,8 @@ export function AuditLogs() {
             <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
               <ScrollText className="h-5 w-5 text-primary" /> System Activity
             </h2>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-[14rem] flex-1">
+            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   className="pl-8"

@@ -785,7 +785,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
       </div>
 
       <Tabs defaultValue="list" className="mt-6">
-        <TabsList className="flex h-auto flex-wrap justify-start">
+        <TabsList>
           <TabsTrigger className="flex items-center gap-1.5" value="list">
             <Users className="h-3.5 w-3.5" /> Employee List
           </TabsTrigger>
@@ -816,11 +816,11 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     </p>
                   ) : null}
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <div className="relative">
+                <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+                  <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      className="w-56 pl-9"
+                      className="pl-9"
                       placeholder="Search employee…"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -1053,11 +1053,11 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     <History className="h-5 w-5 text-primary" /> Record History
                   </h2>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <div className="relative">
+                <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+                  <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      className="w-64 pl-9"
+                      className="pl-9"
                       placeholder="Search logs…"
                       value={logSearch}
                       onChange={(e) => setLogSearch(e.target.value)}
@@ -1271,7 +1271,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     onValueChange={setProfileTab}
                     className="flex min-h-0 flex-1 flex-col"
                   >
-                    <TabsList className="flex h-auto flex-wrap justify-start">
+                    <TabsList>
                       <TabsTrigger value="personal">Personal Information</TabsTrigger>
                       <TabsTrigger value="documents">Documents</TabsTrigger>
                       <TabsTrigger value="history">Employment History</TabsTrigger>

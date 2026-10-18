@@ -311,7 +311,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
 
       {/* Sub-navigation Tabs + module Export (same flat Export org chart menu) */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
+        <div className="flex h-auto flex-1 flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none [&>button]:flex-1 [&>button]:justify-center xl:flex-none xl:[&>button]:flex-initial">
           <button
             type="button"
             onClick={() => setActiveTab("payslips")}

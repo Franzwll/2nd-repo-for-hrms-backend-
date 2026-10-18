@@ -665,7 +665,7 @@ export function ProfilePage({ role }: { role: Role }) {
           <div className="h-1 w-full bg-gradient-to-r from-primary via-gold to-primary opacity-90" />
           <CardContent className="p-6">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="bg-muted/60 flex flex-wrap h-auto gap-1">
+              <TabsList>
                 <TabsTrigger
                   value="profile"
                   className="cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
