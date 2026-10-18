@@ -14,6 +14,8 @@ use App\Models\EssRequestStatusHistory;
 use App\Models\LeaveBalance;
 use App\Models\WorkSchedule;
 use App\Services\AuditLogger;
+use App\Services\LmsQuizGenerator;
+use App\Services\NlpService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -1286,6 +1288,13 @@ class EssPortalController extends Controller
                 'completedDate' => $row?->completed_date
                     ? Carbon::parse($row->completed_date)->format('M d, Y')
                     : null,
+                // Tier-1 LMS: lets the player pick the reading vs quiz stage and
+                // lets the cards show the parity badge (pages / read-time).
+                'reading_completed_at' => $row?->reading_completed_at,
+                'estimated_reading_minutes' => $c->estimated_reading_minutes !== null
+                    ? (int) $c->estimated_reading_minutes : null,
+                'estimated_pages' => $c->estimated_pages !== null ? (int) $c->estimated_pages : null,
+                'mandatory' => (bool) ($c->mandatory ?? false),
             ];
         })->values()->all();
 
@@ -1661,6 +1670,427 @@ class EssPortalController extends Controller
                     ? Carbon::parse($row->completed_date)->format('M d, Y')
                     : null,
             ],
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Tier-1 thin LMS: handbook -> AI quiz -> auto-score (ESS only)        */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * Lazy handbook text: the cached content_text, or (for file-based
+     * handbooks) text extracted once via the NLP service and cached back onto
+     * the course. Returns null when nothing usable is available.
+     */
+    private function resolveCourseText(object $course): ?string
+    {
+        $cached = trim((string) ($course->content_text ?? ''));
+        if ($cached !== '') {
+            return $cached;
+        }
+
+        $relative = $this->courseFilePath($course);
+        if ($relative === null) {
+            return null;
+        }
+
+        $result = app(NlpService::class)->extractDocumentText(
+            Storage::disk('public')->path($relative),
+            basename($relative),
+        );
+
+        $text = trim((string) data_get($result, 'data.text', ''));
+        if (! ($result['ok'] ?? false) || $text === '') {
+            return null;
+        }
+
+        DB::table('learning_courses')
+            ->where('course_id', $course->course_id)
+            ->update(['content_text' => $text]);
+
+        return $text;
+    }
+
+    /** Normalised, existing public-disk path for a course handbook, or null. */
+    private function courseFilePath(object $course): ?string
+    {
+        $relative = ltrim((string) ($course->material_path ?? ''), '/');
+        if (str_starts_with($relative, 'storage/')) {
+            $relative = substr($relative, strlen('storage/'));
+        }
+
+        return ($relative !== '' && Storage::disk('public')->exists($relative)) ? $relative : null;
+    }
+
+    /** The employee's employee_learning row for a course (or null). */
+    private function learningRow(int $employeeId, int $courseId): ?object
+    {
+        return DB::table('employee_learning')
+            ->where('employee_id', $employeeId)
+            ->where('course_id', $courseId)
+            ->first();
+    }
+
+    /**
+     * GET /api/v1/ess/my-learning/{courseCode}/material
+     * Handbook payload for the player's reading stage (§2a).
+     */
+    public function learningMaterial(Request $request, string $courseCode): JsonResponse
+    {
+        $employee = $this->resolveEmployee($request);
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found.'], 404);
+        }
+
+        $course = DB::table('learning_courses')->where('course_code', $courseCode)->first();
+        if (! $course) {
+            return response()->json(['message' => 'Course not found.'], 404);
+        }
+
+        $relative = $this->courseFilePath($course);
+        $row = $this->learningRow((int) $employee->employee_id, (int) $course->course_id);
+
+        return response()->json([
+            'course' => [
+                'code' => $course->course_code,
+                'title' => $course->title,
+                'category' => $course->category ?? 'General',
+                'estimated_reading_minutes' => $course->estimated_reading_minutes !== null
+                    ? (int) $course->estimated_reading_minutes : null,
+                'estimated_pages' => $course->estimated_pages !== null
+                    ? (int) $course->estimated_pages : null,
+                'mandatory' => (bool) ($course->mandatory ?? false),
+            ],
+            'content' => $this->resolveCourseText($course),
+            'file_url' => $relative !== null
+                ? '/api/v1/ess/my-learning/' . rawurlencode($courseCode) . '/file'
+                : null,
+            'status' => $row?->status ?? 'Assigned',
+            'reading_completed_at' => $row?->reading_completed_at,
+        ]);
+    }
+
+    /**
+     * POST /api/v1/ess/my-learning/{courseCode}/reading-complete
+     * Marks the reading stage done - the write the hard gate checks (§2d).
+     * Idempotent; never downgrades an existing Completed row.
+     */
+    public function completeLearningReading(Request $request, string $courseCode): JsonResponse
+    {
+        $employee = $this->resolveEmployee($request);
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found.'], 404);
+        }
+
+        $course = DB::table('learning_courses')->where('course_code', $courseCode)->first();
+        if (! $course) {
+            return response()->json(['message' => 'Course not found.'], 404);
+        }
+
+        $existing = $this->learningRow((int) $employee->employee_id, (int) $course->course_id);
+
+        if (! $existing) {
+            $learningId = DB::table('employee_learning')->insertGetId([
+                'employee_id' => $employee->employee_id,
+                'course_id' => $course->course_id,
+                'status' => 'In Progress',
+                'assigned_date' => Carbon::today()->toDateString(),
+                'reading_completed_at' => now(),
+            ]);
+        } else {
+            $learningId = $existing->employee_learning_id;
+            $update = ['reading_completed_at' => $existing->reading_completed_at ?: now()];
+            if ($existing->status !== 'Completed') {
+                $update['status'] = 'In Progress';
+            }
+            DB::table('employee_learning')
+                ->where('employee_learning_id', $learningId)
+                ->update($update);
+        }
+
+        $row = DB::table('employee_learning')->where('employee_learning_id', $learningId)->first();
+
+        AuditLogger::log(
+            action: 'LMS Reading Completed',
+            module: 'Learning Management',
+            severity: 'Info',
+            targetType: 'EmployeeLearning',
+            targetId: (string) $learningId,
+            details: "{$employee->full_name} finished reading {$course->course_code} - {$course->title}",
+            request: $request
+        );
+
+        return response()->json([
+            'message' => 'Reading marked complete.',
+            'reading_completed_at' => $row->reading_completed_at,
+            'status' => $row->status,
+        ]);
+    }
+
+    /**
+     * GET /api/v1/ess/my-learning/{courseCode}/quiz
+     * Hard gate (§1e / §10): the quiz is refused until the handbook is read.
+     * Generates + caches the quiz on first request; NEVER returns the answer key.
+     */
+    public function learningQuiz(Request $request, string $courseCode): JsonResponse
+    {
+        $employee = $this->resolveEmployee($request);
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found.'], 404);
+        }
+
+        $course = DB::table('learning_courses')->where('course_code', $courseCode)->first();
+        if (! $course) {
+            return response()->json(['message' => 'Course not found.'], 404);
+        }
+
+        $row = $this->learningRow((int) $employee->employee_id, (int) $course->course_id);
+
+        // The server gate is authoritative - a bypassed client cannot skip reading.
+        if (! $row || $row->reading_completed_at === null) {
+            return response()->json([
+                'code' => 'reading_required',
+                'message' => 'Finish the handbook first.',
+            ], 409);
+        }
+
+        $quiz = $course->quiz_json ? json_decode((string) $course->quiz_json, true) : null;
+
+        if (! is_array($quiz) || empty($quiz['questions'])) {
+            $text = $this->resolveCourseText($course);
+            if ($text === null) {
+                return response()->json([
+                    'code' => 'ai_unavailable',
+                    'fallback' => false,
+                    'message' => 'No handbook text is available to build a quiz.',
+                ], 503);
+            }
+
+            $generated = app(LmsQuizGenerator::class)->generate(
+                (string) $course->title,
+                $course->category,
+                $text,
+                (int) config('services.ess_lms.question_count', 10),
+            );
+
+            if (! ($generated['ok'] ?? false)) {
+                return response()->json([
+                    'code' => 'ai_unavailable',
+                    'fallback' => false,
+                    'message' => $generated['error'] ?? 'Could not generate a quiz.',
+                ], 503);
+            }
+
+            $quiz = [
+                'pass_mark' => (int) config('services.ess_lms.pass_mark', 80),
+                'time_limit_seconds' => (int) config('services.ess_lms.time_limit_seconds', 600),
+                'generated_by' => $generated['generated_by'] ?? 'ai',
+                'questions' => $generated['questions'],
+            ];
+
+            DB::table('learning_courses')->where('course_id', $course->course_id)->update([
+                'quiz_json' => json_encode($quiz),
+                'quiz_generated_at' => now(),
+                'content_text' => $course->content_text ?: $text,
+            ]);
+        }
+
+        return response()->json([
+            'course' => [
+                'code' => $course->course_code,
+                'title' => $course->title,
+                'category' => $course->category ?? 'General',
+            ],
+            'pass_mark' => (int) ($quiz['pass_mark'] ?? 80),
+            'total_items' => count($quiz['questions']),
+            'time_limit_seconds' => (int) ($quiz['time_limit_seconds'] ?? 600),
+            // Answer key (correct_index / explanation) intentionally omitted.
+            'questions' => array_map(fn ($q) => [
+                'id' => (int) $q['id'],
+                'question' => $q['question'],
+                'options' => array_values($q['options']),
+            ], $quiz['questions']),
+            'already_passed' => ($row->status ?? null) === 'Completed',
+            'last_score' => $row->score !== null ? (float) $row->score : null,
+        ]);
+    }
+
+    /**
+     * POST /api/v1/ess/my-learning/{courseCode}/quiz
+     * Grades server-side from the cached key and applies the §2c completion
+     * rule: a pass sets Completed immediately (completion_source = 'quiz').
+     * Completed is terminal - resubmits are no-ops.
+     */
+    public function submitLearningQuiz(Request $request, string $courseCode): JsonResponse
+    {
+        $validated = $request->validate([
+            'answers' => 'required|array',
+        ]);
+
+        $employee = $this->resolveEmployee($request);
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found.'], 404);
+        }
+
+        $course = DB::table('learning_courses')->where('course_code', $courseCode)->first();
+        if (! $course) {
+            return response()->json(['message' => 'Course not found.'], 404);
+        }
+
+        $quiz = $course->quiz_json ? json_decode((string) $course->quiz_json, true) : null;
+        if (! is_array($quiz) || empty($quiz['questions'])) {
+            return response()->json([
+                'code' => 'quiz_not_ready',
+                'message' => 'The quiz has not been prepared yet.',
+            ], 409);
+        }
+
+        $row = $this->learningRow((int) $employee->employee_id, (int) $course->course_id);
+
+        // The same hard gate protects submission, not just delivery.
+        if (! $row || $row->reading_completed_at === null) {
+            return response()->json([
+                'code' => 'reading_required',
+                'message' => 'Finish the handbook first.',
+            ], 409);
+        }
+
+        $answers = $validated['answers'];
+        $passMark = (int) ($quiz['pass_mark'] ?? 80);
+
+        $correct = 0;
+        $answered = [];
+        $review = [];
+        foreach ($quiz['questions'] as $q) {
+            $qid = (int) $q['id'];
+            $correctIndex = (int) $q['correct_index'];
+            $yourIndex = array_key_exists($qid, $answers) ? (int) $answers[$qid] : null;
+            $isCorrect = $yourIndex !== null && $yourIndex === $correctIndex;
+            if ($isCorrect) {
+                $correct++;
+            }
+            $answered[$qid] = $yourIndex;
+            $review[] = [
+                'id' => $qid,
+                'question' => $q['question'],
+                'options' => array_values($q['options']),
+                'correct_index' => $correctIndex,
+                'your_index' => $yourIndex,
+                'is_correct' => $isCorrect,
+                'explanation' => $q['explanation'] ?? '',
+            ];
+        }
+
+        $total = count($quiz['questions']);
+        $score = $total > 0 ? (int) round(100 * $correct / $total) : 0;
+        $passed = $score >= $passMark;
+
+        // Terminal: once Completed the course is finished; resubmits are no-ops.
+        if ($row->status === 'Completed') {
+            return response()->json([
+                'passed' => true,
+                'score' => $row->score !== null ? (int) round((float) $row->score) : $score,
+                'correct_count' => $correct,
+                'total_count' => $total,
+                'pass_mark' => $passMark,
+                'status' => 'Completed',
+                'certificate_eligible' => true,
+                'already_completed' => true,
+                'review' => $review,
+            ]);
+        }
+
+        // Keep the best score ever recorded for the course card.
+        $bestScore = $row->score !== null ? max((float) $row->score, (float) $score) : (float) $score;
+
+        if ($passed) {
+            DB::table('employee_learning')
+                ->where('employee_learning_id', $row->employee_learning_id)
+                ->update([
+                    'status' => 'Completed',
+                    'score' => $bestScore,
+                    'completed_date' => $row->completed_date ?: Carbon::today()->toDateString(),
+                    'completion_source' => 'quiz',
+                ]);
+        } else {
+            // Not completed - retakes stay available while not Completed.
+            DB::table('employee_learning')
+                ->where('employee_learning_id', $row->employee_learning_id)
+                ->update([
+                    'status' => 'In Progress',
+                    'score' => $bestScore,
+                ]);
+        }
+
+        DB::table('employee_learning_attempts')->insert([
+            'employee_id' => $employee->employee_id,
+            'course_id' => $course->course_id,
+            'score' => $score,
+            'correct_count' => $correct,
+            'total_count' => $total,
+            'passed' => $passed,
+            'answers_json' => json_encode($answered),
+            'submitted_at' => now(),
+        ]);
+
+        AuditLogger::log(
+            action: 'LMS Quiz Submitted',
+            module: 'Learning Management',
+            severity: 'Info',
+            targetType: 'EmployeeLearning',
+            targetId: (string) $row->employee_learning_id,
+            details: "{$employee->full_name} scored {$score}% on {$course->course_code} (".($passed ? 'pass' : 'fail').")",
+            request: $request
+        );
+
+        return response()->json([
+            'passed' => $passed,
+            'score' => $score,
+            'correct_count' => $correct,
+            'total_count' => $total,
+            'pass_mark' => $passMark,
+            'status' => $passed ? 'Completed' : 'In Progress',
+            'certificate_eligible' => $passed,
+            'review' => $review,
+        ]);
+    }
+
+    /**
+     * GET /api/v1/ess/my-learning/{courseCode}/file
+     * Streams a file-based handbook inline. Token auth (?token=) so the
+     * reading <iframe> works without an Authorization header.
+     */
+    public function learningMaterialFile(Request $request, string $courseCode): object
+    {
+        $user = $this->resolveTokenUser($request) ?? $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        $employee = $user->employee_id ? Employee::find($user->employee_id) : null;
+        if (! $employee && $user->email) {
+            $employee = Employee::where('email', $user->email)->first();
+        }
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found.'], 404);
+        }
+
+        $course = DB::table('learning_courses')->where('course_code', $courseCode)->first();
+        if (! $course) {
+            return response()->json(['message' => 'Course not found.'], 404);
+        }
+
+        $relative = $this->courseFilePath($course);
+        if ($relative === null) {
+            return response()->json(['message' => 'No handbook file on record for this course.'], 404);
+        }
+
+        $extension = pathinfo($relative, PATHINFO_EXTENSION);
+        $name = (string) preg_replace('/[\r\n"]+/', '_', (string) $course->title . ($extension ? '.' . $extension : ''));
+
+        return response()->file(Storage::disk('public')->path($relative), [
+            'Content-Type' => $extension === 'pdf' ? 'application/pdf' : 'application/octet-stream',
+            'Content-Disposition' => 'inline; filename="' . $name . '"',
         ]);
     }
 

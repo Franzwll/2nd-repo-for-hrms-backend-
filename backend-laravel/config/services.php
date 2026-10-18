@@ -95,4 +95,20 @@ return [
         'daily_limit' => (int) env('JOB_AI_DAILY_LIMIT', 0),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Tier-1 thin LMS (ESS Performance: handbook -> AI quiz -> auto-score)
+    |--------------------------------------------------------------------------
+    | Kill switch: set ESS_LMS_QUIZ_ENABLED=false to unregister the new ESS
+    | learning routes so the cards fall back to updateLearningProgress +
+    | HR verification (verifyLearning). The quiz spec is fixed at
+    | 10 items / 10 minutes / pass >= 80%.
+    */
+    'ess_lms' => [
+        'enabled' => filter_var(env('ESS_LMS_QUIZ_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+        'pass_mark' => (int) env('ESS_LMS_PASS_MARK', 80),
+        'time_limit_seconds' => (int) env('ESS_LMS_TIME_LIMIT', 600),
+        'question_count' => (int) env('ESS_LMS_QUESTION_COUNT', 10),
+    ],
+
 ];
