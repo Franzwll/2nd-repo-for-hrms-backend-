@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call(HotelHrDatabaseSeeder::class);
+        $this->call(LmsTierOneSeeder::class);
         $this->call(SystemUserPasswordSeeder::class);
         $this->call(ScreeningReferenceDataSeeder::class);
         $this->call(ScreeningRequirementTemplateSeeder::class);
