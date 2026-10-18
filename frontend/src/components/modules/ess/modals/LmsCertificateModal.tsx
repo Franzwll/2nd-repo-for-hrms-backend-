@@ -95,7 +95,7 @@ export function LmsCertificateModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[560px] print:p-0 print:border-none">
+      <DialogContent className="sm:max-w-[560px] print:p-0 print:border-none">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <div className="rounded-md bg-amber-500/10 p-2 text-amber-600">

@@ -73,6 +73,48 @@ class NlpService
     }
 
     /**
+     * Generic handbook / learning-material extraction (PDF / DOCX / TXT /
+     * image OCR). Unlike extractResume() this returns the raw text plus page
+     * count so the LMS quiz generator can ground its questions in the source
+     * handbook. Mirrors extractResume().
+     * Returns ['ok' => bool, 'data' => ?array, 'error' => ?string].
+     */
+    public function extractDocumentText(string $filePath, string $originalName, int $timeoutSeconds = 120): array
+    {
+        if (!is_file($filePath)) {
+            return ['ok' => false, 'data' => null, 'error' => "Document file not found at {$filePath}"];
+        }
+
+        try {
+            $response = Http::timeout($timeoutSeconds)
+                ->attach('file', file_get_contents($filePath), $originalName)
+                ->post("{$this->baseUrl}/extract-document");
+
+            if ($response->successful()) {
+                return ['ok' => true, 'data' => $response->json(), 'error' => null];
+            }
+
+            $body = $response->json();
+            $detail = is_array($body) ? ($body['detail'] ?? $response->body()) : $response->body();
+
+            return [
+                'ok' => false,
+                'data' => null,
+                'error' => "NLP service returned HTTP {$response->status()}: "
+                    . (is_string($detail) ? mb_substr($detail, 0, 500) : json_encode($detail)),
+            ];
+        } catch (\Throwable $e) {
+            Log::error("Failed to connect to NLP document extraction service: " . $e->getMessage());
+
+            return [
+                'ok' => false,
+                'data' => null,
+                'error' => 'Could not reach the NLP document service: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
      * Full screening call with structured role requirements and alternative open jobs.
      * Returns ['ok' => bool, 'data' => ?array, 'error' => ?string] so callers never fail silently.
      *
