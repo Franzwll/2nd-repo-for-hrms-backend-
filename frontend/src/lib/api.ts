@@ -2602,6 +2602,7 @@ export const essApi = {
       };
       courses: {
         id: string;
+        course_id?: number;
         title: string;
         category: string;
         progress: number | null;
@@ -2609,6 +2610,11 @@ export const essApi = {
         score: number | null;
         duration: string | null;
         completedDate: string | null;
+        // Tier-1 LMS: drives the reading-gate + parity badges on the cards.
+        reading_completed_at?: string | null;
+        estimated_reading_minutes?: number | null;
+        estimated_pages?: number | null;
+        mandatory?: boolean;
       }[];
     }>("/ess/my-performance"),
   updateLearningProgress: (data: { course_code: string }) =>
@@ -2628,6 +2634,76 @@ export const essApi = {
         completed_date: string | null;
       };
     }>(`/ess/my-learning/certificate/${encodeURIComponent(courseCode)}`),
+
+  /* --- Tier-1 thin LMS: read handbook -> AI quiz -> auto-score ---------- */
+
+  /** Handbook payload for the player's reading stage (content + optional file). */
+  learningMaterial: (courseCode: string) =>
+    request<{
+      course: {
+        code: string;
+        title: string;
+        category: string;
+        estimated_reading_minutes: number | null;
+        estimated_pages: number | null;
+        mandatory: boolean;
+      };
+      content: string | null;
+      file_url: string | null;
+      status: string;
+      reading_completed_at: string | null;
+    }>(`/ess/my-learning/${encodeURIComponent(courseCode)}/material`),
+
+  /** Marks the reading stage done — the write the server-side gate checks. */
+  completeLearningReading: (courseCode: string) =>
+    request<{ message: string; reading_completed_at: string; status: string }>(
+      `/ess/my-learning/${encodeURIComponent(courseCode)}/reading-complete`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+
+  /** Quiz delivery. Answer key is server-side only — never in this response. */
+  learningQuiz: (courseCode: string) =>
+    request<{
+      course: { code: string; title: string; category: string };
+      pass_mark: number;
+      total_items: number;
+      time_limit_seconds: number;
+      questions: { id: number; question: string; options: string[] }[];
+      already_passed: boolean;
+      last_score: number | null;
+    }>(`/ess/my-learning/${encodeURIComponent(courseCode)}/quiz`),
+
+  /** Server-side grading; a pass flips the course to Completed immediately. */
+  submitLearningQuiz: (courseCode: string, answers: Record<string, number>) =>
+    request<{
+      passed: boolean;
+      score: number;
+      correct_count: number;
+      total_count: number;
+      pass_mark: number;
+      status: string;
+      certificate_eligible: boolean;
+      already_completed?: boolean;
+      review: {
+        id: number;
+        question: string;
+        options: string[];
+        correct_index: number;
+        your_index: number | null;
+        is_correct: boolean;
+        explanation: string;
+      }[];
+    }>(`/ess/my-learning/${encodeURIComponent(courseCode)}/quiz`, {
+      method: "POST",
+      body: JSON.stringify({ answers }),
+    }),
+
+  /** Same-origin URL to stream a file-based handbook inline (token auth). */
+  learningMaterialUrl: (courseCode: string) => {
+    const token = getToken();
+    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `/api/v1/ess/my-learning/${encodeURIComponent(courseCode)}/file${qs}`;
+  },
   adminLearning: () =>
     request<{
       records: {

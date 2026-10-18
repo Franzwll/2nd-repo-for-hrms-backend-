@@ -9,9 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { myPerformance, myLearningCourses, myProfile } from "@/data/ess";
 import { LmsCertificateModal } from "@/components/modules/ess/modals/LmsCertificateModal";
+import { LmsActivityPlayer } from "@/components/modules/ess/modals/LmsActivityPlayer";
 import { PromotionRequestForm } from "@/components/modules/ess/modals/PromotionRequestForm";
 import { essApi } from "@/lib/api";
-import { toast } from "sonner";
 
 // Card visuals matching LMS reference (Big Data / Capstone / IT Elective / OJT):
 // dark geometric gradient tiles, white title, category subtitle, bottom % bar.
@@ -72,7 +72,10 @@ export function EssPerformanceTab() {
   // Tabbed bottom section — promotion card above stays in place
   const [activeTab, setActiveTab] = useState<"overview" | "materials" | "assessment" | "promotion">("overview");
   const [perfAudit, setPerfAudit] = useState<any[]>([]);
-  const [startingCourseId, setStartingCourseId] = useState<string | null>(null);
+  // Tier-1 LMS activity player (one modal, two stages: handbook -> quiz).
+  const [playerOpen, setPlayerOpen] = useState(false);
+  const [playerCourse, setPlayerCourse] = useState<any | null>(null);
+  const [playerStage, setPlayerStage] = useState<"reading" | "quiz">("reading");
   // Top-right filtering for Materials + Assessment cards
   const [materialsSearch, setMaterialsSearch] = useState("");
   const [materialsStatus, setMaterialsStatus] = useState("all");
@@ -142,20 +145,26 @@ export function EssPerformanceTab() {
   // Canonical backend mapping, reused by the initial load and refetches.
   // Nulls mean "no record yet" (never reviewed / never scored) — the UI
   // renders placeholders instead of mock figures in that case.
+  const mapCourses = (res: any) =>
+    (res?.courses ?? []).map((c: any) => ({
+      id: c.id,
+      title: c.title,
+      category: c.category,
+      progress: c.progress,
+      status: c.status as any,
+      score: c.score != null ? `${c.score} / 100` : "—",
+      duration: c.duration,
+      completedDate: c.completedDate || "In progress",
+      // Tier-1 LMS: reading gate + card parity (pages / read-time / mandatory).
+      reading_completed_at: c.reading_completed_at ?? null,
+      estimated_reading_minutes: c.estimated_reading_minutes ?? null,
+      estimated_pages: c.estimated_pages ?? null,
+      mandatory: Boolean(c.mandatory),
+    }));
+
   const applyPerformance = (res: any) => {
     if (!res) return;
-    setCourses(
-      (res.courses ?? []).map((c: any) => ({
-        id: c.id,
-        title: c.title,
-        category: c.category,
-        progress: c.progress,
-        status: c.status as any,
-        score: c.score != null ? `${c.score} / 100` : "—",
-        duration: c.duration,
-        completedDate: c.completedDate || "In progress",
-      }))
-    );
+    setCourses(mapCourses(res));
     if (res.stats && res.employee) {
       setPerfData({
         rating: res.employee.overall_rating ?? null,
@@ -174,26 +183,34 @@ export function EssPerformanceTab() {
       .catch(() => {});
   }, []);
 
-  // Start / resume a course — real write (Assigned -> In Progress), then refetch.
-  // Completion itself is HR-verified on the Admin side.
-  const handleStartCourse = async (course: any) => {
-    if (!course?.id || startingCourseId) return;
-    setStartingCourseId(course.id);
-    try {
-      await essApi.updateLearningProgress({ course_code: course.id });
-      const res = await essApi.myPerformance().catch(() => null);
-      applyPerformance(res);
-      toast.success(`"${course.title}" marked as in progress.`);
-    } catch (err: any) {
-      toast.error(err?.message || "Could not update course status — please retry.");
-    } finally {
-      setStartingCourseId(null);
-    }
-  };
-
   const handleOpenCert = (course: any) => {
     setSelectedCourse(course);
     setCertModalOpen(true);
+  };
+
+  // Tier-1 LMS player: Materials opens the reading stage, Assessment opens the
+  // quiz stage. The server refuses the quiz until the handbook has been read
+  // (409 reading_required), so the Assessment card's disabled state mirrors a
+  // real rule rather than a cosmetic one.
+  const handleOpenPlayer = (course: any, stage: "reading" | "quiz") => {
+    setPlayerCourse(course);
+    setPlayerStage(stage);
+    setPlayerOpen(true);
+  };
+
+  const handlePlayerCompleted = () => {
+    essApi
+      .myPerformance()
+      .then(applyPerformance)
+      .catch(() => {});
+  };
+
+  // Refetch first so the certificate renders the fresh score + completion date.
+  const handleViewCertificate = async (courseCode: string) => {
+    const res = await essApi.myPerformance().catch(() => null);
+    if (res) applyPerformance(res);
+    const fresh = (mapCourses(res) as any[]).find((c) => c.id === courseCode) ?? playerCourse;
+    if (fresh) handleOpenCert(fresh);
   };
 
   return (
@@ -464,6 +481,17 @@ export function EssPerformanceTab() {
                             <div className="relative">
                               <p className="text-xl font-extrabold leading-tight tracking-tight">{c.title}</p>
                               <p className="mt-1 text-xs font-medium text-white/75">{c.category}</p>
+                              {(c.estimated_reading_minutes || c.estimated_pages || c.mandatory) && (
+                                <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-white/60">
+                                  {[
+                                    c.estimated_reading_minutes ? `~${c.estimated_reading_minutes} min read` : null,
+                                    c.estimated_pages ? `${c.estimated_pages} pages` : null,
+                                    c.mandatory ? "Mandatory" : null,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </p>
+                              )}
                             </div>
                             <div className="relative space-y-1.5">
                               <div className="flex items-center gap-1.5 text-xs font-semibold text-white/90">
@@ -476,11 +504,10 @@ export function EssPerformanceTab() {
                               </div>
                               <button
                                 type="button"
-                                disabled={startingCourseId === c.id}
-                                onClick={() => (isDone ? handleOpenCert(c) : handleStartCourse(c))}
+                                onClick={() => handleOpenPlayer(c, "reading")}
                                 className="mt-1 w-full rounded-lg bg-white/15 py-2 text-xs font-bold backdrop-blur-xs transition-colors hover:bg-white/25 disabled:opacity-50 cursor-pointer"
                               >
-                                {startingCourseId === c.id ? "Saving…" : isDone ? "View Certificate" : String(c.status) === "Assigned" ? "Start Course →" : "Continue →"}
+                                {isDone ? "Review Handbook" : String(c.status) === "Assigned" ? "Start Reading →" : "Continue Reading →"}
                               </button>
                             </div>
                           </div>
@@ -552,6 +579,7 @@ export function EssPerformanceTab() {
                         const i = courses.indexOf(c);
                         const pct = courseProgress(c);
                         const isDone = String(c.status).toLowerCase().includes("complet");
+                        const readDone = Boolean(c.reading_completed_at);
                         const urgent = urgentReason(c);
                         return (
                           <div
@@ -585,11 +613,12 @@ export function EssPerformanceTab() {
                               </div>
                               <button
                                 type="button"
-                                disabled={startingCourseId === c.id}
-                                onClick={() => (isDone ? handleOpenCert(c) : handleStartCourse(c))}
-                                className="mt-1 w-full rounded-lg bg-white/15 py-2 text-xs font-bold backdrop-blur-xs transition-colors hover:bg-white/25 disabled:opacity-50 cursor-pointer"
+                                disabled={!isDone && !readDone}
+                                title={!isDone && !readDone ? "Read the handbook first" : undefined}
+                                onClick={() => (isDone ? handleOpenCert(c) : handleOpenPlayer(c, "quiz"))}
+                                className="mt-1 w-full rounded-lg bg-white/15 py-2 text-xs font-bold backdrop-blur-xs transition-colors hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                               >
-                                {startingCourseId === c.id ? "Saving…" : isDone ? "View Result" : "Take Assessment →"}
+                                {isDone ? "View Result" : readDone ? "Take Assessment →" : "Read the handbook first"}
                               </button>
                             </div>
                           </div>
@@ -614,6 +643,20 @@ export function EssPerformanceTab() {
             </div>
         </CardContent>
       </Card>
+
+      {/* Tier-1 LMS activity player — handbook -> quiz -> result (one modal) */}
+      {playerCourse && (
+        <LmsActivityPlayer
+          open={playerOpen}
+          onOpenChange={setPlayerOpen}
+          courseId={playerCourse.id}
+          courseTitle={playerCourse.title}
+          category={playerCourse.category}
+          initialStage={playerStage}
+          onCompleted={handlePlayerCompleted}
+          onViewCertificate={handleViewCertificate}
+        />
+      )}
 
       {/* Certificate Modal */}
       {selectedCourse && (
