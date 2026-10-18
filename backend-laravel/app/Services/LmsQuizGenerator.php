@@ -257,12 +257,62 @@ class LmsQuizGenerator
             return [];
         }
 
-        $normalized = (string) preg_replace('/\s+/', ' ', $text);
-        $sentences = preg_split('/(?<=[.!?])\s+/', $normalized) ?: [];
-        $sentences = array_values(array_filter(
-            array_map('trim', $sentences),
-            fn ($s) => mb_strlen($s) >= 40 && mb_strlen($s) <= 320,
-        ));
+        // Handbooks are Markdown with hard-wrapped lines, so first re-join each
+        // line that is a continuation of the previous one (no sentence
+        // terminator, and not itself the start of a heading/bullet block).
+        // Without this, a sentence split across two source lines leaks a
+        // mid-sentence fragment ("... it is ________'s job").
+        $lines = preg_split('/\r\n|\r|\n/', $text) ?: [];
+        $joined = [];
+        $previous = '';
+        foreach ($lines as $line) {
+            $trimmed = trim($line);
+            if ($trimmed === '') {
+                if ($previous !== '') {
+                    $joined[] = $previous;
+                    $previous = '';
+                }
+                continue;
+            }
+
+            $startsBlock = preg_match('/^(?:#{1,6}\s*|[-*]\s+|\d+[.)]\s+)/u', $trimmed) === 1;
+            $continues = $previous !== ''
+                && ! $startsBlock
+                && preg_match('/[.!?]["\')\]]?\s*$/', $previous) !== 1;
+
+            if ($continues) {
+                $previous .= ' ' . $trimmed;
+            } else {
+                if ($previous !== '') {
+                    $joined[] = $previous;
+                }
+                $previous = $trimmed;
+            }
+        }
+        if ($previous !== '') {
+            $joined[] = $previous;
+        }
+
+        // Split each block into sentences. Heading lines are used for vocabulary
+        // (below) but never become question sentences, and list markers are
+        // stripped so the blank reads cleanly.
+        $sentences = [];
+        foreach ($joined as $block) {
+            if (preg_match('/^#{1,6}\s*/', $block) === 1) {
+                continue;
+            }
+            $clean = (string) preg_replace('/^(?:#{1,6}\s*|[-*]\s+|\d+[.)]\s+)/u', '', $block);
+            $clean = trim(preg_replace('/\s+/', ' ', $clean) ?? '');
+            if ($clean === '') {
+                continue;
+            }
+            foreach (preg_split('/(?<=[.!?])\s+/', $clean) ?: [] as $piece) {
+                $piece = trim($piece);
+                if (mb_strlen($piece) >= 40 && mb_strlen($piece) <= 320) {
+                    $sentences[] = $piece;
+                }
+            }
+        }
 
         // Frequency-ranked candidate terms across the whole handbook.
         $tokens = preg_split('/[^A-Za-z0-9\-\/]+/', Str::lower($text)) ?: [];
@@ -277,6 +327,20 @@ class LmsQuizGenerator
         $vocab = array_slice(array_keys($freq), 0, 120);
         if (count($vocab) < 4) {
             return [];
+        }
+
+        // Preferred display form per term, so acronyms/proper nouns survive
+        // lower-casing (e.g. "HACCP", "Oxford").
+        $displayForms = [];
+        if (preg_match_all('/[A-Za-z][A-Za-z0-9\-\/]{4,}/', $text, $matches) > 0) {
+            foreach ($matches[0] as $raw) {
+                $lower = Str::lower($raw);
+                if (! isset($displayForms[$lower])) {
+                    $displayForms[$lower] = $raw;
+                } elseif (strtoupper($raw) === $raw) {
+                    $displayForms[$lower] = $raw; // prefer an all-caps (acronym) form
+                }
+            }
         }
 
         $questions = [];
@@ -306,7 +370,18 @@ class LmsQuizGenerator
 
             $answer = $this->matchCase($sentence, $term);
 
-            // Distractors: other frequent terms absent from this sentence.
+            // Distractors: other frequent terms absent from this sentence, then
+            // cased to match the answer so capitalisation is not a giveaway.
+            $answerCapitalised = preg_match('/^[A-Z]/', $answer) === 1;
+            $decorate = function (string $word) use ($displayForms, $answerCapitalised): string {
+                $word = $displayForms[$word] ?? $word;
+                if (mb_strlen($word) > 1 && strtoupper($word) === $word) {
+                    return $word; // acronym: keep as-is
+                }
+
+                return $answerCapitalised ? ucfirst($word) : lcfirst($word);
+            };
+
             $distractors = [];
             foreach ($vocab as $candidate) {
                 if ($candidate === $term || in_array($candidate, $usedTerms, true)) {
@@ -315,7 +390,7 @@ class LmsQuizGenerator
                 if (preg_match('/\b' . preg_quote($candidate, '/') . '\b/i', $sentenceLower) === 1) {
                     continue;
                 }
-                $distractors[] = ucfirst($candidate);
+                $distractors[] = $candidate;
                 if (count($distractors) >= 12) {
                     break;
                 }
@@ -324,7 +399,7 @@ class LmsQuizGenerator
                 continue;
             }
 
-            $options = array_merge([$answer], array_slice($distractors, 0, 3));
+            $options = array_merge([$answer], array_map($decorate, array_slice($distractors, 0, 3)));
             // Deterministic shuffle so the same handbook always yields the same
             // bank (per-attempt shuffle happens at serve time in Phase 4).
             $options = $this->seededShuffle($options, (int) crc32($term . '|' . $sentence));
