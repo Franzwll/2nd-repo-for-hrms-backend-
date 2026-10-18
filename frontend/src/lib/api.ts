@@ -2669,12 +2669,14 @@ export const essApi = {
       total_items: number;
       time_limit_seconds: number;
       questions: { id: number; question: string; options: string[] }[];
+      /** Per-attempt shuffle seed — echo back when submitting. */
+      attempt_seed: number;
       already_passed: boolean;
       last_score: number | null;
     }>(`/ess/my-learning/${encodeURIComponent(courseCode)}/quiz`),
 
   /** Server-side grading; a pass flips the course to Completed immediately. */
-  submitLearningQuiz: (courseCode: string, answers: Record<string, number>) =>
+  submitLearningQuiz: (courseCode: string, answers: Record<string, number>, attemptSeed: number) =>
     request<{
       passed: boolean;
       score: number;
@@ -2695,7 +2697,7 @@ export const essApi = {
       }[];
     }>(`/ess/my-learning/${encodeURIComponent(courseCode)}/quiz`, {
       method: "POST",
-      body: JSON.stringify({ answers }),
+      body: JSON.stringify({ answers, attempt_seed: attemptSeed }),
     }),
 
   /** Same-origin URL to stream a file-based handbook inline (token auth). */

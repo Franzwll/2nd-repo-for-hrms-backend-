@@ -463,16 +463,29 @@ Port the mockup's engine, **re-sequenced per §10** — reading must complete **
 
 ## 7. Build sequence
 
-| Phase | Deliverable |
-|---|---|
-| 0 | Migration **§1a + §1b (attempts) + §1c (`completion_source`) + §1d (card columns) + §1e (`reading_completed_at`)**; patch handbook `content_text` onto the existing catalog |
-| 1 | `/extract-document` + `NlpService::extractDocumentText`; `LmsQuizGenerator` |
-| 2 | `learningMaterial` / `learningQuiz` / `submitLearningQuiz` / `completeLearningReading` endpoints + hard read gate (§2b / §2d) |
-| 3 | `LmsActivityPlayer.tsx` (two-stage: reading → quiz) + `EssPerformanceTab` wiring |
-| 4 | Deterministic fallback bank, timer, retake, flag, **per-attempt question/option shuffle**, polish |
-| 5 *(opt)* | HR admin review column (surface `completion_source` + score) |
+| Phase | Deliverable | Status |
+|---|---|---|
+| 0 | Migration **§1a + §1b (attempts) + §1c (`completion_source`) + §1d (card columns) + §1e (`reading_completed_at`)**; patch handbook `content_text` onto the existing catalog | ✅ `1098f1b` |
+| 1 | `/extract-document` + `NlpService::extractDocumentText`; `LmsQuizGenerator` | ✅ `4550355` + `4a40e3b` |
+| 2 | `learningMaterial` / `learningQuiz` / `submitLearningQuiz` / `completeLearningReading` endpoints + hard read gate (§2b / §2d) | ✅ `8b86331` |
+| 3 | `LmsActivityPlayer.tsx` (two-stage: reading → quiz) + `EssPerformanceTab` wiring | ✅ `f56fc95` |
+| 4 | Deterministic fallback bank, timer, retake, flag, **per-attempt question/option shuffle**, polish | ✅ this commit |
+| 5 *(opt)* | HR admin review column (surface `completion_source` + score) | ⬜ |
 
 Rough shape: phases 0–3 = a working version; 4–5 = hardening.
+
+**Phase 4 note — stateless per-attempt shuffle.** `quiz_json` stays in canonical order; each
+`GET …/quiz` picks a random `attempt_seed`, shuffles question order and each question's options
+(with `LmsQuizGenerator::permutation()`, an xorshift32 Fisher-Yates that does not touch PHP's
+global RNG), and returns the seed. The client echoes the seed on submit and the server rebuilds
+the same option order to map the *displayed* position back to the canonical index before grading.
+The seed is safe to expose — it reveals only display order, never `correct_index`. No DB column,
+no cache, no session state (so two open tabs cannot corrupt each other). A submission without a
+valid seed is rejected (`attempt_seed` required).
+
+**Phase 4 note — kill switch.** `ESS_LMS_QUIZ_ENABLED=false` → `config('services.ess_lms.enabled')`
+= false unregisters all five new ESS learning routes, so the cards fall back to the previous
+flow (`updateLearningProgress` + HR `verifyLearning`). Rollback = `git revert` + `migrate:rollback`.
 
 ---
 
@@ -508,8 +521,9 @@ Rough shape: phases 0–3 = a working version; 4–5 = hardening.
   the submit response.
 - **Answer circulation** — `quiz_json` is cached **per course**, so every employee gets the
   same items in the same order. Combined with immediate completion (#3 = A), answers could be
-  shared. Mitigate with **per-attempt question/option shuffle** (Phase 4) — same bank, no extra
-  AI cost.
+  shared. **Mitigated (Phase 4):** per-attempt question/option shuffle off a random
+  `attempt_seed` — same bank, no extra AI cost, and the seed leaks nothing (see the Phase 4 note
+  in §7).
 - **AI mis-key** — a bad question can unfairly fail someone, or unfairly pass them (issuing a
   certificate). Deterministic fallback, `generated_by`, the §1b attempts log, and the HR
   `verifyLearning` override are the safety net; an HR "recent completions" review (Phase 5)

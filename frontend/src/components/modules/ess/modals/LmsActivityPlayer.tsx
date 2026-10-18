@@ -58,6 +58,8 @@ interface LmsQuiz {
   total_items: number;
   time_limit_seconds: number;
   questions: { id: number; question: string; options: string[] }[];
+  /** Per-attempt shuffle seed — echoed back on submit. */
+  attempt_seed: number;
   already_passed: boolean;
   last_score: number | null;
 }
@@ -231,9 +233,10 @@ export function LmsActivityPlayer({
 
   const submit = useCallback(
     async (finalAnswers: Record<number, number>) => {
+      if (!quiz) return;
       setBusy(true);
       try {
-        const res = await essApi.submitLearningQuiz(courseId, finalAnswers);
+        const res = await essApi.submitLearningQuiz(courseId, finalAnswers, quiz.attempt_seed);
         setResult(res);
         setSecondsLeft(null);
         setStage("result");
@@ -251,7 +254,7 @@ export function LmsActivityPlayer({
         setBusy(false);
       }
     },
-    [courseId, courseTitle, onCompleted],
+    [courseId, courseTitle, onCompleted, quiz],
   );
 
   // Latest answers + submit, read by the countdown so answering a question does

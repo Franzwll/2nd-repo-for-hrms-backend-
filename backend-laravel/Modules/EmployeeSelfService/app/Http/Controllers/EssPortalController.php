@@ -1895,6 +1895,28 @@ class EssPortalController extends Controller
             ]);
         }
 
+        // Per-attempt shuffle (§4): the bank is cached in canonical order, but each
+        // serving re-orders questions and options so a circulated answer key
+        // ("question 3 is option C") does not carry over to the next attempt.
+        // The seed is safe to expose - it reveals only the display order, never
+        // which option is correct (correct_index stays server-side).
+        $seed = random_int(1, 2147483647);
+
+        $questions = array_values($quiz['questions']);
+        $shuffled = [];
+        foreach (LmsQuizGenerator::permutation(count($questions), $seed) as $questionIndex) {
+            $q = $questions[$questionIndex];
+            $qid = (int) $q['id'];
+            $options = array_values($q['options']);
+            $optionOrder = LmsQuizGenerator::permutation(count($options), $seed ^ $qid);
+
+            $shuffled[] = [
+                'id' => $qid,
+                'question' => $q['question'],
+                'options' => array_map(fn (int $i) => $options[$i], $optionOrder),
+            ];
+        }
+
         return response()->json([
             'course' => [
                 'code' => $course->course_code,
@@ -1902,14 +1924,12 @@ class EssPortalController extends Controller
                 'category' => $course->category ?? 'General',
             ],
             'pass_mark' => (int) ($quiz['pass_mark'] ?? 80),
-            'total_items' => count($quiz['questions']),
+            'total_items' => count($questions),
             'time_limit_seconds' => (int) ($quiz['time_limit_seconds'] ?? 600),
             // Answer key (correct_index / explanation) intentionally omitted.
-            'questions' => array_map(fn ($q) => [
-                'id' => (int) $q['id'],
-                'question' => $q['question'],
-                'options' => array_values($q['options']),
-            ], $quiz['questions']),
+            'questions' => $shuffled,
+            // Echoed back on submit so grading can rebuild this attempt's order.
+            'attempt_seed' => $seed,
             'already_passed' => ($row->status ?? null) === 'Completed',
             'last_score' => $row->score !== null ? (float) $row->score : null,
         ]);
@@ -1925,6 +1945,8 @@ class EssPortalController extends Controller
     {
         $validated = $request->validate([
             'answers' => 'required|array',
+            // The per-attempt shuffle seed echoed back from the GET (§4).
+            'attempt_seed' => 'required|integer|min:1',
         ]);
 
         $employee = $this->resolveEmployee($request);
@@ -1958,13 +1980,24 @@ class EssPortalController extends Controller
         $answers = $validated['answers'];
         $passMark = (int) ($quiz['pass_mark'] ?? 80);
 
+        // Rebuild this attempt's display order from the seed the client echoed
+        // back, so a displayed option position maps to its canonical index.
+        $seed = (int) $validated['attempt_seed'];
+
         $correct = 0;
         $answered = [];
         $review = [];
         foreach ($quiz['questions'] as $q) {
             $qid = (int) $q['id'];
             $correctIndex = (int) $q['correct_index'];
-            $yourIndex = array_key_exists($qid, $answers) ? (int) $answers[$qid] : null;
+            $options = array_values($q['options']);
+            $optionOrder = LmsQuizGenerator::permutation(count($options), $seed ^ $qid);
+
+            $displayed = array_key_exists($qid, $answers) ? (int) $answers[$qid] : null;
+            $yourIndex = ($displayed !== null && isset($optionOrder[$displayed]))
+                ? (int) $optionOrder[$displayed]
+                : null;
+
             $isCorrect = $yourIndex !== null && $yourIndex === $correctIndex;
             if ($isCorrect) {
                 $correct++;

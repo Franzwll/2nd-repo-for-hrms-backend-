@@ -788,13 +788,47 @@ class LmsQuizGenerator
     /** Deterministic Fisher-Yates shuffle (seeded) so the fallback bank is stable. */
     protected function seededShuffle(array $items, int $seed): array
     {
-        mt_srand($seed);
-        for ($i = count($items) - 1; $i > 0; $i--) {
-            $j = mt_rand(0, $i);
-            [$items[$i], $items[$j]] = [$items[$j], $items[$i]];
-        }
-        mt_srand(); // re-seed with entropy so we do not affect other randomness
+        $order = self::permutation(count($items), $seed);
 
-        return $items;
+        return array_map(fn (int $index) => $items[$index], $order);
+    }
+
+    /**
+     * Deterministic permutation of [0 .. $count-1] for a given seed.
+     *
+     * Uses a local xorshift32 PRNG rather than PHP's global mt_rand() state, so
+     * the result is reproducible in any process. `EssPortalController` calls the
+     * exact same function to rebuild a per-attempt option order when grading, so
+     * no server-side session state is needed to serve a shuffled quiz.
+     *
+     * @return list<int>
+     */
+    public static function permutation(int $count, int $seed): array
+    {
+        $count = max(0, $count);
+        $order = $count > 0 ? range(0, $count - 1) : [];
+        if ($count < 2) {
+            return $order;
+        }
+
+        $state = $seed & 0x7fffffff;
+        if ($state === 0) {
+            $state = 1;
+        }
+
+        for ($i = $count - 1; $i > 0; $i--) {
+            $state ^= ($state << 13) & 0x7fffffff;
+            $state ^= $state >> 17;
+            $state ^= ($state << 5) & 0x7fffffff;
+            $state &= 0x7fffffff;
+            if ($state === 0) {
+                $state = 1;
+            }
+
+            $j = $state % ($i + 1);
+            [$order[$i], $order[$j]] = [$order[$j], $order[$i]];
+        }
+
+        return $order;
     }
 }
