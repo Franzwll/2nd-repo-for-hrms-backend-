@@ -99,6 +99,7 @@ import {
   applicantsApi,
   checklistRequestsApi,
   coreHcmApi,
+  essApi,
   newHiresApi,
   onboardingItemsApi,
   resolveStorageUrl,
@@ -3923,39 +3924,62 @@ export function EmployeeOnboarding() {
 
   const loadOnboarding = useCallback(() => {
     setLoading(true);
-    // Resolve the signed-in portal user from the auth session (NOT the mock
-    // profile) so the checklist always reflects the logged-in employee's own
-    // new-hire record from the database.
-    const authUser = getUser();
-    const myName = authUser?.full_name?.trim().toLowerCase() ?? "";
-    const myEmployeeId = authUser?.employee_id ?? null;
-
-    newHiresApi
-      .list({ per_page: 100 })
+    // Employees use the ESS-safe endpoint (no New Hire Onboarding module
+    // permission needed): GET /ess/my-checklist returns { data, new_hire }
+    // where data is the same read-time union the admin pipeline sees —
+    // materialized rows + virtual items from Active templates matching the
+    // hire's stage + position. Falling back to the staff-only new-hires list
+    // keeps local/dev sessions working, but ESS is authoritative.
+    essApi
+      .myChecklist()
       .then((res) => {
-        const mine =
-          (myEmployeeId != null
-            ? res.data.find((h) => h.employee_id === myEmployeeId)
-            : undefined) ??
-          (myName ? res.data.find((h) => h.name.trim().toLowerCase() === myName) : undefined) ??
-          // Demo fallback: prefer a Probationary hire so the probationary
-          // checklist view stays populated straight from the database.
-          res.data.find((h) => h.stage === "Probationary") ??
-          res.data[0] ??
-          null;
-        setNewHire(mine);
-        return mine;
+        if (res.new_hire) {
+          const mine = {
+            new_hire_id: res.new_hire.new_hire_id,
+            new_hire_code: res.new_hire.new_hire_code,
+            name: res.new_hire.name,
+            stage: res.new_hire.stage,
+          } as ApiNewHire;
+          setNewHire(mine);
+          return { mine, apiItems: res.data as any[] };
+        }
+        // Fallback: resolve the signed-in portal user from the auth session
+        // (NOT the mock profile) so the checklist reflects the logged-in
+        // employee's own new-hire record from the database.
+        const authUser = getUser();
+        const myName = authUser?.full_name?.trim().toLowerCase() ?? "";
+        const myEmployeeId = authUser?.employee_id ?? null;
+
+        return newHiresApi.list({ per_page: 100 }).then((listRes) => {
+          const mine =
+            (myEmployeeId != null
+              ? listRes.data.find((h) => h.employee_id === myEmployeeId)
+              : undefined) ??
+            (myName ? listRes.data.find((h) => h.name.trim().toLowerCase() === myName) : undefined) ??
+            // Demo fallback: prefer a Probationary hire so the probationary
+            // checklist view stays populated straight from the database.
+            listRes.data.find((h) => h.stage === "Probationary") ??
+            listRes.data[0] ??
+            null;
+          setNewHire(mine);
+          if (!mine) return null;
+          return onboardingItemsApi
+            .listForNewHire(mine.new_hire_id)
+            .then((apiItems) => ({ mine, apiItems }));
+        });
       })
-      .then((mine) => {
-        if (!mine) return;
-        return onboardingItemsApi.listForNewHire(mine.new_hire_id).then((apiItems) => {
-          // Show ONLY the Probationary checklist — pre-onboarding / onboarding
-          // items are hidden from the employee portal entirely.
-          const probationaryOnly = apiItems.filter(
-            (i) => (i.phase ?? "Probationary") === "Probationary",
-          );
+      .then((result) => {
+        if (!result) return;
+        const { apiItems } = result;
+        {
+          // Show the hire's full visible checklist (pre-onboarding + probationary).
+          // The API (NewHire::visibleOnboardingItems) already returns only Active
+          // templates matching the hire's stage + position, so no phase filter
+          // here — filtering to Probationary only hid every active pre-onboarding
+          // template from employees.
+          const visibleItems = apiItems;
           setItems(
-            probationaryOnly.map((i) => ({
+            visibleItems.map((i) => ({
               id: i.employee_onboarding_item_id
                 ? `chk-${i.employee_onboarding_item_id}`
                 : `virt-${i.template_item_id}`,
@@ -3986,12 +4010,12 @@ export function EmployeeOnboarding() {
                   : (i.submitted_at?.slice(0, 10) ?? "2026-08-01"),
               done: Boolean(i.done),
               rank: i.done ? 0 : i.submitted_at ? 1 : 2,
-              phase: "Probationary" as Phase,
+              phase: (i.phase === "Pre-onboarding" ? "Pre-onboarding" : "Probationary") as Phase,
               reviewNote: (i.review_note ?? null) as string | null,
               returnedCount: (i.returned_count ?? 0) as number,
             })),
           );
-        });
+        }
       })
       .catch((err) => {
         console.warn("Could not load onboarding checklist from API:", err);

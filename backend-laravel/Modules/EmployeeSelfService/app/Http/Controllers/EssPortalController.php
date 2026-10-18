@@ -2183,11 +2183,13 @@ class EssPortalController extends Controller
             return response()->json(['message' => 'No linked employee record found.'], 404);
         }
 
-        $hire = \Modules\NewHireOnboarding\Models\NewHire::with(['onboardingItems.templateItem.template'])
-            ->where('employee_id', $employee->employee_id)
-            ->orWhere(function ($q) use ($employee) {
-                $q->where('email', $employee->email)
-                    ->orWhere('name', trim(($employee->first_name ?? '').' '.($employee->last_name ?? '')));
+        $hire = \Modules\NewHireOnboarding\Models\NewHire::with(['position', 'onboardingItems.templateItem.template'])
+            ->where(function ($outer) use ($employee) {
+                $outer->where('employee_id', $employee->employee_id)
+                    ->orWhere(function ($q) use ($employee) {
+                        $q->where('email', $employee->email)
+                            ->orWhere('name', trim(($employee->first_name ?? '').' '.($employee->last_name ?? '')));
+                    });
             })
             ->orderByDesc('start_date')
             ->first();
@@ -2196,8 +2198,14 @@ class EssPortalController extends Controller
             return response()->json(['data' => [], 'new_hire' => null]);
         }
 
+        // Use the same read-time union as the admin pipeline
+        // (NewHire::visibleOnboardingItems()): materialized rows + virtual
+        // items from Active checklist templates that match the hire's stage
+        // and position. Raw onboardingItems alone hides every Active template
+        // that has not been materialized yet — which is exactly why active
+        // pre-onboarding templates were invisible to employees.
         return response()->json([
-            'data' => $hire->onboardingItems ?? [],
+            'data' => $hire->visibleOnboardingItems(),
             'new_hire' => [
                 'new_hire_id' => $hire->new_hire_id,
                 'new_hire_code' => $hire->new_hire_code,
