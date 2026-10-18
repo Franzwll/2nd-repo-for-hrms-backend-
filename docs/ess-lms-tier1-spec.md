@@ -69,6 +69,15 @@ for the employee** (today only HR can set `Completed`).
 
 Current: `course_id, course_code, title, category, description, created_at, updated_at`.
 
+> **Catalog ownership (important):** the `learning_courses` rows (`LMS-101/102/103`) are
+> already seeded by `HotelHrDatabaseSeeder` — `database/seeders/data/hotel_hr_seed_mysql.sql`,
+> "Domain 6" — with **explicit ids 1–3**. Our seeder (`LmsTierOneSeeder`) is therefore
+> **update-only** (it patches `content_text` + card metadata onto existing rows). Never insert
+> course rows from our side: auto-increment would claim ids 1–3 and collide with the fixture
+> (`Duplicate entry '1' for key 'PRIMARY'`). `HotelHrDatabaseSeeder` is single-shot (no
+> truncate/guard) — re-running the full `db:seed` on a populated DB always fails; use
+> `php artisan db:seed --class=LmsTierOneSeeder` instead.
+
 ```php
 // backend-laravel/database/migrations/2026_xx_xx_000001_add_lms_content_to_learning_courses_table.php
 public function up(): void
@@ -456,7 +465,7 @@ Port the mockup's engine, **re-sequenced per §10** — reading must complete **
 
 | Phase | Deliverable |
 |---|---|
-| 0 | Migration **§1a + §1b (attempts) + §1c (`completion_source`) + §1d (card columns) + §1e (`reading_completed_at`)**; seed one course's `content_text` |
+| 0 | Migration **§1a + §1b (attempts) + §1c (`completion_source`) + §1d (card columns) + §1e (`reading_completed_at`)**; patch handbook `content_text` onto the existing catalog |
 | 1 | `/extract-document` + `NlpService::extractDocumentText`; `LmsQuizGenerator` |
 | 2 | `learningMaterial` / `learningQuiz` / `submitLearningQuiz` / `completeLearningReading` endpoints + hard read gate (§2b / §2d) |
 | 3 | `LmsActivityPlayer.tsx` (two-stage: reading → quiz) + `EssPerformanceTab` wiring |

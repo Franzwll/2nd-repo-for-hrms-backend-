@@ -6,12 +6,17 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Tier-1 thin LMS — handbook catalog.
+ * Tier-1 thin LMS — handbook content patch.
  *
- * Idempotent (upsert on `course_code`). Populates the three ESS courses with
- * reading material (`content_text`) and the §1d card-parity metadata. This is the
- * same catalog the ESS Performance tab already expects (LMS-101/102/103); the
- * material is authored here so Tier-1 needs neither a PDF file nor the NLP service.
+ * The learning catalog itself (LMS-101/102/103) is owned by
+ * HotelHrDatabaseSeeder (database/seeders/data/hotel_hr_seed_mysql.sql, "Domain 6"),
+ * which inserts the course rows with explicit ids. This seeder therefore only
+ * patches the Tier-1 additions onto the existing rows:
+ *
+ *   content_text, estimated_reading_minutes, estimated_pages, mandatory
+ *
+ * It is UPDATE-ONLY on purpose — never insert here, or we would claim auto-increment
+ * ids 1-3 and collide with the fixture's explicit ids ("Duplicate entry '1' for PRIMARY").
  *
  * Run standalone:  php artisan db:seed --class=LmsTierOneSeeder
  */
@@ -19,12 +24,40 @@ class LmsTierOneSeeder extends Seeder
 {
     public function run(): void
     {
+        $applied = 0;
+        $missing = [];
+
         foreach ($this->courses() as $course) {
-            DB::table('learning_courses')->updateOrInsert(
-                ['course_code' => $course['course_code']],
-                $course
+            $exists = DB::table('learning_courses')
+                ->where('course_code', $course['course_code'])
+                ->exists();
+
+            if (! $exists) {
+                $missing[] = $course['course_code'];
+                continue;
+            }
+
+            DB::table('learning_courses')
+                ->where('course_code', $course['course_code'])
+                ->update([
+                    'content_text' => $course['content_text'],
+                    'estimated_reading_minutes' => $course['estimated_reading_minutes'],
+                    'estimated_pages' => $course['estimated_pages'],
+                    'mandatory' => $course['mandatory'],
+                    'updated_at' => now(),
+                ]);
+
+            $applied++;
+        }
+
+        if ($missing !== []) {
+            $this->command?->warn(
+                'LMS course row(s) not found: '.implode(', ', $missing).
+                '. Run HotelHrDatabaseSeeder first (it owns the catalog).'
             );
         }
+
+        $this->command?->info("Tier-1 LMS handbook content patched onto {$applied} course(s).");
     }
 
     /**
@@ -35,9 +68,6 @@ class LmsTierOneSeeder extends Seeder
         return [
             [
                 'course_code' => 'LMS-101',
-                'title' => 'Food Safety & Sanitation Level 2',
-                'category' => 'Compliance',
-                'description' => 'Core food-handling, hygiene and HACCP practices for all kitchen and food-service staff.',
                 'estimated_reading_minutes' => 20,
                 'estimated_pages' => 18,
                 'mandatory' => true,
@@ -45,9 +75,6 @@ class LmsTierOneSeeder extends Seeder
             ],
             [
                 'course_code' => 'LMS-102',
-                'title' => 'Customer Excellence in Hospitality',
-                'category' => 'Service Quality',
-                'description' => 'Guest-service standards, complaint recovery and the Oxford Suites service promise.',
                 'estimated_reading_minutes' => 15,
                 'estimated_pages' => 12,
                 'mandatory' => false,
@@ -55,9 +82,6 @@ class LmsTierOneSeeder extends Seeder
             ],
             [
                 'course_code' => 'LMS-103',
-                'title' => 'Fire Safety & Emergency Response',
-                'category' => 'Compliance',
-                'description' => 'Fire prevention, evacuation roles and emergency response for property-wide staff.',
                 'estimated_reading_minutes' => 25,
                 'estimated_pages' => 22,
                 'mandatory' => true,
