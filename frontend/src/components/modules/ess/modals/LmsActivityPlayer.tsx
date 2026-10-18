@@ -291,6 +291,11 @@ export function LmsActivityPlayer({
   const answeredCount = Object.keys(answers).length;
   const allAnswered = quiz != null && answeredCount >= quiz.total_items;
   const readDone = material?.reading_completed_at != null;
+  // A module that is already Completed (quiz pass, HR verification or import)
+  // is terminal: the handbook stays available for review, but the assessment is
+  // not re-administered and no stale score is presented as a new result.
+  const alreadyCompleted = material?.status === "Completed";
+  const quizLocked = quiz?.already_passed === true;
   const readingMinutes = material?.course.estimated_reading_minutes ?? null;
   const materialsUrl = essApi.learningMaterialUrl(courseId);
 
@@ -442,8 +447,35 @@ export function LmsActivityPlayer({
             </div>
           )}
 
+          {/* ---------------- quiz stage (locked when already completed) --- */}
+          {stage === "quiz" && quiz && quizLocked && (
+            <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 p-6 text-center">
+              <div className="rounded-full bg-emerald-500/10 p-3 text-emerald-600">
+                <CheckCircle2 className="h-6 w-6" />
+              </div>
+              <p className="text-sm font-semibold text-foreground">Module already completed</p>
+              <p className="max-w-sm text-xs text-muted-foreground">
+                {quiz.last_score != null
+                  ? `You passed this assessment with ${Math.round(quiz.last_score)}%. Retakes are not required.`
+                  : "This module is already completed. Retakes are not required."}
+              </p>
+              {onViewCertificate && (
+                <Button
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  onClick={() => {
+                    onOpenChange(false);
+                    onViewCertificate(courseId);
+                  }}
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" /> View certificate
+                </Button>
+              )}
+            </div>
+          )}
+
           {/* ---------------- quiz stage ---------------- */}
-          {stage === "quiz" && quiz && (
+          {stage === "quiz" && quiz && !quizLocked && (
             <div className="space-y-3">
               <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 rounded-lg border border-border/70 bg-card/95 px-3 py-2 backdrop-blur-sm">
                 <span className="text-xs font-semibold text-foreground">
@@ -627,27 +659,44 @@ export function LmsActivityPlayer({
         {stage === "reading" && (
           <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
             <p className="text-[11px] text-muted-foreground">
-              {readDone
-                ? "Reading already completed — you can review or continue."
-                : "Finish the handbook to unlock the assessment."}
+              {alreadyCompleted
+                ? "This module is already completed — the handbook is here for review."
+                : readDone
+                  ? "Reading already completed — you can review or continue."
+                  : "Finish the handbook to unlock the assessment."}
             </p>
-            <Button
-              size="sm"
-              className="gap-1.5 text-xs"
-              disabled={busy}
-              onClick={() => void completeReading()}
-            >
-              {busy ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <ArrowRight className="h-3.5 w-3.5" />
-              )}
-              {readDone ? "Start Assessment" : "Finish reading → Start Assessment"}
-            </Button>
+            {alreadyCompleted ? (
+              onViewCertificate ? (
+                <Button
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  onClick={() => {
+                    onOpenChange(false);
+                    onViewCertificate(courseId);
+                  }}
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" /> View certificate
+                </Button>
+              ) : null
+            ) : (
+              <Button
+                size="sm"
+                className="gap-1.5 text-xs"
+                disabled={busy}
+                onClick={() => void completeReading()}
+              >
+                {busy ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ArrowRight className="h-3.5 w-3.5" />
+                )}
+                {readDone ? "Start Assessment" : "Finish reading → Start Assessment"}
+              </Button>
+            )}
           </div>
         )}
 
-        {stage === "quiz" && quiz && (
+        {stage === "quiz" && quiz && !quizLocked && (
           <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
             <p className="text-[11px] text-muted-foreground">
               {allAnswered

@@ -258,7 +258,8 @@ Response (answer key returned **only here, after submit**):
 > tells quiz-passes from HR-verified.
 >
 > **Terminal:** once `Completed`, the course is finished — the Assessment row shows **View
-> Result** and the quiz does not reopen (matches today's `isDone` branch). Resubmits are no-ops.
+> Result** and the quiz does not reopen (matches today's `isDone` branch), *including* when the
+> module is opened from the **Materials** card (§5b). Resubmits are no-ops.
 > Retakes are only available while **not** `Completed` (unlimited in Tier-1; add a cap later
 > if needed).
 
@@ -420,6 +421,11 @@ Port the mockup's engine, **re-sequenced per §10** — reading must complete **
   otherwise it opens Stage 1.
 - Captures answers into an `answers[]` array (DOM rebuilds wipe radio state — same gotcha
   as the mockup).
+- **Already `Completed` is terminal (§2c), even when reached via Materials.** The handbook
+  stays readable for review, but the reading footer offers **View certificate** instead of
+  re-opening the assessment; and if a client reaches Stage 2 anyway (`quiz.already_passed`),
+  the quiz is replaced by an "already completed" panel showing the stored `last_score`. No
+  re-grading and no stale score presented as a fresh result.
 - Submit → `essApi.submitLearningQuiz` → result panel (score / pass / review) →
   **View Certificate** reuses the existing `LmsCertificateModal` via
   `essApi.learningCertificate(code)` (unchanged).
@@ -469,7 +475,8 @@ Port the mockup's engine, **re-sequenced per §10** — reading must complete **
 | 1 | `/extract-document` + `NlpService::extractDocumentText`; `LmsQuizGenerator` | ✅ `4550355` + `4a40e3b` |
 | 2 | `learningMaterial` / `learningQuiz` / `submitLearningQuiz` / `completeLearningReading` endpoints + hard read gate (§2b / §2d) | ✅ `8b86331` |
 | 3 | `LmsActivityPlayer.tsx` (two-stage: reading → quiz) + `EssPerformanceTab` wiring | ✅ `f56fc95` |
-| 4 | Deterministic fallback bank, timer, retake, flag, **per-attempt question/option shuffle**, polish | ✅ this commit |
+| 4 | Deterministic fallback bank, timer, retake, flag, **per-attempt question/option shuffle**, polish | ✅ `2aba8a1` |
+| 4.1 | Verification pass (real HTTP round-trip) + **completed-course lock** — an already-`Completed` module cannot re-open the assessment or report a stale score | ✅ this commit |
 | 5 *(opt)* | HR admin review column (surface `completion_source` + score) | ⬜ |
 
 Rough shape: phases 0–3 = a working version; 4–5 = hardening.
@@ -486,6 +493,16 @@ valid seed is rejected (`attempt_seed` required).
 **Phase 4 note — kill switch.** `ESS_LMS_QUIZ_ENABLED=false` → `config('services.ess_lms.enabled')`
 = false unregisters all five new ESS learning routes, so the cards fall back to the previous
 flow (`updateLearningProgress` + HR `verifyLearning`). Rollback = `git revert` + `migrate:rollback`.
+
+**Phase 4 note — completed-course lock (verification fix).** A full HTTP round-trip
+(login token → `my-performance` → `material` → read gate `409` → shuffled `quiz` → `submit` →
+`certificate`, plus a write-path pass on `LMS-103` and restore) confirmed every endpoint and
+surfaced one defect: a module that was already `Completed` (fixture / HR / import) could still
+be pushed from the **Materials** card through reading → assessment, and submit then reported
+`already_completed: true` with the *stored* score (e.g. `95`) even for a fresh 10/10 attempt —
+confusing and misleading. Fixed in the player: the reading footer offers **View certificate**
+when `material.status === 'Completed'`, and Stage 2 is replaced by an "already completed" panel
+when `quiz.already_passed` is true. `Completed` remains terminal; no backend grading change.
 
 ---
 
