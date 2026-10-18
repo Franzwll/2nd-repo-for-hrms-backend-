@@ -8,7 +8,7 @@ import {
   type ApiNewHire,
   type ApiChecklistTemplate,
 } from "@/lib/api";
-import { getUser } from "@/lib/auth";
+import { getUser, isStaffRole } from "@/lib/auth";
 
 /** Draft handed over from Applicant Management when an assessment is accepted. */
 export type PendingHire = {
@@ -144,9 +144,8 @@ let syncing = false;
  *  the employee portal loads its own checklist via /ess/my-checklist. */
 async function syncFromApi() {
   if (syncing) return;
-  const role = (getUser()?.role ?? "").toLowerCase();
-  const isStaff = role === "admin" || role === "superadmin";
-  if (!isStaff) return;
+  // Backend sends "Super Admin" (with space) — isStaffRole normalizes it.
+  if (!isStaffRole(getUser()?.role)) return;
   syncing = true;
   try {
     const [hiresRes, tmplRes] = await Promise.allSettled([

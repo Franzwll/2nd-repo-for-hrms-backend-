@@ -8,6 +8,7 @@ import {
   getToken,
   getUser,
   isSessionExpired,
+  roleKeyFor,
   touchActivity,
 } from "@/lib/auth";
 import { authApi } from "@/lib/api";
@@ -52,16 +53,6 @@ export async function getSessionPolicy(): Promise<SessionPolicy> {
   } catch {
     return fallback;
   }
-}
-
-/** Normalize portal role names ("Super Admin" -> "superadmin"). */
-export function roleKeyFor(role: string | null | undefined): string {
-  const k = String(role ?? "")
-    .toLowerCase()
-    .replace(/[_\-\s]/g, "");
-  if (k === "superadmin") return "superadmin";
-  if (k === "admin" || k === "administrator") return "admin";
-  return "employee";
 }
 
 /** Effective {token, idle} minutes for the currently signed-in user. */
