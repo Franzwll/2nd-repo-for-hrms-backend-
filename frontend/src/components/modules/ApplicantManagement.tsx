@@ -10180,26 +10180,31 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           )}
 
           <Tabs value={tab} onValueChange={setTab} className="mt-6">
-            <TabsList className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
-              <TabsTrigger
-                className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-                value="ranking"
-              >
-                <Trophy className="h-3.5 w-3.5" /> Ranking &amp; Applicants
-              </TabsTrigger>
-              <TabsTrigger
-                className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-                value="scheduling"
-              >
-                <CalendarClock className="h-3.5 w-3.5" /> Interview Pipeline
-              </TabsTrigger>
-              <TabsTrigger
-                className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-                value="history"
-              >
-                <History className="h-3.5 w-3.5" /> History &amp; Audit
-              </TabsTrigger>
-            </TabsList>
+            {/* Sticky sub-header: pinned right below the 64px portal header so
+                the page's top bar (tabs) stays visible while the long ranking
+                and applicant list scrolls. */}
+            <div className="sticky top-16 z-20 border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
+              <TabsList className="py-2">
+                <TabsTrigger
+                  className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                  value="ranking"
+                >
+                  <Trophy className="h-3.5 w-3.5" /> Ranking &amp; Applicants
+                </TabsTrigger>
+                <TabsTrigger
+                  className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                  value="scheduling"
+                >
+                  <CalendarClock className="h-3.5 w-3.5" /> Interview Pipeline
+                </TabsTrigger>
+                <TabsTrigger
+                  className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                  value="history"
+                >
+                  <History className="h-3.5 w-3.5" /> History &amp; Audit
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
             {/* RANKING + TABLE */}
             <TabsContent value="ranking" className=" space-y-6">
@@ -10463,8 +10468,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 </Card>
               </div>
 
-              <Card ref={applicantListRef} className="scroll-mt-4 border-border/70">
-                <CardContent className="p-6">
+              <Card ref={applicantListRef} className="scroll-mt-28 border-border/70">
+                <CardContent className="p-4 sm:p-6">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
@@ -10488,15 +10493,15 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </Badge>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
                       <Input
                         placeholder="Search applicant—"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        className="w-56"
+                        className="w-full sm:w-56"
                       />
                       <Select value={positionFilter} onValueChange={setPositionFilter}>
-                        <SelectTrigger className="w-52">
+                        <SelectTrigger className="w-full sm:w-52">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -10509,7 +10514,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </SelectContent>
                       </Select>
                       <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger className="w-52">
+                        <SelectTrigger className="w-full sm:w-52">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -10522,7 +10527,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </SelectContent>
                       </Select>
                       <Select value={stageFilter} onValueChange={setStageFilter}>
-                        <SelectTrigger className="w-48">
+                        <SelectTrigger className="w-full sm:w-48">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -10547,14 +10552,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
                   <div className="mt-4">
                     <ListBody>
-                      <Table className="table-fixed text-xs">
+                      {/* `min-w` keeps every column readable on phones: the shared
+                          Table wrapper already scrolls horizontally, so the table
+                          slides instead of squeezing the labels together. */}
+                      <Table className="table-fixed text-xs min-w-[840px]">
                         <TableHeader>
                           <TableRow>
                             <SortHead
                               sortKey="name"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[22%]"
+                              className="w-[18%]"
                             >
                               Applicant
                             </SortHead>
@@ -10562,7 +10570,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="contact"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="hidden w-[18%] md:table-cell"
+                              className="hidden w-[14%] md:table-cell"
                             >
                               Contact
                             </SortHead>
@@ -10570,7 +10578,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="position"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[16%]"
+                              className="w-[13%]"
                             >
                               Position
                             </SortHead>
@@ -10578,7 +10586,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="applied"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[11%]"
+                              className="w-[10%]"
                             >
                               Applied
                             </SortHead>
@@ -10586,7 +10594,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="score"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[8%]"
+                              className="w-[9%]"
                             >
                               Score
                             </SortHead>
@@ -10594,7 +10602,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="status"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[13%]"
+                              className="w-[11%]"
                             >
                               Status
                             </SortHead>
@@ -10602,11 +10610,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="stage"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[8%]"
+                              className="w-[9%]"
                             >
                               Stage
                             </SortHead>
-                            <TableHead className="w-[15%] text-right">Actions</TableHead>
+                            <TableHead className="w-[16%] text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -13293,7 +13301,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   </div>
                   <div className="mt-4 [&_table]:table-auto [&_td]:max-w-none [&_td]:align-top [&_td_.truncate]:overflow-visible [&_td_.truncate]:whitespace-normal [&_td_.truncate]:break-words">
                     <ListBody>
-                      <Table className="table-fixed text-xs">
+                      <Table className="table-fixed text-xs min-w-[980px]">
                         <TableHeader>
                           <TableRow>
                             <SortHead

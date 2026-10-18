@@ -636,6 +636,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   /** Default password for new portal accounts, read from the database
    *  (system_settings.default_password); falls back to the shipped default. */
   const [defaultPassword, setDefaultPassword] = useState(DEFAULT_ACCOUNT_PASSWORD);
+  /** True once the DB value loaded. When false we're showing the shipped
+   *  fallback, which may differ from the real default password. */
+  const [passwordFromDb, setPasswordFromDb] = useState(false);
 
   /** Departments & positions from the Core HCM database. */
   const [knownDepartments, setKnownDepartments] = useState<
@@ -661,9 +664,18 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       .get("default_password")
       .then((res) => {
         const pw = res?.setting_value?.password;
-        if (pw) setDefaultPassword(pw);
+        if (pw) {
+          setDefaultPassword(pw);
+          setPasswordFromDb(true);
+        }
       })
-      .catch((err) => console.warn("Could not fetch default password from database:", err));
+      .catch((err) => {
+        // 404 is expected for accounts without Settings:Full — the page keeps
+        // the shipped default, so only warn on real failures.
+        if ((err as { status?: number })?.status !== 404) {
+          console.warn("Could not fetch default password from database:", err);
+        }
+      });
     // Auto-regularization threshold (days worked, default 180 = 6 months) —
     // shared through system_settings so every admin session follows the
     // same DOLE cap. Readable by all roles with Settings:View.
@@ -1596,7 +1608,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       const targetEmail = form.email;
       resetHireForm();
       toast.success(
-        `${name} moved to Probationary — portal account created & login credentials sent to ${targetEmail} (default password: ${defaultPassword})`,
+        passwordFromDb
+          ? `${name} moved to Probationary — portal account created & login credentials sent to ${targetEmail} (default password: ${defaultPassword})`
+          : `${name} moved to Probationary — portal account created & login credentials sent to ${targetEmail}`,
       );
       hireStore.updateHire(id, {
         name: form.name,
@@ -1786,7 +1800,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
-        <TabsList className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
+        <TabsList>
           <TabsTrigger className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="pipeline">
             <ClipboardList className="h-3.5 w-3.5" /> Onboarding Pipeline
           </TabsTrigger>
@@ -1877,14 +1891,14 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <div className="relative">
+                  <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+                    <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                       <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder="Search name, position..."
-                        className="w-56 pl-8"
+                        className="pl-8"
                       />
                     </div>
                     <Select value={deptFilter} onValueChange={setDeptFilter}>
@@ -3509,9 +3523,19 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
           </DialogHeader>
 
           <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
-            Account note: the employee portal account is created with the default password{" "}
-            <span className="font-medium text-foreground">{defaultPassword}</span> — the hire is
-            prompted to change it on first login.
+            {passwordFromDb ? (
+              <>
+                Account note: the employee portal account is created with the default password{" "}
+                <span className="font-medium text-foreground">{defaultPassword}</span> — the hire is
+                prompted to change it on first login.
+              </>
+            ) : (
+              <>
+                Account note: the employee portal account is created with the system default
+                password — login credentials are emailed to the hire, who is prompted to change the
+                password on first login.
+              </>
+            )}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

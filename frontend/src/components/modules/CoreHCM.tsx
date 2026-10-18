@@ -585,7 +585,7 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
 
       <HeaderActionsContext.Provider value={headerActionsEl}>
       <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
-        <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
+        <TabsList>
           <TabsTrigger
             value="org"
             className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
@@ -1741,8 +1741,8 @@ function EmployeeListManager({
                 <Users className="h-5 w-5 text-primary" /> Employee Roster
               </h2>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-[14rem]">
+            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   className="h-9 border-border bg-card pl-8 pr-8 text-xs shadow-2xs"
@@ -1999,7 +1999,7 @@ function EmployeeListManager({
                   </DialogHeader>
 
                   <Tabs defaultValue="profile" className="mt-2">
-                    <TabsList className="flex h-auto flex-wrap justify-start">
+                    <TabsList>
                       <TabsTrigger value="profile">Profile</TabsTrigger>
                       <TabsTrigger value="status">Status</TabsTrigger>
                     </TabsList>
@@ -2904,8 +2904,8 @@ function PromotionRequestsManager() {
                 )}
               </CardTitle>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-[12rem]">
+            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search employee, code, reason…"
@@ -3363,8 +3363,8 @@ function LifecycleLogsViewer() {
               and retirements.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[14rem]">
+          <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+            <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search employee, position, action details…"
@@ -3517,7 +3517,7 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
 
       <HeaderActionsContext.Provider value={headerActionsEl}>
       <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
-        <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
+        <TabsList>
           <TabsTrigger
             value="depts"
             className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
@@ -3955,8 +3955,8 @@ function DepartmentAndPositionManager({
                 <Building2 className="h-4 w-4 text-primary" /> Hotel & Restaurant Departments
               </CardTitle>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="relative min-w-[14rem]">
+            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search department, code, head…"
@@ -4121,8 +4121,8 @@ function DepartmentAndPositionManager({
                 <Briefcase className="h-4 w-4 text-primary" /> Job Positions & Salary Bands
               </CardTitle>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-[14rem]">
+            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search title, ID, department…"
@@ -4941,8 +4941,8 @@ function SalaryGradeManager() {
               <DollarSign className="h-4 w-4 text-primary" /> Salary Grade & Compensation Management
             </CardTitle>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[14rem]">
+          <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+            <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search code, title, level…"
@@ -5225,8 +5225,8 @@ function RequisitionManager({ role = "admin" }: { role?: Role }) {
             </CardTitle>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[14rem]">
+          <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+            <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search requisitions, position, justification…"
