@@ -1,6 +1,6 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
 
@@ -31,8 +31,6 @@ import {
   PanelLeftClose,
 
   Settings as SettingsIcon,
-
-  ShieldCheck,
 
   Sun,
 
@@ -83,13 +81,28 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
+
+import {
+
+  Sheet,
+
+  SheetContent,
+
+  SheetDescription,
+
+  SheetHeader,
+
+  SheetTitle,
+
+} from "@/components/ui/sheet";
+
 import { Switch } from "@/components/ui/switch";
 
 import { cn } from "@/lib/utils";
 
 import { navForRole, roleMeta, type Role } from "@/lib/nav";
 
-import { authApi, mfaApi } from "@/lib/api";
+import { authApi } from "@/lib/api";
 
 import { clearSession, getUser } from "@/lib/auth";
 
@@ -275,6 +288,12 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
   const [open, setOpen] = useState(true);
 
+  /** Off-canvas drawer used below the `md` breakpoint, where the <aside> sidebar is hidden. */
+
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const closeMobileNav = useCallback(() => setMobileNavOpen(false), []);
+
   const [mounted, setMounted] = useState(false);
 
 
@@ -399,45 +418,11 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
   const [announceOpen, setAnnounceOpen] = useState(false);
 
-  const [mfaRequired, setMfaRequired] = useState(false);
-
-  
-
   const [announcementViewId, setAnnouncementViewId] = useState<string | null>(null);
 
   const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
 
   const lastActiveGroupRef = useRef<string | null>(null);
-
-
-
-  // Soft-mandatory TOTP for Super Admins: nudge until enrolled.
-
-  useEffect(() => {
-
-    if (role !== "superadmin") return;
-
-    let cancelled = false;
-
-    mfaApi
-
-      .status()
-
-      .then((s) => {
-
-        if (!cancelled) setMfaRequired(s.totp_required);
-
-      })
-
-      .catch(() => {});
-
-    return () => {
-
-      cancelled = true;
-
-    };
-
-  }, [role]);
 
 
 
@@ -583,9 +568,191 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
 
 
+  // Dismiss the mobile drawer whenever navigation happens, so tapping a link in it
+
+  // reveals the destination page instead of leaving the menu covering it.
+
+  useEffect(() => {
+
+    setMobileNavOpen(false);
+
+  }, [pathname, searchStr]);
+
+
+
+  /** Shared nav tree for both the desktop sidebar and the mobile drawer. */
+
+  const renderNavItems = ({
+
+    showLabels,
+
+    onNavigate,
+
+  }: {
+
+    showLabels: boolean;
+
+    onNavigate?: () => void;
+
+  }) =>
+
+    nav.map((item) => {
+
+      const hasChildren = !!item.children?.length;
+
+      const groupActive = hasChildren
+
+        ? item.children!.some((c) => {
+
+            const [cPath] = (c.to ?? "").split("?");
+
+            return cPath ? pathname === cPath || pathname.startsWith(cPath) : false;
+
+          })
+
+        : isActive(item.to);
+
+      const isOpen = expanded.includes(item.label);
+
+
+
+      const baseCls = cn(
+
+        "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors",
+
+        groupActive
+
+          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+
+          : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+
+      );
+
+
+
+      return (
+
+        <div key={item.label}>
+
+          {hasChildren ? (
+
+            <button
+
+              type="button"
+
+              className={baseCls}
+
+              title={item.label}
+
+              aria-expanded={isOpen}
+
+              onClick={() => {
+
+                if (!showLabels) setOpen(true);
+
+                setExpanded((prev) =>
+
+                  prev.includes(item.label)
+
+                    ? prev.filter((l) => l !== item.label)
+
+                    : [...prev, item.label],
+
+                );
+
+              }}
+
+            >
+
+              <item.icon className="h-4 w-4 shrink-0" />
+
+              {showLabels && (
+
+                <>
+
+                  <span className="truncate">{item.label}</span>
+
+                  <ChevronRight
+
+                    className={cn(
+
+                      "ml-auto h-4 w-4 shrink-0 transition-transform",
+
+                      isOpen && "rotate-90",
+
+                    )}
+
+                  />
+
+                </>
+
+              )}
+
+            </button>
+
+          ) : (
+
+            <Link to={item.to} className={baseCls} title={item.label} onClick={onNavigate}>
+
+              <item.icon className="h-4 w-4 shrink-0" />
+
+              {showLabels && <span className="truncate">{item.label}</span>}
+
+            </Link>
+
+          )}
+
+
+
+          {showLabels && hasChildren && isOpen && (
+
+            <div className="ml-5 mt-1 space-y-0.5 border-l border-sidebar-border pl-3">
+
+              {item.children!.map((child) => (
+
+                <Link
+
+                  key={child.to}
+
+                  to={child.to}
+
+                  onClick={onNavigate}
+
+                  className={cn(
+
+                    "block rounded-md px-3 py-2 text-[0.8rem] transition-colors",
+
+                    isChildActive(child.to)
+
+                      ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+
+                      : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+
+                  )}
+
+                >
+
+                  {child.label}
+
+                </Link>
+
+              ))}
+
+            </div>
+
+          )}
+
+        </div>
+
+      );
+
+    });
+
+
+
   return (
 
-    <div className="flex min-h-screen w-full bg-background">
+    <div className="flex min-h-screen w-full overflow-x-clip bg-background">
 
       <aside
 
@@ -611,155 +778,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
           <nav className="space-y-1 p-2">
 
-            {nav.map((item) => {
-
-              const hasChildren = !!item.children?.length;
-
-              const groupActive = hasChildren
-
-                ? item.children!.some((c) => {
-
-                  const [cPath] = (c.to ?? "").split("?");
-
-                  return cPath ? pathname === cPath || pathname.startsWith(cPath) : false;
-
-                })
-
-                : isActive(item.to);
-
-              const isOpen = expanded.includes(item.label);
-
-
-
-              const baseCls = cn(
-
-                "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors",
-
-                groupActive
-
-                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
-
-                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-
-              );
-
-
-
-              return (
-
-                <div key={item.label}>
-
-                  {hasChildren ? (
-
-                    <button
-
-                      type="button"
-
-                      className={baseCls}
-
-                      title={item.label}
-
-                      aria-expanded={isOpen}
-
-                      onClick={() => {
-
-                        if (!open) setOpen(true);
-
-                        setExpanded((prev) =>
-
-                          prev.includes(item.label)
-
-                            ? prev.filter((l) => l !== item.label)
-
-                            : [...prev, item.label],
-
-                        );
-
-                      }}
-
-                    >
-
-                      <item.icon className="h-4 w-4 shrink-0" />
-
-                      {open && (
-
-                        <>
-
-                          <span className="truncate">{item.label}</span>
-
-                          <ChevronRight
-
-                            className={cn(
-
-                              "ml-auto h-4 w-4 shrink-0 transition-transform",
-
-                              isOpen && "rotate-90",
-
-                            )}
-
-                          />
-
-                        </>
-
-                      )}
-
-                    </button>
-
-                  ) : (
-
-                    <Link to={item.to} className={baseCls} title={item.label}>
-
-                      <item.icon className="h-4 w-4 shrink-0" />
-
-                      {open && <span className="truncate">{item.label}</span>}
-
-                    </Link>
-
-                  )}
-
-
-
-                  {open && hasChildren && isOpen && (
-
-                    <div className="ml-5 mt-1 space-y-0.5 border-l border-sidebar-border pl-3">
-
-                      {item.children!.map((child) => (
-
-                        <Link
-
-                          key={child.to}
-
-                          to={child.to}
-
-                          className={cn(
-
-                            "block rounded-md px-3 py-2 text-[0.8rem] transition-colors",
-
-                            isChildActive(child.to)
-
-                              ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-
-                              : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
-
-                          )}
-
-                        >
-
-                          {child.label}
-
-                        </Link>
-
-                      ))}
-
-                    </div>
-
-                  )}
-
-                </div>
-
-              );
-
-            })}
+            {renderNavItems({ showLabels: open })}
 
           </nav>
 
@@ -817,11 +836,123 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
 
 
+      {/* Mobile drawer: the full nav tree, including nested groups, My Profile and Logout.
+
+          The <aside> above is `hidden` below `md`, so without this the only mobile
+
+          navigation was a flat chip strip that dropped every nested sub-page. */}
+
+      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+
+        <SheetContent
+
+          side="left"
+
+          className="flex w-[17rem] max-w-[85vw] flex-col gap-0 border-sidebar-border bg-sidebar p-0 text-sidebar-foreground sm:max-w-[17rem]"
+
+        >
+
+          <SheetHeader className="flex h-16 shrink-0 flex-row items-center border-b border-sidebar-border px-4 pr-10">
+
+            <SheetTitle className="sr-only">{meta.label} Portal navigation</SheetTitle>
+
+            <SheetDescription className="sr-only">
+
+              Navigate between modules of the {meta.label} Portal.
+
+            </SheetDescription>
+
+            {/* Mirrors the desktop sidebar header so the drawer reads as the same nav. */}
+
+            <Logo variant="full" mark="white" tone="invert" />
+
+          </SheetHeader>
+
+          <ScrollArea className="flex-1">
+
+            <nav className="space-y-1 p-2">
+
+              {renderNavItems({ showLabels: true, onNavigate: closeMobileNav })}
+
+            </nav>
+
+          </ScrollArea>
+
+          <div className="space-y-1 border-t border-sidebar-border p-2">
+
+            <Link
+
+              to={`${meta.base}/profile` as "/admin/profile"}
+
+              onClick={closeMobileNav}
+
+              className={cn(
+
+                "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors",
+
+                pathname === `${meta.base}/profile`
+
+                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
+
+                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+
+              )}
+
+            >
+
+              <UserCircle className="h-4 w-4 shrink-0" />
+
+              <span>My Profile</span>
+
+            </Link>
+
+            <button
+
+              type="button"
+
+              onClick={handleLogout}
+
+              className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+
+            >
+
+              <LogOut className="h-4 w-4 shrink-0" />
+
+              <span>Logout</span>
+
+            </button>
+
+          </div>
+
+        </SheetContent>
+
+      </Sheet>
+
+
+
       <div className="flex min-w-0 flex-1 flex-col">
 
         <header className="sticky top-0 z-30 flex h-16 min-w-0 items-center justify-between gap-2 border-b border-border bg-card/85 px-3 backdrop-blur sm:gap-4 sm:px-4 md:px-6">
 
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+
+            <Button
+
+              variant="ghost"
+
+              size="icon"
+
+              className="md:hidden"
+
+              onClick={() => setMobileNavOpen(true)}
+
+              aria-label="Open navigation menu"
+
+            >
+
+              <Menu className="h-5 w-5" />
+
+            </Button>
 
             <Button
 
@@ -841,15 +972,9 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
             </Button>
 
-            <div className="hidden sm:block">
+            <div className="shrink-0">
 
               <p className="text-sm font-medium">{meta.label} Portal</p>
-
-            </div>
-
-            <div className="md:hidden">
-
-              <Logo variant="mark" mark="white" tone="invert" />
 
             </div>
 
@@ -1446,77 +1571,7 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
 
 
-        {/* Mobile nav */}
-
-        <div className="flex gap-1 overflow-x-auto border-b border-border bg-card px-3 py-2 md:hidden">
-
-          {nav.map((item) => (
-
-            <Link
-
-              key={item.to}
-
-              to={item.to}
-
-              className={cn(
-
-                "whitespace-nowrap rounded-md px-3 py-1.5 text-xs",
-
-                isActive(item.to)
-
-                  ? "bg-primary text-primary-foreground"
-
-                  : "bg-muted text-muted-foreground",
-
-              )}
-
-            >
-
-              {item.label}
-
-            </Link>
-
-          ))}
-
-        </div>
-
-
-
         <main className="flex-1 px-4 py-6 md:px-8 md:py-8">
-
-          {mfaRequired && (
-
-            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-gold/40 bg-gold/10 px-4 py-3 text-sm">
-
-              <ShieldCheck className="h-4 w-4 shrink-0 text-gold" />
-
-              <p className="min-w-0 flex-1">
-
-                <span className="font-semibold">Authenticator MFA is required for Super Admins.</span>{" "}
-
-                <span className="text-muted-foreground">
-
-                  Enable it in Settings â†’ Security to protect this account.
-
-                </span>
-
-              </p>
-
-              <Link
-
-                to={`${meta.base}/settings` as "/admin/settings"}
-
-                className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-
-              >
-
-                Open Settings
-
-              </Link>
-
-            </div>
-
-          )}
 
           {children}
 

@@ -30,7 +30,7 @@ export function ParallaxHero({
 
   return (
     <section
-      className={cn("relative overflow-hidden perspective-1000", className)}
+      className={cn("relative overflow-hidden md:perspective-1000", className)}
       aria-label={typeof eyebrow === "string" ? eyebrow : "Featured"}
     >
       <div ref={far.ref} className="absolute inset-0 parallax-will-change" aria-hidden="true">

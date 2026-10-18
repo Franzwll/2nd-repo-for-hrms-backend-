@@ -71,13 +71,13 @@ export function SortHead<K extends string>({
         type="button"
         onClick={() => onSort(sortKey)}
         className={cn(
-          "flex w-full cursor-pointer select-none items-center gap-1.5 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide transition-colors hover:text-foreground",
+          "flex w-full cursor-pointer select-none items-center gap-1.5 overflow-hidden px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide transition-colors hover:text-foreground",
           active ? "text-foreground" : "text-muted-foreground",
           align === "right" && "justify-end text-right",
           align === "center" && "justify-center text-center",
         )}
       >
-        <span>{children}</span>
+        <span className="min-w-0 truncate">{children}</span>
         <Icon className={cn("h-3.5 w-3.5 shrink-0", active ? "opacity-100" : "opacity-40")} />
       </button>
     </TableHead>
