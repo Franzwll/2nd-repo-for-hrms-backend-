@@ -210,6 +210,10 @@ function transformApiJob(j: ApiJobPost): Job {
     applicants: Number(j.applicants_count) || 0,
     platforms: normalizePlatforms(j.platforms),
     blocks: j.blocks ?? null,
+    /* Test requirements resolved by the backend (Core HCM position flags,
+       owner). Read-only in Recruitment — shown as badges in Job Info. */
+    requires_assessment: j.requires_assessment ?? false,
+    requires_practical: j.requires_practical ?? false,
   };
   if (j.picture_url) job.picture = resolveStorageUrl(j.picture_url) ?? "";
   return job;
@@ -2024,10 +2028,11 @@ type Draft = {
    */
   educationLevels: string[];
   experienceLevels: string[];
-  /** Assessment test requirement for this position. */
-  requiresAssessment: boolean;
-  /** Practical assessment requirement for this position. */
-  requiresPractical: boolean;
+  /* Test requirements are owned by Core HCM (positions.requires_assessment /
+     requires_practical) — the Recruitment toggles were removed. The draft no
+     longer stores these; the linked position's flags (draftPosition) decide
+     the applicant pipeline. Legacy Job rows still carry the resolved values
+     for display. */
 };
 
 const blankDraft: Draft = {
@@ -2049,8 +2054,6 @@ const blankDraft: Draft = {
   about: "",
   educationLevels: [],
   experienceLevels: [],
-  requiresAssessment: false,
-  requiresPractical: false,
 };
 
 const defaultAbout =
@@ -2081,8 +2084,6 @@ function jobToDraft(j: Job): Draft {
     about: j.about?.trim() ? j.about : defaultAbout,
     educationLevels: acceptedLevels(j.educationLevels, j.education),
     experienceLevels: acceptedLevels(j.experienceLevels, j.experience),
-    requiresAssessment: j.requires_assessment ?? false,
-    requiresPractical: j.requires_practical ?? false,
   };
 }
 
@@ -3142,6 +3143,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   p.salary_grade_max !== undefined && p.salary_grade_max !== null
                     ? Number(p.salary_grade_max)
                     : (grade?.max_salary ?? null),
+                /* Test requirements owned by Core HCM — the builder shows them
+                   read-only; the applicant pipeline gates on these flags. */
+                requires_assessment: p.requires_assessment ?? false,
+                requires_practical: p.requires_practical ?? false,
               };
             }),
           );
@@ -4580,10 +4585,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         instructions: payload.instructions,
         about: payload.about,
         platforms: livePlatforms,
-        /* Canvas arrangement, so the recruiter's drag order survives the save. */
+        /* Canvas arrangement, so the recruiter's drag order survives the save.
+           Test requirements are owned by Core HCM (positions table) — never
+           sent from Recruitment; the linked position's flags decide the
+           applicant pipeline. */
         blocks: payload.blocks ?? [],
-        requires_assessment: draft.requiresAssessment,
-        requires_practical: draft.requiresPractical,
       };
 
       if (existing?.dbId) {
@@ -5305,10 +5311,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         instructions: jobPayload.instructions,
         about: jobPayload.about,
         platforms: chosen,
-        /* Builder canvas arrangement, so the recruiter's drag order survives. */
+        /* Builder canvas arrangement, so the recruiter's drag order survives.
+           Test requirements are owned by Core HCM (positions table) — never
+           sent from Recruitment; the linked position's flags decide the
+           applicant pipeline. */
         blocks: jobPayload.blocks ?? [],
-        requires_assessment: draft.requiresAssessment,
-        requires_practical: draft.requiresPractical,
       };
       // Uploaded poster picture rides along as multipart/form-data
       payload = basePayload;
@@ -5541,9 +5548,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setBuilderStarted(true);
     setSavedSnapshot(snapshotOf(seeded, fullBlocks));
     setTab("builder");
-    toast.message(
-      `Building a job post from requisition ${req.id} — it stays pending until you publish`,
-    );
   };
 
   const addBlock = (id: BlockId) => {
@@ -7858,27 +7862,42 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                         </div>
                                       </div>
 
-                                      {/* Assessment / Practical toggles */}
+                                      {/* Test requirements — owned by Core HCM. Read-only here:
+                                          the linked position's flags decide the applicant
+                                          pipeline (edit them in Core HCM → Departments &
+                                          Positions). */}
                                       <div className="space-y-2 pt-2 border-t border-border/50">
-                                        <div className="flex items-center gap-2">
-                                          <label className="flex items-center gap-2 text-xs cursor-pointer">
-                                            <Switch
-                                              checked={draft.requiresAssessment}
-                                              onCheckedChange={(v) => setDraft({ ...draft, requiresAssessment: v })}
-                                            />
-                                            <span className="font-medium">Requires Assessment Test</span>
-                                          </label>
-                                          <span className="text-[0.65rem] text-muted-foreground">Enables the post-interview assessment test for this position</span>
+                                        <div className="flex items-center gap-2 text-xs">
+                                          <span
+                                            className={
+                                              draftPosition?.requires_assessment
+                                                ? "inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-medium text-primary"
+                                                : "inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 font-medium text-muted-foreground"
+                                            }
+                                          >
+                                            {draftPosition?.requires_assessment ? "●" : "○"} Assessment Test{" "}
+                                            {draftPosition?.requires_assessment ? "required" : "not required"}
+                                          </span>
+                                          <span className="text-[0.65rem] text-muted-foreground">
+                                            {draftPosition
+                                              ? `From position “${draftPosition.title}” in Core HCM`
+                                              : "Select a position to see its Core HCM test requirements"}
+                                          </span>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                          <label className="flex items-center gap-2 text-xs cursor-pointer">
-                                            <Switch
-                                              checked={draft.requiresPractical}
-                                              onCheckedChange={(v) => setDraft({ ...draft, requiresPractical: v })}
-                                            />
-                                            <span className="font-medium">Requires Practical Test</span>
-                                          </label>
-                                          <span className="text-[0.65rem] text-muted-foreground">Enables the hands-on practical assessment for designated positions</span>
+                                        <div className="flex items-center gap-2 text-xs">
+                                          <span
+                                            className={
+                                              draftPosition?.requires_practical
+                                                ? "inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-medium text-primary"
+                                                : "inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 font-medium text-muted-foreground"
+                                            }
+                                          >
+                                            {draftPosition?.requires_practical ? "●" : "○"} Practical Test{" "}
+                                            {draftPosition?.requires_practical ? "required" : "not required"}
+                                          </span>
+                                          <span className="text-[0.65rem] text-muted-foreground">
+                                            Every applicant for this position must undergo the required stages
+                                          </span>
                                         </div>
                                       </div>
                                     </div>

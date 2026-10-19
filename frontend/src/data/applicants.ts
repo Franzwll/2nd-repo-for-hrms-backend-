@@ -108,9 +108,25 @@ export type Applicant = {
   /** Number of uploaded supporting documents (COE / Certificate /
    *  Credential / Others). Absent (undefined) when unknown, e.g. mock rows. */
   docCount?: number;
-  /** Whether this position takes a practical assessment (from the API's job
-   *  post flag / designated positions). Undefined on mock rows. */
+  /** Whether this position takes a practical assessment — Core HCM position
+   *  flag (owner); legacy job-post flag is the fallback. Undefined on mock rows. */
   requiresPractical?: boolean;
+  /** Whether this position takes an assessment test — Core HCM position flag
+   *  (owner); legacy job-post flag is the fallback. Undefined on mock rows. */
+  requiresAssessment?: boolean;
+  /** Offer workflow — set when the final evaluation decision emails the
+   *  applicant an offer (7-day response window) and HR records their reply. */
+  offerStatus?: "Pending" | "Accepted" | "Declined" | null;
+  offerSentAt?: string | null;
+  offerExpiresAt?: string | null;
+  /** First working day chosen by HR on acceptance — becomes the new hire's
+   *  onboarding start date (anchor for the "Days of Work" counter). */
+  offerStartDate?: string | null;
+  offerDaysLeft?: number | null;
+  /** Re-apply cooldown anchors — rejected_at starts the waiting period,
+   *  cooldown_lifted_at records an HR early override. */
+  rejectedAt?: string | null;
+  cooldownLiftedAt?: string | null;
 };
 
 export const statusMeta: Record<
@@ -732,11 +748,34 @@ export const DEFAULT_PRACTICAL_CRITERIA = [
 ];
 
 /**
- * Positions designated to take a practical assessment. The database flag
- * (`job_posts.requires_practical`) is authoritative when the API reports it —
- * pass it as `dbFlag`; this list is the fallback for posts that were never
- * configured, and mirrors `PracticalRequirement::POSITIONS` on the backend so
- * the UI never offers a practical the API will refuse to save.
+ * Test-requirement flags for a position. Core HCM OWNS these
+ * (positions.requires_assessment / requires_practical, toggled in the
+ * Department & Position module) — every applicant for a flagged position
+ * (e.g. Front Desk) must undergo the required stage. The legacy per-job-post
+ * columns are only a read-only fallback for old rows; the designated title
+ * lists below are the last resort for posts whose position carries no flag.
+ */
+export const ASSESSMENT_POSITIONS = [
+  'Front Desk Receptionist',
+  'Guest Relations Officer',
+  'HR Assistant',
+  'HR Officer',
+  'Accounting Assistant',
+  'Accounting Supervisor',
+  'Finance Officer',
+];
+
+export const requiresAssessment = (
+  _position: string,
+  dbFlag?: boolean | null,
+) => dbFlag === true;
+
+/**
+ * Positions designated to take a practical assessment. The Core HCM position
+ * flag (`positions.requires_practical`) is authoritative when the API reports
+ * it — pass it as `dbFlag`; this list is the fallback for posts whose
+ * position carries no flag, and mirrors `PracticalRequirement::POSITIONS` on
+ * the backend so the UI never offers a practical the API will refuse to save.
  */
 export const PRACTICAL_POSITIONS = [
   "Line Cook",
@@ -745,8 +784,14 @@ export const PRACTICAL_POSITIONS = [
   "Restaurant Server",
 ];
 
-export const requiresPractical = (position: string, dbFlag?: boolean | null) =>
-  dbFlag === true || PRACTICAL_POSITIONS.includes(position);
+export const requiresPractical = (
+  position: string,
+  dbFlag?: boolean | null,
+  _titleFallback?: string | null,
+) =>
+  dbFlag === true ||
+  PRACTICAL_POSITIONS.includes(position) ||
+  (_titleFallback ? PRACTICAL_POSITIONS.includes(_titleFallback) : false);
 
 /** Top-candidate tiers per the ranking rules:
  * 1 — completed proof of resume content (COE/certificates/credentials/others,
@@ -809,6 +854,9 @@ export type AuditActionType =
   | "Assessment Test Link Generated"
   | "Practical Assessment Recorded"
   | "Final Evaluation Completed"
+  | "Offer Email Sent"
+  | "Offer Accepted"
+  | "Offer Declined"
   | "Verification Document Uploaded"
   | "Status Change"
   | "Applicant Added";

@@ -40,6 +40,17 @@
                 <p style="margin:0;font-size:13px;color:#713f12;line-height:1.5;">{{ $details }}</p>
               </div>
               @endif
+              @if(!empty($responseDeadline))
+              <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:16px;margin:16px 0;">
+                <p style="margin:0 0 8px;font-size:13px;font-weight:bold;color:#991b1b;text-transform:uppercase;letter-spacing:0.05em;">Please Confirm Your Response</p>
+                <p style="margin:0;font-size:13px;color:#7f1d1d;line-height:1.5;">
+                  Kindly reply to this email to let us know if you <strong>accept</strong> or <strong>decline</strong> this offer
+                  on or before <strong>{{ $responseDeadline }}</strong>
+                  ({{ $responseWindowDays ?? 7 }} days from the date this offer was sent).
+                  If we do not receive your response by then, the offer will be considered declined.
+                </p>
+              </div>
+              @endif
               <p style="margin:16px 0 0;font-size:14px;color:#4b5563;line-height:1.6;">
                 Our HR representative will contact you shortly with the job details and interview arrangements. You may also reply directly to this email to express your interest.
               </p>

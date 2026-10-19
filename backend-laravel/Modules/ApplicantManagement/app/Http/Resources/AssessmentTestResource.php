@@ -32,7 +32,11 @@ class AssessmentTestResource extends JsonResource
                 'position'       => $applicant->jobPost?->title,
                 'department'     => $applicant->jobPost?->department?->name,
                 'stage'          => $applicant->stage,
-                'requires_practical' => (bool) $applicant->jobPost?->requires_practical,
+                /* Core HCM position flag (owner); legacy job-post column + designated
+                   list are fallbacks — mirrors PracticalRequirement::required(). */
+                'requires_practical' => \Modules\ApplicantManagement\Services\PracticalRequirement::required(
+                    $applicant->jobPost, $applicant->jobPost?->title, $applicant->jobPost?->position,
+                ),
             ] : null,
         ];
     }

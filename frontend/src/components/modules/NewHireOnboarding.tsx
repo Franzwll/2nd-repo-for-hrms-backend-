@@ -306,7 +306,11 @@ type EmployeeSubmission = {
 /** Checklist items from the mock store and the API share the same text. */
 const normalizeChecklistKey = (text: string) => text.trim().toLowerCase();
 
-/** Renders the employee's submission (uploaded document + note) for admins.
+/** Renders the employee's submission (uploaded document + note) for admins,
+ *  plus an HR attach dropzone so staff can file a document on the hire's
+ *  behalf when the employee cannot submit it themself (no scanner, walk-in
+ *  with paper originals, etc.). HR uploads re-enter "pending review" —
+ *  they never auto-verify.
  *  `done` is the row's live (toggled) state, so unchecking a verified item
  *  immediately flips the file name red instead of staying green. */
 function EmployeeSubmissionDetails({
@@ -315,16 +319,31 @@ function EmployeeSubmissionDetails({
   onVerify,
   onReturn,
   verifyBusy,
+  onHrAttach,
+  hrAttachBusy,
+  hrCanAttach,
 }: {
   submission: EmployeeSubmission;
   done: boolean;
   onVerify?: (() => void) | undefined;
   onReturn?: (() => void) | undefined;
   verifyBusy?: boolean | undefined;
+  /** Called with the picked file when HR attaches on the hire's behalf. */
+  onHrAttach?: ((file: File) => void) | undefined;
+  hrAttachBusy?: boolean | undefined;
+  /** False hides the dropzone (e.g. read-only staff role). Defaults true. */
+  hrCanAttach?: boolean | undefined;
 }) {
   const [docOpen, setDocOpen] = useState(false);
   /** HR already returned this submission once — it carries a correction note. */
   const returned = !done && Boolean(submission.reviewNote?.trim());
+  const [hrDragActive, setHrDragActive] = useState(false);
+  const hrFileRef = useRef<HTMLInputElement | null>(null);
+  const showHrAttach = hrCanAttach !== false && !done && onHrAttach;
+  const pickHrFile = (file: File | null | undefined) => {
+    if (!file || hrAttachBusy) return;
+    onHrAttach?.(file);
+  };
   return (
     <div className="mb-1 mt-1 space-y-1 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
       <p
@@ -408,6 +427,77 @@ function EmployeeSubmissionDetails({
           {submission.notes}
         </p>
       )}
+      {/* HR attach — file on the hire's behalf when they cannot submit it
+          themself. Same 10MB / PDF-DOCX-image rules as the employee zone;
+          the file re-enters pending review and still needs Verify. */}
+      {showHrAttach && (
+        <div className="space-y-1 pt-1">
+          <input
+            ref={hrFileRef}
+            type="file"
+            className="hidden"
+            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.gif,.webp,.xls,.xlsx"
+            disabled={hrAttachBusy}
+            onChange={(e) => {
+              pickHrFile(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+          <div
+            role="button"
+            tabIndex={0}
+            aria-label={
+              submission.fileName
+                ? "Replace the attached document (HR attach)"
+                : "Attach a document on the hire's behalf"
+            }
+            onClick={() => hrFileRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                hrFileRef.current?.click();
+              }
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setHrDragActive(true);
+            }}
+            onDragLeave={() => setHrDragActive(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setHrDragActive(false);
+              pickHrFile(e.dataTransfer.files?.[0]);
+            }}
+            className={cn(
+              "flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-2.5 py-2 text-[11px] transition-colors",
+              hrDragActive
+                ? "border-primary bg-primary/10 text-foreground"
+                : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground",
+              hrAttachBusy && "pointer-events-none opacity-60",
+            )}
+          >
+            {hrAttachBusy ? (
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
+            ) : (
+              <Upload
+                className={cn(
+                  "h-3.5 w-3.5 shrink-0",
+                  hrDragActive ? "text-primary" : "text-muted-foreground",
+                )}
+              />
+            )}
+            <span className="min-w-0 flex-1 truncate">
+              {hrAttachBusy
+                ? "Attaching file…"
+                : hrDragActive
+                  ? "Drop the file to attach it"
+                  : `${
+                      submission.fileName ? "Replace file (HR attach)" : "Attach file on hire's behalf"
+                    } — click or drag & drop (PDF, DOCX, PNG, JPG, up to 10MB)`}
+            </span>
+          </div>
+        </div>
+      )}
       {!done && (onVerify || onReturn) && (
         <div className="flex flex-wrap items-center gap-2 pt-0.5">
           {onVerify && (
@@ -464,6 +554,9 @@ function AdminChecklistRow({
   onVerify,
   onReturn,
   verifyBusy,
+  onHrAttach,
+  hrAttachBusy,
+  hrCanAttach,
 }: {
   done: boolean;
   submitted: boolean;
@@ -474,12 +567,18 @@ function AdminChecklistRow({
   onVerify?: (() => void) | undefined;
   onReturn?: (() => void) | undefined;
   verifyBusy?: boolean | undefined;
+  /** HR attaches a file on the hire's behalf (reuses the upload endpoint). */
+  onHrAttach?: ((file: File) => void) | undefined;
+  hrAttachBusy?: boolean | undefined;
+  hrCanAttach?: boolean | undefined;
 }) {
   const hasSubmission = Boolean(
     submission && (submission.submittedAt || submission.fileName || submission.notes),
   );
   /** HR returned this submission with a correction note. */
   const returned = !done && Boolean(submission?.reviewNote?.trim());
+  /** No employee file yet — still show the row expander so HR can attach. */
+  const showAttachExpander = !done && onHrAttach && hrCanAttach !== false;
 
   return (
     <Collapsible className="group w-full">
@@ -556,6 +655,16 @@ function AdminChecklistRow({
             <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]:rotate-180" />
           </CollapsibleTrigger>
         )}
+        {!hasSubmission && showAttachExpander && (
+          <CollapsibleTrigger
+            title="Attach a document on the hire's behalf"
+            className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Upload className="h-3 w-3" />
+            Attach file
+            <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
+        )}
       </div>
       {hasSubmission && submission && (
         <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
@@ -566,6 +675,25 @@ function AdminChecklistRow({
               onVerify={onVerify}
               onReturn={onReturn}
               verifyBusy={verifyBusy}
+              onHrAttach={onHrAttach}
+              hrAttachBusy={hrAttachBusy}
+              hrCanAttach={hrCanAttach}
+            />
+          </div>
+        </CollapsibleContent>
+      )}
+      {!hasSubmission && showAttachExpander && (
+        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+          <div className="pb-1 pt-1">
+            <EmployeeSubmissionDetails
+              submission={{
+                itemText: label,
+                done: false,
+              }}
+              done={done}
+              onHrAttach={onHrAttach}
+              hrAttachBusy={hrAttachBusy}
+              hrCanAttach={hrCanAttach}
             />
           </div>
         </CollapsibleContent>
@@ -838,7 +966,10 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
         position: intake.position,
         department: intake.department,
         stage: "Pre-onboarding",
-        startDate: todayIso,
+        // The start-of-work date chosen when the offer was accepted — the
+        // day-count anchor for this hire. Handovers without one fall back to
+        // today, like before.
+        startDate: intake.startDate ?? todayIso,
         initials: initialsOf(intake.name),
         email: intake.email,
         phone: intake.phone,
@@ -867,6 +998,8 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   /** Bump to re-pull submissions after a Verify / Return applied in the panel. */
   const [submissionsRefresh, setSubmissionsRefresh] = useState(0);
   const [verifyingKey, setVerifyingKey] = useState<string | null>(null);
+  /** Per-row busy flag while an HR attach upload is in flight. */
+  const [hrAttachKey, setHrAttachKey] = useState<string | null>(null);
   /** Submission being returned for correction (opened from a checklist row). */
   const [returnTarget, setReturnTarget] = useState<EmployeeSubmission | null>(null);
   const [returnNote, setReturnNote] = useState("");
@@ -970,11 +1103,23 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   };
 
   /** Verify / return props for one checklist row — undefined while the row has
-   *  nothing pending HR review (verified or not yet submitted). */
+   *  nothing pending HR review (verified or not yet submitted). Always carries
+   *  the HR attach handler so staff can file on the hire's behalf. */
   const submissionActions = (itemText: string, done: boolean) => {
     const submission = selectedSubmissions[normalizeChecklistKey(itemText)];
+    const key = normalizeChecklistKey(itemText);
+    // This is the staff (HR) module — everyone here may attach on the hire's
+    // behalf. The upload endpoint itself is read-level; Verify stays the
+    // Edit-gated step.
+    const attach = selected?.dbId
+      ? {
+          onHrAttach: (file: File) => void hrAttachDocument(itemText, file),
+          hrAttachBusy: hrAttachKey === key,
+          hrCanAttach: true,
+        }
+      : { onHrAttach: undefined, hrAttachBusy: undefined, hrCanAttach: false };
     if (!submission || done || submission.done) {
-      return { onVerify: undefined, onReturn: undefined, verifyBusy: undefined };
+      return { onVerify: undefined, onReturn: undefined, verifyBusy: undefined, ...attach };
     }
     return {
       onVerify: () => void verifySubmission(submission),
@@ -983,7 +1128,59 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
         setReturnTarget(submission);
       },
       verifyBusy: verifyingKey === normalizeChecklistKey(itemText),
+      ...attach,
     };
+  };
+
+  /** HR attaches a document on the hire's behalf — same upload endpoint the
+   *  employee uses. The file re-enters "pending review" (submitted_at is
+   *  refreshed server-side); it is NOT auto-verified — HR still clicks
+   *  Verify afterwards. Virtual template rows need materializing first. */
+  const hrAttachDocument = async (itemText: string, file: File) => {
+    if (!selected?.dbId) {
+      toast.error("Select a saved hire first");
+      return;
+    }
+    const key = normalizeChecklistKey(itemText);
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("File is too large — 10MB max");
+      return;
+    }
+    setHrAttachKey(key);
+    try {
+      const submission = selectedSubmissions[key];
+      let dbItemId = submission?.dbItemId;
+      if (!dbItemId) {
+        // Template-only row with no materialized item yet — resolve it via
+        // the hire's visible items, then materialize from the template
+        // (the endpoint returns the new row id directly).
+        const res = await onboardingItemsApi.listForNewHire(selected.dbId);
+        const match = res.find((i) => normalizeChecklistKey(i.item_text) === key);
+        if (match?.template_item_id) {
+          const created = await onboardingItemsApi.materialize(
+            selected.dbId,
+            match.template_item_id,
+          );
+          dbItemId = created.employee_onboarding_item_id;
+        } else {
+          dbItemId = match?.employee_onboarding_item_id;
+        }
+      }
+      if (!dbItemId) {
+        toast.error("Could not find this checklist item on the server");
+        return;
+      }
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await onboardingItemsApi.upload(dbItemId, formData);
+      toast.success(res.message || `Document '${file.name}' attached — awaiting verification.`);
+    } catch (e) {
+      console.warn("HR attach failed:", e);
+      toast.error(e instanceof Error ? e.message : "Could not attach this file");
+    } finally {
+      setHrAttachKey(null);
+      setSubmissionsRefresh((n) => n + 1);
+    }
   };
 
   const startEditChecklist = (hire: NewHire) => {
@@ -1294,7 +1491,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
         { header: "Position", key: "position", width: "17%" },
         { header: "Department", key: "department", width: "15%" },
         { header: "Stage", key: "stage", width: "13%" },
-        { header: "Days of Work", key: "daysOfWork", width: "11%" },
+        { header: "Days count of start working", key: "daysOfWork", width: "11%" },
         { header: "Progress", key: "progress", width: "11%" },
         { header: "Start Date", key: "startDate", width: "16%" },
       ],
@@ -1393,7 +1590,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
         { header: "Department", key: "department", width: "14%" },
         { header: "Stage", key: "stage", width: "12%" },
         { header: "Start Date", key: "startDate", width: "11%" },
-        { header: "Days of Work", key: "daysOfWork", width: "9%" },
+        { header: "Days count of start working", key: "daysOfWork", width: "9%" },
         { header: "Progress", key: "progress", width: "8%" },
         { header: "Pending", key: "pending", width: "8%" },
         { header: "Flag", key: "flag", width: "16%" },
@@ -1974,7 +2171,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             Start Date
                           </SortHead>
                           <SortHead sortKey="daysOfWork" sort={sort} onSort={onSort}>
-                            Days of Work
+                            Days count of start working
                           </SortHead>
                           <SortHead sortKey="requirements" sort={sort} onSort={onSort}>
                             Requirements
@@ -2044,7 +2241,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                             "text-gold-foreground",
                                         )}
                                       >
-                                        {worked} {worked === 1 ? "day" : "days"}
+                                        {worked} {worked === 1 ? "day" : "days"} start working
                                       </span>
                                       {isProbationary && remaining > 0 && (
                                         <span className="block text-[0.65rem] text-muted-foreground">
@@ -3448,7 +3645,23 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               type="number"
               min={1}
               value={autoRegDraft}
-              onChange={(e) => setAutoRegDraft(Math.max(1, Number(e.target.value) || 1))}
+              // Clamp only on blur — clamping inside onChange snaps the field
+              // back while typing (clearing/deleting "180" jumps to 1), which
+              // reads as "cannot edit / disabled".
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === "") {
+                  setAutoRegDraft(1);
+                  return;
+                }
+                const n = Number(raw);
+                setAutoRegDraft(Number.isFinite(n) ? n : autoRegDraft);
+              }}
+              onBlur={(e) => {
+                const n = Number(e.target.value);
+                if (!Number.isFinite(n) || n < 1) setAutoRegDraft(1);
+                else setAutoRegDraft(Math.floor(n));
+              }}
             />
             <p className="text-[0.7rem] text-muted-foreground">
               The probationary hire's checklist must also be 100% complete with a requested

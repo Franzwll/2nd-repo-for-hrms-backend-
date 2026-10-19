@@ -261,8 +261,20 @@ class LandingController extends Controller
             return response()->json(['message' => 'This position is no longer accepting applications. All slots have been filled.'], 422);
         }
 
+        // Failed-applicant cooldown first: same email blocked from ANY job
+        // inside the waiting window (decliners + HR overrides skip it).
+        // Same resume file used for a DIFFERENT job is otherwise allowed.
+        $cooldown = DuplicateApplicationService::findCooldown(
+            (string) $request->string('email')
+        );
+        if ($cooldown) {
+            return response()->json(
+                DuplicateApplicationService::cooldownResponse($cooldown),
+                409
+            );
+        }
+
         // Scoped duplicate guard: same email + same job + active stage only.
-        // Same resume file used for a DIFFERENT job is always allowed.
         $existing = DuplicateApplicationService::findDuplicate(
             (string) $request->string('email'),
             (int) $jobPost->job_post_id
@@ -302,16 +314,16 @@ class LandingController extends Controller
         // Persist supporting docs from the unified 1-box uploader
         // (recognized COE / Certificate / Credential / Others). Same flow as
         // Recruitment Management post-save: store + auto-verify each file.
-        $docFiles = $request->file('verification_docs', []);
-        if ($docFiles instanceof \Illuminate\Http\UploadedFile) {
-            $docFiles = [$docFiles];
-        }
+        // Defensive slice to 20: validation caps the array, but if more ever
+        // slip through the applicant must still save with the first 20 kept.
+        $rawDocs = $request->file('verification_docs', []);
+        $docFiles = array_slice(array_values(is_array($rawDocs) ? $rawDocs : [$rawDocs]), 0, 20);
         $docTypes = $request->input('verification_doc_types', []);
         if (! is_array($docTypes)) {
             $docTypes = [$docTypes];
         }
         $allowedTypes = ['COE', 'Certificate', 'Credential', 'Others'];
-        foreach (array_values(is_array($docFiles) ? $docFiles : []) as $i => $docFile) {
+        foreach ($docFiles as $i => $docFile) {
             if (! $docFile instanceof \Illuminate\Http\UploadedFile || ! $docFile->isValid()) {
                 continue;
             }

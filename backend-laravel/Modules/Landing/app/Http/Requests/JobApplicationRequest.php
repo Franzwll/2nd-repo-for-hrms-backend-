@@ -24,9 +24,10 @@ class JobApplicationRequest extends FormRequest
             'resume' => ['nullable', 'file', LandingController::uploadExtensionRule(), 'max:20480'],
             // Supporting docs from the unified 1-box uploader (recognized types
             // sent alongside each file: COE | Certificate | Credential | Others).
-            'verification_docs' => ['sometimes', 'array', 'max:10'],
+            // Cap is 20 (PHP max_file_uploads=20) so larger bundles go through.
+            'verification_docs' => ['sometimes', 'array', 'max:20'],
             'verification_docs.*' => ['file', LandingController::uploadExtensionRule(), 'max:20480'],
-            'verification_doc_types' => ['sometimes', 'array'],
+            'verification_doc_types' => ['sometimes', 'array', 'max:20'],
             'verification_doc_types.*' => ['string', 'in:COE,Certificate,Credential,Others'],
         ];
     }

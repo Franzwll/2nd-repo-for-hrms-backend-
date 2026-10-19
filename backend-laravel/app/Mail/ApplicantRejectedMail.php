@@ -16,6 +16,7 @@ class ApplicantRejectedMail extends Mailable
         public string $recipientEmail,
         public string $applicantName,
         public string $position,
+        public ?string $eligibleAfterLabel = null,
     ) {
     }
 
@@ -33,6 +34,7 @@ class ApplicantRejectedMail extends Mailable
             with: [
                 'applicantName' => $this->applicantName,
                 'position'      => $this->position,
+                'eligibleAfterLabel' => $this->eligibleAfterLabel,
             ],
         );
     }

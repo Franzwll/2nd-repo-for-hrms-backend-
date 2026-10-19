@@ -43,8 +43,8 @@ class PracticalTestController extends Controller
     }
 
     /* POST /api/v1/applicants/{applicant}/practical-tests             */
-    /* Workflow gate: assessment test "Passed" AND the position must     */
-    /* require a practical exam (job_posts.requires_practical).          */
+    /* Workflow gate: assessment test "Passed" AND the Core HCM position */
+    /* must require a practical exam (positions.requires_practical).     */
     public function store(Request $request, int $applicant): JsonResponse
     {
         if (! \Modules\ApplicantManagement\Services\AssessmentConfig::practicalTestEnabled()) {
@@ -53,12 +53,13 @@ class PracticalTestController extends Controller
             ], 422);
         }
 
-        $model = Applicant::with('jobPost')->findOrFail($applicant);
+        $model = Applicant::with('jobPost.position')->findOrFail($applicant);
 
-        // Practical applies when the job post is flagged, or when the position is
-        // one of the designated hands-on roles (same rule the UI uses).
+        // Practical applies when the Core HCM position requires it (owner) —
+        // every applicant for that position must undergo it. Legacy job-post
+        // flag + designated list are fallbacks (same rule the UI uses).
         $positionTitle = $model->jobPost?->title;
-        $requiresPractical = PracticalRequirement::required($model->jobPost, $positionTitle);
+        $requiresPractical = PracticalRequirement::required($model->jobPost, $positionTitle, $model->jobPost?->position);
         if (! $requiresPractical) {
             return response()->json([
                 'message' => "The position '".($positionTitle ?? 'this applicant')."' does not require a practical assessment.",

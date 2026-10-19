@@ -8,7 +8,15 @@ use Modules\RecruitmentManagement\Models\JobPost;
 /**
  * Single source of truth for "does this position require an assessment test?".
  *
- * Priority: global Core HCM switch > job_post.requires_assessment > position.requires_assessment > designated positions list
+ * Core HCM OWNS this flag: positions.requires_assessment (toggled in the
+ * Department & Position module) is authoritative. The legacy per-job-post
+ * column (job_posts.requires_assessment, formerly toggled in Recruitment
+ * Management) is kept only as a read-only fallback for old rows — new posts
+ * never write it. The designated-positions list is the last resort for posts
+ * whose position carries no flag.
+ *
+ * Priority: global Core HCM switch > position.requires_assessment
+ *           > job_post.requires_assessment (legacy) > designated positions list
  */
 class AssessmentRequirement
 {
@@ -37,7 +45,10 @@ class AssessmentRequirement
 
     /**
      * True when the assessment test applies to this applicant's post:
-     * global Core HCM switch > job_post.requires_assessment > position.requires_assessment > designated positions list
+     * global Core HCM switch > position.requires_assessment (Core HCM owner)
+     * > job_post.requires_assessment (legacy) > designated positions list.
+     * Every applicant for a flagged position (e.g. Front Desk) must undergo
+     * the assessment test — no per-post opt-out.
      */
     public static function required(?JobPost $jobPost, ?string $position = null, ?CorePosition $corePosition = null): bool
     {
@@ -45,14 +56,16 @@ class AssessmentRequirement
             return false;
         }
 
-        // 1. Explicit job post flag (Recruitment Management)
-        if ($jobPost && (bool) $jobPost->requires_assessment) {
+        // 1. Core HCM Position flag (Department & Position module) — OWNER.
+        //    Every applicant for this position must undergo the assessment test.
+        $pos = $corePosition ?? ($jobPost ? $jobPost->position : null);
+        if ($pos && (bool) $pos->requires_assessment) {
             return true;
         }
 
-        // 2. Core HCM Position flag (Department & Position module)
-        $pos = $corePosition ?? ($jobPost ? $jobPost->position : null);
-        if ($pos && (bool) $pos->requires_assessment) {
+        // 2. Legacy job post flag (Recruitment Management toggle, removed).
+        //    Read-only fallback for old rows — new posts never write it.
+        if ($jobPost && (bool) $jobPost->requires_assessment) {
             return true;
         }
 

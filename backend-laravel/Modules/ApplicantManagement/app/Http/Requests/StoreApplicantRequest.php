@@ -40,6 +40,9 @@ class StoreApplicantRequest extends FormRequest
             // stage here so create/update validate identically.
             'stage'        => ['required', 'string', 'in:Screened,Interview Scheduled,Assessed,Assessment Test,Practical Test,Final Evaluation,Offer,Hired,Rejected,Accepted'],
             'fit_score'    => ['nullable', 'numeric', 'min:0', 'max:100'],
+            /* HR early re-application override — skips the failed-applicant
+               cooldown for this create (audited in the controller). */
+            'override_cooldown' => ['nullable', 'boolean'],
             // `extensions` (not `mimes`): validates the uploaded file's own
             // extension instead of the MIME type guessed from its bytes, which
             // Windows/PHP fileinfo often reports as application/octet-stream —

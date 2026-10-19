@@ -20,6 +20,8 @@ class Applicant extends Model
         'fit_score',
         'status',
         'stage',
+        'rejected_at',
+        'cooldown_lifted_at',
         'source',
         'resume_file_path',
         'resume_original_name',
@@ -32,6 +34,8 @@ class Applicant extends Model
         'applied_at' => 'datetime',
         'fit_score' => 'decimal:2',
         'flags_json' => 'array',
+        'rejected_at' => 'datetime',
+        'cooldown_lifted_at' => 'datetime',
     ];
 
     public function jobPost(): BelongsTo

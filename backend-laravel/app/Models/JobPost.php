@@ -43,6 +43,11 @@ class JobPost extends Model
         'responsibilities_json' => 'array',
         'qualifications_json' => 'array',
         'skills_json' => 'array',
+        // Older rows leave additional_json NULL (treated as []); newer builder
+        // posts persist a JSON-encoded list which must decode to an array —
+        // without this cast the Landing resource leaks a raw string that
+        // crashes the public job-detail page's .map() render.
+        'additional_json' => 'array',
         'benefits_json' => 'array',
     ];
 

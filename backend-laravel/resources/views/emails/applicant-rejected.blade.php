@@ -40,6 +40,11 @@
               <p style="margin:0 0 16px;font-size:14px;color:#4b5563;line-height:1.6;">
                 Please note that we keep promising candidate profiles in our talent pool for future openings that match your skills and qualifications. We wish you all the best in your career pursuits.
               </p>
+              @if(!empty($eligibleAfterLabel ?? null))
+              <p style="margin:0 0 16px;font-size:14px;color:#4b5563;line-height:1.6;">
+                <strong>You may re-apply for any open position after {{ $eligibleAfterLabel }}.</strong>
+              </p>
+              @endif
             </td>
           </tr>
           <tr>

@@ -124,7 +124,9 @@ class RecruitmentManagementController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = JobPost::with(['department', 'platforms', 'applicants'])
+        // `position` is eager-loaded so the resource can resolve the Core HCM
+        // test-requirement flags (owner) without N+1 queries.
+        $query = JobPost::with(['department', 'position', 'platforms', 'applicants'])
             ->orderByDesc('created_at');
 
         if ($search = $request->query('search')) {
@@ -284,7 +286,7 @@ class RecruitmentManagementController extends Controller
         $this->syncPlatforms($jobPost, $platforms);
 
         return response()->json(
-            new JobPostResource($jobPost->load(['department', 'platforms'])),
+            new JobPostResource($jobPost->load(['department', 'position', 'platforms'])),
             201
         );
     }
@@ -295,7 +297,7 @@ class RecruitmentManagementController extends Controller
 
     public function show(int $job_post): JsonResponse
     {
-        $model = JobPost::with(['department', 'platforms', 'applicants'])->findOrFail($job_post);
+        $model = JobPost::with(['department', 'position', 'platforms', 'applicants'])->findOrFail($job_post);
 
         return response()->json(new JobPostResource($model));
     }
@@ -424,7 +426,7 @@ class RecruitmentManagementController extends Controller
             details: "Updated job post '{$model->title}' (status: {$model->status}).",
         );
 
-        return response()->json(new JobPostResource($model->load(['department', 'platforms'])));
+        return response()->json(new JobPostResource($model->load(['department', 'position', 'platforms'])));
     }
 
     /* ------------------------------------------------------------------ */
@@ -468,7 +470,7 @@ class RecruitmentManagementController extends Controller
             'status' => $newActive ? 'Open' : 'Closed',
         ]);
 
-        return response()->json(new JobPostResource($model->load(['department', 'platforms'])));
+        return response()->json(new JobPostResource($model->load(['department', 'position', 'platforms'])));
     }
 
     /* ------------------------------------------------------------------ */
@@ -495,7 +497,7 @@ class RecruitmentManagementController extends Controller
 
         $this->syncPlatforms($model, $data['platforms']);
 
-        return response()->json(new JobPostResource($model->load(['department', 'platforms'])));
+        return response()->json(new JobPostResource($model->load(['department', 'position', 'platforms'])));
     }
 
     /* ------------------------------------------------------------------ */

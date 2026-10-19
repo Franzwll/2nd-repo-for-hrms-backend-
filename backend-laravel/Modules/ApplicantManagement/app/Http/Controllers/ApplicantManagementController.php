@@ -19,6 +19,7 @@ use Modules\ApplicantManagement\Http\Requests\StoreApplicantRequest;
 use Modules\ApplicantManagement\Http\Requests\UpdateApplicantRequest;
 use Modules\ApplicantManagement\Http\Resources\ApplicantResource;
 use Modules\ApplicantManagement\Models\Applicant;
+use Modules\ApplicantManagement\Services\OfferService;
 use Modules\ApplicantManagement\Services\ScreeningService;
 use Modules\RecruitmentManagement\Models\JobPost;
 use App\Services\NlpService;
@@ -37,7 +38,13 @@ class ApplicantManagementController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Applicant::with(['jobPost.department', 'screeningEntities', 'screeningScores', 'latestScreening'])
+        // Lazy 7-day rule: a pending offer past its response window is
+        // treated as a declined applicant before the list is returned.
+        OfferService::expireOverdue();
+
+        // `jobPost.position` is eager-loaded so the resource can resolve the
+        // Core HCM test-requirement flags (owner) without N+1 queries.
+        $query = Applicant::with(['jobPost.department', 'jobPost.position', 'screeningEntities', 'screeningScores', 'latestScreening'])
             ->withCount('documents')
             ->orderByDesc('applied_at');
 
@@ -100,6 +107,18 @@ class ApplicantManagementController extends Controller
     {
         $data = $request->validated();
 
+        // Failed-applicant cooldown first (any job). HR may override it
+        // deliberately with override_cooldown=true (audited below).
+        $cooldown = ! empty($data['email'])
+            ? DuplicateApplicationService::findCooldown((string) $data['email'])
+            : null;
+        if ($cooldown && empty($data['override_cooldown'])) {
+            return response()->json(
+                DuplicateApplicationService::cooldownResponse($cooldown),
+                409
+            );
+        }
+
         // HR-side duplicate guard mirrors public apply: same email + same job + active stage.
         $existing = DuplicateApplicationService::findDuplicate(
             (string) ($data['email'] ?? ''),
@@ -131,6 +150,21 @@ class ApplicantManagementController extends Controller
         $data['applicant_code'] = Applicant::generateCode();
 
         $applicant = Applicant::create($data);
+
+        // HR deliberately let someone back in early — paper trail.
+        if ($cooldown && ! empty($data['override_cooldown'])) {
+            $applicant->forceFill(['cooldown_lifted_at' => now()])->save();
+            AuditLogger::log(
+                action: 'Re-apply Cooldown Overridden',
+                module: 'Applicant Management',
+                severity: 'Warning',
+                targetType: 'Applicant',
+                targetId: (string) $applicant->applicant_id,
+                details: "Cooldown overridden by " . ($request->user()?->username ?? 'HR')
+                    . " — {$applicant->name} ({$applicant->email}) was Rejected, "
+                    . "eligible after {$cooldown['eligible_after']} ({$cooldown['days_left']} day(s) left)."
+            );
+        }
 
         // Run spaCy NLP screening when a resume is present. A precomputed
         // payload from the wizard's preview run avoids a second NLP call.
@@ -233,6 +267,71 @@ class ApplicantManagementController extends Controller
         ])->findOrFail($applicant);
 
         return response()->json(new ApplicantResource($model));
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* GET /api/v1/applicants/{applicant}/history                            */
+    /* Same-email past applications: position, dates, failed stage,         */
+    /* cooldown countdown / eligible flag for the HR profile strip.         */
+    /* ------------------------------------------------------------------ */
+
+    public function history(int $applicant): JsonResponse
+    {
+        $model = Applicant::findOrFail($applicant);
+
+        $rows = Applicant::with('jobPost')
+            ->whereRaw('LOWER(email) = ?', [mb_strtolower($model->email)])
+            ->orderByDesc('applied_at')
+            ->limit(20)
+            ->get();
+
+        $cooldown = DuplicateApplicationService::findCooldown((string) $model->email);
+
+        return response()->json([
+            'data' => $rows->map(fn (Applicant $row) => [
+                'applicant_id' => $row->applicant_id,
+                'applicant_code' => $row->applicant_code,
+                'job_post_id' => $row->job_post_id,
+                'position' => $row->jobPost?->title ?? 'Position',
+                'applied_at' => $row->applied_at?->toISOString(),
+                'stage' => $row->stage,
+                'status' => $row->status,
+                'offer_status' => $row->offer_status,
+                'rejected_at' => $row->rejected_at?->toISOString(),
+                'cooldown_lifted_at' => $row->cooldown_lifted_at?->toISOString(),
+                'is_current' => $row->applicant_id === $model->applicant_id,
+            ]),
+            'cooldown' => $cooldown,
+            'cooldown_days' => DuplicateApplicationService::cooldownDays(),
+            'attempt_count' => $rows->count(),
+        ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* POST /api/v1/applicants/{applicant}/cooldown/override                */
+    /* HR allows early re-application: lifts the waiting period with audit. */
+    /* ------------------------------------------------------------------ */
+
+    public function overrideCooldown(Request $request, int $applicant): JsonResponse
+    {
+        $model = Applicant::findOrFail($applicant);
+
+        $model->forceFill(['cooldown_lifted_at' => now()])->save();
+
+        AuditLogger::log(
+            action: 'Re-apply Cooldown Overridden',
+            module: 'Applicant Management',
+            severity: 'Warning',
+            targetType: 'Applicant',
+            targetId: (string) $model->applicant_id,
+            details: "Cooldown lifted early by " . ($request->user()?->username ?? 'HR')
+                . " for {$model->name} ({$model->email})."
+        );
+
+        return response()->json([
+            'message' => "{$model->name} may now re-apply for any open position.",
+            'data' => new ApplicantResource($model->fresh()),
+        ]);
     }
 
     /* ------------------------------------------------------------------ */
@@ -420,9 +519,10 @@ class ApplicantManagementController extends Controller
         $validated = $request->validate([
             'resume' => ['required', 'file', 'max:20480'],
             'job_post_id' => ['required', 'integer', 'exists:job_posts,job_post_id'],
-            'documents' => ['sometimes', 'array', 'max:10'],
+            // Keep in sync with the landing cap (20) — same 1-box uploader.
+            'documents' => ['sometimes', 'array', 'max:20'],
             'documents.*' => ['file', 'max:10240'],
-            'doc_types' => ['sometimes', 'array'],
+            'doc_types' => ['sometimes', 'array', 'max:20'],
             'doc_types.*' => ['string', 'in:COE,Certificate,Credential,Others'],
         ]);
 
@@ -579,6 +679,13 @@ class ApplicantManagementController extends Controller
         if (isset($data['stage']) && $data['stage'] !== $oldStage) {
             $newStage = $data['stage'];
 
+            // Entering Rejected starts the re-apply cooldown clock.
+            // Leaving Rejected (re-book / override) keeps the stamp as history.
+            if ($newStage === 'Rejected' && empty($model->rejected_at)) {
+                $model->forceFill(['rejected_at' => now()])->save();
+                $model->refresh();
+            }
+
             AuditLogger::log(
                 action: "Applicant Stage Changed to {$newStage}",
                 module: 'Applicant Management',
@@ -616,10 +723,14 @@ class ApplicantManagementController extends Controller
                             interviewMode: $latestInterview?->mode
                         ));
                     } elseif ($newStage === 'Rejected') {
+                        $eligibleLabel = $model->rejected_at
+                            ? $model->rejected_at->copy()->addDays(DuplicateApplicationService::cooldownDays())->format('M j, Y')
+                            : null;
                         Mail::to($model->email)->send(new ApplicantRejectedMail(
                             recipientEmail: $model->email,
                             applicantName: $model->name,
-                            position: $positionTitle
+                            position: $positionTitle,
+                            eligibleAfterLabel: $eligibleLabel
                         ));
                     } elseif ($newStage === 'Offer') {
                         Mail::to($model->email)->send(new OfferNewJobMail(
@@ -800,10 +911,14 @@ class ApplicantManagementController extends Controller
                     interviewMode: $request->input('interview_mode', $latestInterview?->mode)
                 ));
             } elseif ($type === 'reject') {
+                $eligibleLabel = $model->rejected_at
+                    ? $model->rejected_at->copy()->addDays(DuplicateApplicationService::cooldownDays())->format('M j, Y')
+                    : now()->copy()->addDays(DuplicateApplicationService::cooldownDays())->format('M j, Y');
                 Mail::to($model->email)->send(new ApplicantRejectedMail(
                     recipientEmail: $model->email,
                     applicantName: $model->name,
-                    position: $positionTitle
+                    position: $positionTitle,
+                    eligibleAfterLabel: $eligibleLabel
                 ));
             } elseif ($type === 'offer') {
                 Mail::to($model->email)->send(new OfferNewJobMail(

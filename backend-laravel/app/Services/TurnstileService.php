@@ -27,11 +27,13 @@ class TurnstileService
         }
 
         if (! $token) {
+            Log::warning('Turnstile verification failed: missing token.');
+
             return false;
         }
 
         try {
-            $response = Http::timeout(5)->asForm()->post(
+            $response = Http::timeout(8)->asForm()->post(
                 'https://challenges.cloudflare.com/turnstile/v0/siteverify',
                 [
                     'secret' => config('services.turnstile.secret'),
@@ -40,7 +42,21 @@ class TurnstileService
                 ]
             );
 
-            return (bool) ($response->json('success') ?? false);
+            $json = $response->json();
+            $ok = (bool) ($json['success'] ?? false);
+
+            if (! $ok) {
+                // Cloudflare returns machine-readable error-codes
+                // (e.g. invalid-input-secret, timeout-or-duplicate when a
+                // single-use token is reused or expired). Logged server-side
+                // only — the client keeps the generic message.
+                Log::warning('Turnstile verification failed: ' . json_encode([
+                    'codes' => $json['error-codes'] ?? [],
+                    'status' => $response->status(),
+                ]));
+            }
+
+            return $ok;
         } catch (\Throwable $e) {
             Log::warning('Turnstile verification unreachable: ' . $e->getMessage());
 

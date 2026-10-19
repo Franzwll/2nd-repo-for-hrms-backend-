@@ -48,7 +48,8 @@ export type Job = {
   blocks?: string[] | null;
   /** Uploaded hiring-poster picture (API url) */
   picture?: string;
-  /** Assessment / practical test requirement flags (API-owned, optional on mocks). */
+  /** Test requirements resolved by the backend (Core HCM position flags,
+   *  owner; legacy job-post columns are fallback). Read-only in Recruitment. */
   requires_assessment?: boolean;
   requires_practical?: boolean;
 };

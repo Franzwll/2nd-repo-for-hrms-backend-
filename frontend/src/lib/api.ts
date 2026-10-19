@@ -159,6 +159,17 @@ export interface ApiApplicant {
     | "Hired"
     | "Rejected"
     | "Accepted";
+  /** Offer workflow — set when the final evaluation decision emails the
+   *  applicant an offer (7-day response window) and HR records their reply. */
+  offer_status?: "Pending" | "Accepted" | "Declined" | null;
+  offer_sent_at?: string | null;
+  offer_expires_at?: string | null;
+  offer_start_date?: string | null;
+  offer_days_left?: number | null;
+  /** Re-apply cooldown anchors — rejected_at starts the waiting period,
+   *  cooldown_lifted_at records an HR early override. */
+  rejected_at?: string | null;
+  cooldown_lifted_at?: string | null;
   source: string | null;
   summary: string | null;
   flags_json: string[];
@@ -169,8 +180,11 @@ export interface ApiApplicant {
     job_post_id: number;
     title: string;
     department?: string;
-    /** Whether this position takes a practical assessment (job_posts
-     *  .requires_practical, or a designated hands-on position). */
+    /** Whether this position takes an assessment test — Core HCM position
+     *  flag (owner); legacy job-post flag is the fallback. */
+    requires_assessment?: boolean;
+    /** Whether this position takes a practical assessment — Core HCM position
+     *  flag (owner); legacy job-post flag is the fallback. */
     requires_practical?: boolean;
   };
   screening_entities?: { entity_id: number; label: string; value: string }[];
@@ -562,6 +576,23 @@ export const applicantsApi = {
     request<{ message: string }>(`/applicants/${id}`, { method: "DELETE" }),
   hire: (id: number | string) =>
     request<ApiApplicant>(`/applicants/${id}/hire`, { method: "POST" }),
+  /** Emails the offer (after a Final Evaluation recommended the candidate)
+   *  and starts the applicant's 7-day response window. */
+  sendOffer: (id: number | string, details?: string) =>
+    request<ApiApplicant>(`/applicants/${id}/offer`, {
+      method: "POST",
+      body: JSON.stringify(details ? { details } : {}),
+    }),
+  /** Records the applicant's reply to the offer (HR reads the email reply).
+   *  Accepting requires the start-of-work date that anchors onboarding. */
+  respondToOffer: (
+    id: number | string,
+    body: { response: "accepted" | "declined"; start_date?: string },
+  ) =>
+    request<ApiApplicant>(`/applicants/${id}/offer/response`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   stats: () => request<any>("/applicants/stats"),
   extractResume: (formData: FormData) =>
     request<{
@@ -610,7 +641,46 @@ export const applicantsApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  /** Same-email past applications + cooldown countdown for the HR profile strip. */
+  history: (id: number | string) =>
+    request<ApiApplicantHistory>(`/applicants/${id}/history`),
+  /** HR allows early re-application (lifts the waiting period, audited). */
+  overrideCooldown: (id: number | string) =>
+    request<{ message: string; data: ApiApplicant }>(
+      `/applicants/${id}/cooldown/override`,
+      { method: "POST" },
+    ),
 };
+
+export interface ApiApplicantHistoryRow {
+  applicant_id: number;
+  applicant_code: string;
+  job_post_id: number;
+  position: string;
+  applied_at: string | null;
+  stage: string;
+  status: string;
+  offer_status?: string | null;
+  rejected_at?: string | null;
+  cooldown_lifted_at?: string | null;
+  is_current: boolean;
+}
+
+export interface ApiApplicantHistory {
+  data: ApiApplicantHistoryRow[];
+  cooldown: {
+    applicant_code: string;
+    applied_at: string | null;
+    rejected_at: string | null;
+    eligible_after: string;
+    eligible_after_label: string;
+    applied_label: string;
+    days_left: number;
+    job_post_id: number;
+  } | null;
+  cooldown_days: number;
+  attempt_count: number;
+}
 
 export const assessmentsApi = {
   /** Global Assessment Test / Practical Test switches owned by Core HCM. */
@@ -1047,6 +1117,10 @@ export interface ApiJobPost {
   picture: string | null;
   picture_url: string | null;
   applicants_count?: number;
+  /** Test requirements resolved by the backend (Core HCM position flags,
+   *  owner; legacy job-post columns are fallback). Read-only in Recruitment. */
+  requires_assessment?: boolean;
+  requires_practical?: boolean;
 }
 
 export interface ApiRequisition {

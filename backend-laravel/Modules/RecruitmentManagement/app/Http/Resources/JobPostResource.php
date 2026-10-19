@@ -26,17 +26,20 @@ class JobPostResource extends JsonResource
             'posted_date'           => $this->posted_date?->toDateString(),
             'status'                => $this->status,
             'active'                => (bool) $this->active,
-            /* Designated practical-assessment positions stay flagged even when the
-               stored column is still at its default (see PracticalRequirement).
+            /* Test requirements come from Core HCM (positions table, owner).
+               The resource resolves through the requirement services so the
+               position flag wins; legacy job-post columns are fallbacks.
                $this is the resource, so the model itself is $this->resource. */
             'requires_practical'    => \Modules\ApplicantManagement\Services\PracticalRequirement::required(
                 $this->resource instanceof JobPost ? $this->resource : null,
                 $this->title,
+                $this->resource instanceof JobPost ? $this->resource->position : null,
             ),
             /* Assessment test requirement — same logic, uses AssessmentRequirement. */
             'requires_assessment'   => \Modules\ApplicantManagement\Services\AssessmentRequirement::required(
                 $this->resource instanceof JobPost ? $this->resource : null,
                 $this->title,
+                $this->resource instanceof JobPost ? $this->resource->position : null,
             ),
             'experience_level'      => $this->experience_level,
             'education_level'       => $this->education_level,

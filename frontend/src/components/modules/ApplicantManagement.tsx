@@ -59,6 +59,7 @@ import {
   User,
   UserPlus,
   Users,
+  MessageSquare,
   Video,
   VideoOff,
   Mic,
@@ -66,6 +67,7 @@ import {
   Copy,
   PhoneOff,
   Volume2,
+  VolumeX,
   Wrench,
   X,
   XCircle,
@@ -138,11 +140,11 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   DEFAULT_PRACTICAL_CRITERIA,
   FINAL_EVALUATION_WEIGHTS,
-  PRACTICAL_POSITIONS,
   VERIFICATION_DOC_TYPES,
   computeTopCandidateTier,
   facilities,
   getFacilityById,
+  requiresAssessment,
   requiresPractical,
   topCandidateTierMeta,
   type AssessmentTestRow,
@@ -197,6 +199,7 @@ import {
   settingsApi,
   type ApiApplicant,
   type ApiApplicantDocument,
+  type ApiApplicantHistory,
   type ApiAssessmentTest,
   type ApiDocumentVerificationCheck,
   type ApiDepartment,
@@ -223,6 +226,8 @@ import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
 import { ReportMenu } from "@/components/ui/report-menu";
 import {
   ZoomEmbeddedMeeting,
+  type ZoomChatEntry,
+  type ZoomEmbeddedMeetingHandle,
   type ZoomEmbedState,
 } from "@/components/applicants/ZoomEmbeddedMeeting";
 import {
@@ -261,15 +266,74 @@ function transformApiApplicant(a: ApiApplicant): Applicant {
     resumeUrl: a.resume_url ? applicantsApi.resumeDocumentUrl(a.applicant_id) : null,
     resumeOriginalName: (a as any).resume_original_name ?? null,
     docCount: typeof a.documents_count === "number" ? a.documents_count : 0,
-    // Same rule the API enforces when a practical assessment is recorded, so the
-    // stage is never offered for a position whose save would be rejected.
+    // Core HCM position flags (owner) — same rule the API enforces, so a stage
+    // is never offered for a position whose save would be rejected. Every
+    // applicant for a flagged position (e.g. Front Desk) must undergo it.
     requiresPractical: requiresPractical(position, a.job_post?.requires_practical),
+    requiresAssessment: requiresAssessment(position, a.job_post?.requires_assessment),
+    // Offer workflow (7-day response window) — drives the Final Evaluation
+    // modal's offer banner and the Accept / Decline applicant buttons.
+    offerStatus: a.offer_status ?? null,
+    offerSentAt: a.offer_sent_at ?? null,
+    offerExpiresAt: a.offer_expires_at ?? null,
+    offerStartDate: a.offer_start_date ?? null,
+    offerDaysLeft: a.offer_days_left ?? null,
+    rejectedAt: a.rejected_at ?? null,
+    cooldownLiftedAt: a.cooldown_lifted_at ?? null,
   };
 }
 
+/** Normalized offer state for the final-evaluation decision (null when no
+ *  offer was ever sent). Drives the offer banners + Accept / Decline gates. */
+type OfferState = {
+  status: "Pending" | "Accepted" | "Declined";
+  expired: boolean;
+  daysLeft: number | null;
+  startDate: string | null;
+};
+
+function offerStateOf(
+  a: Pick<Applicant, "offerStatus" | "offerExpiresAt" | "offerStartDate" | "offerDaysLeft">,
+): OfferState | null {
+  if (a.offerStatus !== "Pending" && a.offerStatus !== "Accepted" && a.offerStatus !== "Declined") {
+    return null;
+  }
+  const expiresMs = a.offerExpiresAt ? new Date(a.offerExpiresAt).getTime() : null;
+  const expired =
+    a.offerStatus === "Pending" &&
+    expiresMs != null &&
+    !Number.isNaN(expiresMs) &&
+    expiresMs < Date.now();
+  const daysLeft =
+    a.offerDaysLeft ??
+    (expiresMs != null && !Number.isNaN(expiresMs)
+      ? Math.max(0, Math.ceil((expiresMs - Date.now()) / 86_400_000))
+      : null);
+
+  return {
+    status: a.offerStatus,
+    expired,
+    daysLeft: a.offerStatus === "Pending" ? daysLeft : null,
+    startDate: a.offerStartDate ?? null,
+  };
+}
+
+/** Short one-line offer summary shared by the profile, pipeline and the
+ *  Final Evaluation modal banners. */
+function offerStateLabel(s: OfferState): string {
+  if (s.status === "Pending") {
+    return s.expired
+      ? "No response within the 7-day window — treated as declined"
+      : `Awaiting applicant response${s.daysLeft != null ? ` · ${s.daysLeft} day${s.daysLeft === 1 ? "" : "s"} left` : ""}`;
+  }
+  if (s.status === "Accepted") {
+    return s.startDate ? `Offer accepted — starts ${s.startDate}` : "Offer accepted";
+  }
+  return "Offer declined — Failed";
+}
+
 /** Mock resume screening result — used until real screening data exists for an applicant. */
-function screeningResultFor(a: Applicant) {
-  if (a.entities.length > 0) return { entities: a.entities, score: a.score };
+function screeningResultFor(a: Applicant) {  if (a.entities.length > 0) return { entities: a.entities, score: a.score };
   const keywords = keywordLibrary[a.position] ?? [];
   return {
     entities: keywords.map((k, i) => ({
@@ -2607,9 +2671,9 @@ export function ScreeningDetailsAccordion({
 
 /* NOTE: screening-stage recommendations were removed by design — a
  * "Recommendation" verdict only belongs to the Final Evaluation stage
- * (Verify Candidate Decision). Screening ends with scores and evidence;
- * Accept / Reject / Refer actions live in the dialog footer and the
- * pipeline row menus. */
+ * (Passed / Not Passed / Recommend to another Position). Screening ends
+ * with scores and evidence; Accept / Reject / Refer actions live in the
+ * dialog footer and the pipeline row menus. */
 
 /** Colored file-type glyph for supporting documents (palette tokens only).
  *  The caption mirrors the mockups: RES (resume), PDF (COE), CERT (training),
@@ -4875,12 +4939,16 @@ type ApplicantViewScreenProps = {
   onViewTest: (r: AssessmentTestRow) => void;
   onViewPractical: (t: PracticalTestRow) => void;
   onViewFinal: (f: FinalEvaluationRow) => void;
-  /** Verified choice for this applicant's final evaluation (if any). */
-  verifiedFinal?: FinalRecommendation | null;
   /** True once the applicant is Hired / Rejected (decision locked). */
   finalDecided?: boolean;
-  /** Opens the Verify Candidate Decision dialog for the given final record. */
-  onVerifyFinal?: (f: FinalEvaluationRow) => void;
+  /** Same-email past applications + cooldown (HR Previous applications strip). */
+  history?: ApiApplicantHistory | null;
+  /** True while the history strip is loading. */
+  historyLoading?: boolean;
+  /** HR lifts the waiting period early (audited). */
+  onOverrideCooldown?: () => void;
+  /** True while the override request is in flight. */
+  overrideBusy?: boolean;
 };
 
 /** Humanized hiring milestones for the stage stepper (maps internal stages). */
@@ -4951,14 +5019,18 @@ function ApplicantViewScreen({
   onViewTest,
   onViewPractical,
   onViewFinal,
-  verifiedFinal,
   finalDecided,
-  onVerifyFinal,
+  history,
+  historyLoading,
+  onOverrideCooldown,
+  overrideBusy,
 }: ApplicantViewScreenProps) {
   const [panel, setPanel] = useState<ViewPanel>("current");
-  /* Position rule from the API (job-post flag / designated positions) with the
-     static list as fallback — must match the practical API gate. */
+  /* Test requirements from the API (Core HCM position flags, owner) with the
+     static lists as fallback — must match the API gates. Every applicant for
+     a flagged position (e.g. Front Desk) must undergo the required stages. */
   const requiresPrac = requiresPractical(a.position, a.requiresPractical);
+  const requiresTest = requiresAssessment(a.position, a.requiresAssessment);
   // Live (non-cancelled) booking first — mirrors the Pipeline Overview row.
   const liveInterview = interviews.find((i) => i.status !== "Cancelled");
   const interview = liveInterview ?? interviews[0];
@@ -4967,13 +5039,22 @@ function ApplicantViewScreen({
   const practical = practicalTests[0];
   const final = finalEvaluations[0];
   /** Ready-checks mirror the removed Interview / Test / Practical / Final tabs. */
-  const readyForTest = a.stage === "Assessed" && assessment?.result === "Passed";
+  const readyForTest =
+    a.stage === "Assessed" && requiresTest && assessment?.result === "Passed";
   const readyForPractical =
-    a.stage === "Assessment Test" && requiresPrac && test?.result === "Passed";
+    ((requiresTest
+      ? a.stage === "Assessment Test" && test?.result === "Passed"
+      : a.stage === "Assessed" && assessment?.result === "Passed") &&
+      requiresPrac);
   const readyForFinal =
-    (a.stage === "Practical Test" || a.stage === "Assessment Test") &&
-    test?.result === "Passed" &&
-    (!requiresPrac || practical?.result === "Passed");
+    ((requiresTest
+      ? (a.stage === "Practical Test" || a.stage === "Assessment Test") &&
+        test?.result === "Passed"
+      : a.stage === "Assessed" && assessment?.result === "Passed") &&
+      (!requiresPrac || practical?.result === "Passed")) ||
+    (!requiresTest &&
+      a.stage === "Practical Test" &&
+      (!requiresPrac || practical?.result === "Passed"));
 
   const tier = computeTopCandidateTier(
     a.status,
@@ -5000,15 +5081,17 @@ function ApplicantViewScreen({
     const staged = [
       /* 0 Screening */ closed || a.stage !== "Screened",
       /* 1 Interview */ closed || !!assessment,
-      /* 2 Test      */ closed || !!test,
+      /* 2 Test      */ requiresTest ? closed || !!test : false,
       /* 3 Practical */ requiresPrac ? closed || !!practical : false,
       /* 4 Final     */ closed || !!final || a.stage === "Final Evaluation",
     ];
     const states: StageProgressState[] = staged.map((s) => (s ? "done" : "pending"));
     // A stage the role skips is never "worked on": leave it out when locating
     // the current stage, then show it green once the applicant is past it.
-    const applicable = (i: number) => requiresPrac || i !== 3;
+    const applicable = (i: number) =>
+      (requiresTest || i !== 2) && (requiresPrac || i !== 3);
     const currentIdx = states.findIndex((s, i) => applicable(i) && s === "pending");
+    if (!requiresTest && (currentIdx === -1 || currentIdx > 2)) states[2] = "done";
     if (!requiresPrac && (currentIdx === -1 || currentIdx > 3)) states[3] = "done";
     if (currentIdx !== -1) states[currentIdx] = "current";
     return states;
@@ -5025,7 +5108,7 @@ function ApplicantViewScreen({
     a.stage,
     interview ? "interview" : "-",
     assessment?.result ?? "-",
-    test?.result ?? "-",
+    requiresTest ? (test?.result ?? "-") : "skip",
     requiresPrac ? (practical?.result ?? "-") : "skip",
     final ? (final.recommendation ?? "final") : "-",
   ].join("|");
@@ -5039,11 +5122,16 @@ function ApplicantViewScreen({
     const nextIdx = stepStates.findIndex((s) => s === "current");
     // A closed pipeline (offer extended / hired) opens the final evaluation.
     const target = nextIdx === -1 ? "final" : VIEW_MILESTONES[nextIdx]!.key;
-    setPanel(target === "practical" && !requiresPrac ? "final" : target);
+    // Skipped stages never open — jump past them to the final evaluation.
+    const resolved =
+      (target === "test" && !requiresTest) || (target === "practical" && !requiresPrac)
+        ? "final"
+        : target;
+    setPanel(resolved);
     // `stepStates` is rebuilt from the same inputs as `flowKey`, so the flow key
     // is enough to know when the progress changed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flowKey, a, panel, requiresPrac]);
+  }, [flowKey, a, panel, requiresPrac, requiresTest]);
 
   const stageDesc: Record<string, string> = {
     Screened:
@@ -5131,9 +5219,12 @@ function ApplicantViewScreen({
     return hires.find((h) => h.name === a.name && h.position === a.position) ?? null;
   }, [hires, a.dbId, a.name, a.position]);
 
-  /** Stepper click — jumps straight to the clicked milestone's section. */
+  /** Stepper click — jumps straight to the clicked milestone's section. Skipped
+   *  stages (test/practical not required) jump to the final evaluation. */
   const openMilestone = (key: ViewPanel) => {
-    setPanel(key === "practical" && !requiresPrac ? "final" : key);
+    if ((key === "test" && !requiresTest) || (key === "practical" && !requiresPrac))
+      setPanel("final");
+    else setPanel(key);
   };
 
   /** One entry of the section nav. `done` turns the badge into a green check so
@@ -5280,6 +5371,80 @@ function ApplicantViewScreen({
         </CardContent>
       </Card>
 
+      {/* Previous applications — same-email history with the re-apply
+          cooldown countdown / eligible flag + HR early override. */}
+      <Card className="border-border/70">
+        <CardContent className="space-y-3 px-6 py-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold">
+              Previous applications
+              {typeof history?.attempt_count === "number" && history.attempt_count > 0 && (
+                <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  {history.attempt_count} attempt{history.attempt_count === 1 ? "" : "s"}
+                </span>
+              )}
+            </p>
+            {history?.cooldown && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={overrideBusy}
+                onClick={onOverrideCooldown}
+              >
+                {overrideBusy ? "Allowing…" : "Allow early re-application"}
+              </Button>
+            )}
+          </div>
+          {historyLoading ? (
+            <p className="text-xs text-muted-foreground">Loading application history…</p>
+          ) : history?.cooldown ? (
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed">
+              Eligible to re-apply on{" "}
+              <span className="font-semibold">{history.cooldown.eligible_after_label}</span>{" "}
+              ({history.cooldown.days_left} day(s) left).
+            </p>
+          ) : (
+            <p className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs">
+              Eligible to re-apply — no waiting period in effect.
+            </p>
+          )}
+          {(history?.data ?? []).length > 0 && (
+            <div className="space-y-1.5">
+              {history!.data.map((row) => (
+                <div
+                  key={row.applicant_id}
+                  className={cn(
+                    "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border/60 px-3 py-2 text-xs",
+                    row.is_current && "border-primary/40 bg-primary/5",
+                  )}
+                >
+                  <span className="font-mono text-[11px] text-muted-foreground">
+                    {row.applicant_code}
+                  </span>
+                  <span className="font-medium">{row.position}</span>
+                  <span className="text-muted-foreground">
+                    {row.applied_at ? new Date(row.applied_at).toLocaleDateString() : "—"}
+                  </span>
+                  <Badge variant="outline" className="text-[11px]">
+                    {row.stage}
+                  </Badge>
+                  {row.offer_status === "Declined" && (
+                    <Badge variant="outline" className="border-success/40 text-[11px] text-success">
+                      Declined — no cooldown
+                    </Badge>
+                  )}
+                  {row.is_current && (
+                    <Badge variant="secondary" className="text-[11px]">
+                      Current
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Stage stepper — timeline: Screening → Interview → Assessment Test →
           Practical Assessment → Final Evaluation. Every node is clickable and
           opens its section. */}
@@ -5292,8 +5457,9 @@ function ApplicantViewScreen({
               const state: StageProgressState = stepStates[i] ?? "pending";
               const done = state === "done";
               const current = state === "current";
+              const isTest = m.label === "Assessment Test";
               const isPrac = m.label === "Practical Assessment";
-              const skipped = isPrac && !requiresPrac;
+              const skipped = (isTest && !requiresTest) || (isPrac && !requiresPrac);
               /** Verdict already recorded for this stage, when there is one. */
               const verdict =
                 i === 1
@@ -6117,10 +6283,15 @@ function ApplicantViewScreen({
                         </h3>
                         <p className="text-xs text-muted-foreground">
                           Job-specific test that unlocks after the interview assessment is passed.
+                          {!requiresTest && " This position does not require it (set in Core HCM)."}
                         </p>
                       </div>
 
-                      {test ? (
+                      {!requiresTest ? (
+                        <div className="mt-4">
+                          {emptyNote("This position does not require an assessment test (Core HCM).")}
+                        </div>
+                      ) : test ? (
                         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-4 py-3">
                           <div className="min-w-0">
                             <p className="text-sm font-medium">{test.title}</p>
@@ -6178,7 +6349,9 @@ function ApplicantViewScreen({
                       ) : (
                         <div className="mt-4">
                           {emptyNote(
-                            "Assessment test unlocks after the interview stage is completed and passed.",
+                            requiresTest
+                              ? "Assessment test unlocks after the interview stage is completed and passed."
+                              : "Assessment test is not required for this position (Core HCM) — proceed to the practical (when required) or final evaluation.",
                           )}
                         </div>
                       )}
@@ -6194,8 +6367,8 @@ function ApplicantViewScreen({
                           <Wrench className="h-4 w-4 text-primary" /> Practical Assessment
                         </h3>
                         <p className="text-xs text-muted-foreground">
-                          Hands-on practical exam — only for designated positions (
-                          {PRACTICAL_POSITIONS.join(", ")}).
+                          Hands-on practical exam — required only when the Core HCM position
+                          requires it.
                         </p>
                       </div>
 
@@ -6250,7 +6423,11 @@ function ApplicantViewScreen({
                         </div>
                       ) : (
                         <div className="mt-4">
-                          {emptyNote("Practical exam unlocks after passing the assessment test.")}
+                          {emptyNote(
+                            requiresTest
+                              ? "Practical exam unlocks after passing the assessment test."
+                              : "Practical exam unlocks after the interview assessment is passed (assessment test not required for this position).",
+                          )}
                         </div>
                       )}
                     </CardContent>
@@ -6319,44 +6496,50 @@ function ApplicantViewScreen({
                         </div>
                       )}
 
-                      {/* Verify Candidate Decision — simple spaced section below the final record. */}
-                      {final && (
-                        <div className="mt-6 space-y-2">
-                          <h4 className="flex items-center gap-2 text-sm font-semibold">
-                            <ShieldCheck className="h-4 w-4 text-primary" /> Verify Candidate
-                            Decision
-                          </h4>
-                          <p className="text-xs text-muted-foreground">
-                            Confirm the recorded recommendation — verification locks the hiring
-                            decision.
-                          </p>
-                          {verifiedFinal ? (
-                            <p className="text-xs font-semibold text-success">
-                              Verified · {verifiedFinal}
-                              {!finalDecided && (
-                                <span className="font-normal text-muted-foreground">
-                                  {" "}
-                                  — decision pending.
-                                </span>
+                      {/* Offer status — the Final Evaluation modal is where the
+                          decision is made and the applicant's reply
+                          (Accept / Decline applicant) is recorded. */}
+                      {final &&
+                        (() => {
+                          const offer = offerStateOf(a);
+                          return (
+                            <div className="mt-6 space-y-2">
+                              <h4 className="flex items-center gap-2 text-sm font-semibold">
+                                <Send className="h-4 w-4 text-primary" /> Offer Status
+                              </h4>
+                              {offer ? (
+                                <p
+                                  className={cn(
+                                    "text-xs font-semibold",
+                                    offer.status === "Accepted" && !offer.expired
+                                      ? "text-success"
+                                      : offer.status === "Pending" && !offer.expired
+                                        ? "text-warning"
+                                        : "text-destructive",
+                                  )}
+                                >
+                                  {offerStateLabel(offer)}
+                                  {offer.status === "Pending" && !offer.expired && (
+                                    <span className="font-normal text-muted-foreground">
+                                      {" "}
+                                      — record the reply via Accept / Decline applicant in the
+                                      Final Evaluation modal.
+                                    </span>
+                                  )}
+                                </p>
+                              ) : final.recommendation === "Not Recommended" ? (
+                                <p className="text-xs font-semibold text-destructive">
+                                  Not passed — recorded as Failed in the Pipeline Overview.
+                                </p>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">
+                                  No offer email sent yet — send it from the Pipeline Overview
+                                  (Actions → Send offer email).
+                                </p>
                               )}
-                            </p>
-                          ) : finalDecided ? (
-                            <p className="text-xs text-muted-foreground">
-                              Decision already recorded for this applicant.
-                            </p>
-                          ) : onVerifyFinal ? (
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <p className="text-xs text-warning">
-                                Recorded as {final.recommendation} — awaiting verification.
-                              </p>
-                              <Button size="sm" onClick={() => onVerifyFinal(final)}>
-                                <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> Verify Candidate
-                                Decision
-                              </Button>
                             </div>
-                          ) : null}
-                        </div>
-                      )}
+                          );
+                        })()}
                     </CardContent>
                   </Card>
                 );
@@ -6642,17 +6825,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   /** True while the ranking is being recomputed with the document evidence. */
   const [recomputingRanking, setRecomputingRanking] = useState(false);
   const [assessmentFilter, setAssessmentFilter] = useState<"ready" | "completed" | "all">("all");
-  /** Final evaluation being verified via "Verify Candidate Decision". */
-  const [verifyingFinal, setVerifyingFinal] = useState<FinalEvaluationRow | null>(null);
-  const [verifyChoice, setVerifyChoice] = useState<FinalRecommendation | null>(null);
-  /** Verified candidate decisions: final evaluation id -> verified recommendation. */
-  const [verifiedDecisions, setVerifiedDecisions] = useState<Record<string, FinalRecommendation>>(
-    {},
-  );
-  /** Final evaluation verified as "For Another Position" — awaiting the best
-   *  recommended position; confirming it auto-accepts the candidate. */
-  const [positionPick, setPositionPick] = useState<FinalEvaluationRow | null>(null);
-  const [positionPickChoice, setPositionPickChoice] = useState("");
+  /** "Recommend to other Position" — applicant whose alternative position is
+   *  being chosen; confirming saves the decision and emails the offer. */
+  const [recommendFor, setRecommendFor] = useState<Applicant | null>(null);
+  const [recommendJobPostId, setRecommendJobPostId] = useState("");
+  /** "Accept applicant" — applicant awaiting their start-of-work date (the
+   *  onboarding day-count anchor). */
+  const [acceptOfferFor, setAcceptOfferFor] = useState<Applicant | null>(null);
+  const [acceptOfferDate, setAcceptOfferDate] = useState(() => isoOf(new Date()));
+  /** In-flight offer API call (send / accept / decline) — disables buttons. */
+  const [offerActionBusy, setOfferActionBusy] = useState(false);
   const [assessmentSearch, setAssessmentSearch] = useState("");
   const [assessmentDept, setAssessmentDept] = useState<string>("all");
   const [assessmentOutcome, setAssessmentOutcome] = useState<string>("all");
@@ -6672,6 +6854,20 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [zoomMicOn, setZoomMicOn] = useState(true);
   const [zoomCamOn, setZoomCamOn] = useState(true);
   const [zoomEmbed, setZoomEmbed] = useState<ZoomEmbedState>({ status: "idle" });
+  // Meeting chat drawer — transcript + input, bridged to the embedded Zoom
+  // meeting (sendChat / chat-on-message). Unread badge counts messages that
+  // arrive while the drawer is closed.
+  const [zoomChatOpen, setZoomChatOpen] = useState(false);
+  const [zoomChatMessages, setZoomChatMessages] = useState<ZoomChatEntry[]>([]);
+  const [zoomChatUnread, setZoomChatUnread] = useState(0);
+  const [zoomChatDraft, setZoomChatDraft] = useState("");
+  const [zoomChatError, setZoomChatError] = useState<string | null>(null);
+  const zoomEmbedRef = useRef<ZoomEmbeddedMeetingHandle | null>(null);
+  // Mirror of zoomChatOpen for the postMessage callback (stable identity).
+  const zoomChatOpenRef = useRef(false);
+  useEffect(() => {
+    zoomChatOpenRef.current = zoomChatOpen;
+  }, [zoomChatOpen]);
   // Zoom room: the notes drawer and the invite details both start closed so
   // the video + scorecard stay the only things on screen during the call.
   const [zoomNotesOpen, setZoomNotesOpen] = useState(false);
@@ -6722,11 +6918,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [finalDate, setFinalDate] = useState(() => isoOf(new Date()));
   const [finalRemarks, setFinalRemarks] = useState("");
   /* System-assisted final evaluation: backend preview (scores + overall),
-     HR-chosen recommendation, single alternative position, breakdown toggle. */
+     decision buttons, breakdown toggle. */
   const [finalPreview, setFinalPreview] = useState<ApiFinalEvaluationPreview | null>(null);
   const [finalPreviewLoading, setFinalPreviewLoading] = useState(false);
-  const [finalChoice, setFinalChoice] = useState<FinalRecommendation | null>(null);
-  const [finalAltJobPostId, setFinalAltJobPostId] = useState("");
   const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
   const [viewingFinal, setViewingFinal] = useState<FinalEvaluationRow | null>(null);
   /** Interview result being viewed (View button in the Interview tab). */
@@ -6740,6 +6934,72 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   /** Applicant open in the redesign View screen — home of the moved stage sections
    *  (Interview, Assessment Test, Practical Assessment, Final Evaluation). */
   const [viewingApplicant, setViewingApplicant] = useState<Applicant | null>(null);
+
+  /** Previous-applications history for the open View screen (HR strip). */
+  const [viewHistory, setViewHistory] = useState<ApiApplicantHistory | null>(null);
+  const [viewHistoryLoading, setViewHistoryLoading] = useState(false);
+  /** True while the early-override request is in flight. */
+  const [overrideBusy, setOverrideBusy] = useState(false);
+  useEffect(() => {
+    if (!viewingApplicant?.dbId) {
+      setViewHistory(null);
+      return;
+    }
+    let cancelled = false;
+    setViewHistoryLoading(true);
+    applicantsApi
+      .history(viewingApplicant.dbId)
+      .then((res) => {
+        if (!cancelled) setViewHistory(res);
+      })
+      .catch(() => {
+        if (!cancelled) setViewHistory(null);
+      })
+      .finally(() => {
+        if (!cancelled) setViewHistoryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewingApplicant?.dbId]);
+  /** HR lifts the waiting period early (audited) then refreshes the strip. */
+  const overrideViewingCooldown = () => {
+    if (!viewingApplicant?.dbId || overrideBusy) return;
+    setOverrideBusy(true);
+    applicantsApi
+      .overrideCooldown(viewingApplicant.dbId)
+      .then((res) => {
+        toast.success(res.message || "Cooldown lifted — applicant may re-apply.");
+        return applicantsApi.history(viewingApplicant.dbId!);
+      })
+      .then((res) => setViewHistory(res))
+      .catch((err: any) =>
+        toast.error(err?.message || "Unable to lift the cooldown. Please try again."),
+      )
+      .finally(() => setOverrideBusy(false));
+  };
+
+  /** Re-apply cooldown setting (days) — gear beside Generate Report. */
+  const [cooldownOpen, setCooldownOpen] = useState(false);
+  const [cooldownDays, setCooldownDays] = useState(30);
+  const [cooldownDraft, setCooldownDraft] = useState("30");
+  const [cooldownSaving, setCooldownSaving] = useState(false);
+  useEffect(() => {
+    settingsApi
+      .get("recruitment.reapply_cooldown_days")
+      .then((res) => {
+        const raw: any = (res as any)?.setting_value ?? (res as any)?.value;
+        const days = typeof raw === "object" ? (raw?.days ?? raw?.value) : raw;
+        const n = Number(days);
+        if (Number.isFinite(n) && n > 0) {
+          setCooldownDays(n);
+          setCooldownDraft(String(n));
+        }
+      })
+      .catch(() => {
+        /* setting not created yet — default 30 stands */
+      });
+  }, []);
 
 
   /** Test & answers being reviewed from the result dialog. */
@@ -7713,112 +7973,133 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }
   };
 
-  /** Confirms the verified candidate decision from the Verify Candidate
-   *  Decision dialog. Recommended for Hire auto-accepts the candidate,
-   *  For Another Position opens the position picker then auto-accepts into
-   *  the chosen position, and Not Recommended auto-rejects — the tab-level
-   *  Accept / Reject buttons were removed because verification IS the
-   *  decision. The Reject button in the footer passes "Not Recommended"
-   *  directly; Confirm uses the selected recommendation. */
-  const confirmVerifyFinal = (choice?: FinalRecommendation) => {
-    const chosen = choice ?? verifyChoice;
-    if (!verifyingFinal || !chosen) {
-      toast.error("Select a recommendation to verify.");
-      return;
-    }
-    const f = verifyingFinal;
-    setVerifiedDecisions((prev) => ({ ...prev, [f.id]: chosen }));
-    addAudit({
-      actionType: "Final Evaluation Completed",
-      target: f.name,
-      module: "Applicant Management",
-      details: `Candidate decision verified for ${f.name} — ${chosen}.`,
-    });
-
-    if (chosen === "Not Recommended") {
-      setVerifyingFinal(null);
-      setVerifyChoice(null);
-      rejectFinalEvaluation(f, chosen);
-      return;
-    }
-    if (chosen === "Recommended for Hire") {
-      setVerifyingFinal(null);
-      setVerifyChoice(null);
-      acceptFinalEvaluation(f, chosen);
-      return;
-    }
-    // For Another Position — pick the best recommended position first; the
-    // candidate is auto-accepted into it once chosen.
-    setVerifyingFinal(null);
-    setVerifyChoice(null);
-    setPositionPick(f);
-    setPositionPickChoice("");
+  /** Applies the offer fields returned by the offer endpoints to the local
+   *  pipeline row, so the banner / buttons reflect the saved state at once. */
+  const applyOfferResult = (api: ApiApplicant) => {
+    const nextPosition = api.job_post?.title;
+    setRows((prev) =>
+      prev.map((a) => {
+        if (a.dbId !== api.applicant_id) return a;
+        const position = nextPosition || a.position;
+        return {
+          ...a,
+          stage: api.stage,
+          position,
+          jobId: String(api.job_post_id || a.jobId),
+          requiresPractical: requiresPractical(position, api.job_post?.requires_practical),
+          requiresAssessment: requiresAssessment(position, api.job_post?.requires_assessment),
+          offerStatus: api.offer_status ?? null,
+          offerSentAt: api.offer_sent_at ?? null,
+          offerExpiresAt: api.offer_expires_at ?? null,
+          offerStartDate: api.offer_start_date ?? null,
+          offerDaysLeft: api.offer_days_left ?? null,
+        };
+      }),
+    );
   };
 
-  /** Auto-accepts the candidate from the Verify Candidate Decision flow
-   *  (verified Recommended for Hire / For Another Position): hands the
-   *  applicant to New Hire Onboarding as pre-onboarding, hired as a
-   *  Probationary employee — same process as accepting a candidate. */
-  const acceptFinalEvaluation = async (
-    f: FinalEvaluationRow,
-    verified: FinalRecommendation,
-    positionOverride?: string,
-  ) => {
-    const applicant = rows.find((a) => a.id === f.applicantId);
-    const hirePosition = positionOverride ?? f.position;
-    setStage(f.applicantId, "Hired");
-    addAudit({
-      actionType: "Assessment Accepted",
-      target: f.name,
-      module: "Applicant Management",
-      details: `Accepted after final evaluation (verified: ${verified}${
-        positionOverride ? ` — reassigned to ${hirePosition}` : ""
-      }) and sent to New Hire Onboarding as Probationary`,
-    });
-    hireStore.setPending({
-      name: f.name,
-      position: hirePosition,
-      department: positions.find((p) => p.title === hirePosition)?.department ?? "",
-      email: applicant?.email ?? "",
-      phone: applicant?.phone ?? "",
-      ...(applicant?.dbId !== undefined ? { applicantId: applicant.dbId } : {}),
-    });
-    toast.success(`${f.name} accepted — creating their pre-onboarding record as Probationary`);
-
+  /** Emails the offer to the applicant after a final-evaluation decision
+   *  (Passed / Recommend to another Position) and starts the 7-day response
+   *  window — an unanswered offer is treated as a declined applicant.
+   *  Returns true when the offer was sent. */
+  const sendOfferEmail = async (a: Applicant): Promise<boolean> => {
+    if (!a.dbId) {
+      toast.error("This applicant has no database record — cannot send the offer email.");
+      return false;
+    }
     try {
-      const appId = applicant?.dbId ?? f.applicantId;
-      await applicantsApi.hire(appId);
+      const saved = await applicantsApi.sendOffer(a.dbId);
+      applyOfferResult(saved);
+      addAudit({
+        actionType: "Offer Email Sent",
+        target: a.name,
+        module: "Applicant Management",
+        details: "Offer emailed to the applicant — 7-day response window before the offer is treated as declined.",
+      });
+      toast.success(`Offer email sent to ${a.name}`, {
+        description:
+          "The applicant has 7 days to respond — an unanswered offer is treated as a declined applicant (Failed).",
+      });
+      return true;
+    } catch (e) {
+      reportStageSaveFailure("Offer email", e);
+      return false;
+    }
+  };
+
+  /** Accepts the applicant from the Final Evaluation modal: HR records the
+   *  applicant's reply to the offer together with the agreed start-of-work
+   *  date — that date anchors New Hire Onboarding ("Days of Work"). */
+  const acceptApplicantOffer = async (a: Applicant, startDate: string) => {
+    if (!a.dbId) {
+      toast.error("This applicant has no database record — cannot accept.");
+      return;
+    }
+    setOfferActionBusy(true);
+    try {
+      const saved = await applicantsApi.respondToOffer(a.dbId, {
+        response: "accepted",
+        start_date: startDate,
+      });
+      applyOfferResult(saved);
+      addAudit({
+        actionType: "Offer Accepted",
+        target: a.name,
+        module: "Applicant Management",
+        details: `Accepted the offer — start of work ${startDate}. Sent to New Hire Onboarding as Pre-onboarding.`,
+      });
+      setAcceptOfferFor(null);
+      setViewingFinal(null);
+      setFinalizing(null);
+      const hirePosition = saved.job_post?.title ?? a.position;
+      hireStore.setPending({
+        name: a.name,
+        position: hirePosition,
+        department: positions.find((p) => p.title === hirePosition)?.department ?? "",
+        email: a.email,
+        phone: a.phone,
+        ...(a.dbId !== undefined ? { applicantId: a.dbId } : {}),
+        startDate,
+      });
+      toast.success(`${a.name} accepted — filing their pre-onboarding record`, {
+        description: `Start of work ${startDate} — the days-of-work count runs from this date.`,
+      });
       // Hired closes the pipeline — refresh so the progress bar shows it at once.
       syncAfterStageChange();
+      navigate({ to: `/${role}/onboarding` });
     } catch (e) {
-      console.warn("Could not advance applicant stage on database API:", e);
+      reportStageSaveFailure("Offer acceptance", e);
+    } finally {
+      setOfferActionBusy(false);
     }
-
-    navigate({ to: `/${role}/onboarding` });
   };
 
-  /** Auto-rejects the candidate from the Verify Candidate Decision flow
-   *  (verified Not Recommended) and keeps the final evaluation record
-   *  visible. */
-  const rejectFinalEvaluation = async (f: FinalEvaluationRow, verified: FinalRecommendation) => {
-    const applicant = rows.find((a) => a.id === f.applicantId);
-    setStage(f.applicantId, "Rejected");
-    addAudit({
-      actionType: "Assessment Rejected",
-      target: f.name,
-      module: "Applicant Management",
-      details: `Rejected after final evaluation (verified: ${verified})`,
-    });
-    toast.success(`${f.name} rejected after final evaluation`);
-
+  /** Records the applicant's declined reply (or an expired 7-day window):
+   *  the applicant is failed in the pipeline — no onboarding. */
+  const declineApplicantOffer = async (a: Applicant) => {
+    if (!a.dbId) {
+      toast.error("This applicant has no database record — cannot decline.");
+      return;
+    }
+    setOfferActionBusy(true);
     try {
-      if (applicant?.dbId) {
-        await applicantsApi.update(applicant.dbId, { stage: "Rejected" });
-      }
+      const saved = await applicantsApi.respondToOffer(a.dbId, { response: "declined" });
+      applyOfferResult(saved);
+      addAudit({
+        actionType: "Offer Declined",
+        target: a.name,
+        module: "Applicant Management",
+        details: "Declined the offer — recorded as Failed in the Pipeline Overview.",
+      });
+      setViewingFinal(null);
+      setFinalizing(null);
+      toast.success(`${a.name} declined — marked as Failed in the pipeline`);
       // The pipeline closed — refresh so the progress bar shows it at once.
       syncAfterStageChange();
     } catch (e) {
-      console.warn("Could not update applicant stage on database API:", e);
+      reportStageSaveFailure("Offer decline", e);
+    } finally {
+      setOfferActionBusy(false);
     }
   };
 
@@ -8003,6 +8284,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setZoomMicOn(true);
     setZoomCamOn(true);
     setZoomEmbed({ status: "idle" });
+    setZoomChatOpen(false);
+    setZoomChatMessages([]);
+    setZoomChatUnread(0);
+    setZoomChatDraft("");
+    setZoomChatError(null);
     setZoomNotes(iv.interview_notes ?? "");
     setZoomRoom({ applicant: a, interview: iv });
   };
@@ -8056,6 +8342,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     zoomStreamRef.current?.getAudioTracks().forEach((t) => {
       t.enabled = next;
     });
+    // Live meeting: drive the embedded Zoom mic (the SDK reports the truth
+    // back via zoomSelfState, so the button never drifts out of sync).
+    if (zoomEmbed.status === "live") {
+      zoomEmbedRef.current?.setMuted(!next);
+    }
   };
 
   const toggleZoomCam = () => {
@@ -8064,6 +8355,114 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     zoomStreamRef.current?.getVideoTracks().forEach((t) => {
       t.enabled = next;
     });
+    if (zoomEmbed.status === "live") {
+      zoomEmbedRef.current?.setVideo(next);
+    }
+  };
+
+  /* --- Zoom room chat + speaker helpers -------------------------------- */
+
+  const handleZoomChatMessage = useCallback((m: ZoomChatEntry) => {
+    setZoomChatMessages((prev) => {
+      if (prev.some((x) => x.id === m.id)) return prev;
+      // sendChat echoes our own message back with a server id — drop the
+      // duplicate when the text + sender match what we just appended.
+      const last = prev[prev.length - 1];
+      if (last && last.self && m.text === last.text && m.sender === last.sender) {
+        return prev;
+      }
+      return [...prev, m];
+    });
+    if (!zoomChatOpenRef.current) setZoomChatUnread((u) => u + 1);
+  }, []);
+
+  const handleZoomChatHistory = useCallback((msgs: ZoomChatEntry[]) => {
+    setZoomChatMessages((prev) => {
+      const seen = new Set(prev.map((x) => x.id));
+      const merged = [...prev];
+      for (const m of msgs) {
+        if (!seen.has(m.id)) merged.push(m);
+      }
+      merged.sort((a, b) => a.time - b.time);
+      return merged;
+    });
+  }, []);
+
+  const handleZoomSelfState = useCallback((s: { muted?: boolean; videoOn?: boolean }) => {
+    // The SDK is authoritative while the embedded meeting is live — this
+    // keeps the control bar in sync when HR uses Zoom's own toolbar too.
+    if (typeof s.muted === "boolean") setZoomMicOn(!s.muted);
+    if (typeof s.videoOn === "boolean") setZoomCamOn(s.videoOn);
+  }, []);
+
+  const handleZoomEmbedState = useCallback((s: ZoomEmbedState) => {
+    setZoomEmbed(s);
+    if (s.status === "live") {
+      // Pull the device state + chat backlog once the bridge is up so the
+      // control bar and chat drawer open in sync with the meeting.
+      window.setTimeout(() => {
+        zoomEmbedRef.current?.requestState();
+        zoomEmbedRef.current?.requestChatHistory();
+      }, 800);
+    }
+  }, []);
+
+  const toggleZoomChat = () => {
+    const next = !zoomChatOpen;
+    setZoomChatOpen(next);
+    if (next) {
+      setZoomChatUnread(0);
+      if (zoomEmbed.status === "live") zoomEmbedRef.current?.requestChatHistory();
+    }
+  };
+
+  const sendZoomChatMessage = () => {
+    const text = zoomChatDraft.trim();
+    if (!text) return;
+    if (zoomEmbed.status !== "live") {
+      toast.error("Chat is available once the embedded meeting is connected");
+      return;
+    }
+    setZoomChatError(null);
+    setZoomChatDraft("");
+    zoomEmbedRef.current?.sendChat(text);
+  };
+
+  /** Plays a short chime through the browser's current output device so HR
+   *  can confirm the speaker before/while talking to the applicant. */
+  const playZoomSpeakerTest = () => {
+    try {
+      const Ctx =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) throw new Error("no AudioContext");
+      const ctx = new Ctx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.setValueAtTime(660, ctx.currentTime + 0.22);
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.09, ctx.currentTime + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.55);
+      window.setTimeout(() => {
+        void ctx.close().catch(() => undefined);
+      }, 1000);
+    } catch {
+      toast.error("Could not play the speaker test tone");
+    }
+  };
+
+  const openZoomAudioSettings = () => {
+    if (zoomEmbed.status !== "live") {
+      toast.error("Zoom audio settings are available once the meeting is connected");
+      return;
+    }
+    zoomEmbedRef.current?.openAudioSettings();
   };
 
   /* Local camera preview for the Zoom room (right-side video pane).
@@ -9119,30 +9518,38 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const practical = practicalTests.find((t) => t.applicantId === a.id);
     const assessment = assessments.find((x) => x.applicantId === a.id);
     const practicalRequired = requiresPractical(a.position, a.requiresPractical);
+    const assessmentRequired = requiresAssessment(a.position, a.requiresAssessment);
     return {
       screeningScore: a.score,
       screeningStatus: statusMeta[a.status].label,
       interviewScore: assessment?.total ?? null,
       interviewResult: assessment?.result ?? null,
-      testScore: test?.total ?? null,
-      testResult: test?.result ?? null,
+      testScore: assessmentRequired ? (test?.total ?? null) : null,
+      testResult: assessmentRequired ? (test?.result ?? null) : null,
+      assessmentRequired,
       practicalRequired,
       practicalScore: practical?.total ?? null,
       practicalResult: practical?.result ?? null,
     };
   };
 
-  /** Opens the Final Evaluation dialog for a candidate who completed the pipeline.
-   *  Fetches the backend preview (system scores + overall) — the dialog
-   *  displays it read-only; HR only picks the recommendation. */
+  /** Opens the Final Evaluation modal for a candidate who completed the
+   *  pipeline. Fetches the backend preview (system scores + overall) — the
+   *  dialog displays it; HR picks Passed / Not Passed / Recommend to another
+   *  Position. Candidates already evaluated open straight into the result
+   *  view — the same modal where the applicant's offer reply (Accept /
+   *  Decline applicant) is recorded. */
   const openFinalEvaluation = (a: Applicant) => {
+    const existing = finalEvaluations.find((f) => f.applicantId === a.id);
+    if (existing) {
+      setViewingFinal(existing);
+      return;
+    }
     setFinalizing(a);
     // Defaults to the logged-in staff member signing off the final decision.
     setFinalAssessor(loggedInAssessorId);
     setFinalDate(isoOf(new Date()));
     setFinalRemarks("");
-    setFinalChoice(null);
-    setFinalAltJobPostId("");
     setShowScoreBreakdown(false);
     setFinalPreview(null);
     if (a.dbId) {
@@ -9156,22 +9563,29 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   };
 
   /** Persists the final evaluation with the whole-process verdict. The
-   *  recommendation comes from the HR-selected radio choice in the dialog
-   *  (Recommended for Hire / For Another Position / Not Recommended).
-   *  Scores are NEVER sent — the backend recalculates authoritatively. */
-  const saveFinalEvaluation = async (recommendation: FinalRecommendation) => {
+   *  recommendation comes from the three decision buttons in the dialog
+   *  (Passed → Recommended for Hire · Not Passed → Not Recommended ·
+   *  Recommend to another Position + the chosen post id).
+   *  Scores are NEVER sent — the backend recalculates authoritatively.
+   *  Recommended decisions email the offer with the 7-day response window;
+   *  Not Passed fails the candidate in the pipeline. */
+  const saveFinalEvaluation = async (
+    recommendation: FinalRecommendation,
+    recommendedJobPostId?: string,
+  ) => {
     if (!finalizing) return;
     // Whoever signs off the final decision must be recorded — required.
     if (!finalAssessor) {
       toast.error("Select who evaluated this candidate before saving the final evaluation.");
       return;
     }
-    if (recommendation === "For Another Position" && !finalAltJobPostId) {
+    const altJobPostId = recommendedJobPostId ?? "";
+    if (recommendation === "For Another Position" && !altJobPostId) {
       toast.error("Select one alternative position for this candidate.");
       return;
     }
     if (recommendation === "Not Recommended" && !finalRemarks.trim()) {
-      toast.error("Evaluator remarks are required when the candidate is Not Recommended.");
+      toast.error("Evaluator remarks are required when the candidate did not pass.");
       return;
     }
     const snap = finalSnapshotFor(finalizing);
@@ -9202,10 +9616,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       scoreBreakdown:
         (finalPreview?.score_breakdown as FinalScoreBreakdownItem[] | undefined) ?? null,
       recommendation,
-      recommendedJobPostId: finalAltJobPostId ? Number(finalAltJobPostId) : null,
+      recommendedJobPostId: altJobPostId ? Number(altJobPostId) : null,
       recommendedPositionTitle:
-        dbJobPosts.find((j: any) => String(j.job_post_id) === String(finalAltJobPostId))?.title ??
-        null,
+        dbJobPosts.find((j: any) => String(j.job_post_id) === String(altJobPostId))?.title ?? null,
       overallRemarks: finalRemarks,
       date: finalDate,
       evaluatedBy:
@@ -9221,8 +9634,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           evaluation_date: finalDate,
           recommendation,
           overall_remarks: finalRemarks || null,
-          ...(recommendation === "For Another Position" && finalAltJobPostId
-            ? { recommended_job_post_id: Number(finalAltJobPostId) }
+          ...(recommendation === "For Another Position" && altJobPostId
+            ? { recommended_job_post_id: Number(altJobPostId) }
             : {}),
         });
         const mapped = transformApiFinalEvaluation(saved);
@@ -9236,16 +9649,29 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         reportStageSaveFailure("Final evaluation", e);
         return;
       }
-      // Secondary stage sync — the evaluation row is already saved and the
-      // backend advances the stage in the same request, so a refusal here must
-      // not make the recorded evaluation look like it was lost.
-      await applicantsApi
-        .update(finalizing.dbId, { stage: "Final Evaluation" })
-        .catch((e) => console.warn("Stage sync deferred for final evaluation:", e));
+      if (recommendation === "Not Recommended") {
+        // Not Passed — the backend already moved the applicant to Rejected;
+        // mirror it locally so the pipeline shows the failed state at once.
+        setStage(finalizing.id, "Rejected");
+      } else {
+        // Secondary stage sync — the evaluation row is already saved and the
+        // backend advances the stage in the same request, so a refusal here
+        // must not make the recorded evaluation look like it was lost.
+        await applicantsApi
+          .update(finalizing.dbId, { stage: "Final Evaluation" })
+          .catch((e) => console.warn("Stage sync deferred for final evaluation:", e));
+        setStage(finalizing.id, "Final Evaluation");
+      }
+    } else {
+      // Local-only record (mock fallback) — mirror the stage the backend
+      // would have set so the pipeline card stays in step.
+      setStage(
+        finalizing.id,
+        recommendation === "Not Recommended" ? "Rejected" : "Final Evaluation",
+      );
     }
 
     setFinalEvaluations((prev) => [row, ...prev]);
-    setStage(finalizing.id, "Final Evaluation");
     addAudit({
       actionType: "Final Evaluation Completed",
       target: finalizing.name,
@@ -9254,201 +9680,485 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         row.overallScoreRounded ?? "n/a"
       }% (system calculated) — recommendation: ${recommendation}.`,
     });
-    toast.success(`Final evaluation completed — ${recommendation}`);
+
+    const subject = finalizing;
     setFinalizing(null);
     setFinalPreview(null);
-    setFinalChoice(null);
-    setFinalAltJobPostId("");
+    setRecommendFor(null);
+    setRecommendJobPostId("");
+
+    if (recommendation === "Not Recommended") {
+      toast.success(`${subject.name} did not pass — recorded as Failed in the Pipeline Overview`);
+    } else {
+      // Passed / Recommend to another Position — email the offer with the
+      // 7-day response window, then show the result view so HR sees the
+      // pending offer (the reply is recorded here via Accept / Decline).
+      await sendOfferEmail(subject);
+      setViewingFinal(row);
+    }
+
     // Re-read the saved records — the completed final evaluation turns every
     // applicable stage on the progress bar green.
     syncAfterStageChange();
   };
 
-  /** Presented result of every recruitment stage, rendered inline in the Final
-   *  Evaluation and Verify Candidate Decision dialogs — the stage view modals
-   *  (resume screening result, interview assessment, assessment test and
-   *  practical assessment when required) are shown together here instead of
-   *  behind separate View buttons. */
-  const stageResultBlocks = (info: {
-    applicantId: string;
+  /* ------------------------------------------------------------------ */
+  /* Final Evaluation modal — shared sections                            */
+  /* ------------------------------------------------------------------
+     Laid out like the Review Screening dialog:
+       1. top     — candidate basics + the system-calculated total score
+                    (weighted from the processes applied to the position),
+       2. middle  — a preview of every process result: resume screening,
+                    interview assessment, assessment test and practical
+                    test (stages the position skips read "Not applied"),
+       3. bottom  — split horizontally: the HR decision on the left
+                    (Passed / Not Passed / Recommend to other Position) and
+                    the applicant's offer reply on the right (Accept /
+                    Decline applicant with the start-of-work date).       */
+
+  /** Section 1 — candidate basics + the system-calculated total score. */
+  const finalEvalTopSection = (info: {
+    applicant: Applicant;
+    overallScore: number | null;
+    breakdown: FinalScoreBreakdownItem[] | null;
+    loading?: boolean;
     screeningScore: number | null;
-    screeningStatus: string | null;
+    interviewScore: number | null;
+    assessmentScore: number | null;
+    assessmentRequired: boolean;
+    practicalScore: number | null;
     practicalRequired: boolean;
   }) => {
-    const applicant = rows.find((a) => a.id === info.applicantId);
-    const interview = assessments.find((x) => x.applicantId === info.applicantId);
-    const test = assessmentTests.find((x) => x.applicantId === info.applicantId);
-    const practical = practicalTests.find((x) => x.applicantId === info.applicantId);
-    const blockClass = "h-full space-y-2 rounded-md border border-border px-3 py-2.5";
-    const resultBadgeClass = (r: PassFail | null | undefined) =>
-      r === "Passed"
-        ? "border-success/40 bg-success/10 text-success"
-        : "border-destructive/40 bg-destructive/10 text-destructive";
+    const a = info.applicant;
+    const meta = statusMeta[a.status];
+    const overall = info.overallScore;
+    const chip = (label: string, value: number | null, skipped = false) => (
+      <span
+        key={label}
+        className="rounded-full border border-border bg-background px-2 py-0.5 text-[0.68rem] font-medium text-muted-foreground"
+      >
+        {label}{" "}
+        <span className="font-semibold text-foreground">
+          {skipped ? "Not applied" : value != null ? `${Math.round(value)}%` : "—"}
+        </span>
+      </span>
+    );
     return (
-      <div className="space-y-2">
-        <p className="eyebrow">Recruitment process results</p>
+      <div className="grid gap-3 rounded-lg border border-border/70 bg-card p-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center">
+        {/* Candidate basics */}
+        <div className="flex min-w-0 items-start gap-3">
+          <Avatar className="h-12 w-12 shrink-0">
+            <AvatarFallback className="bg-secondary font-display text-sm font-semibold">
+              {initials(a.name)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="truncate font-display text-lg font-semibold">{a.name}</p>
+              <Badge variant="outline" className={meta.className}>
+                {meta.label}
+              </Badge>
+              <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary">
+                {a.stage}
+              </Badge>
+            </div>
+            <p className="mt-0.5 truncate text-sm text-muted-foreground" title={a.position}>
+              {a.position} · {a.id} · Applied {a.appliedAt}
+            </p>
+            <p className="truncate text-xs text-muted-foreground">
+              {a.email}
+              {a.phone ? ` · ${a.phone}` : ""}
+            </p>
+          </div>
+        </div>
 
-        {/* Stage results laid out horizontally with aligned heights —
-            screening, interview, test and practical side by side (4 columns
-            when the position requires a practical, 3 otherwise). */}
-        <div
+        {/* Total score — system calculated from the processes applied */}
+        <div className="flex items-center gap-3 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2.5">
+          {overall != null ? (
+            <ScreeningScoreDonut score={overall} size={92} />
+          ) : (
+            <div className="flex h-[92px] w-[92px] shrink-0 items-center justify-center rounded-full border-4 border-muted font-display text-lg text-muted-foreground">
+              —
+            </div>
+          )}
+          <div className="min-w-0 space-y-1.5">
+            <p className="eyebrow text-primary">Total Score — System Calculated</p>
+            {info.loading ? (
+              <p className="text-xs text-muted-foreground">
+                Calculating scores from completed evaluations…
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-1">
+                  {chip("Screening", info.screeningScore)}
+                  {chip("Interview", info.interviewScore)}
+                  {chip("Test", info.assessmentScore, !info.assessmentRequired)}
+                  {chip("Practical", info.practicalScore, !info.practicalRequired)}
+                </div>
+                {(info.breakdown?.length ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+                    onClick={() => setShowScoreBreakdown((v) => !v)}
+                  >
+                    {showScoreBreakdown ? "Hide score calculation" : "Show score calculation"}
+                  </button>
+                )}
+                {showScoreBreakdown && info.breakdown && (
+                  <div className="space-y-0.5 rounded-md border border-border bg-background p-2 text-[0.68rem] text-muted-foreground">
+                    {info.breakdown
+                      .filter((b) => b.applied)
+                      .map((b) => (
+                        <div key={b.key} className="flex items-center justify-between gap-2">
+                          <span>
+                            {b.label} — {b.score != null ? `${Math.round(b.score)}%` : "—"} ×{" "}
+                            {b.weight}%
+                          </span>
+                          <span>{b.contribution != null ? b.contribution.toFixed(2) : "—"}</span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /** Section 2 — compact preview of every process result. Stages the
+   *  position does not apply are previewed as "Not applied" instead of a
+   *  missing record. Descriptive lines come from the local stage records. */
+  const finalEvalProcessPreview = (info: {
+    applicant: Applicant;
+    screeningScore: number | null;
+    screeningStatus: string | null;
+    interviewScore: number | null;
+    interviewResult: PassFail | null;
+    assessmentRequired: boolean;
+    assessmentScore: number | null;
+    assessmentResult: PassFail | null;
+    practicalRequired: boolean;
+    practicalScore: number | null;
+    practicalResult: PassFail | null;
+  }) => {
+    const a = info.applicant;
+    const interview = assessments.find((x) => x.applicantId === a.id);
+    const test = assessmentTests.find((x) => x.applicantId === a.id);
+    const practical = practicalTests.find((x) => x.applicantId === a.id);
+    const cardClass =
+      "flex h-full min-h-[112px] flex-col gap-1.5 rounded-lg border border-border/70 bg-card px-3 py-2.5";
+    const verdictBadge = (result: PassFail | null) =>
+      result ? (
+        <Badge
+          variant="outline"
           className={
-            "grid gap-2 md:items-stretch " +
-            (info.practicalRequired ? "md:grid-cols-4" : "md:grid-cols-3")
+            result === "Passed"
+              ? "border-success/40 bg-success/10 text-success"
+              : "border-destructive/40 bg-destructive/10 text-destructive"
           }
         >
-          {/* Resume screening result */}
-          <div className={blockClass}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-medium">Resume Screening</p>
-              <span className="font-display text-lg font-semibold text-primary">
-                {info.screeningScore != null ? `${Math.round(info.screeningScore)}%` : "—"}
-              </span>
+          {result}
+        </Badge>
+      ) : (
+        <Badge
+          variant="outline"
+          className="border-warning/40 bg-warning/15 text-warning-foreground"
+        >
+          Pending
+        </Badge>
+      );
+    const scoreLine = (score: number | null) => (
+      <span className="font-display text-lg font-semibold leading-none text-primary">
+        {score != null ? `${Math.round(score)}%` : "—"}
+      </span>
+    );
+    return (
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="eyebrow">Process results — preview</p>
+          <p className="text-xs text-muted-foreground">
+            Stages the position does not apply are marked "Not applied".
+          </p>
+        </div>
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+          {/* Resume screening */}
+          <div className={cardClass}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 text-sm font-medium">
+                <FileText className="h-3.5 w-3.5 text-primary" /> Resume Screening
+              </p>
+              {scoreLine(info.screeningScore)}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {info.screeningStatus ?? "—"}
-              {applicant?.summary ? ` — ${applicant.summary}` : ""}
+            <p className="line-clamp-2 text-xs text-muted-foreground">
+              {info.screeningStatus ?? "No screening record yet."}
             </p>
           </div>
 
-          {/* Interview assessment result */}
-          <div className={blockClass}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-medium">Interview Assessment</p>
-              {interview ? (
-                <div className="flex items-center gap-2">
-                  <span className="font-display text-lg font-semibold text-primary">
-                    {interview.total}%
-                  </span>
-                  <Badge variant="outline" className={resultBadgeClass(interview.result)}>
-                    {interview.result}
-                  </Badge>
-                </div>
-              ) : (
-                <span className="text-xs text-muted-foreground">No interview recorded.</span>
-              )}
+          {/* Interview assessment */}
+          <div className={cardClass}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 text-sm font-medium">
+                <User className="h-3.5 w-3.5 text-primary" /> Interview Assessment
+              </p>
+              {scoreLine(info.interviewScore)}
             </div>
-            {interview && (
-              <>
-                <div className="overflow-hidden rounded-md border border-border">
-                  <div className="grid grid-cols-[1fr_64px_1fr] gap-2 border-b border-border bg-muted/40 px-3 py-1.5">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Category
-                    </span>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Rate
-                    </span>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Comments
-                    </span>
-                  </div>
-                  {assessmentCriteria.map((c, idx) => (
-                    <div
-                      key={c}
-                      className={
-                        "grid grid-cols-[1fr_64px_1fr] gap-2 px-3 py-1.5" +
-                        (idx > 0 ? " border-t border-border" : "")
-                      }
-                    >
-                      <span className="min-w-0 text-xs font-medium">{c}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {interview.scores[c] ?? "—"}/5
-                      </span>
-                      <span className="min-w-0 break-words text-xs text-muted-foreground">
-                        {interview.comments?.[c] || "—"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                {interview.remarks && (
-                  <p className="text-xs text-muted-foreground">
-                    <span className="font-medium">Overall evaluation:</span> {interview.remarks}
-                  </p>
-                )}
-              </>
-            )}
+            <div className="flex items-center gap-1.5">{verdictBadge(info.interviewResult)}</div>
+            <p className="line-clamp-2 text-xs text-muted-foreground">
+              {interview?.remarks?.trim()
+                ? interview.remarks
+                : interview
+                  ? `Outcome: ${interview.outcome}`
+                  : "No interview recorded yet."}
+            </p>
           </div>
 
-          {/* Assessment test result */}
-          <div className={blockClass}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-medium">Assessment Test</p>
-              {test ? (
-                <div className="flex items-center gap-2">
-                  <span className="font-display text-lg font-semibold text-primary">
-                    {test.total}%
-                  </span>
-                  <Badge variant="outline" className={resultBadgeClass(test.result)}>
-                    {test.result}
-                  </Badge>
-                </div>
-              ) : (
-                <span className="text-xs text-muted-foreground">No assessment test recorded.</span>
-              )}
+          {/* Assessment test */}
+          <div className={cardClass}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 text-sm font-medium">
+                <ClipboardCheck className="h-3.5 w-3.5 text-primary" /> Assessment Test
+              </p>
+              {info.assessmentRequired ? scoreLine(info.assessmentScore) : null}
             </div>
-            {test && (
+            {info.assessmentRequired ? (
               <>
-                <p className="text-xs text-muted-foreground">
-                  {test.title} — passing score {test.passing}%
+                <div className="flex items-center gap-1.5">
+                  {verdictBadge(info.assessmentResult)}
+                </div>
+                <p className="line-clamp-2 text-xs text-muted-foreground">
+                  {test
+                    ? `${test.title} — passing score ${test.passing}%`
+                    : "No assessment test recorded yet."}
                 </p>
-                {test.remarks && (
-                  <p className="text-xs text-muted-foreground">
-                    <span className="font-medium">Remarks:</span> {test.remarks}
-                  </p>
-                )}
               </>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Not applied — this position does not require an assessment test.
+              </p>
             )}
           </div>
 
-          {/* Practical assessment result (only when the position requires it) */}
-          {info.practicalRequired && (
-            <div className={blockClass}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-medium">Practical Assessment</p>
-                {practical ? (
-                  <div className="flex items-center gap-2">
-                    <span className="font-display text-lg font-semibold text-primary">
-                      {practical.total}%
-                    </span>
-                    <Badge variant="outline" className={resultBadgeClass(practical.result)}>
-                      {practical.result}
-                    </Badge>
-                  </div>
-                ) : (
-                  <span className="text-xs text-muted-foreground">
-                    No practical assessment recorded.
-                  </span>
-                )}
-              </div>
-              {practical && (
-                <>
-                  <div className="overflow-hidden rounded-md border border-border">
-                    {practical.criteria.map((c, idx) => (
-                      <div
-                        key={idx}
-                        className={
-                          "flex items-center justify-between gap-3 px-3 py-1.5" +
-                          (idx > 0 ? " border-t border-border" : "")
-                        }
-                      >
-                        <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                          {c.criterion}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {practical.scores[String(idx)] ?? 0} / {c.maxPoints}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  {practical.remarks && (
-                    <p className="text-xs text-muted-foreground">
-                      <span className="font-medium">Overall evaluation:</span> {practical.remarks}
-                    </p>
-                  )}
-                </>
-              )}
+          {/* Practical test */}
+          <div className={cardClass}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 text-sm font-medium">
+                <GraduationCap className="h-3.5 w-3.5 text-primary" /> Practical Test
+              </p>
+              {info.practicalRequired ? scoreLine(info.practicalScore) : null}
             </div>
+            {info.practicalRequired ? (
+              <>
+                <div className="flex items-center gap-1.5">
+                  {verdictBadge(info.practicalResult)}
+                </div>
+                <p className="line-clamp-2 text-xs text-muted-foreground">
+                  {practical?.remarks?.trim()
+                    ? practical.remarks
+                    : practical
+                      ? "Practical assessment recorded."
+                      : "No practical assessment recorded yet."}
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Not applied — this position does not require a practical test.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /** Offer banner — the 7-day response window and the HR-recorded reply,
+   *  shown above the bottom action split in the Final Evaluation modal. */
+  const finalEvalOfferBanner = (a: Applicant, recommendation: FinalRecommendation | null) => {
+    const offer = offerStateOf(a);
+    if (!offer) {
+      return (
+        <div
+          className={cn(
+            "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
+            recommendation === "Not Recommended"
+              ? "border-destructive/30 bg-destructive/5 font-semibold text-destructive"
+              : "border-border/70 bg-muted/30 text-muted-foreground",
           )}
+        >
+          {recommendation === "Not Recommended" ? (
+            <>
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Not passed — recorded as Failed
+              in the Pipeline Overview.
+            </>
+          ) : (
+            <>
+              <Mail className="h-3.5 w-3.5 shrink-0" /> No offer email sent yet — Passed or
+              Recommend to another Position emails the applicant with a 7-day response window.
+            </>
+          )}
+        </div>
+      );
+    }
+    return (
+      <div
+        className={cn(
+          "flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs",
+          offer.status === "Accepted"
+            ? "border-success/30 bg-success/5 font-semibold text-success"
+            : offer.status === "Pending" && !offer.expired
+              ? "border-warning/40 bg-warning/10 font-semibold text-warning-foreground"
+              : "border-destructive/30 bg-destructive/5 font-semibold text-destructive",
+        )}
+      >
+        <Mail className="h-3.5 w-3.5 shrink-0" />
+        {offer.status === "Pending" && !offer.expired ? (
+          <span>
+            Offer sent — awaiting the applicant's response
+            {offer.daysLeft != null
+              ? ` · ${offer.daysLeft} day${offer.daysLeft === 1 ? "" : "s"} left`
+              : ""}
+            . No response within 7 days is treated as a declined applicant.
+          </span>
+        ) : offer.status === "Pending" ? (
+          <span>No response within the 7-day window — treated as a declined applicant (Failed).</span>
+        ) : offer.status === "Accepted" ? (
+          <span>
+            Offer accepted{offer.startDate ? ` — start of work ${offer.startDate}` : ""}. Filed
+            under New Hire Onboarding → Pre-onboarding.
+          </span>
+        ) : (
+          <span>Offer declined — recorded as Failed in the Pipeline Overview.</span>
+        )}
+      </div>
+    );
+  };
+
+  /** Section 3 (right) — records the applicant's emailed reply. Accepting
+   *  asks for the start-of-work date (onboarding day-count anchor). */
+  const finalEvalResponseActions = (a: Applicant, enabled: boolean) => {
+    const offer = offerStateOf(a);
+    const canAnswer =
+      a.stage !== "Hired" &&
+      a.stage !== "Rejected" &&
+      offer?.status !== "Accepted" &&
+      offer?.status !== "Declined" &&
+      !(offer?.expired ?? false);
+    return (
+      <div className="space-y-2">
+        <p className="eyebrow">Applicant's reply to the offer</p>
+        <p className="text-xs text-muted-foreground">
+          HR records the applicant's emailed reply here. Accepting asks for the start-of-work
+          date — it anchors the New Hire Onboarding days-of-work count.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            disabled={!enabled || !canAnswer || offerActionBusy}
+            onClick={() => {
+              setAcceptOfferFor(a);
+              setAcceptOfferDate(isoOf(new Date()));
+            }}
+          >
+            <CheckCircle2 className="mr-1.5 h-4 w-4" /> Accept applicant
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            disabled={!enabled || !canAnswer || offerActionBusy}
+            onClick={() =>
+              askConfirm({
+                title: "Decline this applicant?",
+                description: `${a.name} will be recorded as Failed in the Pipeline Overview — no onboarding record is created.`,
+                confirmLabel: "Yes, decline",
+                destructive: true,
+                onConfirm: () => void declineApplicantOffer(a),
+              })
+            }
+          >
+            <XCircle className="mr-1.5 h-4 w-4" /> Decline applicant
+          </Button>
+        </div>
+        {!enabled ? (
+          <p className="text-xs text-warning">
+            Record the HR decision first — Passed / Recommend sends the offer, then the
+            applicant's reply is recorded here.
+          </p>
+        ) : null}
+      </div>
+    );
+  };
+
+  /** Section 3 (left) — the HR decision buttons (Passed / Not Passed /
+   *  Recommend to another Position). */
+  const finalEvalDecisionActions = () => {
+    if (!finalizing) return null;
+    const requireAssessor = () => {
+      if (!finalAssessor) {
+        toast.error("Select who evaluated this candidate (Evaluated by) before deciding.");
+        return false;
+      }
+      return true;
+    };
+    return (
+      <div className="space-y-2">
+        <p className="eyebrow">HR decision</p>
+        <p className="text-xs text-muted-foreground">
+          Passed and Recommend email the offer — the applicant has 7 days to reply, otherwise
+          they are treated as declined. Not Passed fails the candidate in the pipeline.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-success/40 text-success hover:bg-success/10 hover:text-success"
+            onClick={() => {
+              if (!requireAssessor()) return;
+              askConfirm({
+                title: "Mark this candidate as Passed?",
+                description: `${finalizing.name} will be evaluated as "Recommended for Hire" and the offer email will be sent — the applicant has 7 days to respond.`,
+                confirmLabel: "Yes, Passed — send offer",
+                onConfirm: () => void saveFinalEvaluation("Recommended for Hire"),
+              });
+            }}
+          >
+            <CheckCircle2 className="mr-1.5 h-4 w-4" /> Passed
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => {
+              if (!requireAssessor()) return;
+              if (!finalRemarks.trim()) {
+                toast.error(
+                  "Evaluator remarks are required when the candidate did not pass — add them above.",
+                );
+                return;
+              }
+              askConfirm({
+                title: "Mark this candidate as Not Passed?",
+                description: `${finalizing.name} will be evaluated as "Not Recommended" and recorded as Failed in the Pipeline Overview.`,
+                confirmLabel: "Yes, Not Passed",
+                destructive: true,
+                onConfirm: () => void saveFinalEvaluation("Not Recommended"),
+              });
+            }}
+          >
+            <XCircle className="mr-1.5 h-4 w-4" /> Not Passed
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              if (!requireAssessor()) return;
+              setRecommendFor(finalizing);
+              setRecommendJobPostId("");
+            }}
+          >
+            <Repeat2 className="mr-1.5 h-4 w-4" /> Recommend to other Position
+          </Button>
         </div>
       </div>
     );
@@ -9777,16 +10487,26 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         const practical = practicalTests.find((t) => t.applicantId === a.id);
         const final = finalEvaluations.find((f) => f.applicantId === a.id);
         const requiresPrac = requiresPractical(a.position, a.requiresPractical);
+        const requiresTest = requiresAssessment(a.position, a.requiresAssessment);
         const needsSchedule =
           a.stage === "Accepted" &&
           !interviews.some((i) => i.applicant === a.name && i.status !== "Cancelled");
-        const readyForTest = a.stage === "Assessed" && assessment?.result === "Passed";
+        const readyForTest =
+          a.stage === "Assessed" && requiresTest && assessment?.result === "Passed";
         const readyForPractical =
-          a.stage === "Assessment Test" && requiresPrac && test?.result === "Passed";
+          ((requiresTest
+            ? a.stage === "Assessment Test" && test?.result === "Passed"
+            : a.stage === "Assessed" && assessment?.result === "Passed") &&
+            requiresPrac);
         const readyForFinal =
-          (a.stage === "Practical Test" || a.stage === "Assessment Test") &&
-          test?.result === "Passed" &&
-          (!requiresPrac || practical?.result === "Passed");
+          ((requiresTest
+            ? (a.stage === "Practical Test" || a.stage === "Assessment Test") &&
+              test?.result === "Passed"
+            : a.stage === "Assessed" && assessment?.result === "Passed") &&
+            (!requiresPrac || practical?.result === "Passed")) ||
+          (!requiresTest &&
+            a.stage === "Practical Test" &&
+            (!requiresPrac || practical?.result === "Passed"));
         return {
           a,
           interview: anyInterview,
@@ -9796,6 +10516,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           practical,
           final,
           requiresPrac,
+          requiresTest,
           needsSchedule,
           readyForTest,
           readyForPractical,
@@ -9828,11 +10549,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           if (!ok) return false;
         }
         if (pipelineResult === "failed") {
+          const offer = offerStateOf(a);
           const bad =
             assessment?.result === "Failed" ||
             test?.result === "Failed" ||
             practical?.result === "Failed" ||
-            final?.recommendation === "Not Recommended";
+            final?.recommendation === "Not Recommended" ||
+            // A declined offer (or one whose 7-day window lapsed) fails the
+            // applicant even though the final evaluation recommended them.
+            offer?.status === "Declined" ||
+            (offer?.expired ?? false);
           if (!bad) return false;
         }
         if (pipelineResult === "pending") {
@@ -9978,9 +10704,74 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 );
               }}
             />
+            <Button
+              size="icon"
+              variant="outline"
+              aria-label="Re-apply cooldown settings"
+              title="Re-apply cooldown settings"
+              onClick={() => {
+                setCooldownDraft(String(cooldownDays));
+                setCooldownOpen(true);
+              }}
+            >
+              <Settings2 className="h-4 w-4" />
+            </Button>
           </div>
         }
       />
+
+      {/* Re-apply cooldown settings — same gear pattern as Recruitment's Screening setup */}
+      <Dialog open={cooldownOpen} onOpenChange={setCooldownOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Re-apply cooldown</DialogTitle>
+            <DialogDescription>
+              Failed applicants may re-apply for any open position after this many days.
+              Decliners (offer declined) are always welcome back — no waiting period.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="cooldown-days">Waiting period (days)</Label>
+            <Input
+              id="cooldown-days"
+              type="number"
+              min={1}
+              max={365}
+              value={cooldownDraft}
+              onChange={(e) => setCooldownDraft(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCooldownOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={cooldownSaving}
+              onClick={() => {
+                const n = Number(cooldownDraft);
+                if (!Number.isFinite(n) || n < 1 || n > 365) {
+                  toast.error("Enter a waiting period between 1 and 365 days.");
+                  return;
+                }
+                setCooldownSaving(true);
+                settingsApi
+                  .upsert("recruitment.reapply_cooldown_days", n)
+                  .then(() => {
+                    setCooldownDays(n);
+                    setCooldownOpen(false);
+                    toast.success(`Re-apply cooldown set to ${n} day(s).`);
+                  })
+                  .catch((err: any) =>
+                    toast.error(err?.message || "Unable to save the cooldown. Please try again."),
+                  )
+                  .finally(() => setCooldownSaving(false));
+              }}
+            >
+              {cooldownSaving ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {viewedApplicant ? (
         <ApplicantViewScreen
@@ -10059,15 +10850,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           onViewTest={(t) => setViewingAssessmentTest(t)}
           onViewPractical={(t) => setViewingPractical(t)}
           onViewFinal={(f) => setViewingFinal(f)}
-          verifiedFinal={(() => {
-            const f = finalEvaluations.find((x) => x.applicantId === viewedApplicant.id);
-            return f ? (verifiedDecisions[f.id] ?? null) : null;
-          })()}
           finalDecided={["Hired", "Rejected"].includes(viewedApplicant.stage)}
-          onVerifyFinal={(f) => {
-            setVerifyingFinal(f);
-            setVerifyChoice(f.recommendation);
-          }}
+          history={viewHistory}
+          historyLoading={viewHistoryLoading}
+          onOverrideCooldown={overrideViewingCooldown}
+          overrideBusy={overrideBusy}
         />
       ) : (
         <>
@@ -13383,6 +14170,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               practical,
                               final,
                               requiresPrac,
+                              requiresTest,
                               needsSchedule,
                               readyForTest,
                               readyForPractical,
@@ -13472,9 +14260,26 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 requiresPrac && !practical && readyForPractical && canProgress;
                               const showCompleteFinal = !final && readyForFinal && canProgress;
                               const decided = isHired || isRejected;
-                              const verified = final ? verifiedDecisions[final.id] : undefined;
-                              const showVerify = !!final && !decided && !verified;
-                              const showVerifiedBadge = !!final && !!verified && !decided;
+                              // Offer workflow — the 7-day response window and
+                              // the HR-recorded reply drive the Final
+                              // Evaluation column and the offer actions.
+                              const offer = offerStateOf(a);
+                              const offerAnswered =
+                                offer !== null &&
+                                (offer.status === "Accepted" ||
+                                  offer.status === "Declined" ||
+                                  offer.expired);
+                              const canAcceptApplicant =
+                                !!final &&
+                                final.recommendation !== "Not Recommended" &&
+                                !decided &&
+                                !offerAnswered;
+                              const canDeclineApplicant = !!final && !isHired && offer?.status !== "Declined";
+                              const showSendOffer =
+                                !!final &&
+                                final.recommendation !== "Not Recommended" &&
+                                !decided &&
+                                (offer === null || (offer.status === "Pending" && !offer.expired));
                               const hasStageActions =
                                 showAccept ||
                                 showSchedule ||
@@ -13485,13 +14290,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 showStartTest ||
                                 showStartPractical ||
                                 showCompleteFinal ||
-                                showVerify;
-                              const hasViews =
-                                !!assessment ||
-                                !!test ||
-                                !!practical ||
-                                !!final ||
-                                showVerifiedBadge;
+                                showSendOffer;
+                              const hasViews = !!assessment || !!test || !!practical || !!final;
                               const hasMore = hasStageActions || hasViews;
                               return (
                                 <TableRow
@@ -13693,7 +14493,23 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                     )}
                                   </TableCell>
                                   <TableCell className="max-w-0">
-                                    {test ? (
+                                    {!requiresTest ? (
+                                      /* Roles that skip the assessment test: the stage reads
+                                         as completed (green) once the interview is passed. */
+                                      <p
+                                        className={cn(
+                                          "truncate",
+                                          assessment?.result === "Passed" || milestoneIndexOf(a) > 2
+                                            ? "text-xs font-semibold text-success"
+                                            : "text-muted-foreground",
+                                        )}
+                                        title="This position skips the assessment test (Core HCM)"
+                                      >
+                                        {assessment?.result === "Passed" || milestoneIndexOf(a) > 2
+                                          ? "Not required — Completed"
+                                          : "Not required"}
+                                      </p>
+                                    ) : test ? (
                                       <>
                                         <p className="font-display text-sm font-semibold">
                                           {test.total}%
@@ -13820,23 +14636,29 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                         <p
                                           className={cn(
                                             "truncate text-xs font-semibold",
-                                            verified
-                                              ? "text-success"
-                                              : decided
-                                                ? "text-muted-foreground"
-                                                : "text-warning",
+                                            offer === null
+                                              ? final.recommendation === "Not Recommended"
+                                                ? "text-destructive"
+                                                : "text-warning"
+                                              : offer.status === "Accepted"
+                                                ? "text-success"
+                                                : offer.status === "Pending" && !offer.expired
+                                                  ? "text-warning"
+                                                  : "text-destructive",
                                           )}
                                           title={
-                                            verified
-                                              ? `Verified decision: ${verified}`
-                                              : "Recorded but not yet verified — use Actions → Verify decision"
+                                            offer
+                                              ? offerStateLabel(offer)
+                                              : final.recommendation === "Not Recommended"
+                                                ? "Not passed — recorded as Failed in the pipeline"
+                                                : "No offer email sent yet — use Actions → Send offer email"
                                           }
                                         >
-                                          {verified
-                                            ? decided
-                                              ? `Verified · ${verified}`
-                                              : "Verified — pending"
-                                            : "Unverified"}
+                                          {offer
+                                            ? offerStateLabel(offer)
+                                            : final.recommendation === "Not Recommended"
+                                              ? "Failed — not passed"
+                                              : "Offer not sent"}
                                         </p>
                                       </>
                                     ) : readyForFinal &&
@@ -13984,14 +14806,38 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                               Complete final evaluation
                                             </DropdownMenuItem>
                                           ) : null}
-                                          {showVerify && final ? (
+                                          {showSendOffer ? (
+                                            <DropdownMenuItem
+                                              onClick={() => void sendOfferEmail(a)}
+                                            >
+                                              {offer?.status === "Pending"
+                                                ? "Resend offer email"
+                                                : "Send offer email"}
+                                            </DropdownMenuItem>
+                                          ) : null}
+                                          {canAcceptApplicant ? (
                                             <DropdownMenuItem
                                               onClick={() => {
-                                                setVerifyingFinal(final);
-                                                setVerifyChoice(final.recommendation);
+                                                setAcceptOfferFor(a);
+                                                setAcceptOfferDate(isoOf(new Date()));
                                               }}
                                             >
-                                              Verify decision
+                                              Accept applicant
+                                            </DropdownMenuItem>
+                                          ) : null}
+                                          {canDeclineApplicant ? (
+                                            <DropdownMenuItem
+                                              onClick={() =>
+                                                askConfirm({
+                                                  title: "Decline this applicant?",
+                                                  description: `${a.name} will be recorded as Failed in the Pipeline Overview — no onboarding record is created.`,
+                                                  confirmLabel: "Yes, decline",
+                                                  destructive: true,
+                                                  onConfirm: () => void declineApplicantOffer(a),
+                                                })
+                                              }
+                                            >
+                                              Decline applicant
                                             </DropdownMenuItem>
                                           ) : null}
                                           {hasStageActions && hasViews ? (
@@ -14030,11 +14876,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                             >
                                               <Eye className="mr-2 h-3.5 w-3.5" /> View final
                                               evaluation
-                                            </DropdownMenuItem>
-                                          ) : null}
-                                          {showVerifiedBadge ? (
-                                            <DropdownMenuItem disabled>
-                                              Verified — pending
                                             </DropdownMenuItem>
                                           ) : null}
                                           {/* Last item of the View section. */}
@@ -14398,183 +15239,89 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
       {/* REVIEW DIALOG — resume screening result */}
 
-      {/* VERIFY CANDIDATE DECISION — after completing the Final Evaluation.
-          Same UI as the Final Evaluation dialog (evaluated by + date, presented
-          stage results, overall remarks) — only the recommendation differs.
-          Confirming it auto-accepts / auto-rejects the candidate. */}
-      <Dialog open={!!verifyingFinal} onOpenChange={(o) => !o && setVerifyingFinal(null)}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto overflow-x-hidden sm:max-w-7xl">
-          {verifyingFinal && (
+      {/* RECOMMENDED POSITION PICKER — "Recommend to other Position" from the
+          Final Evaluation dialog. The chosen post is recorded on the final
+          evaluation and the offer email is sent for it (7-day response
+          window), exactly like a "Passed" recommendation. */}
+      <Dialog open={!!recommendFor} onOpenChange={(o) => !o && setRecommendFor(null)}>
+        <DialogContent className="sm:max-w-md">
+          {recommendFor && (
             <>
               <DialogHeader>
                 <DialogTitle className="font-display text-2xl">
-                  Verify Candidate Decision
+                  Recommend to another position
                 </DialogTitle>
                 <DialogDescription>
-                  {verifyingFinal.name} — {verifyingFinal.position}. Confirm the recorded
-                  recommendation to finalize the candidate decision.
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label>Evaluated by</Label>
-                  <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
-                    {verifyingFinal.evaluatedBy ??
-                      assessors.find(
-                        (u) => String(u.system_user_id) === String(verifyingFinal.evaluatedById),
-                      )?.full_name ??
-                      "—"}
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Date</Label>
-                  <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
-                    {verifyingFinal.date}
-                  </p>
-                </div>
-              </div>
-
-              {stageResultBlocks({
-                applicantId: verifyingFinal.applicantId,
-                screeningScore: verifyingFinal.screeningScore,
-                screeningStatus: verifyingFinal.screeningStatus,
-                practicalRequired: verifyingFinal.practicalRequired,
-              })}
-
-              <div className="rounded-md border border-border p-3">
-                <p className="eyebrow">Overall remarks</p>
-                <p className="text-sm">{verifyingFinal.overallRemarks || "—"}</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Recommendation</Label>
-                {(
-                  [
-                    "Recommended for Hire",
-                    "For Another Position",
-                    "Not Recommended",
-                  ] as FinalRecommendation[]
-                ).map((r) => (
-                  <label
-                    key={r}
-                    className={cn(
-                      "flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm transition-colors",
-                      verifyChoice === r
-                        ? r === "Not Recommended"
-                          ? "border-destructive bg-destructive/5"
-                          : "border-success bg-success/5"
-                        : "border-border hover:border-primary/40",
-                    )}
-                  >
-                    <input
-                      type="radio"
-                      name="verifyChoice"
-                      className={r === "Not Recommended" ? "accent-destructive" : "accent-primary"}
-                      checked={verifyChoice === r}
-                      onChange={() => setVerifyChoice(r)}
-                    />
-                    {r}
-                  </label>
-                ))}
-              </div>
-              <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-                <Button variant="outline" onClick={() => setVerifyingFinal(null)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="outline"
-                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() =>
-                    askConfirm({
-                      title: "Reject this candidate?",
-                      description: `${verifyingFinal.name}'s verified decision will be recorded as Rejected — the candidate is not accepted for any position.`,
-                      confirmLabel: "Yes, reject candidate",
-                      destructive: true,
-                      onConfirm: () => confirmVerifyFinal("Not Recommended"),
-                    })
-                  }
-                >
-                  <XCircle className="mr-1.5 h-4 w-4" /> Reject
-                </Button>
-                <Button
-                  disabled={!verifyChoice}
-                  onClick={() =>
-                    askConfirm({
-                      title: "Confirm this candidate decision?",
-                      description: `The recorded recommendation "${verifyChoice}" will be verified and the candidate decision finalized.`,
-                      confirmLabel: "Yes, confirm decision",
-                      onConfirm: () => confirmVerifyFinal(),
-                    })
-                  }
-                >
-                  Confirm
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* RECOMMENDED POSITION PICKER — "For Another Position" verification */}
-      <Dialog open={!!positionPick} onOpenChange={(o) => !o && setPositionPick(null)}>
-        <DialogContent className="sm:max-w-md">
-          {positionPick && (
-            <>
-              <DialogHeader>
-                <DialogTitle className="font-display text-2xl">Recommended position</DialogTitle>
-                <DialogDescription>
-                  {positionPick.name} is verified as "For Another Position". Choose the best
-                  recommended position — the candidate is accepted into it automatically.
+                  {recommendFor.name} will be evaluated as "For Another Position" — the offer
+                  email is sent for the chosen position and the applicant has 7 days to
+                  respond.
                 </DialogDescription>
               </DialogHeader>
               <div className="max-h-[50vh] space-y-2 overflow-y-auto">
-                {displayPositions.map((p) => (
-                  <label
-                    key={p.id}
-                    className={cn(
-                      "flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm transition-colors",
-                      positionPickChoice === p.title
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:border-primary/40",
-                    )}
-                  >
-                    <input
-                      type="radio"
-                      name="positionPick"
-                      className="accent-primary"
-                      checked={positionPickChoice === p.title}
-                      onChange={() => setPositionPickChoice(p.title)}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{p.title}</span>
-                      <span className="block text-xs text-muted-foreground">{p.department}</span>
-                    </span>
-                  </label>
-                ))}
+                {dbJobPosts
+                  .filter(
+                    (j) =>
+                      j.status === "Open" &&
+                      j.active !== false &&
+                      Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0) > 0,
+                  )
+                  .map((j) => (
+                    <label
+                      key={j.job_post_id}
+                      className={cn(
+                        "flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm transition-colors",
+                        String(recommendJobPostId) === String(j.job_post_id)
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/40",
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="recommendPosition"
+                        className="accent-primary"
+                        checked={String(recommendJobPostId) === String(j.job_post_id)}
+                        onChange={() => setRecommendJobPostId(String(j.job_post_id))}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">{j.title}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {j.department ?? "—"}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                {dbJobPosts.filter(
+                  (j) =>
+                    j.status === "Open" &&
+                    j.active !== false &&
+                    Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0) > 0,
+                ).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No open positions with vacant slots right now.
+                  </p>
+                ) : null}
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setPositionPick(null)}>
+                <Button variant="outline" onClick={() => setRecommendFor(null)}>
                   Cancel
                 </Button>
                 <Button
-                  disabled={!positionPickChoice}
-                  onClick={() => {
-                    const f = positionPick;
-                    const chosen = positionPickChoice;
-                    if (!f) return;
+                  disabled={!recommendJobPostId}
+                  onClick={() =>
                     askConfirm({
-                      title: "Accept the candidate for another position?",
-                      description: `${f.name} will be accepted for "${chosen}".`,
-                      confirmLabel: "Yes, accept candidate",
-                      onConfirm: () => {
-                        setPositionPick(null);
-                        acceptFinalEvaluation(f, "For Another Position", chosen);
-                      },
-                    });
-                  }}
+                      title: "Recommend this candidate for another position?",
+                      description: `${recommendFor.name} will be evaluated as "For Another Position" for ${
+                        dbJobPosts.find(
+                          (j) => String(j.job_post_id) === String(recommendJobPostId),
+                        )?.title ?? "the chosen position"
+                      } — the offer email will be sent with a 7-day response window.`,
+                      confirmLabel: "Yes, recommend & send offer",
+                      onConfirm: () =>
+                        void saveFinalEvaluation("For Another Position", recommendJobPostId),
+                    })
+                  }
                 >
-                  Accept candidate
+                  <Send className="mr-1.5 h-4 w-4" /> Recommend &amp; send offer
                 </Button>
               </DialogFooter>
             </>
@@ -15139,10 +15886,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     onClick={() =>
                       askConfirm({
                         title: "Mark this interview as Failed?",
-                        description: `${evaluating.name}'s interview will be saved with a Failed verdict.`,
-                        confirmLabel: "Yes, mark Failed",
+                        description: `${evaluating.name}'s interview will be saved with a Failed verdict. Reject now to start the ${cooldownDays}-day re-apply cooldown, or allow a retake to keep the pipeline open.`,
+                        confirmLabel: "Reject & start cooldown",
                         destructive: true,
-                        onConfirm: () => saveAssessment("Failed"),
+                        onConfirm: async () => {
+                          await saveAssessment("Failed");
+                          await reject(evaluating);
+                          toast.warning(
+                            `Re-apply cooldown started — ${evaluating.name} may re-apply after ${cooldownDays} day(s).`,
+                          );
+                        },
                       })
                     }
                   >
@@ -15244,50 +15997,207 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         SDK keys are missing. */}
                     <div className="relative aspect-video w-full max-h-full">
                       <ZoomEmbeddedMeeting
+                        ref={zoomEmbedRef}
                         interviewDbId={zoomRoom.interview.dbId ?? null}
                         joinUrl={zoomRoom.interview.zoomJoinUrl ?? null}
                         userName={zoomRoom.interview.interviewer || zoomRoom.applicant.name}
-                        onStateChange={setZoomEmbed}
+                        onStateChange={handleZoomEmbedState}
+                        onChatMessage={handleZoomChatMessage}
+                        onChatHistory={handleZoomChatHistory}
+                        onChatError={(m) => setZoomChatError(m)}
+                        onNotice={(m) => toast.error(m)}
+                        onSelfState={handleZoomSelfState}
                         fill
                       />
                     </div>
                     {zoomEmbed.status === "fallback" && (
-                      <>
-                        <video
-                          ref={attachZoomPreview}
-                          muted
-                          playsInline
-                          className="h-full w-full bg-black object-cover"
-                        />
-                        <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
-                          <Button
-                            size="sm"
-                            variant={zoomMicOn ? "outline" : "destructive"}
-                            onClick={toggleZoomMic}
-                          >
-                            {zoomMicOn ? (
-                              <Mic className="h-3.5 w-3.5" />
-                            ) : (
-                              <MicOff className="h-3.5 w-3.5" />
-                            )}
-                            {zoomMicOn ? "Mute" : "Unmute"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={zoomCamOn ? "outline" : "destructive"}
-                            onClick={toggleZoomCam}
-                          >
-                            {zoomCamOn ? (
-                              <Video className="h-3.5 w-3.5" />
-                            ) : (
-                              <VideoOff className="h-3.5 w-3.5" />
-                            )}
-                            {zoomCamOn ? "Stop video" : "Start video"}
-                          </Button>
-                        </div>
-                      </>
+                      <video
+                        ref={attachZoomPreview}
+                        muted
+                        playsInline
+                        className="h-full w-full bg-black object-cover"
+                      />
                     )}
                   </div>
+
+                  {/* Call controls — mic / speaker / camera / chat stay one
+                      tap away even when the embedded meeting's own toolbar
+                      crops in a short window (or the SDK is in fallback).
+                      Live meetings drive the Zoom SDK; the fallback preview
+                      toggles the local camera directly. */}
+                  <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border bg-background px-4 py-2.5">
+                    <Button
+                      size="sm"
+                      variant={zoomMicOn ? "outline" : "destructive"}
+                      onClick={toggleZoomMic}
+                      title={zoomMicOn ? "Mute your microphone" : "Unmute your microphone"}
+                    >
+                      {zoomMicOn ? (
+                        <Mic className="h-3.5 w-3.5" />
+                      ) : (
+                        <MicOff className="h-3.5 w-3.5" />
+                      )}
+                      {zoomMicOn ? "Mute" : "Unmute"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={zoomCamOn ? "outline" : "destructive"}
+                      onClick={toggleZoomCam}
+                      title={
+                        zoomCamOn ? "Stop your camera" : "Start your camera (video preview)"
+                      }
+                    >
+                      {zoomCamOn ? (
+                        <Video className="h-3.5 w-3.5" />
+                      ) : (
+                        <VideoOff className="h-3.5 w-3.5" />
+                      )}
+                      {zoomCamOn ? "Stop video" : "Start video"}
+                    </Button>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button size="sm" variant="outline" title="Speaker & audio settings">
+                          <Volume2 className="h-3.5 w-3.5" /> Speaker
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-72 space-y-2.5 p-3 text-xs">
+                        <p className="font-semibold text-foreground">Speaker & microphone</p>
+                        <p className="text-muted-foreground">
+                          Zoom plays meeting audio through your system's current speaker. Play a
+                          test tone to check it, or open the meeting's audio menu to switch
+                          microphone or speaker.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" variant="outline" onClick={playZoomSpeakerTest}>
+                            <Volume2 className="mr-1.5 h-3.5 w-3.5" /> Test speaker
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={openZoomAudioSettings}
+                            disabled={zoomEmbed.status !== "live"}
+                          >
+                            <Sliders className="mr-1.5 h-3.5 w-3.5" /> Zoom audio settings
+                          </Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                    <Button
+                      size="sm"
+                      variant={zoomChatOpen ? "secondary" : "outline"}
+                      onClick={toggleZoomChat}
+                      className="ml-auto"
+                      title="Meeting chat"
+                      aria-expanded={zoomChatOpen}
+                    >
+                      <MessageSquare className="mr-1.5 h-3.5 w-3.5" /> Chat
+                      {zoomChatUnread > 0 && (
+                        <span className="ml-1.5 rounded-full bg-primary px-1.5 text-[0.65rem] font-bold text-primary-foreground">
+                          {zoomChatUnread > 9 ? "9+" : zoomChatUnread}
+                        </span>
+                      )}
+                    </Button>
+                  </div>
+
+                  {/* Chat drawer — transcript + composer bridged to the
+                      embedded Zoom meeting chat (sendChat / chat-on-message),
+                      with a rolling history buffer so nothing is lost when
+                      the drawer is closed. */}
+                  {zoomChatOpen && (
+                    <div className="flex max-h-[38vh] min-h-0 shrink-0 flex-col border-t border-border bg-background">
+                      <div className="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-2">
+                        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          <MessageSquare className="h-3.5 w-3.5" /> Meeting chat
+                          {zoomChatMessages.length > 0 && (
+                            <span className="font-normal normal-case tracking-normal">
+                              · {zoomChatMessages.length}
+                            </span>
+                          )}
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2"
+                          onClick={() => setZoomChatOpen(false)}
+                          aria-label="Close chat"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      {zoomEmbed.status !== "live" ? (
+                        <p className="px-4 py-3 text-xs text-muted-foreground">
+                          Chat turns on once the embedded Zoom meeting is connected — the
+                          applicant can also use the Join link above.
+                        </p>
+                      ) : (
+                        <>
+                          <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-4 py-3">
+                            {zoomChatMessages.length === 0 && (
+                              <p className="text-xs text-muted-foreground">
+                                No messages yet — say hello to the applicant.
+                              </p>
+                            )}
+                            {zoomChatMessages.map((m) => (
+                              <div
+                                key={m.id}
+                                className={
+                                  "flex flex-col " + (m.self ? "items-end" : "items-start")
+                                }
+                              >
+                                <div
+                                  className={
+                                    "max-w-[85%] rounded-lg px-2.5 py-1.5 text-xs " +
+                                    (m.self
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-muted text-foreground")
+                                  }
+                                >
+                                  {!m.self && (
+                                    <p className="mb-0.5 text-[0.65rem] font-semibold text-muted-foreground">
+                                      {m.sender}
+                                    </p>
+                                  )}
+                                  <p className="whitespace-pre-wrap break-words">{m.text}</p>
+                                </div>
+                                <span className="mt-0.5 text-[0.6rem] text-muted-foreground">
+                                  {new Date(m.time).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          {zoomChatError && (
+                            <p className="px-4 pb-1 text-[0.7rem] text-destructive">
+                              {zoomChatError}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-2 border-t border-border px-4 py-2">
+                            <Input
+                              value={zoomChatDraft}
+                              onChange={(e) => setZoomChatDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                  e.preventDefault();
+                                  sendZoomChatMessage();
+                                }
+                              }}
+                              placeholder="Message the meeting…"
+                              className="h-8 text-xs"
+                              aria-label="Meeting chat message"
+                            />
+                            <Button
+                              size="sm"
+                              onClick={sendZoomChatMessage}
+                              disabled={zoomChatDraft.trim() === ""}
+                            >
+                              <Send className="mr-1.5 h-3.5 w-3.5" /> Send
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {/* Invitation drawer — the applicant already has this by
                       email, so it stays collapsed until someone asks. */}
@@ -15938,8 +16848,11 @@ always one tap away, no scrolling to finish the interview. */}
         </DialogContent>
       </Dialog>
 
-      {/* FINAL EVALUATION DIALOG — system-assisted: system scores read-only,
-          HR picks the recommendation. */}
+      {/* FINAL EVALUATION DIALOG — 3-section layout like the Review Screening
+          dialog: (1) candidate basics + system-calculated total score,
+          (2) preview of every process result, (3) bottom split with the HR
+          decision (Passed / Not Passed / Recommend) on the left and the
+          applicant's offer reply (Accept / Decline) on the right. */}
       <Dialog open={!!finalizing} onOpenChange={(o) => !o && setFinalizing(null)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto overflow-x-hidden sm:max-w-7xl">
           {finalizing && (
@@ -15947,50 +16860,37 @@ always one tap away, no scrolling to finish the interview. */}
               <DialogHeader>
                 <DialogTitle className="font-display text-2xl">Final Evaluation</DialogTitle>
                 <DialogDescription>
-                  {finalizing.name} — {finalizing.position}. System-calculated scores below are
-                  read-only; HR makes the final recommendation.
+                  {finalizing.name} — {finalizing.position}. The total score is calculated from
+                  the completed processes; HR makes the final decision and records the applicant's
+                  reply.
                 </DialogDescription>
               </DialogHeader>
-
-              {/* Evaluated by + date */}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label>
-                    Evaluated by <span className="text-destructive">*</span>
-                  </Label>
-                  <Select value={finalAssessor} onValueChange={setFinalAssessor}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {assessors.map((u) => (
-                        <SelectItem key={u.system_user_id} value={String(u.system_user_id)}>
-                          {u.full_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Date</Label>
-                  <Input
-                    type="date"
-                    value={finalDate}
-                    onChange={(e) => setFinalDate(e.target.value)}
-                  />
-                </div>
-              </div>
 
               {(() => {
                 const snap = finalSnapshotFor(finalizing);
                 const preview = finalPreview;
                 const practicalRequired = preview?.practical_required ?? snap.practicalRequired;
+                const assessmentRequired =
+                  (preview as any)?.assessment_required ?? snap.assessmentRequired ?? true;
                 const screening = preview?.scores.screening_score ?? snap.screeningScore;
                 const interview = preview?.scores.interview_score ?? snap.interviewScore;
-                const assessment = preview?.scores.assessment_test_score ?? snap.testScore;
+                const assessment = assessmentRequired
+                  ? (preview?.scores.assessment_test_score ?? snap.testScore)
+                  : null;
                 const practical = preview
                   ? preview.scores.practical_test_score
                   : snap.practicalScore;
+                const interviewResult =
+                  (preview?.scores.interview_result as PassFail | null | undefined) ??
+                  snap.interviewResult ??
+                  null;
+                const assessmentResult =
+                  (preview?.scores.assessment_test_result as PassFail | null | undefined) ??
+                  snap.testResult ??
+                  null;
+                const practicalResult = preview
+                  ? ((preview.scores.practical_test_result as PassFail | null | undefined) ?? null)
+                  : (snap.practicalResult ?? null);
                 const overall = preview?.overall_score_rounded ?? preview?.overall_score ?? null;
                 const breakdown =
                   (preview?.score_breakdown as FinalScoreBreakdownItem[] | undefined) ?? null;
@@ -15999,250 +16899,148 @@ always one tap away, no scrolling to finish the interview. */}
                   ? reqs.interview_passed
                   : snap.interviewResult === "Passed";
                 const assessmentOk = reqs ? reqs.assessment_passed : snap.testResult === "Passed";
-                const practicalState: "passed" | "missing_or_failed" | "not_required" = reqs
-                  ? reqs.practical
-                  : !practicalRequired
-                    ? "not_required"
-                    : snap.practicalResult === "Passed"
-                      ? "passed"
-                      : "missing_or_failed";
-                const availableAltPosts = dbJobPosts.filter(
-                  (j: any) =>
-                    j.status === "Open" &&
-                    j.active !== false &&
-                    Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0) > 0,
+                const practicalOk = reqs
+                  ? reqs.practical === "passed"
+                  : practicalRequired
+                    ? snap.practicalResult === "Passed"
+                    : true;
+                const statusBadge = (ok: boolean, label: string) => (
+                  <Badge
+                    variant="outline"
+                    className={
+                      ok
+                        ? "border-success/40 bg-success/10 text-success"
+                        : "border-destructive/40 bg-destructive/10 text-destructive"
+                    }
+                  >
+                    {label}
+                  </Badge>
                 );
                 return (
                   <div className="space-y-3">
-                    {/* Detailed stage results first (existing presentation) */}
-                    {stageResultBlocks({
-                      applicantId: finalizing.id,
+                    {/* 1 · Candidate basics + system-calculated total score */}
+                    {finalEvalTopSection({
+                      applicant: finalizing,
+                      overallScore: overall,
+                      breakdown,
+                      loading: finalPreviewLoading,
                       screeningScore: screening,
-                      screeningStatus: preview?.scores.screening_status ?? snap.screeningStatus,
+                      interviewScore: interview,
+                      assessmentScore: assessment,
+                      assessmentRequired,
+                      practicalScore: practical,
                       practicalRequired,
                     })}
 
-                    {/* SYSTEM-GENERATED evaluation summary (read-only) */}
-                    <div className="rounded-md border border-border bg-muted/30 p-3">
-                      <p className="eyebrow">Evaluation Summary — System Generated (read-only)</p>
-                      {finalPreviewLoading ? (
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          Calculating scores from completed evaluations…
-                        </p>
-                      ) : (
-                        <div className="mt-2 space-y-1 text-sm">
-                          <div className="flex items-center justify-between gap-3">
-                            <span>Screening / Role Fit</span>
-                            <span className="font-display font-semibold text-primary">
-                              {screening != null ? `${Math.round(screening)}%` : "—"}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between gap-3">
-                            <span>Interview Score</span>
-                            <span className="font-display font-semibold text-primary">
-                              {interview != null ? `${Math.round(interview)}%` : "—"}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between gap-3">
-                            <span>Assessment Test</span>
-                            <span className="font-display font-semibold text-primary">
-                              {assessment != null ? `${Math.round(assessment)}%` : "—"}
-                            </span>
-                          </div>
-                          {practicalRequired && (
-                            <div className="flex items-center justify-between gap-3">
-                              <span>Practical Test</span>
-                              <span className="font-display font-semibold text-primary">
-                                {practical != null ? `${Math.round(practical)}%` : "—"}
-                              </span>
-                            </div>
+                    {/* 2 · Preview of every process result */}
+                    {finalEvalProcessPreview({
+                      applicant: finalizing,
+                      screeningScore: screening,
+                      screeningStatus: preview?.scores.screening_status ?? snap.screeningStatus,
+                      interviewScore: interview,
+                      interviewResult,
+                      assessmentRequired,
+                      assessmentScore: assessment,
+                      assessmentResult,
+                      practicalRequired,
+                      practicalScore: practical,
+                      practicalResult,
+                    })}
+
+                    {/* Offer state — updates after a Passed / Recommend decision */}
+                    {finalEvalOfferBanner(finalizing, null)}
+
+                    {/* 3 · Bottom split — HR decision (left) / applicant reply (right) */}
+                    <div className="space-y-3 rounded-lg border border-border/70 bg-card p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="eyebrow">Decision &amp; response</p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {statusBadge(
+                            interviewOk,
+                            `Interview ${interviewOk ? "Passed" : "Not Passed"}`,
                           )}
-                          <div className="flex items-center justify-between gap-3 border-t border-border pt-2">
-                            <span className="font-medium">
-                              Overall Score{" "}
-                              <Badge
-                                variant="outline"
-                                className="ml-1 border-primary/40 text-primary"
-                              >
-                                System Calculated
-                              </Badge>
-                            </span>
-                            <span className="font-display text-xl font-semibold text-primary">
-                              {overall != null ? `${overall}%` : "—"}
-                            </span>
-                          </div>
-                          {preview && !preview.calculation_complete && (
-                            <p className="text-xs text-destructive">
-                              Scores incomplete — the Overall Score cannot be calculated yet.
-                            </p>
+                          {assessmentRequired ? (
+                            statusBadge(
+                              assessmentOk,
+                              `Assessment Test ${assessmentOk ? "Passed" : "Not Passed"}`,
+                            )
+                          ) : (
+                            <Badge variant="outline" className="border-border text-muted-foreground">
+                              Assessment Test Not Required
+                            </Badge>
+                          )}
+                          {practicalRequired ? (
+                            statusBadge(
+                              practicalOk,
+                              `Practical Test ${practicalOk ? "Passed" : "Not Passed"}`,
+                            )
+                          ) : (
+                            <Badge variant="outline" className="border-border text-muted-foreground">
+                              Practical Test Not Required
+                            </Badge>
                           )}
                         </div>
-                      )}
-                      {/* Transparent score breakdown */}
-                      <button
-                        type="button"
-                        className="mt-2 text-xs font-medium text-primary underline-offset-4 hover:underline"
-                        onClick={() => setShowScoreBreakdown((v) => !v)}
-                      >
-                        {showScoreBreakdown ? "Hide score calculation" : "Show score calculation"}
-                      </button>
-                      {showScoreBreakdown && (
-                        <div className="mt-2 space-y-1 rounded-md border border-border bg-background p-2.5 text-xs">
-                          {(breakdown ?? [])
-                            .filter((b) => b.applied)
-                            .map((b) => (
-                              <div key={b.key} className="flex items-center justify-between gap-3">
-                                <span>
-                                  {b.label} — {b.score != null ? `${Math.round(b.score)}%` : "—"} ×{" "}
-                                  {b.weight}%
-                                </span>
-                                <span className="font-medium">
-                                  = {b.contribution != null ? b.contribution.toFixed(2) : "—"}
-                                </span>
-                              </div>
-                            ))}
-                          {!breakdown && (
-                            <p className="text-muted-foreground">
-                              Screening {FINAL_EVALUATION_WEIGHTS.screening}% · Interview{" "}
-                              {FINAL_EVALUATION_WEIGHTS.interview}% · Assessment{" "}
-                              {FINAL_EVALUATION_WEIGHTS.assessment}%
-                              {practicalRequired
-                                ? ` · Practical ${FINAL_EVALUATION_WEIGHTS.practical}%`
-                                : " · Practical not required (weights normalized)"}
-                              .
-                            </p>
-                          )}
-                          <div className="border-t border-border pt-1 font-medium">
-                            Overall Score ={" "}
-                            {preview?.overall_score != null
-                              ? preview.overall_score.toFixed(2)
-                              : "—"}
-                            %
-                            {overall != null &&
-                            preview?.overall_score != null &&
-                            overall !== preview.overall_score
-                              ? ` · Rounded = ${overall}%`
-                              : ""}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* SYSTEM-GENERATED requirement status (read-only) */}
-                    <div className="rounded-md border border-border p-3">
-                      <p className="eyebrow">Requirement Status — System Generated</p>
-                      <div className="mt-2 space-y-1 text-sm">
-                        <p className={interviewOk ? "text-success" : "text-destructive"}>
-                          {interviewOk ? "✓" : "✗"} Interview{" "}
-                          {interviewOk ? "Passed" : "Not Passed"}
-                        </p>
-                        <p className={assessmentOk ? "text-success" : "text-destructive"}>
-                          {assessmentOk ? "✓" : "✗"} Assessment Test{" "}
-                          {assessmentOk ? "Passed" : "Not Passed"}
-                        </p>
-                        {practicalState === "not_required" ? (
-                          <p className="text-muted-foreground">— Practical Test Not Required</p>
-                        ) : (
-                          <p
-                            className={
-                              practicalState === "passed" ? "text-success" : "text-destructive"
-                            }
-                          >
-                            {practicalState === "passed" ? "✓" : "✗"} Practical Test{" "}
-                            {practicalState === "passed" ? "Passed" : "Not Passed"}
-                          </p>
-                        )}
-                        {preview && preview.blocking_verification_issues > 0 && (
-                          <p className="text-xs text-destructive">
-                            ⚠ {preview.blocking_verification_issues} document verification
-                            discrepanc{preview.blocking_verification_issues === 1 ? "y" : "ies"}{" "}
-                            must be resolved before “Recommended for Hire”.
-                          </p>
-                        )}
                       </div>
-                    </div>
-
-                    {/* HR-ENTERED final recommendation */}
-                    <div className="rounded-md border border-primary/30 p-3">
-                      <p className="eyebrow">Final Recommendation — HR Decision</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        The Overall Score supports your decision — it never hires automatically.
-                        Only “Recommended for Hire” can proceed to Offer.
-                      </p>
-                      <div className="mt-2 space-y-2">
-                        {(
-                          [
-                            "Recommended for Hire",
-                            "For Another Position",
-                            "Not Recommended",
-                          ] as FinalRecommendation[]
-                        ).map((r) => (
-                          <label
-                            key={r}
-                            className={cn(
-                              "flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm transition-colors",
-                              finalChoice === r
-                                ? r === "Not Recommended"
-                                  ? "border-destructive bg-destructive/5"
-                                  : "border-success bg-success/5"
-                                : "border-border hover:border-primary/40",
-                            )}
-                          >
-                            <input
-                              type="radio"
-                              name="finalChoice"
-                              className={
-                                r === "Not Recommended" ? "accent-destructive" : "accent-primary"
-                              }
-                              checked={finalChoice === r}
-                              onChange={() => setFinalChoice(r)}
-                            />
-                            {r}
-                          </label>
-                        ))}
-                      </div>
-                      {finalChoice === "For Another Position" && (
-                        <div className="mt-3 space-y-1.5">
+                      {preview && !preview.calculation_complete && (
+                        <p className="text-xs text-destructive">
+                          Scores incomplete — the total score cannot be calculated yet.
+                        </p>
+                      )}
+                      {preview && preview.blocking_verification_issues > 0 && (
+                        <p className="text-xs text-destructive">
+                          ⚠ {preview.blocking_verification_issues} document verification
+                          discrepanc{preview.blocking_verification_issues === 1 ? "y" : "ies"} must
+                          be resolved before “Recommended for Hire”.
+                        </p>
+                      )}
+                      <div className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 md:grid-cols-[minmax(0,240px)_minmax(0,170px)_minmax(0,1fr)]">
+                        <div className="space-y-1.5">
                           <Label>
-                            Recommended Position <span className="text-destructive">*</span>
+                            Evaluated by <span className="text-destructive">*</span>
                           </Label>
-                          <Select value={finalAltJobPostId} onValueChange={setFinalAltJobPostId}>
+                          <Select value={finalAssessor} onValueChange={setFinalAssessor}>
                             <SelectTrigger>
-                              <SelectValue placeholder="Select one available position" />
+                              <SelectValue placeholder="Select" />
                             </SelectTrigger>
                             <SelectContent>
-                              {availableAltPosts.map((j: any) => (
-                                <SelectItem key={j.job_post_id} value={String(j.job_post_id)}>
-                                  {j.title} — {j.department ?? ""} (
-                                  {Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0)} slot
-                                  {Number(j.vacancies ?? 1) - Number(j.filled_count ?? 0) === 1
-                                    ? ""
-                                    : "s"}
-                                  )
+                              {assessors.map((u) => (
+                                <SelectItem key={u.system_user_id} value={String(u.system_user_id)}>
+                                  {u.full_name}
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
-                          {!availableAltPosts.length && (
-                            <p className="text-xs text-destructive">
-                              No open positions with vacancies right now.
-                            </p>
-                          )}
                         </div>
-                      )}
-                      <div className="mt-3 space-y-2">
-                        <Label>
-                          Evaluator Remarks{" "}
-                          {finalChoice === "Not Recommended" && (
-                            <span className="text-destructive">*</span>
-                          )}
-                        </Label>
-                        <Textarea
-                          rows={3}
-                          value={finalRemarks}
-                          onChange={(e) => setFinalRemarks(e.target.value)}
-                          placeholder="Summary of the whole process — reason for the decision…"
-                        />
+                        <div className="space-y-1.5">
+                          <Label>Date</Label>
+                          <Input
+                            type="date"
+                            value={finalDate}
+                            onChange={(e) => setFinalDate(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>
+                            Evaluator Remarks <span className="text-destructive">*</span>{" "}
+                            <span className="text-xs font-normal text-muted-foreground">
+                              (required for Not Passed)
+                            </span>
+                          </Label>
+                          <Textarea
+                            rows={2}
+                            value={finalRemarks}
+                            onChange={(e) => setFinalRemarks(e.target.value)}
+                            placeholder="Summary of the whole process — reason for the decision…"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="rounded-lg border border-border/70 p-3">
+                          {finalEvalDecisionActions()}
+                        </div>
+                        <div className="rounded-lg border border-border/70 p-3">
+                          {finalEvalResponseActions(finalizing, false)}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -16251,25 +17049,7 @@ always one tap away, no scrolling to finish the interview. */}
 
               <DialogFooter className="flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-end">
                 <Button variant="outline" onClick={() => setFinalizing(null)}>
-                  Cancel
-                </Button>
-                <Button
-                  disabled={!finalChoice}
-                  onClick={() =>
-                    finalChoice &&
-                    askConfirm({
-                      title: "Complete the final evaluation?",
-                      description:
-                        finalChoice === "For Another Position"
-                          ? `${finalizing.name} will be evaluated as "For Another Position".`
-                          : `${finalizing.name} will be evaluated with the recommendation "${finalChoice}".`,
-                      confirmLabel: "Yes, complete evaluation",
-                      destructive: finalChoice === "Not Recommended",
-                      onConfirm: () => saveFinalEvaluation(finalChoice),
-                    })
-                  }
-                >
-                  <CheckCircle2 className="mr-1.5 h-4 w-4" /> Complete Final Evaluation
+                  Close
                 </Button>
               </DialogFooter>
             </>
@@ -16277,75 +17057,173 @@ always one tap away, no scrolling to finish the interview. */}
         </DialogContent>
       </Dialog>
 
-      {/* VIEW FINAL EVALUATION DIALOG — same horizontal "Recruitment process
-          results" presentation as the Final Evaluation / Verify dialogs */}
+      {/* VIEW FINAL EVALUATION DIALOG — the same 3-section Final Evaluation
+          layout in review mode: the recorded decision on the left, the
+          applicant's offer reply (Accept / Decline applicant) on the right. */}
       <Dialog open={!!viewingFinal} onOpenChange={(o) => !o && setViewingFinal(null)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto overflow-x-hidden sm:max-w-7xl">
-          {viewingFinal && (
+          {viewingFinal &&
+            (() => {
+              const row = viewingFinal;
+              const linked = rows.find((x) => x.id === row.applicantId);
+              const a: Applicant =
+                linked ??
+                ({
+                  id: row.applicantId,
+                  name: row.name,
+                  position: row.position,
+                  status: "fit",
+                  stage: "Final Evaluation",
+                  email: "",
+                  phone: "",
+                  appliedAt: "",
+                  score: 0,
+                  source: "Online Portal",
+                  entities: [],
+                  breakdown: [],
+                  flags: [],
+                  summary: "",
+                  jobId: "",
+                } as Applicant);
+              const assessmentRequired = requiresAssessment(a.position, a.requiresAssessment);
+              return (
+                <>
+                  <DialogHeader>
+                    <DialogTitle className="font-display text-2xl">Final Evaluation</DialogTitle>
+                    <DialogDescription>
+                      {row.name} — {row.position} · evaluated {row.date}. The recorded decision is
+                      locked; the applicant's offer reply is recorded on the right.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  {/* 1 · Candidate basics + system-calculated total score */}
+                  {finalEvalTopSection({
+                    applicant: a,
+                    overallScore: row.overallScoreRounded ?? row.overallScore ?? null,
+                    breakdown: row.scoreBreakdown ?? null,
+                    screeningScore: row.screeningScore,
+                    interviewScore: row.interviewScore,
+                    assessmentScore: row.assessmentTestScore,
+                    assessmentRequired,
+                    practicalScore: row.practicalTestScore,
+                    practicalRequired: row.practicalRequired,
+                  })}
+
+                  {/* 2 · Preview of every process result */}
+                  {finalEvalProcessPreview({
+                    applicant: a,
+                    screeningScore: row.screeningScore,
+                    screeningStatus: row.screeningStatus,
+                    interviewScore: row.interviewScore,
+                    interviewResult: row.interviewResult ?? null,
+                    assessmentRequired,
+                    assessmentScore: row.assessmentTestScore,
+                    assessmentResult: row.assessmentTestResult ?? null,
+                    practicalRequired: row.practicalRequired,
+                    practicalScore: row.practicalTestScore,
+                    practicalResult: row.practicalTestResult ?? null,
+                  })}
+
+                  {/* Offer state — 7-day response window / recorded reply */}
+                  {finalEvalOfferBanner(a, row.recommendation)}
+
+                  {/* 3 · Bottom split — recorded decision (left) / reply (right) */}
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-2 rounded-lg border border-border/70 bg-card p-3">
+                      <p className="eyebrow">Recorded decision</p>
+                      <p
+                        className={cn(
+                          "font-display text-lg font-semibold",
+                          row.recommendation === "Recommended for Hire"
+                            ? "text-success"
+                            : row.recommendation === "For Another Position"
+                              ? "text-warning"
+                              : "text-destructive",
+                        )}
+                      >
+                        {row.recommendation}
+                      </p>
+                      {row.recommendation === "For Another Position" &&
+                        row.recommendedPositionTitle && (
+                          <p className="text-sm">
+                            Recommended Position:{" "}
+                            <span className="font-medium">{row.recommendedPositionTitle}</span>
+                          </p>
+                        )}
+                      <p className="text-xs text-muted-foreground">
+                        Evaluated by{" "}
+                        {row.evaluatedBy ??
+                          assessors.find(
+                            (u) => String(u.system_user_id) === String(row.evaluatedById),
+                          )?.full_name ??
+                          "—"}{" "}
+                        · {row.date}
+                      </p>
+                      {row.overallRemarks && (
+                        <p className="text-sm text-muted-foreground">{row.overallRemarks}</p>
+                      )}
+                    </div>
+                    <div className="rounded-lg border border-border/70 bg-card p-3">
+                      {finalEvalResponseActions(a, true)}
+                    </div>
+                  </div>
+
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setViewingFinal(null)}>
+                      Close
+                    </Button>
+                  </DialogFooter>
+                </>
+              );
+            })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* ACCEPT APPLICANT — records the applicant's acceptance with the
+          start-of-work date that anchors New Hire Onboarding. */}
+      <Dialog open={!!acceptOfferFor} onOpenChange={(o) => !o && setAcceptOfferFor(null)}>
+        <DialogContent className="sm:max-w-md">
+          {acceptOfferFor && (
             <>
               <DialogHeader>
-                <DialogTitle className="font-display text-2xl">Final Evaluation Result</DialogTitle>
+                <DialogTitle className="font-display text-2xl">Accept applicant</DialogTitle>
                 <DialogDescription>
-                  {viewingFinal.name} — {viewingFinal.position} · {viewingFinal.date}
+                  {acceptOfferFor.name} accepted the offer for {acceptOfferFor.position}. Pick the
+                  start-of-work date — it becomes the day-count anchor for New Hire Onboarding
+                  ("Days of Work").
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-2">
-                {/* Presented result of every recruitment stage, laid out
-                    horizontally with aligned heights */}
-                {stageResultBlocks({
-                  applicantId: viewingFinal.applicantId,
-                  screeningScore: viewingFinal.screeningScore,
-                  screeningStatus: viewingFinal.screeningStatus,
-                  practicalRequired: viewingFinal.practicalRequired,
-                })}
-                <div className="rounded-md border border-border bg-muted/30 p-3">
-                  <p className="eyebrow">Overall Score — System Calculated (read-only)</p>
-                  <p className="font-display text-xl font-semibold text-primary">
-                    {viewingFinal.overallScoreRounded ?? viewingFinal.overallScore ?? "—"}
-                    {(viewingFinal.overallScoreRounded ?? viewingFinal.overallScore) != null
-                      ? "%"
-                      : ""}
-                  </p>
-                  {viewingFinal.scoreBreakdown && viewingFinal.scoreBreakdown.length > 0 && (
-                    <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                      {viewingFinal.scoreBreakdown
-                        .filter((b) => b.applied)
-                        .map((b) => (
-                          <div key={b.key} className="flex items-center justify-between gap-3">
-                            <span>
-                              {b.label} — {b.score != null ? `${Math.round(b.score)}%` : "—"} ×{" "}
-                              {b.weight}%
-                            </span>
-                            <span>
-                              = {b.contribution != null ? b.contribution.toFixed(2) : "—"}
-                            </span>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
-                <div className="rounded-md border border-border p-3">
-                  <p className="eyebrow">Recommendation</p>
-                  <p className="font-display text-xl font-semibold text-primary">
-                    {viewingFinal.recommendation}
-                  </p>
-                  {viewingFinal.recommendation === "For Another Position" &&
-                    viewingFinal.recommendedPositionTitle && (
-                      <p className="mt-1 text-sm">
-                        Recommended Position:{" "}
-                        <span className="font-medium">{viewingFinal.recommendedPositionTitle}</span>
-                      </p>
-                    )}
-                  {viewingFinal.overallRemarks && (
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {viewingFinal.overallRemarks}
-                    </p>
-                  )}
-                </div>
+              <div className="space-y-1.5">
+                <Label>
+                  Start of work date <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  type="date"
+                  value={acceptOfferDate}
+                  onChange={(e) => setAcceptOfferDate(e.target.value)}
+                />
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setViewingFinal(null)}>
-                  Close
+                <Button
+                  variant="outline"
+                  onClick={() => setAcceptOfferFor(null)}
+                  disabled={offerActionBusy}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={!acceptOfferDate || offerActionBusy}
+                  onClick={() => {
+                    if (!acceptOfferDate) return;
+                    void acceptApplicantOffer(acceptOfferFor, acceptOfferDate);
+                  }}
+                >
+                  {offerActionBusy ? (
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                  )}
+                  Accept &amp; send to onboarding
                 </Button>
               </DialogFooter>
             </>

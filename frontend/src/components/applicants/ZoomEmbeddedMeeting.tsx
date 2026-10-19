@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { Loader2, VideoOff, X } from "lucide-react";
 import { interviewsApi } from "@/lib/api";
 
@@ -13,6 +20,16 @@ import { interviewsApi } from "@/lib/api";
 /*                              the Join-link button (mock links).      */
 /*  - signature ok          -> lazy-loads @zoom/meetingsdk, embeds the */
 /*                              live meeting in this box.              */
+/*                                                                     */
+/* Parent <-> embed bridge (same-origin postMessage):                   */
+/*  - The room's control bar sends zoom-command messages (mute, video, */
+/*    open-audio, chat-send, chat-history, request-state) and the      */
+/*    embed page answers with zoomSelfState / zoomChatMessage /        */
+/*    zoomChatHistory / zoomChatError events.                          */
+/*  - The SDK lays itself out for a ~500px-tall room; when the pane is */
+/*    shorter the iframe is scaled down so Zoom's own toolbar (mic,    */
+/*    camera, participants, chat, leave) stays visible instead of      */
+/*    being clipped below the video.                                   */
 /* ------------------------------------------------------------------ */
 
 export type ZoomEmbedState =
@@ -21,26 +38,74 @@ export type ZoomEmbedState =
   | { status: "live" }
   | { status: "fallback"; reason: string };
 
-export function ZoomEmbeddedMeeting({
-  interviewDbId,
-  joinUrl,
-  userName,
-  autoStartVideo = true,
-  onStateChange,
-  fill = false,
-}: {
-  interviewDbId?: number | null;
-  joinUrl?: string | null;
-  /** Display name shown on the video tile (defaults to the interviewer). */
-  userName?: string | null;
-  /** Start the local camera right after joining so HR sees themselves
-   *  instantly instead of a black stage + "No video yet" pill. */
-  autoStartVideo?: boolean;
-  onStateChange?: (s: ZoomEmbedState) => void;
-  /** Stretch to the parent instead of a fixed height (used by the Zoom room). */
-  fill?: boolean;
-}) {
+/** In-meeting chat message surfaced by the embed page. */
+export type ZoomChatEntry = {
+  id: string;
+  sender: string;
+  userId: number | null;
+  text: string;
+  /** Epoch milliseconds. */
+  time: number;
+  /** True for messages sent from this room. */
+  self?: boolean;
+};
+
+/** Imperative device/chat controls the room's control bar drives. */
+export type ZoomEmbeddedMeetingHandle = {
+  setMuted: (mute: boolean) => void;
+  setVideo: (on: boolean) => void;
+  openAudioSettings: () => void;
+  sendChat: (text: string) => void;
+  requestChatHistory: () => void;
+  requestState: () => void;
+};
+
+/** The SDK sizes its meeting window for at least this height (video +
+ *  toolbar). Shorter panes get scaled down instead of clipped. */
+const MIN_MEETING_HEIGHT = 500;
+
+export const ZoomEmbeddedMeeting = forwardRef<
+  ZoomEmbeddedMeetingHandle,
+  {
+    interviewDbId?: number | null;
+    joinUrl?: string | null;
+    /** Display name shown on the video tile (defaults to the interviewer). */
+    userName?: string | null;
+    /** Start the local camera right after joining so HR sees themselves
+     *  instantly instead of a black stage + "No video yet" pill. */
+    autoStartVideo?: boolean;
+    onStateChange?: (s: ZoomEmbedState) => void;
+    /** Chat message received in the meeting (also echoes our own sends). */
+    onChatMessage?: (m: ZoomChatEntry) => void;
+    /** Buffered chat history from the embed page (sent on request). */
+    onChatHistory?: (m: ZoomChatEntry[]) => void;
+    /** Chat command failed (e.g. in-meeting chat disabled). */
+    onChatError?: (message: string) => void;
+    /** Non-fatal notice from the meeting controls (shown as a toast). */
+    onNotice?: (message: string) => void;
+    /** Mute / camera state reported by the SDK (keeps the bar in sync). */
+    onSelfState?: (s: { muted?: boolean; videoOn?: boolean }) => void;
+    /** Stretch to the parent instead of a fixed height (used by the Zoom room). */
+    fill?: boolean;
+  }
+>(function ZoomEmbeddedMeeting(
+  {
+    interviewDbId,
+    joinUrl,
+    userName,
+    autoStartVideo = true,
+    onStateChange,
+    onChatMessage,
+    onChatHistory,
+    onChatError,
+    onNotice,
+    onSelfState,
+    fill = false,
+  },
+  ref,
+) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
   const clientRef = useRef<{ leaveMeeting: () => Promise<void> } | null>(null);
   const joinedRef = useRef(false);
   const [state, setState] = useState<ZoomEmbedState>({ status: "idle" });
@@ -53,10 +118,72 @@ export function ZoomEmbeddedMeeting({
   // shown in the pill so HR gets an action instead of a generic nudge.
   const [videoHint, setVideoHint] = useState<string | null>(null);
 
-  const set = (s: ZoomEmbedState) => {
-    setState(s);
-    onStateChange?.(s);
-  };
+  const set = useCallback(
+    (s: ZoomEmbedState) => {
+      setState(s);
+      onStateChange?.(s);
+    },
+    [onStateChange],
+  );
+
+  /** Forward a control command to the embed page. */
+  const post = useCallback((payload: Record<string, unknown>) => {
+    try {
+      frameRef.current?.contentWindow?.postMessage(payload, "*");
+    } catch {
+      /* iframe gone — the room is closing anyway */
+    }
+  }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      setMuted: (mute: boolean) => post({ type: "zoom-command", command: "mute", value: mute }),
+      setVideo: (on: boolean) => post({ type: "zoom-command", command: "video", value: on }),
+      openAudioSettings: () => post({ type: "zoom-command", command: "open-audio" }),
+      sendChat: (text: string) => post({ type: "zoom-command", command: "chat-send", text }),
+      requestChatHistory: () => post({ type: "zoom-command", command: "chat-history" }),
+      requestState: () => post({ type: "zoom-command", command: "request-state" }),
+    }),
+    [post],
+  );
+
+  // Long-lived bridge listener: chat + device state arrive for the whole
+  // life of the room, not just during the join handshake.
+  useEffect(() => {
+    const onMsg = (ev: MessageEvent) => {
+      const data = ev.data as {
+        zoomChatMessage?: ZoomChatEntry;
+        zoomChatHistory?: ZoomChatEntry[];
+        zoomChatError?: string;
+        zoomNotice?: string;
+        zoomSelfState?: { muted?: boolean; videoOn?: boolean };
+        zoomVideoOn?: boolean;
+        zoomVideoHint?: string;
+      };
+      if (!data || typeof data !== "object") return;
+      if (data.zoomChatMessage) onChatMessage?.(data.zoomChatMessage);
+      if (Array.isArray(data.zoomChatHistory)) onChatHistory?.(data.zoomChatHistory);
+      if (typeof data.zoomChatError === "string" && data.zoomChatError) {
+        onChatError?.(data.zoomChatError);
+      }
+      if (typeof data.zoomNotice === "string" && data.zoomNotice) {
+        onNotice?.(data.zoomNotice);
+      }
+      if (data.zoomSelfState && typeof data.zoomSelfState === "object") {
+        onSelfState?.(data.zoomSelfState);
+      }
+      if (typeof data.zoomVideoOn === "boolean") {
+        setVideoOn(data.zoomVideoOn);
+        if (data.zoomVideoOn) setVideoHint(null);
+      }
+      if (typeof data.zoomVideoHint === "string" && data.zoomVideoHint) {
+        setVideoHint(data.zoomVideoHint);
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [onChatMessage, onChatHistory, onChatError, onNotice, onSelfState]);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,6 +198,27 @@ export function ZoomEmbeddedMeeting({
     setVideoOn(false);
     setVideoHint(null);
     setHintDismissed(false);
+
+    /** Size the iframe so the SDK's full window (video + its own toolbar)
+     *  fits the pane. The SDK always lays out for >= MIN_MEETING_HEIGHT,
+     *  so a short pane would crop the toolbar; when that happens the
+     *  iframe is made taller/wider and scaled back down with a CSS
+     *  transform (hit-testing follows the transform, so the toolbar
+     *  stays clickable). */
+    const fitFrameToPane = () => {
+      const el = frameRef.current;
+      const root = rootRef.current;
+      if (!el || !root) return;
+      const box = root.getBoundingClientRect();
+      if (box.width < 40 || box.height < 40) return;
+      const scale = Math.min(1, box.height / MIN_MEETING_HEIGHT);
+      const innerW = Math.round(box.width / scale);
+      const innerH = Math.round(box.height / scale);
+      el.style.transformOrigin = "top left";
+      el.style.transform = scale < 1 ? `scale(${scale})` : "none";
+      el.style.width = `${innerW}px`;
+      el.style.height = `${innerH}px`;
+    };
 
     (async () => {
       // 1) Mint a join signature from the backend (secret never leaves server).
@@ -135,15 +283,17 @@ export function ZoomEmbeddedMeeting({
         const frame = window.document.createElement("iframe");
         frame.title = "Zoom meeting";
         frame.allow = "camera; microphone; display-capture; autoplay; clipboard-write";
-        frame.style.width = "100%";
-        frame.style.minHeight = "320px";
-        frame.style.height = "100%";
         frame.style.border = "0";
         frame.style.background = "#000";
         root.replaceChildren(frame);
+        frameRef.current = frame;
+        fitFrameToPane();
+        const resizeObserver = new ResizeObserver(fitFrameToPane);
+        resizeObserver.observe(root);
         clientRef.current = {
           leaveMeeting: async () => {
             try {
+              resizeObserver.disconnect();
               frame.src = "about:blank";
             } catch {
               /* ignore */
@@ -185,8 +335,6 @@ export function ZoomEmbeddedMeeting({
               zoomEmbedReady?: boolean;
               zoomEmbedJoined?: boolean;
               zoomEmbedError?: string;
-              zoomVideoOn?: boolean;
-              zoomVideoHint?: string;
             };
             if (!data || typeof data !== "object") return;
             if (data.zoomEmbedReady) {
@@ -195,6 +343,7 @@ export function ZoomEmbeddedMeeting({
               // fail with "Already has other meetings in progress".
               if (cancelled) return;
               phase = "join";
+              fitFrameToPane();
               try {
                 // Post to the iframe's actual origin ("*" is safe here: the
                 // payload is a single-use join signature for this meeting).
@@ -219,17 +368,6 @@ export function ZoomEmbeddedMeeting({
               window.clearTimeout(timer);
               window.removeEventListener("message", onMsg);
               reject(new Error(data.zoomEmbedError));
-            } else if (typeof data.zoomVideoOn === "boolean") {
-              // Camera-state nudge channel: arrives after join, independent
-              // of the settled handshake above — never settle/reject here.
-              if (!cancelled) {
-                setVideoOn(data.zoomVideoOn);
-                if (data.zoomVideoOn) setVideoHint(null);
-              }
-            } else if (typeof data.zoomVideoHint === "string" && data.zoomVideoHint) {
-              // Actionable camera failure from the embed page (e.g. startVideo
-              // rejected) — surface the exact reason instead of the generic pill.
-              if (!cancelled) setVideoHint(data.zoomVideoHint);
             }
           };
           window.addEventListener("message", onMsg);
@@ -239,6 +377,7 @@ export function ZoomEmbeddedMeeting({
           frame.src = `/zoom-embed.html?t=${Date.now()}`;
         });
         if (cancelled) return;
+        fitFrameToPane();
         joinedRef.current = true;
         set({ status: "live" });
       } catch (e) {
@@ -260,6 +399,7 @@ export function ZoomEmbeddedMeeting({
 
     return () => {
       cancelled = true;
+      frameRef.current = null;
       if (joinedRef.current) {
         joinedRef.current = false;
         try {
@@ -293,7 +433,7 @@ export function ZoomEmbeddedMeeting({
   }
 
   return (
-    <div className="relative h-full w-full bg-black">
+    <div className="relative h-full w-full overflow-hidden bg-black">
       <div
         ref={rootRef}
         id="zoom-embed-root"
@@ -328,4 +468,4 @@ export function ZoomEmbeddedMeeting({
       )}
     </div>
   );
-}
+});

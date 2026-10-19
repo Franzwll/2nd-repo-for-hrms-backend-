@@ -17,6 +17,10 @@ class OfferNewJobMail extends Mailable
         public string $applicantName,
         public string $offeredPosition,
         public ?string $details = null,
+        /** Deadline the applicant must respond by (7-day window), when the
+         *  offer requires a response — null for plain referral emails. */
+        public ?string $responseDeadline = null,
+        public ?int $responseWindowDays = null,
     ) {
     }
 
@@ -32,9 +36,11 @@ class OfferNewJobMail extends Mailable
         return new Content(
             view: 'emails.applicant-offer',
             with: [
-                'applicantName'   => $this->applicantName,
-                'offeredPosition' => $this->offeredPosition,
-                'details'         => $this->details,
+                'applicantName'      => $this->applicantName,
+                'offeredPosition'    => $this->offeredPosition,
+                'details'            => $this->details,
+                'responseDeadline'   => $this->responseDeadline,
+                'responseWindowDays' => $this->responseWindowDays,
             ],
         );
     }
