@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class HotelHrDatabaseSeeder extends Seeder
 {
@@ -13,9 +14,22 @@ class HotelHrDatabaseSeeder extends Seeder
      * The dump contains the full 42-table dataset (departments, employees,
      * applicants, requisitions, hires, ESS, payroll, learning, settings...)
      * matching the initial frontend fixtures.
+     *
+     * The dump uses explicit primary keys and plain INSERTs (no TRUNCATE), so it
+     * can only run against an EMPTY schema. Guard re-runs: otherwise `db:seed` on
+     * a populated database aborts with "Duplicate entry '…' for key 'PRIMARY'".
      */
     public function run(): void
     {
+        if (Schema::hasTable('employees') && DB::table('employees')->exists()) {
+            $this->command?->warn(
+                'HotelHrDatabaseSeeder: database already contains data - skipping. '.
+                'For a clean rebuild run: php artisan migrate:fresh --seed'
+            );
+
+            return;
+        }
+
         $file = database_path('seeders/data/hotel_hr_seed_mysql.sql');
 
         if (! file_exists($file)) {

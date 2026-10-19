@@ -29,6 +29,7 @@ class InterviewResource extends JsonResource
             'applicant_id'            => $this->applicant_id,
             'scheduled_date'          => $this->scheduled_date?->toDateString(),
             'scheduled_time'          => $this->scheduled_time,
+            'scheduled_end_time'      => $this->scheduled_end_time,
             'mode'                    => $this->mode,
             'facility_id'             => $this->facility_id,
             'facility_status'         => $this->facility_status,

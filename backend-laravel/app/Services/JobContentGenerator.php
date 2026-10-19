@@ -144,7 +144,7 @@ class JobContentGenerator
     }
 
     /**
-     * @param  array{position_title:string,department?:string|null,employment_type?:string|null,schedule?:string|null,vacancies?:int|null,experience_level?:string|null,education_level?:string|null}  $job
+     * @param  array{position_title:string,department?:string|null,employment_type?:string|null,schedule?:string|null,vacancies?:int|null,experience_level?:string|null,education_level?:string|null,skills?:string[],requested_note?:string|null}  $job
      * @param  array{skills:string[],certifications:string[]}  $vocabulary
      * @return array{ok:bool,data:?array,error:?string,code?:string,retry_after_seconds?:?int,resets_at?:?string,usage?:array,via?:array}
      */
@@ -775,8 +775,38 @@ class JobContentGenerator
      * Vocab-preferred prompt: the model reuses vocabulary terms verbatim
      * inside qualifications (and certifications) and writes only the
      * requested prose blocks. Skills are NOT generated — they come from the
-     * position's requirement template.
+     * position's requirement template. When the post already carries its own
+     * screening requirements ($job['skills']), those are listed first and the
+     * model is told to reflect them; $job['requested_note'] carries the
+     * sourcing requisition's justification as extra role context.
      */
+    /**
+     * Screening level chips: the post accepts any of several levels, so the
+     * prompt reads "A, B or C". Falls back to the single screening level when
+     * the builder sent only that (older clients, or one chip picked).
+     */
+    protected function levelLine(array $levels, ?string $scalar): ?string
+    {
+        $levels = array_values(array_unique(array_filter(array_map(
+            static fn ($l) => trim((string) $l),
+            $levels
+        ))));
+
+        if ($levels === []) {
+            $scalar = $scalar !== null ? trim($scalar) : '';
+
+            return $scalar === '' ? null : $scalar;
+        }
+
+        if (count($levels) === 1) {
+            return $levels[0];
+        }
+
+        $last = array_pop($levels);
+
+        return implode(', ', $levels).' or '.$last;
+    }
+
     protected function buildPrompt(array $job, array $vocabulary): string
     {
         $skills = array_values(array_unique(array_filter(array_map('trim', $vocabulary['skills'] ?? []))));
@@ -785,6 +815,15 @@ class JobContentGenerator
         // Keep the prompt bounded: most hotel vocabularies fit, but cap anyway.
         $skills = array_slice($skills, 0, 150);
         $certs = array_slice($certs, 0, 60);
+
+        // The post's own screening requirements (already on the draft).
+        $requiredSkills = array_values(array_unique(array_filter(array_map(
+            fn ($s) => trim((string) $s),
+            (array) ($job['skills'] ?? []),
+        ))));
+        $requiredSkills = array_slice($requiredSkills, 0, 40);
+
+        $requestedNote = trim((string) ($job['requested_note'] ?? ''));
 
         $blocks = $job['blocks'] ?? ['description', 'responsibilities', 'qualifications', 'additional', 'instructions', 'about'];
         $blocks = array_values(array_intersect(
@@ -811,23 +850,29 @@ class JobContentGenerator
             '- Employment type: ' . ($job['employment_type'] ?? 'Full-time'),
             '- Schedule: ' . ($job['schedule'] ?? 'Shifting Schedule'),
             '- Vacancies: ' . ($job['vacancies'] ?? 1),
-            '- Experience level: ' . ($job['experience_level'] ?? 'Not specified'),
-            '- Education level: ' . ($job['education_level'] ?? 'Not specified'),
-            '',
-            'Screening vocabulary (terms the applicant-screening model recognizes):',
-            '- SKILLS: ' . ($skills ? implode('; ', $skills) : '(none)'),
-            '- CERTIFICATIONS: ' . ($certs ? implode('; ', $certs) : '(none)'),
-            '',
-            'Rules:',
+            '- Experience level: ' . ($this->levelLine($job['experience_levels'] ?? [], $job['experience_level'] ?? null) ?? 'Not specified'),
+            '- Education level: ' . ($this->levelLine($job['education_levels'] ?? [], $job['education_level'] ?? null) ?? 'Not specified'),
         ];
+        if ($requestedNote !== '') {
+            $lines[] = '- Staffing request note: ' . $requestedNote;
+        }
+        if ($requiredSkills !== []) {
+            $lines[] = '- Required skills for this post (reuse these exact terms where relevant): ' . implode('; ', $requiredSkills);
+        }
+        $lines[] = '';
+        $lines[] = 'Screening vocabulary (terms the applicant-screening model recognizes):';
+        $lines[] = '- SKILLS: ' . ($skills ? implode('; ', $skills) : '(none)');
+        $lines[] = '- CERTIFICATIONS: ' . ($certs ? implode('; ', $certs) : '(none)');
+        $lines[] = '';
+        $lines[] = 'Rules:';
         if (in_array('description', $blocks, true)) {
             $lines[] = '1. description: 2-3 sentences pitching the role at Oxford Suites Makati.' . $noteFor('description');
         }
         if (in_array('responsibilities', $blocks, true)) {
-            $lines[] = '2. responsibilities: 5-7 bullets, each under 120 characters, plain text, no numbering. Prefer SKILLS vocabulary wording where it fits naturally.' . $noteFor('responsibilities');
+            $lines[] = '2. responsibilities: 5-7 bullets, each under 120 characters, plain text, no numbering. Prefer the REQUIRED SKILLS wording where it fits naturally, otherwise SKILLS vocabulary.' . $noteFor('responsibilities');
         }
         if (in_array('qualifications', $blocks, true)) {
-            $lines[] = '3. qualifications: 4-6 bullets; reuse SKILLS terms verbatim where relevant and mention a CERTIFICATION from the list above when relevant (e.g. TESDA NC II, Food Handler).' . $noteFor('qualifications');
+            $lines[] = '3. qualifications: 4-6 bullets; reuse the REQUIRED SKILLS terms verbatim where relevant and mention a CERTIFICATION from the list above when relevant (e.g. TESDA NC II, Food Handler).' . $noteFor('qualifications');
         }
         if (in_array('additional', $blocks, true)) {
             $lines[] = '4. additional: 3-5 bullets of perks / shift details / dress code — only promise what is standard for a Makati hotel posting, plain text, no numbering.' . $noteFor('additional');

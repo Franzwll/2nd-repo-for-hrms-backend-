@@ -276,7 +276,7 @@ function ChatbotFaqSettingsCard() {
         </div>
 
         {/* Insights — compact usage summary mirroring the full manager */}
-        <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
           <div className="rounded-lg border border-border/70 p-2.5">
             <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
               Conversations today

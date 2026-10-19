@@ -45,6 +45,8 @@ class JobPost extends Model
         'active',
         'experience_level',
         'education_level',
+        'experience_levels',
+        'education_levels',
         'summary',
         'description',
         'responsibilities_json',
@@ -65,6 +67,10 @@ class JobPost extends Model
         'skills_json' => 'array',
         'additional_json' => 'array',
         'blocks_json' => 'array',
+        /* Accepted screening levels ("any of these"). The scalar
+           education_level / experience_level keep holding the weakest one. */
+        'education_levels' => 'array',
+        'experience_levels' => 'array',
         'active' => 'boolean',
         'requires_practical' => 'boolean',
         'requires_assessment' => 'boolean',

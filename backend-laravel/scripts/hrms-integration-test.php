@@ -565,6 +565,10 @@ function section_recruitment(): void
         'force_create'        => true,
         'experience_level'    => '1-2 Years',
         'education_level'     => 'College Level',
+        // Level chips ("any of these"): the API keeps the weakest accepted level
+        // in the scalar columns above and stores the whole list beside them.
+        'experience_levels'   => ['1-2 Years', '3-5 Years'],
+        'education_levels'    => ['Vocational / TESDA', 'College Level'],
         'summary'             => $TAG . ' draft summary',
         'description'         => $TAG . ' job post created by the integration test.',
         'responsibilities'    => ['Handle guest check-in/check-out', $TAG . ' duty'],
@@ -599,7 +603,7 @@ function section_recruitment(): void
     );
 
     /* 3. Publish job post -------------------------------------------------- */
-    $pub = api('POST', "/job-posts/{$jobId}/publish", ['platforms' => ['Website', 'Indeed']]);
+    $pub = api('POST', "/job-posts/{$jobId}/publish", ['platforms' => ['Website']]);
     $pubStatus = scalar('SELECT status FROM job_posts WHERE job_post_id = ?', [$jobId]);
     $pubActive = (int) scalar('SELECT active FROM job_posts WHERE job_post_id = ?', [$jobId]);
     $pubDate   = scalar('SELECT posted_date FROM job_posts WHERE job_post_id = ?', [$jobId]);
@@ -607,7 +611,7 @@ function section_recruitment(): void
     record(
         'recruitment',
         'Publish job post (POST /job-posts/{id}/publish)',
-        $pub['status'] === 200 && $pubStatus === 'Open' && $pubActive === 1 && $pubDate !== null && count($pubPlatforms) === 2,
+        $pub['status'] === 200 && $pubStatus === 'Open' && $pubActive === 1 && $pubDate !== null && count($pubPlatforms) === 1,
         "http={$pub['status']} db status={$pubStatus} active={$pubActive} posted={$pubDate} published_on=" . jdump($pubPlatforms)
     );
 

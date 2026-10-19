@@ -461,7 +461,7 @@ function OTPPage() {
                   onKeyDown={(e) => handleKeyDown(idx, e)}
                   onPaste={handlePaste}
                   className={cn(
-                    "h-12 w-10 rounded-md border text-center text-lg font-semibold transition-all outline-none",
+                    "h-12 min-w-0 flex-1 max-w-9 rounded-md border text-center text-lg font-semibold transition-all outline-none",
                     "border-border bg-muted/40 text-foreground",
                     "focus:border-primary focus:ring-2 focus:ring-primary/25",
                     d ? "border-primary/50 bg-primary/5" : "",

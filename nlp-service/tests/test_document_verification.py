@@ -198,9 +198,9 @@ class TestSupportingDocumentVerification(unittest.TestCase):
         self.assertEqual(result["checks"], {})
         self.assertTrue(result["extracted_document_profile"])
 
-    # 11. Month-level rounding on one side is the same period, not a discrepancy.
-    #     resume: April 2018 - December 2021 / COE: August 1, 2018 - December 20, 2021
-    def test_coe_month_level_start_within_tolerance_matches(self):
+    # 11. A one-or-more-month shift between named months is a material date
+    #     discrepancy, not rounding. (Resume April 2018 vs COE August 1, 2018.)
+    def test_coe_month_level_start_gap_detected(self):
         profile = {
             **RESUME_PROFILE,
             "work_experience": [
@@ -214,13 +214,11 @@ class TestSupportingDocumentVerification(unittest.TestCase):
             ],
         }
         result = dv.verify_supporting_document(COE_ROUNDED_DATES_TEXT, "COE", profile)
-        self.assertEqual(result["checks"]["start_date"]["result"], "MATCH")
-        self.assertEqual(
-            result["checks"]["start_date"]["match_method"], dv.METHOD_DATE_TOLERANCE
-        )
-        self.assertIn("Same period", result["checks"]["start_date"]["note"])
+        self.assertEqual(result["checks"]["start_date"]["result"], "MISMATCH")
+        self.assertEqual(result["checks"]["start_date"]["normalized_resume"], "2018-04")
+        self.assertEqual(result["checks"]["start_date"]["normalized_document"], "2018-08")
         self.assertEqual(result["checks"]["end_date"]["result"], "MATCH")
-        self.assertEqual(result["verification_status"], "VERIFIED")
+        self.assertEqual(result["verification_status"], "DISCREPANCY_FOUND")
 
     # 12. A gap wider than the tolerance window is still a real discrepancy.
     def test_coe_start_outside_tolerance_still_mismatch(self):

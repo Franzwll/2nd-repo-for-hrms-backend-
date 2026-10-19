@@ -67,7 +67,7 @@ import type { Employee } from "@/data/hr";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 
-import { auditLogApi, ermApi, type ApiAuditLog, type ApiDocument, type ApiEmployee } from "@/lib/api";
+import { auditLogApi, hcmApi, type ApiAuditLog, type ApiEmployee } from "@/lib/api";
 import { DocumentRequestInbox } from "./employee-records/DocumentRequestInbox";
 import {
   getEmployeeByCode,
@@ -83,7 +83,7 @@ import {
   printReport,
   type ReportFormat,
 } from "@/lib/report-export";
-import { usePasswordGate, ReportMenu } from "@/components/ui/report-menu";
+import { usePasswordGate } from "@/components/ui/report-menu";
 import { usePagination } from "@/hooks/usePagination";
 import { useHighlightId, highlightRowClass } from "@/hooks/useHighlight";
 
@@ -316,6 +316,8 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [profileId, setProfileId] = useState<string | null>(null);
   const recordDetail = useRecordDetail(profileId);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [docType, setDocType] = useState(documentTypes[0]!);
   const [generatedDocs, setGeneratedDocs] = useState<GeneratedDoc[]>([]);
   const [generatedOpen, setGeneratedOpen] = useState(false);
@@ -787,71 +789,76 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     };
   };
 
-  /** Company-wide reports for the shared ReportMenu picker — one option per
-   *  predefined report, all exporting through the SAME locked-ZIP flow. */
-  const companyReportOptions = reportTypes.map((reportName) => ({
-    id: reportName,
-    title: reportName,
-    build: () => buildCompanyReport(reportName),
-    recordCount: list.length,
-  }));
+  /** EXPORT path only — downloads the company report, never prints. */
+  const exportCompanyReport = (reportName: string, format: ReportFormat) => {
+    gateSensitive({ sensitive: true }, () => {
+      exportReport(buildCompanyReport(reportName), format);
+      toast.success(`${reportName} exported as ${format.toUpperCase()}.`);
+    });
+  };
 
   return (
     <div>
       {gateDialog}
       <PageHeader
         title="Employee Records"
-        description="201 files, employment details, certificate and report generation."
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <span className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-[0.7rem] text-muted-foreground">
               <ShieldCheck className="h-3.5 w-3.5" /> Password-protected records
             </span>
-            <ReportMenu size="sm" reports={companyReportOptions} />
+            <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>
+              <FileText className="mr-2 h-4 w-4" /> Generate reports
+            </Button>
           </div>
         }
       />
 
-      {requestCountsLoading ? (
-        <StatCardsSkeleton count={4} />
-      ) : (
-        <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard
-            label="Total Employees"
-            value={list.length}
-            icon={Users}
-            tone="primary"
-            onClick={() => {
-              setTypeFilter("all");
-              setStatusFilter("all");
-            }}
-          />
-          <StatCard
-            label="Total requests"
-            value={requestCounts.total}
-            icon={Inbox}
-            tone="primary"
-            onClick={() => setMainTab("requests")}
-          />
-          <StatCard
-            label="Awaiting fulfilment"
-            value={requestCounts.pending}
-            icon={Clock}
-            tone="caution"
-            onClick={() => setMainTab("requests")}
-          />
-          <StatCard
-            label="Fulfilled"
-            value={requestCounts.fulfilled}
-            icon={CheckCircle2}
-            tone="success"
-            onClick={() => setMainTab("requests")}
-          />
-        </div>
-      )}
+      <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Total Employees"
+          value={list.length}
+          icon={Users}
+          tone="primary"
+          onClick={() => {
+            setTypeFilter("all");
+            setStatusFilter("all");
+          }}
+        />
+        <StatCard
+          label="Regular"
+          value={list.filter((e) => e.employmentType === "Regular").length}
+          icon={BadgeCheck}
+          tone="success"
+          onClick={() => {
+            setTypeFilter("Regular");
+            setStatusFilter("all");
+          }}
+        />
+        <StatCard
+          label="Probationary"
+          value={list.filter((e) => e.employmentType === "Probationary").length}
+          icon={Clock}
+          tone="gold"
+          onClick={() => {
+            setTypeFilter("Probationary");
+            setStatusFilter("all");
+          }}
+        />
+        <StatCard
+          label="Inactive"
+          value={list.filter((e) => e.status === "Inactive").length}
+          icon={Users}
+          tone="caution"
+          onClick={() => {
+            setStatusFilter("Inactive");
+            setTypeFilter("all");
+          }}
+        />
+      </div>
 
-      <Tabs value={mainTab} onValueChange={setMainTab} className="mt-6">
-        <TabsList className="flex h-auto flex-wrap justify-start">
+      <Tabs defaultValue="list" className="mt-6">
+        <TabsList>
           <TabsTrigger className="flex items-center gap-1.5" value="list">
             <Users className="h-3.5 w-3.5" /> Employee List
           </TabsTrigger>
@@ -882,11 +889,11 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     </p>
                   ) : null}
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <div className="relative">
+                <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+                  <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      className="w-56 pl-9"
+                      className="pl-9"
                       placeholder="Search employee…"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -1114,11 +1121,11 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     <History className="h-5 w-5 text-primary" /> Record History
                   </h2>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <div className="relative">
+                <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+                  <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      className="w-64 pl-9"
+                      className="pl-9"
                       placeholder="Search logs…"
                       value={logSearch}
                       onChange={(e) => setLogSearch(e.target.value)}
@@ -1333,7 +1340,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     onValueChange={setProfileTab}
                     className="flex min-h-0 flex-1 flex-col"
                   >
-                    <TabsList className="flex h-auto flex-wrap justify-start">
+                    <TabsList>
                       <TabsTrigger value="personal">Personal Information</TabsTrigger>
                       <TabsTrigger value="documents">Documents</TabsTrigger>
                       <TabsTrigger value="history">Employment History</TabsTrigger>
@@ -1816,8 +1823,37 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
         </DialogContent>
       </Dialog>
 
-      {/* BULK REPORTS — now handled by the shared ReportMenu picker in the
-          PageHeader (same locked-ZIP flow as every module). */}
+      {/* BULK REPORTS */}
+
+      <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">Generate Reports</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            {reportTypes.map((r) => (
+              <div
+                key={r}
+                className="flex items-center justify-between rounded-md border border-border p-3"
+              >
+                <span className="text-sm">{r}</span>
+                <div className="flex gap-1.5">
+                  {(["pdf", "excel"] as ReportFormat[]).map((format) => (
+                    <Button
+                      key={format}
+                      size="sm"
+                      variant="outline"
+                      onClick={() => exportCompanyReport(r, format)}
+                    >
+                      <Download className="mr-1.5 h-3.5 w-3.5" /> {format.toUpperCase()}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* EDIT PERSONAL DATA */}
       {/* ADD / EDIT DOCUMENT */}

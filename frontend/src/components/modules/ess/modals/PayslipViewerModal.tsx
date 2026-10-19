@@ -90,7 +90,7 @@ export function PayslipViewerModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[850px] max-h-[92vh] overflow-y-auto p-4 sm:p-6 print:p-0 print:border-none print:shadow-none">
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[850px] max-h-[92vh] overflow-y-auto p-4 sm:p-6 print:p-0 print:border-none print:shadow-none">
         <DialogHeader className="print:hidden">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">

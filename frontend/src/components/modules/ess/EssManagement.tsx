@@ -637,7 +637,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
       )}
 
       <Tabs defaultValue="requests" className="mt-6">
-        <TabsList className="flex h-auto flex-wrap justify-start">
+        <TabsList>
           <TabsTrigger className="flex items-center gap-1.5" value="requests">
             <ListChecks className="h-3.5 w-3.5" /> Request Queue
           </TabsTrigger>
@@ -663,11 +663,11 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                 <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                   <Send className="h-5 w-5 text-primary" /> Employee Requests
                 </h2>
-                <div className="flex flex-wrap gap-2">
-                  <div className="relative">
+                <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+                  <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      className="w-56 pl-9"
+                      className="pl-9"
                       placeholder="Search employee or request…"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -1254,7 +1254,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>SLA — first response (hrs)</Label>
                       <Input type="number" defaultValue={8} />
@@ -1294,11 +1294,11 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                   <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                     <Clock className="h-5 w-5 text-primary" /> ESS Activity Log
                   </h2>
-                  <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                    <div className="relative">
+                  <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+                    <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
-                        className="w-56 pl-9"
+                        className="pl-9"
                         placeholder="Search user, action, request…"
                         value={logSearch}
                         onChange={(e) => setLogSearch(e.target.value)}

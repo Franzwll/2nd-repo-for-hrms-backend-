@@ -172,8 +172,6 @@ import {
   DEFAULT_ACCOUNT_PASSWORD,
   hireStore,
   useHires,
-  useMasterChecklists,
-  type ChecklistViewTarget,
 } from "@/data/hires";
 import { jobs } from "@/data/jobs";
 import { useNavigate } from "@tanstack/react-router";
@@ -338,6 +336,7 @@ function transformApiInterview(i: ApiInterview): Interview {
     position: i.applicant?.position || "Front Desk Receptionist",
     date: i.scheduled_date,
     time: formatApiTime(i.scheduled_time),
+    endTime: i.scheduled_end_time ? formatApiTime(i.scheduled_end_time) : null,
     interviewer: i.interviewer_name || "HR Officer",
     mode: i.mode,
     status: i.status,
@@ -759,6 +758,21 @@ const getInterviewWindow = (
   return nowMins < start + duration ? "live" : "ended";
 };
 
+/** Interview length in minutes — an explicit end time wins, otherwise the
+ *  configured slot interval applies. */
+const interviewDurationMinutes = (
+  timeLabel: string,
+  endLabel: string | null | undefined,
+  fallbackMinutes: number,
+): number => {
+  if (endLabel) {
+    const start = parseInterviewTimeToMinutes(timeLabel);
+    const end = parseInterviewTimeToMinutes(endLabel);
+    if (start !== null && end !== null && end > start) return end - start;
+  }
+  return fallbackMinutes;
+};
+
 /** Formats minutes-from-midnight into a 12-hour "hh:mm AM/PM" label. */
 const formatMinutesAsTime = (mins: number) => {
   const total = ((mins % (24 * 60)) + 24 * 60) % (24 * 60);
@@ -768,6 +782,10 @@ const formatMinutesAsTime = (mins: number) => {
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${String(h12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${suffix}`;
 };
+
+/** "HH:MM" (24-hour) — the value an <input type="time"> expects for these minutes. */
+const minutesToInputTime = (mins: number) =>
+  `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
 
 /** Builds the day's time slots from a start time, interval and slot count. */
 const buildTimeSlots = (startTime: string, intervalMinutes: number, count: number) => {
@@ -1144,7 +1162,7 @@ export function ScreeningStatTiles({
   showIcons?: boolean;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <ScreeningStatTile
         icon={showIcons ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : undefined}
         value={matchedCount}
@@ -2758,7 +2776,7 @@ function ScreeningSupportDocsGrid({
             <div className="mt-3">
               <ScreeningDocStatusPill status="SCREENED" />
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Button size="sm" variant="outline" onClick={onOpenResume}>
                 View
               </Button>
@@ -4806,10 +4824,7 @@ type ViewPanel =
   | "interview"
   | "test"
   | "practical"
-  | "final"
-  /* Requirements checklist — the New Hire Onboarding right-side card, shown
-     here for applicants with an extended offer or already hired. */
-  | "onboarding";
+  | "final";
 
 type ViewScreenDoc = {
   docType: VerificationDocType;
@@ -4866,13 +4881,6 @@ type ApplicantViewScreenProps = {
   finalDecided?: boolean;
   /** Opens the Verify Candidate Decision dialog for the given final record. */
   onVerifyFinal?: (f: FinalEvaluationRow) => void;
-  /** Shown when the profile was opened from the New Hire Onboarding pipeline —
-   *  a second back action returning to that list. */
-  onBackToOnboarding?: (() => void) | undefined;
-  /** True when the profile was opened from the New Hire Onboarding
-   *  "View Checklist" action: the Requirements Checklist section is shown (and
-   *  opened) even if the applicant sits outside the usual Offer / Hired stages. */
-  forceChecklist?: boolean | undefined;
 };
 
 /** Humanized hiring milestones for the stage stepper (maps internal stages). */
@@ -4885,9 +4893,6 @@ const VIEW_MILESTONES: { key: ViewPanel; label: string }[] = [
   { key: "test", label: "Assessment Test" },
   { key: "practical", label: "Practical Assessment" },
   { key: "final", label: "Final Evaluation" },
-  /* Onboarding step — the Requirements Checklist card moved here from New Hire
-     Onboarding. Sits after the recruitment pipeline closes (offer / hired). */
-  { key: "onboarding", label: "Requirements Checklist" },
 ];
 
 /** Colour state of one node on the applicant progress bar. */
@@ -4914,456 +4919,6 @@ const departmentOf = (position: string) =>
   jobs.find((j) => j.title === position)?.department ??
   "—";
 
-/** Checklist item text → submission lookup key (mirrors New Hire Onboarding). */
-const checklistKeyOf = (text: string) => text.trim().toLowerCase();
-
-/** Employee submission attached to one requirements checklist item. */
-type ChecklistSubmission = {
-  fileName?: string;
-  fileUrl?: string;
-  notes?: string;
-  submittedAt?: string;
-};
-
-/** One requirements checklist row — same status language as the New Hire
- *  Onboarding card: Verified (green), Submitted · pending review (red),
- *  Pending (caution). Uploaded documents stay viewable from here, and the row
- *  is clickable while the card is in edit mode (tick / untick). */
-function RequirementItemRow({
-  item,
-  done,
-  submission,
-  editing,
-  onToggle,
-}: {
-  item: string;
-  done: boolean;
-  submission?: ChecklistSubmission | undefined;
-  /** True while "Edit Checklist" is active — then the row reacts to clicks. */
-  editing: boolean;
-  onToggle: () => void;
-}) {
-  const submitted = Boolean(
-    submission && (submission.submittedAt || submission.fileName || submission.notes),
-  );
-  return (
-    <li
-      className={cn(
-        "rounded-md border px-3 py-2 text-sm transition-colors",
-        done
-          ? "border-success/30 bg-success/10"
-          : submitted
-            ? "border-destructive/30 bg-destructive/5"
-            : "border-border bg-card",
-        editing && "cursor-pointer hover:border-primary/40",
-      )}
-    >
-      <div className="flex items-center gap-2.5">
-        <button
-          type="button"
-          disabled={!editing}
-          onClick={onToggle}
-          aria-label={item}
-          title={editing ? "Click to tick / untick this requirement" : undefined}
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-2.5 bg-transparent text-left",
-            editing ? "cursor-pointer" : "cursor-default",
-          )}
-        >
-          {done ? (
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
-          ) : submitted ? (
-            <Hourglass className="h-4 w-4 shrink-0 text-destructive" />
-          ) : (
-            <Circle className="h-4 w-4 shrink-0 text-caution" />
-          )}
-          <span
-            className={cn(
-              "min-w-0 flex-1",
-              !done && submitted ? "text-destructive" : "text-foreground",
-            )}
-          >
-            {item}
-          </span>
-        </button>
-        {done ? (
-          <Badge
-            variant="outline"
-            className="shrink-0 border-success/40 bg-success/10 text-[10px] text-success"
-          >
-            Verified
-          </Badge>
-        ) : submitted ? (
-          <Badge
-            variant="outline"
-            className="shrink-0 border-destructive/40 bg-destructive/10 text-[10px] text-destructive"
-          >
-            Submitted · pending review
-          </Badge>
-        ) : (
-          <Badge
-            variant="outline"
-            className="shrink-0 border-caution/40 bg-caution/10 text-[10px] text-caution"
-          >
-            Pending
-          </Badge>
-        )}
-      </div>
-      {submission?.fileName && (
-        <div
-          className={cn(
-            "mt-2 flex items-center justify-between gap-2 rounded-md border px-2 py-1.5",
-            done ? "border-success/30 bg-success/5" : "border-destructive/30 bg-destructive/5",
-          )}
-        >
-          <span className="flex min-w-0 items-center gap-1.5 text-xs text-foreground">
-            <FileCheck2
-              className={cn("h-3.5 w-3.5 shrink-0", done ? "text-success" : "text-destructive")}
-            />
-            <span className="truncate" title={submission.fileName}>
-              {submission.fileName}
-            </span>
-          </span>
-          {submission.fileUrl && (
-            <a
-              href={submission.fileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0"
-            >
-              <Button size="sm" variant="ghost" className="h-6 cursor-pointer px-2 text-[11px]">
-                <ExternalLink className="mr-1 h-3 w-3" /> View
-              </Button>
-            </a>
-          )}
-        </div>
-      )}
-      {submission?.notes && (
-        <p className="mt-1.5 rounded-md bg-card px-2 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
-          <span className="font-semibold text-foreground">Employee note: </span>
-          {submission.notes}
-        </p>
-      )}
-    </li>
-  );
-}
-
-/** Requirements checklist card — the New Hire Onboarding right-side card,
- *  moved into this View profile for applicants whose offer was extended or
- *  who are already hired. Progress and submissions sync with onboarding. */
-function RequirementsChecklistCard({
-  linkedHire,
-  items,
-  submissions,
-  done,
-  progress,
-}: {
-  linkedHire: NewHire | null;
-  items: { item: string; done: boolean }[];
-  submissions: Record<string, ChecklistSubmission>;
-  done: number;
-  progress: number;
-}) {
-  /* Editing mirrors the New Hire Onboarding card: ticking is staged behind
-     "Edit Checklist" (rows only react to clicks while editing), "Save" keeps
-     the ticks and "Cancel" reverts them. Every tick persists to
-     employee_onboarding_items through the shared hire store, so the new hire's
-     portal and every admin screen stay in sync. */
-  const [editing, setEditing] = useState(false);
-  const [snapshot, setSnapshot] = useState<NewHire["checklist"] | null>(null);
-  /** Whether an evaluation was pending when editing began — used to restore it
-   *  if the edit is cancelled (the store stops it as soon as a tick is lost). */
-  const [evaluationWasRequested, setEvaluationWasRequested] = useState(false);
-  /** The checklist is editable only once the hire record already exists. */
-  const canEdit = Boolean(linkedHire?.dbId);
-
-  const startEdit = () => {
-    if (!linkedHire) return;
-    setSnapshot(linkedHire.checklist.map((c) => ({ ...c })));
-    setEvaluationWasRequested(Boolean(linkedHire.evaluationRequestedAt));
-    setEditing(true);
-  };
-
-  const saveEdit = () => {
-    setSnapshot(null);
-    setEvaluationWasRequested(false);
-    setEditing(false);
-    toast.success("Checklist saved");
-  };
-
-  const cancelEdit = () => {
-    if (linkedHire && snapshot) {
-      hireStore.setHires((prev) =>
-        prev.map((h) => (h.id === linkedHire.id ? { ...h, checklist: snapshot } : h)),
-      );
-      /* Reverting puts every tick back. If the pending evaluation was stopped
-         because the checklist dipped below 100% while editing, restore it —
-         Cancel must undo the whole edit, evaluation request included. */
-      const phaseItems = snapshot.filter((c) => (c.phase ?? "Probationary") === "Probationary");
-      const pool =
-        linkedHire.stage === "Probationary" && phaseItems.length > 0 ? phaseItems : snapshot;
-      const restoredComplete = pool.length > 0 && pool.every((c) => c.done);
-      if (evaluationWasRequested && !linkedHire.evaluationRequestedAt && restoredComplete) {
-        hireStore.requestEvaluation(linkedHire.id);
-        toast.info(
-          `Evaluation request for ${linkedHire.name} restored — the checklist is complete.`,
-        );
-      }
-    }
-    setSnapshot(null);
-    setEvaluationWasRequested(false);
-    setEditing(false);
-  };
-
-  /** Clicks a requirement while editing — persists the tick immediately. */
-  const toggleItem = (item: string, itemDone: boolean) => {
-    if (!editing || !linkedHire) return;
-    const index = linkedHire.checklist.findIndex((c) => c.item === item);
-    if (index === -1) return;
-    hireStore.toggleItem(linkedHire.id, index, !itemDone);
-  };
-
-  /** True while the hire is handed over to Performance and no result has
-   *  arrived — mirrors the New Hire Onboarding waiting state. */
-  const awaitingEvaluation = Boolean(linkedHire?.evaluationRequestedAt);
-
-  /* --- Hire-stage actions (the same checklist-driven flow as New Hire
-     Onboarding): advancing to Probationary and the evaluation hand-over both
-     unlock only when every requirement is ticked. */
-  const advanceToProbationary = () => {
-    if (!linkedHire?.dbId) return;
-    hireStore.promoteHire(linkedHire.id);
-    toast.success(
-      `${linkedHire.name} moved to Probationary — portal account created & login credentials sent to ${linkedHire.email} (default password: ${DEFAULT_ACCOUNT_PASSWORD})`,
-    );
-  };
-
-  const requestEvaluation = () => {
-    if (!linkedHire) return;
-    hireStore.requestEvaluation(linkedHire.id);
-    toast.success(`Evaluation requested for ${linkedHire.name}`);
-  };
-
-  const cancelEvaluationRequest = () => {
-    if (linkedHire) hireStore.cancelEvaluationRequest(linkedHire.id);
-  };
-
-  const regularizeHire = () => {
-    if (!linkedHire) return;
-    toast.success(`${linkedHire.name} regularized — moved to Employee Records`, {
-      description: "The checklist, portal account and Core HCM hand-over are preserved.",
-    });
-    hireStore.cancelEvaluationRequest(linkedHire.id);
-    hireStore.promoteHire(linkedHire.id);
-  };
-
-  return (
-    <Card className="flex h-full flex-col border-border/70">
-      <CardContent className="flex min-h-0 flex-1 flex-col p-6">
-        <div className="flex min-h-[16rem] flex-1 flex-col">
-          <div className="flex items-center justify-between text-xs">
-            <span className="eyebrow">Requirements checklist</span>
-            <span
-              className={cn(
-                "font-medium",
-                progress === 100 ? "text-success" : "text-muted-foreground",
-              )}
-            >
-              {progress}%
-            </span>
-          </div>
-          <Progress
-            value={progress}
-            className="mt-2 h-2 [&>div]:bg-success [&>div]:transition-all"
-          />
-
-          <div className="mt-3 flex w-full items-center justify-between rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium">
-            <span>Checklist items ({items.length})</span>
-            <span className="text-muted-foreground">
-              {done}/{items.length}
-            </span>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
-            {items.length === 0 ? (
-              <p className="mt-3 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
-                <Info className="h-4 w-4 shrink-0" /> No pre-employment checklist is configured for
-                this position yet.
-              </p>
-            ) : (
-              <ul className="mt-3 space-y-1.5">
-                {items.map((item, idx) => (
-                  <RequirementItemRow
-                    key={`${item.item}-${idx}`}
-                    item={item.item}
-                    done={item.done}
-                    submission={submissions[checklistKeyOf(item.item)]}
-                    editing={editing && canEdit}
-                    onToggle={() => toggleItem(item.item, item.done)}
-                  />
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* Editing controls — same flow as the New Hire Onboarding card. */}
-          {canEdit && (
-            <div className="mt-3 flex flex-wrap items-stretch gap-2">
-              {editing ? (
-                <>
-                  <Button
-                    variant="outline"
-                    className="h-10 cursor-pointer"
-                    onClick={() => {
-                      if (linkedHire) hireStore.setAllItemsDone(linkedHire.id, true);
-                    }}
-                  >
-                    Mark all done
-                  </Button>
-                  <Button className="h-10 cursor-pointer" onClick={saveEdit}>
-                    <Save className="mr-1.5 h-4 w-4" /> Save
-                  </Button>
-                  <Button variant="outline" className="h-10 cursor-pointer" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                </>
-              ) : (
-                <Button variant="outline" className="h-10 cursor-pointer" onClick={startEdit}>
-                  <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit Checklist
-                </Button>
-              )}
-            </div>
-          )}
-
-          {/* Hire-stage actions — the checklist unlocks them: advancing to
-              Probationary and the evaluation hand-over both need 100%. */}
-          {linkedHire && (
-            <div className="mt-4 space-y-2 border-t border-border/60 pt-4">
-              <p className="eyebrow">
-                {linkedHire.stage === "Pre-onboarding"
-                  ? "Pre-onboarding actions"
-                  : linkedHire.stage === "Probationary"
-                    ? "Probationary actions"
-                    : "Onboarding record"}
-              </p>
-
-              {linkedHire.stage === "Pre-onboarding" && (
-                <>
-                  <Button
-                    className="h-10 w-full cursor-pointer"
-                    disabled={progress !== 100}
-                    title={
-                      progress === 100
-                        ? "Move this hire to Probationary — portal account created and credentials sent"
-                        : "Complete every checklist item to unlock advancing to Probationary"
-                    }
-                    onClick={advanceToProbationary}
-                  >
-                    Advance to Probationary
-                  </Button>
-                  {progress !== 100 && (
-                    <p className="text-[11px] text-muted-foreground">
-                      Complete every checklist item to unlock advancing to Probationary.
-                    </p>
-                  )}
-                </>
-              )}
-
-              {linkedHire.stage === "Probationary" && !awaitingEvaluation && (
-                <>
-                  <Button
-                    className="h-10 w-full cursor-pointer bg-gold text-gold-foreground hover:bg-gold/90"
-                    disabled={progress !== 100}
-                    title={
-                      progress === 100
-                        ? "Hand this hire over to Performance for the probationary evaluation"
-                        : "Complete every probationary checklist item to unlock the evaluation request"
-                    }
-                    onClick={requestEvaluation}
-                  >
-                    <Send className="mr-1.5 h-4 w-4" /> Request for evaluation
-                  </Button>
-                  {progress !== 100 && (
-                    <p className="text-[11px] text-muted-foreground">
-                      Complete every probationary checklist item to unlock the evaluation request.
-                    </p>
-                  )}
-                </>
-              )}
-
-              {linkedHire.stage === "Probationary" && awaitingEvaluation && (
-                <>
-                  {/* Evaluation hand-over status — animated loader, review badge
-                      and a pulsing indeterminate bar while Performance works. */}
-                  <div className="animate-in overflow-hidden rounded-xl border border-gold/40 bg-gold/5 fade-in duration-500">
-                    <div className="flex items-center gap-3 border-b border-gold/30 bg-gold/10 px-4 py-3">
-                      <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
-                        <span className="absolute inline-flex h-9 w-9 animate-ping rounded-full bg-gold/20" />
-                        <Loader2 className="relative h-5 w-5 animate-spin text-gold-foreground dark:text-gold" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-display text-sm font-semibold leading-tight text-gold-foreground dark:text-gold">
-                          Waiting for evaluation
-                        </p>
-                        <p className="text-[0.7rem] text-muted-foreground">
-                          Sent to Performance
-                          {linkedHire.evaluationRequestedAt
-                            ? ` on ${new Date(linkedHire.evaluationRequestedAt).toLocaleDateString(
-                                "en-US",
-                                { month: "short", day: "numeric", year: "numeric" },
-                              )}`
-                            : ""}{" "}
-                          — no result yet.
-                        </p>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className="shrink-0 border-gold/40 bg-gold/10 text-[0.65rem] text-gold-foreground dark:text-gold"
-                      >
-                        In review
-                      </Badge>
-                    </div>
-                    <div className="h-1 w-full overflow-hidden bg-gold/10">
-                      <div className="h-full w-1/2 animate-pulse rounded-r-full bg-gold/70" />
-                    </div>
-                  </div>
-
-                  {/* Both actions span the checklist card width. */}
-                  <div className="space-y-2">
-                    <Button
-                      variant="outline"
-                      className="h-10 w-full cursor-pointer"
-                      onClick={cancelEvaluationRequest}
-                    >
-                      <X className="mr-1.5 h-4 w-4" /> Cancel request
-                    </Button>
-                    <Button
-                      className="h-10 w-full cursor-pointer bg-gold text-gold-foreground hover:bg-gold/90"
-                      onClick={regularizeHire}
-                    >
-                      <CheckCircle2 className="mr-1.5 h-4 w-4" /> Regular the employee
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {(editing || !linkedHire) && (
-            <p className="mt-3 flex items-start gap-2 rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
-              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>
-                {editing
-                  ? "Edit mode is on — click a requirement to tick or untick it. Save keeps the changes; Cancel reverts them."
-                  : "The pre-employment requirements for this position. The checklist is auto-filed in New Hire Onboarding once the hire record is created — then it becomes editable here."}
-              </span>
-            </p>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 function ApplicantViewScreen({
   a,
@@ -5399,17 +4954,8 @@ function ApplicantViewScreen({
   verifiedFinal,
   finalDecided,
   onVerifyFinal,
-  onBackToOnboarding,
-  forceChecklist,
 }: ApplicantViewScreenProps) {
-  const [panel, setPanel] = useState<ViewPanel>(() =>
-    /* Arriving from New Hire Onboarding's "View Checklist" — or an Offer / Hired
-       applicant opening the profile — lands straight on the Requirements
-       Checklist card moved here from New Hire Onboarding. */
-    forceChecklist === true || a.stage === "Offer" || a.stage === "Hired"
-      ? "onboarding"
-      : "current",
-  );
+  const [panel, setPanel] = useState<ViewPanel>("current");
   /* Position rule from the API (job-post flag / designated positions) with the
      static list as fallback — must match the practical API gate. */
   const requiresPrac = requiresPractical(a.position, a.requiresPractical);
@@ -5434,14 +4980,6 @@ function ApplicantViewScreen({
     docs.map((d) => ({ docType: d.docType, originalCopy: d.originalCopy })),
   );
   const passedScreening = a.score >= passing;
-
-  /** Offer extended or hired — the stages whose applicants show the
-   *  requirements checklist (the New Hire Onboarding card moved into this
-   *  View profile). Declared early because the auto-open effect below reads it.
-   *  The "View Checklist" arrival from the onboarding pipeline forces it on so
-   *  the clicked-through checklist is always the section that opens. */
-  const showRequirementsChecklist =
-    forceChecklist === true || a.stage === "Offer" || a.stage === "Hired";
 
   /**
    * Per-stage progress behind the stepper, derived from the recorded results
@@ -5495,19 +5033,12 @@ function ApplicantViewScreen({
   useEffect(() => {
     if (lastFlowKey.current === flowKey) return;
     lastFlowKey.current = flowKey;
-    // Leave the user alone when they are reading reference material — or the
-    // requirements checklist card they arrived on.
-    if (panel === "details" || panel === "resume" || panel === "onboarding") return;
+    // Leave the user alone when they are reading reference material.
+    if (panel === "details" || panel === "resume") return;
     // Open the stage being worked on now (the first stage that is not finished).
     const nextIdx = stepStates.findIndex((s) => s === "current");
-    // A closed pipeline (offer extended / hired) opens the requirements
-    // checklist — the card moved here from New Hire Onboarding.
-    const target =
-      nextIdx === -1
-        ? showRequirementsChecklist
-          ? "onboarding"
-          : "final"
-        : VIEW_MILESTONES[nextIdx]!.key;
+    // A closed pipeline (offer extended / hired) opens the final evaluation.
+    const target = nextIdx === -1 ? "final" : VIEW_MILESTONES[nextIdx]!.key;
     setPanel(target === "practical" && !requiresPrac ? "final" : target);
     // `stepStates` is rebuilt from the same inputs as `flowKey`, so the flow key
     // is enough to know when the progress changed.
@@ -5586,119 +5117,24 @@ function ApplicantViewScreen({
     }
   };
 
-  /* ------------------------------------------------------------------ */
-  /* Requirements checklist — the New Hire Onboarding right-side card    */
-  /* moved into this View profile. Offer / Hired applicants only.        */
-  /* ------------------------------------------------------------------ */
-
-  /** Live new-hire records — the checklist source, linked by applicant id. */
+  /** Live new-hire records — used to show the hire's start date in the hero. */
   const hires = useHires();
-  const masterChecklists = useMasterChecklists();
 
   /** The onboarding record created for this applicant (falls back to name +
    *  position for rows saved before the applicant link was stored). */
   const linkedHire = useMemo(() => {
-    if (!showRequirementsChecklist) return null;
     const byApplicant =
       a.dbId != null
         ? hires.find((h) => h.applicantId != null && h.applicantId === a.dbId)
         : undefined;
     if (byApplicant) return byApplicant;
     return hires.find((h) => h.name === a.name && h.position === a.position) ?? null;
-  }, [hires, a.dbId, a.name, a.position, showRequirementsChecklist]);
-
-  /** Pre-employment requirements: the hire's own checklist when the onboarding
-   *  record exists, otherwise the Pre-onboarding template items that apply to
-   *  the position (the same rule the backend uses when the hire is filed). */
-  const requirementItems = useMemo(() => {
-    if (!showRequirementsChecklist) return [] as { item: string; done: boolean }[];
-    if (linkedHire) {
-      const phaseItems = linkedHire.checklist.filter(
-        (c) => (c.phase ?? "Probationary") === "Pre-onboarding",
-      );
-      const pool = phaseItems.length > 0 ? phaseItems : linkedHire.checklist;
-      return pool.map((c) => ({ item: c.item, done: c.done }));
-    }
-    return masterChecklists
-      .filter((c) => (c.phase ?? "Probationary") === "Pre-onboarding")
-      .filter((c) => (c.status ?? "Active") === "Active")
-      .filter(
-        (c) =>
-          c.positions === "all" || !c.positions || (c.positions as string[]).includes(a.position),
-      )
-      .flatMap((c) => c.items)
-      .map((item) => ({ item, done: false }));
-  }, [showRequirementsChecklist, linkedHire, masterChecklists, a.position]);
-
-  /** Employee submissions (uploads / notes) per checklist item, straight from
-   *  employee_onboarding_items — submitted documents stay visible here. */
-  const [hireSubmissions, setHireSubmissions] = useState<
-    Record<string, { fileName?: string; fileUrl?: string; notes?: string; submittedAt?: string }>
-  >({});
-  useEffect(() => {
-    const dbId = linkedHire?.dbId;
-    if (!dbId) {
-      setHireSubmissions({});
-      return;
-    }
-    let cancelled = false;
-    onboardingItemsApi
-      .listForNewHire(dbId)
-      .then((items) => {
-        if (cancelled) return;
-        const map: Record<
-          string,
-          { fileName?: string; fileUrl?: string; notes?: string; submittedAt?: string }
-        > = {};
-        (items ?? []).forEach((i) => {
-          const fileUrl =
-            i.employee_onboarding_item_id != null
-              ? onboardingItemsApi.documentUrl(i.employee_onboarding_item_id)
-              : i.file_url;
-          map[checklistKeyOf(String(i.item_text ?? ""))] = {
-            ...(i.file_name ? { fileName: i.file_name } : {}),
-            ...(fileUrl ? { fileUrl } : {}),
-            ...(i.notes ? { notes: i.notes } : {}),
-            ...(i.submitted_at ? { submittedAt: i.submitted_at } : {}),
-          };
-        });
-        setHireSubmissions(map);
-      })
-      .catch((err) => console.warn("Could not load the onboarding submissions:", err));
-    return () => {
-      cancelled = true;
-    };
-    // Only the linked database id matters — the store replaces the array on
-    // every 15s sync, which would otherwise refetch the same submissions.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linkedHire?.dbId]);
-
-  const checklistDone = requirementItems.filter((i) => i.done).length;
-  const checklistProgress =
-    requirementItems.length > 0 ? Math.round((checklistDone / requirementItems.length) * 100) : 0;
-
-  /* --- Stepper states including the onboarding step ------------------------
-     The requirements checklist is the 6th milestone, right after the final
-     evaluation: red while requirements are still open, green once every item is
-     ticked, gray until the applicant reaches the offer / hired stage. */
-  const checklistMilestoneState: StageProgressState = showRequirementsChecklist
-    ? requirementItems.length > 0 && checklistDone === requirementItems.length
-      ? "done"
-      : "current"
-    : "pending";
-  const milestoneStates: StageProgressState[] = [...stepStates, checklistMilestoneState];
+  }, [hires, a.dbId, a.name, a.position]);
 
   /** Stepper click — jumps straight to the clicked milestone's section. */
   const openMilestone = (key: ViewPanel) => {
-    if (key === "onboarding" && !showRequirementsChecklist) return;
     setPanel(key === "practical" && !requiresPrac ? "final" : key);
   };
-
-  /** Leaves the checklist section automatically when the applicant's stage is
-   *  no longer Offer / Hired (e.g. the live record moved on). */
-  useEffect(() => {
-    if (panel === "onboarding" && !showRequirementsChecklist) setPanel("current");
-  }, [panel, showRequirementsChecklist]);
 
   /** One entry of the section nav. `done` turns the badge into a green check so
    *  a finished process is visible at a glance (and, for positions that skip it,
@@ -5757,11 +5193,6 @@ function ApplicantViewScreen({
           <Button variant="outline" size="sm" onClick={onBack}>
             <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Applicants
           </Button>
-          {onBackToOnboarding && (
-            <Button variant="outline" size="sm" onClick={onBackToOnboarding}>
-              <ClipboardList className="mr-1.5 h-3.5 w-3.5" /> Back to New Hire Onboarding
-            </Button>
-          )}
         </div>
         <Button size="sm" onClick={onSchedule}>
           <CalendarClock className="mr-1.5 h-3.5 w-3.5" /> Book Interview
@@ -5850,21 +5281,19 @@ function ApplicantViewScreen({
       </Card>
 
       {/* Stage stepper — timeline: Screening → Interview → Assessment Test →
-          Practical Assessment → Final Evaluation → Requirements Checklist.
-          Every node is clickable and opens its section; the checklist node
-          opens the onboarding step. */}
+          Practical Assessment → Final Evaluation. Every node is clickable and
+          opens its section. */}
       <Card className="border-border/70">
         <CardContent className="overflow-x-auto px-6 py-5">
           <div className="flex min-w-[640px] items-start">
             {VIEW_MILESTONES.map((m, i) => {
               /* Colour comes from the recorded progress, not the stage label:
                  completed → green, the stage being worked on → red, the rest → gray. */
-              const state: StageProgressState = milestoneStates[i] ?? "pending";
+              const state: StageProgressState = stepStates[i] ?? "pending";
               const done = state === "done";
               const current = state === "current";
               const isPrac = m.label === "Practical Assessment";
               const skipped = isPrac && !requiresPrac;
-              const isChecklistStep = m.key === "onboarding";
               /** Verdict already recorded for this stage, when there is one. */
               const verdict =
                 i === 1
@@ -5874,28 +5303,22 @@ function ApplicantViewScreen({
                     : i === 3
                       ? (practical?.result ?? null)
                       : null;
-              const statusText = isChecklistStep
+              const statusText = skipped
                 ? done
-                  ? "Completed"
+                  ? "Not required — Completed"
+                  : "Not required"
+                : done
+                  ? verdict
+                    ? `Completed · ${verdict}`
+                    : "Completed"
                   : current
-                    ? `In Progress · ${checklistDone}/${requirementItems.length}`
-                    : "Pending"
-                : skipped
-                  ? done
-                    ? "Not required — Completed"
-                    : "Not required"
-                  : done
-                    ? verdict
-                      ? `Completed · ${verdict}`
-                      : "Completed"
-                    : current
-                      ? "In Progress"
-                      : "Pending";
+                    ? "In Progress"
+                    : "Pending";
               const isLast = i === VIEW_MILESTONES.length - 1;
 
               // Connector to the next node: green behind a completed stage, a
               // green→red ramp into the stage in progress, gray while pending.
-              const nextState = milestoneStates[i + 1] ?? "pending";
+              const nextState = stepStates[i + 1] ?? "pending";
               const lineClass =
                 nextState === "done"
                   ? "bg-success"
@@ -5922,13 +5345,8 @@ function ApplicantViewScreen({
                   <button
                     type="button"
                     onClick={() => openMilestone(m.key)}
-                    disabled={isChecklistStep && !showRequirementsChecklist}
                     aria-label={`Open ${m.label}`}
-                    title={
-                      isChecklistStep && !showRequirementsChecklist
-                        ? "The requirements checklist opens once the offer is extended or the hire record is filed"
-                        : `Open ${m.label}`
-                    }
+                    title={`Open ${m.label}`}
                     className={cn(
                       "relative z-10 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-bold transition-all",
                       "hover:ring-4 hover:ring-primary/25 disabled:cursor-not-allowed disabled:hover:ring-0",
@@ -5972,75 +5390,56 @@ function ApplicantViewScreen({
         </CardContent>
       </Card>
 
-      {/* Body grid: section nav + panels. The Requirements Checklist is its own
-          focused step — the applicant section nav is hidden there, so only the
-          checklist occupies the view. */}
-      <div
-        className={cn(
-          "grid items-start gap-4",
-          panel === "onboarding" ? "grid-cols-1" : "lg:grid-cols-[240px_1fr] lg:items-stretch",
-        )}
-      >
-        {panel !== "onboarding" && (
-          <Card className="border-border/70 h-full self-stretch flex flex-col overflow-hidden lg:h-[80vh]">
-            <CardContent className="h-full p-3 lg:overflow-y-auto">
-              <div>
-                <p className="eyebrow mb-2">Applicant sections</p>
-                <div className="space-y-1">
-                  {sectionBtn("current", "Current Stage", <Info className="h-4 w-4" />)}
-                  {sectionBtn("details", "Application Details", <FileText className="h-4 w-4" />)}
-                  {sectionBtn(
-                    "resume",
-                    "Resume & Documents",
-                    <Upload className="h-4 w-4" />,
-                    docCount,
-                    passedScreening,
-                  )}
-                  {sectionBtn(
-                    "interview",
-                    "Interview",
-                    <ClipboardCheck className="h-4 w-4" />,
-                    assessments.length,
-                    !!assessment,
-                  )}
-                  {sectionBtn(
-                    "test",
-                    "Assessment Test",
-                    <BookMarked className="h-4 w-4" />,
-                    assessmentTests.length,
-                    !!test,
-                  )}
-                  {sectionBtn(
-                    "practical",
-                    "Practical Assessment",
-                    <Wrench className="h-4 w-4" />,
-                    requiresPrac ? practicalTests.length : undefined,
-                    /* Not required for this position: done as soon as the
-                     applicant has advanced past the stage (progress bar rule). */
-                    requiresPrac ? !!practical : stepStates[3] === "done",
-                  )}
-                  {sectionBtn(
-                    "final",
-                    "Final Evaluation",
-                    <CheckCircle2 className="h-4 w-4" />,
-                    finalEvaluations.length,
-                    stepStates[4] === "done",
-                  )}
-                  {/* Requirements checklist — the New Hire Onboarding card moved
-                    into this View profile; offered / hired applicants only. */}
-                  {showRequirementsChecklist &&
-                    sectionBtn(
-                      "onboarding",
-                      "Requirements Checklist",
-                      <ClipboardList className="h-4 w-4" />,
-                      requirementItems.length,
-                      requirementItems.length > 0 && checklistDone === requirementItems.length,
-                    )}
-                </div>
+      {/* Body grid: section nav + panels. */}
+      <div className="grid items-start gap-4 lg:grid-cols-[240px_1fr] lg:items-stretch">
+        <Card className="border-border/70 h-full self-stretch flex flex-col overflow-hidden lg:h-[80vh]">
+          <CardContent className="h-full p-3 lg:overflow-y-auto">
+            <div>
+              <p className="eyebrow mb-2">Applicant sections</p>
+              <div className="space-y-1">
+                {sectionBtn("current", "Current Stage", <Info className="h-4 w-4" />)}
+                {sectionBtn("details", "Application Details", <FileText className="h-4 w-4" />)}
+                {sectionBtn(
+                  "resume",
+                  "Resume & Documents",
+                  <Upload className="h-4 w-4" />,
+                  docCount,
+                  passedScreening,
+                )}
+                {sectionBtn(
+                  "interview",
+                  "Interview",
+                  <ClipboardCheck className="h-4 w-4" />,
+                  assessments.length,
+                  !!assessment,
+                )}
+                {sectionBtn(
+                  "test",
+                  "Assessment Test",
+                  <BookMarked className="h-4 w-4" />,
+                  assessmentTests.length,
+                  !!test,
+                )}
+                {sectionBtn(
+                  "practical",
+                  "Practical Assessment",
+                  <Wrench className="h-4 w-4" />,
+                  requiresPrac ? practicalTests.length : undefined,
+                  /* Not required for this position: done as soon as the
+                   applicant has advanced past the stage (progress bar rule). */
+                  requiresPrac ? !!practical : stepStates[3] === "done",
+                )}
+                {sectionBtn(
+                  "final",
+                  "Final Evaluation",
+                  <CheckCircle2 className="h-4 w-4" />,
+                  finalEvaluations.length,
+                  stepStates[4] === "done",
+                )}
               </div>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="min-w-0 h-full space-y-4 lg:h-[80vh] lg:overflow-y-auto [&>*]:min-h-full">
           {(() => {
@@ -6590,7 +5989,10 @@ function ApplicantViewScreen({
                               <p className="mt-1 text-xs text-muted-foreground">
                                 {interview.mode}
                                 {interview.facilityName ? ` · ${interview.facilityName}` : ""}
-                                {interview.facilityStatus ? ` · ${interview.facilityStatus}` : ""}
+                                {interview.facilityStatus &&
+                                interview.facilityStatus !== "Not Required"
+                                  ? ` · ${interview.facilityStatus}`
+                                  : ""}
                                 {interview.interviewer ? ` · ${interview.interviewer}` : ""}
                               </p>
                             </div>
@@ -6608,7 +6010,11 @@ function ApplicantViewScreen({
                                   ? getInterviewWindow(
                                       interview.date,
                                       interview.time,
-                                      slotDurationMinutes,
+                                      interviewDurationMinutes(
+                                        interview.time,
+                                        interview.endTime,
+                                        slotDurationMinutes,
+                                      ),
                                       new Date(),
                                     )
                                   : "past-day";
@@ -6953,19 +6359,6 @@ function ApplicantViewScreen({
                       )}
                     </CardContent>
                   </Card>
-                );
-              /* Requirements checklist — the New Hire Onboarding right-side
-                 card, moved into this View profile. Shown only for applicants
-                 whose offer was extended or who are already hired. */
-              case "onboarding":
-                return !showRequirementsChecklist ? null : (
-                  <RequirementsChecklistCard
-                    linkedHire={linkedHire}
-                    items={requirementItems}
-                    submissions={hireSubmissions}
-                    done={checklistDone}
-                    progress={checklistProgress}
-                  />
                 );
               default:
                 return null;
@@ -7347,81 +6740,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   /** Applicant open in the redesign View screen — home of the moved stage sections
    *  (Interview, Assessment Test, Practical Assessment, Final Evaluation). */
   const [viewingApplicant, setViewingApplicant] = useState<Applicant | null>(null);
-  /** True while the View screen was opened from the New Hire Onboarding
-   *  "View Checklist" action — adds a "Back to New Hire Onboarding" button. */
-  const [viewedFromOnboarding, setViewedFromOnboarding] = useState(false);
-  /** Queued "View Checklist" target handed over from New Hire Onboarding. */
-  const [checklistViewTarget, setChecklistViewTarget] = useState<ChecklistViewTarget | null>(null);
 
-  /* Consume the queued hand-off once. The target is carried in state, so a
-     double-invoked effect run (React dev) can never drain the store twice and
-     drop the request. */
-  useEffect(() => {
-    const target = hireStore.consumePendingChecklistView();
-    if (target) setChecklistViewTarget(target);
-  }, []);
 
-  /**
-   * Opens the handed-over applicant in the View profile right away — the
-   * Requirements Checklist is forced as the landing section.
-   */
-  useEffect(() => {
-    if (!checklistViewTarget) return;
-    const { applicantId, applicantName } = checklistViewTarget;
-
-    /* Direct route — the hire knows its applicant id. Fetched directly so
-       Hired records (excluded from the active pipeline list) still open. */
-    if (applicantId != null) {
-      setChecklistViewTarget(null);
-      applicantsApi
-        .get(applicantId)
-        .then((res) => {
-          setViewedFromOnboarding(true);
-          setViewingApplicant(transformApiApplicant(res));
-        })
-        .catch((e) => {
-          console.warn("Could not open the applicant View profile:", e);
-          toast.error("Could not open the applicant's view profile.");
-        });
-      return;
-    }
-
-    /* Legacy records without applicant_id: wait for the pipeline list, then
-       resolve the applicant by exact name — falling back to the full applicants
-       list, which still includes Hired records. */
-    if (rows.length === 0) return;
-    setChecklistViewTarget(null);
-    const wanted = applicantName.trim().toLowerCase();
-    const local = rows.find((r) => r.name.trim().toLowerCase() === wanted);
-    if (local) {
-      setViewedFromOnboarding(true);
-      setViewingApplicant(local);
-      return;
-    }
-    fetchAllPages(applicantsApi.list)
-      .then((items) => {
-        const match = items
-          .map(transformApiApplicant)
-          .find((r) => r.name.trim().toLowerCase() === wanted);
-        if (!match) {
-          toast.error(
-            `No applicant profile matches "${applicantName}" — this hire was filed without an applicant.`,
-          );
-          return;
-        }
-        setViewedFromOnboarding(true);
-        setViewingApplicant(match);
-      })
-      .catch((e) => {
-        console.warn("Could not resolve the applicant for this hire:", e);
-        toast.error("Could not open the applicant's view profile.");
-      });
-  }, [checklistViewTarget, rows]);
-
-  /** Closing the View screen clears the onboarding-origin flag. */
-  useEffect(() => {
-    if (!viewingApplicant) setViewedFromOnboarding(false);
-  }, [viewingApplicant]);
   /** Test & answers being reviewed from the result dialog. */
   const [viewingTestAnswers, setViewingTestAnswers] = useState<AssessmentTestRow | null>(null);
   const [viewMonth, setViewMonth] = useState<Date>(() => {
@@ -7485,6 +6805,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       DEFAULT_SLOT_SETTINGS.intervalMinutes,
       DEFAULT_SLOT_SETTINGS.slotCount,
     )[0]!,
+    endTime: "",
     mode: DEFAULT_SLOT_SETTINGS.defaultMode as string,
     /** Required — must be chosen in the Book an Interview card. */
     interviewer: "",
@@ -7534,6 +6855,51 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   }, [interviews, facilityStatuses]);
   const [scheduleDept, setScheduleDept] = useState<string>("all");
   const [schedulePosition, setSchedulePosition] = useState<string>("all");
+  /** Interview start time ("HH:MM", 24h) from the time inputs — any clock
+   *  time works. Empty = nothing picked yet (the form gates on it). */
+  const [customTime, setCustomTime] = useState<string>(DEFAULT_SLOT_SETTINGS.startTime);
+  /** Optional explicit end time ("HH:MM", 24h). Blank = interval duration. */
+  const [customEnd, setCustomEnd] = useState<string>("");
+
+  /** Applies a manually entered start/end time (24h "HH:MM") to the schedule.
+   *  The end defaults to start + interval and is only honoured when it is
+   *  strictly after the start (blank end = duration comes from the interval). */
+  const applyCustomRange = (which: "start" | "end", v: string) => {
+    const step = Math.max(5, slotSettings.intervalMinutes);
+    if (which === "start") {
+      if (!v) {
+        // Cleared — the form blocks submit until a start time is picked.
+        setCustomTime("");
+        setCustomEnd("");
+        setSchedule((p) => ({ ...p, time: "", endTime: "" }));
+        return;
+      }
+      const startMins = parseTimeToMinutes(v);
+      setCustomTime(v);
+      const keptEnd = customEnd ? parseTimeToMinutes(customEnd) : null;
+      const endMins =
+        keptEnd !== null && keptEnd > startMins ? keptEnd : Math.min(startMins + step, 23 * 60 + 59);
+      setCustomEnd(minutesToInputTime(endMins));
+      setSchedule((p) => ({
+        ...p,
+        time: formatMinutesAsTime(startMins),
+        endTime: formatMinutesAsTime(endMins),
+      }));
+      return;
+    }
+    if (!v) {
+      setCustomEnd("");
+      setSchedule((p) => ({ ...p, endTime: "" }));
+      return;
+    }
+    setCustomEnd(v);
+    const startMins = customTime ? parseTimeToMinutes(customTime) : null;
+    const endMins = parseTimeToMinutes(v);
+    setSchedule((p) => ({
+      ...p,
+      endTime: startMins !== null && endMins > startMins ? formatMinutesAsTime(endMins) : "",
+    }));
+  };
 
   // Always keep the interview calendar anchored to the current month/date on mount.
   useEffect(() => {
@@ -8498,18 +7864,28 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         jobs.find((j) => j.id === src.jobId)?.department)
       : undefined;
     const known = dept && displayDepartments.some((d) => d.name === dept) ? dept : "all";
-    const slotTime = slotsForSelected.includes(i.time) ? i.time : slotsForSelected[0]!;
+    // The time inputs carry the booked start (and the explicit end when the
+    // interview has one) so rescheduling starts from the stored values.
+    const slotTime = i.time || slotsForSelected[0]!;
+    const startMins = parseInterviewTimeToMinutes(i.time);
+    const endMins = i.endTime ? parseInterviewTimeToMinutes(i.endTime) : null;
+    setCustomTime(
+      startMins !== null ? minutesToInputTime(startMins) : DEFAULT_SLOT_SETTINGS.startTime,
+    );
+    setCustomEnd(endMins !== null ? minutesToInputTime(endMins) : "");
     setScheduleDept(known);
     setSchedule({
       applicant: i.applicant,
       date: i.date,
       time: slotTime,
+      endTime: i.endTime ?? "",
       mode: i.mode,
       interviewer: scheduleInterviewers.some((s) => s.name === i.interviewer)
         ? i.interviewer
         : (scheduleInterviewers[0]?.name ?? i.interviewer),
       // Carry the reserved facility over when rescheduling (mock tracker).
-      facilityId: facilities.find((f) => f.name === i.facilityName)?.id ?? "",
+      facilityId:
+        i.mode === "Virtual" ? "" : (facilities.find((f) => f.name === i.facilityName)?.id ?? ""),
     });
     // Point the interview calendar at the month of the scheduled date so the
     // booked day is immediately visible/highlighted.
@@ -8755,17 +8131,27 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         jobs.find((j) => j.id === src.jobId)?.department)
       : undefined;
     const known = dept && displayDepartments.some((d) => d.name === dept) ? dept : "all";
-    const slotTime = slotsForSelected.includes(i.time) ? i.time : slotsForSelected[0]!;
+    // The time inputs carry the booked start (and the explicit end when the
+    // interview has one) so rescheduling starts from the stored values.
+    const slotTime = i.time || slotsForSelected[0]!;
+    const startMins = parseInterviewTimeToMinutes(i.time);
+    const endMins = i.endTime ? parseInterviewTimeToMinutes(i.endTime) : null;
+    setCustomTime(
+      startMins !== null ? minutesToInputTime(startMins) : DEFAULT_SLOT_SETTINGS.startTime,
+    );
+    setCustomEnd(endMins !== null ? minutesToInputTime(endMins) : "");
     setScheduleDept(known);
     setSchedule({
       applicant: i.applicant,
       date: i.date,
       time: slotTime,
+      endTime: i.endTime ?? "",
       mode: i.mode,
       interviewer: scheduleInterviewers.some((s) => s.name === i.interviewer)
         ? i.interviewer
         : (scheduleInterviewers[0]?.name ?? i.interviewer),
-      facilityId: facilities.find((f) => f.name === i.facilityName)?.id ?? "",
+      facilityId:
+        i.mode === "Virtual" ? "" : (facilities.find((f) => f.name === i.facilityName)?.id ?? ""),
     });
     const d = new Date(`${i.date}T00:00:00`);
     if (!Number.isNaN(d.getTime())) {
@@ -8833,7 +8219,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       toast.error("Select an interviewer first");
       return;
     }
-    if (!schedule.facilityId || schedule.facilityId === "none") {
+    // Facility requests only apply to On-site bookings — a Virtual interview
+    // is hosted on Zoom, so any picked facility is ignored for it.
+    const facilityId = schedule.mode === "On-site" ? schedule.facilityId : "";
+    if (schedule.mode === "On-site" && (!facilityId || facilityId === "none")) {
       toast.error("Request a facility to schedule the interview");
       return;
     }
@@ -8854,10 +8243,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       return;
     }
     // The requested room / meeting space can only host one interview per slot.
-    if (facilityBookedInSlot(schedule.facilityId, schedule.date, schedule.time)) {
+    if (facilityBookedInSlot(facilityId, schedule.date, schedule.time)) {
       toast.error("That facility is already booked for this slot.", {
         description: `${
-          facilities.find((f) => f.id === schedule.facilityId)?.name ?? "The room"
+          facilities.find((f) => f.id === facilityId)?.name ?? "The room"
         } has another interview at ${schedule.time} on ${schedule.date} — pick a different slot or request another facility.`,
       });
       return;
@@ -8866,23 +8255,28 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     // Reschedule (or re-book) — update the existing interview record instead of creating a new one
     if (updateTarget) {
       const facilityName =
-        schedule.facilityId && schedule.facilityId !== "none"
-          ? (facilities.find((f) => f.id === schedule.facilityId)?.name ??
-            updateTarget.facilityName ??
-            null)
-          : (updateTarget.facilityName ?? null);
+        schedule.mode === "Virtual"
+          ? null
+          : facilityId && facilityId !== "none"
+            ? (facilities.find((f) => f.id === facilityId)?.name ??
+              updateTarget.facilityName ??
+              null)
+            : (updateTarget.facilityName ?? null);
       const updated: Interview = {
         ...updateTarget,
         date: schedule.date,
         time: schedule.time,
+        endTime: schedule.endTime || null,
         mode: schedule.mode as "On-site" | "Virtual",
         interviewer: schedule.interviewer,
         status: "Scheduled",
         facilityName,
         facilityStatus:
-          schedule.facilityId && schedule.facilityId !== "none"
-            ? ("Waiting for Facility Approval" as FacilityStatus)
-            : (updateTarget.facilityStatus ?? ("Not Required" as FacilityStatus)),
+          schedule.mode === "Virtual"
+            ? ("Not Required" as FacilityStatus)
+            : facilityId && facilityId !== "none"
+              ? ("Waiting for Facility Approval" as FacilityStatus)
+              : (updateTarget.facilityStatus ?? ("Not Required" as FacilityStatus)),
       };
       setInterviews((prev) => prev.map((x) => (x.id === updateTarget.id ? updated : x)));
       // Re-book / reschedule always (re)activates the applicant into the
@@ -8898,7 +8292,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           console.warn("Could not advance applicant stage on database API:", e);
         }
       }
-      if (schedule.facilityId && schedule.facilityId !== "none") {
+      if (facilityId && facilityId !== "none") {
         setFacilityStatuses((prev) => ({
           ...prev,
           [updateTarget.id]: "Waiting for Facility Approval",
@@ -8918,6 +8312,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           const rescheduled = await interviewsApi.update(updateTarget.dbId, {
             scheduled_date: schedule.date,
             scheduled_time: schedule.time.includes(":") ? schedule.time.slice(0, 5) : "09:00",
+            scheduled_end_time: schedule.endTime ? schedule.endTime.slice(0, 5) : null,
             mode: schedule.mode,
             interviewer_name: schedule.interviewer,
             status: "Scheduled",
@@ -8998,23 +8393,25 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       position: src?.position ?? "—",
       date: schedule.date,
       time: schedule.time,
+      endTime: schedule.endTime || null,
       mode: schedule.mode as "On-site" | "Virtual",
       interviewer: schedule.interviewer,
       status: "Scheduled" as const,
-      // Request facility: reserve the chosen facility for this schedule. The
+      // Request facility: reserve the chosen facility for this schedule — the
       // schedule is only confirmed once the facility request is approved.
+      // Virtual interviews run over Zoom and never reserve a facility.
       facilityName:
-        schedule.facilityId && schedule.facilityId !== "none"
-          ? (facilities.find((f) => f.id === schedule.facilityId)?.name ?? null)
+        facilityId && facilityId !== "none"
+          ? (facilities.find((f) => f.id === facilityId)?.name ?? null)
           : null,
-      facilityStatus: (schedule.facilityId && schedule.facilityId !== "none"
+      facilityStatus: (facilityId && facilityId !== "none"
         ? "Waiting for Facility Approval"
         : "Not Required") as FacilityStatus,
       // Instant Zoom preview for Virtual — replaced by backend links on response.
       ...(schedule.mode === "Virtual" ? mockZoomFor(`INT-${300 + interviews.length}`) : {}),
     };
     setInterviews((prev) => [newInt, ...prev]);
-    if (schedule.facilityId && schedule.facilityId !== "none") {
+    if (facilityId && facilityId !== "none") {
       setFacilityStatuses((prev) => ({ ...prev, [newInt.id]: "Waiting for Facility Approval" }));
     }
     if (src) setStage(src.id, "Interview Scheduled");
@@ -9023,19 +8420,19 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       target: schedule.applicant,
       module: "Interview Scheduling",
       details: `${schedule.mode} interview booked for ${schedule.date} · ${schedule.time} with ${schedule.interviewer}.${
-        schedule.facilityId && schedule.facilityId !== "none"
-          ? ` Facility request submitted for ${facilities.find((f) => f.id === schedule.facilityId)?.name} — awaiting approval.`
+        facilityId && facilityId !== "none"
+          ? ` Facility request submitted for ${facilities.find((f) => f.id === facilityId)?.name} — awaiting approval.`
           : ""
       }`,
     });
     toast.success(
-      schedule.facilityId && schedule.facilityId !== "none"
+      facilityId && facilityId !== "none"
         ? `Interview scheduled for ${schedule.applicant} — awaiting facility approval`
         : `Interview confirmed for ${schedule.applicant}`,
       {
         description: `${schedule.date} · ${schedule.time} · ${schedule.mode}${
-          schedule.facilityId && schedule.facilityId !== "none"
-            ? ` · ${facilities.find((f) => f.id === schedule.facilityId)?.name} (facility approval pending)`
+          facilityId && facilityId !== "none"
+            ? ` · ${facilities.find((f) => f.id === facilityId)?.name} (facility approval pending)`
             : ""
         }`,
       },
@@ -9043,13 +8440,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
     try {
       const chosenFacility =
-        schedule.facilityId && schedule.facilityId !== "none"
-          ? facilities.find((f) => f.id === schedule.facilityId)
+        facilityId && facilityId !== "none"
+          ? facilities.find((f) => f.id === facilityId)
           : undefined;
       const createdInterview = await interviewsApi.create({
         applicant_id: applicantId,
         scheduled_date: schedule.date,
         scheduled_time: schedule.time.includes(":") ? schedule.time.slice(0, 5) : "09:00",
+        scheduled_end_time: schedule.endTime ? schedule.endTime.slice(0, 5) : null,
         mode: schedule.mode,
         interviewer_name: schedule.interviewer,
         status: "Scheduled",
@@ -10109,13 +9507,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   };
 
   /** Book an Interview — every dropdown/field must be filled before the
-   *  "Request Facility to Scheduled" button is enabled. */
+   *  "Request Facility to Scheduled" / "Schedule Interview" button is enabled. */
   const bookingMissingFields = [
     !schedule.applicant && "Select Applicant",
     !schedule.date && "Interview Date",
     !schedule.time && "Time Slot",
     !schedule.interviewer && "Interviewer",
-    !(schedule.facilityId && schedule.facilityId !== "none") && "Request Facility",
+    // A facility request is only raised for On-site bookings — Virtual
+    // interviews are held over Zoom and never reserve a room.
+    schedule.mode === "On-site" &&
+      !(schedule.facilityId && schedule.facilityId !== "none") &&
+      "Request Facility",
   ].filter(Boolean) as string[];
 
   const monthCells = useMemo(() => {
@@ -10194,7 +9596,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         ? [...calViewDayInterviews]
         : calViewDayInterviews.filter((i) => facilityOfInterview(i)?.id === room.id)
     ).sort((a, b) => slotIndex(a.time) - slotIndex(b.time));
-    const rangeLabel = (label: string) => {
+    const rangeLabel = (label: string, endLabel?: string | null) => {
+      if (endLabel) return `${label} – ${endLabel}`;
       const slot = dailySchedule.find((s) => s.label === label);
       return slot ? `${slot.label} — ${slot.endLabel}` : label;
     };
@@ -10218,9 +9621,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     ),
   );
 
-  /** Interviews already booked for a given date + time slot. */
-  const bookedInSlot = (date: string, time: string) =>
-    interviews.filter((i) => i.date === date && i.time === time).length;
+  /** True when an interview row occupies the slot label — same start time, or
+   *  a custom range (start – end) that spans across the slot. */
+  const interviewCoversSlot = (i: Interview, slotLabel: string) => {
+    if (i.time === slotLabel) return true;
+    if (!i.endTime) return false;
+    const start = parseInterviewTimeToMinutes(i.time);
+    const end = parseInterviewTimeToMinutes(i.endTime);
+    const slot = parseInterviewTimeToMinutes(slotLabel);
+    if (start === null || end === null || slot === null) return false;
+    return start < slot && slot < end;
+  };
 
   /** True when the requested facility (room / meeting space) already holds a
    *  live interview in the same date + time slot. The interview currently being
@@ -10232,7 +9643,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     return interviews.some(
       (i) =>
         i.date === date &&
-        i.time === time &&
+        interviewCoversSlot(i, time) &&
         i.status !== "Cancelled" &&
         i.id !== rescheduling?.id &&
         i.facilityName === facility.name,
@@ -10591,10 +10002,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           passing={passing}
           slotDurationMinutes={slotSettings.intervalMinutes}
           onBack={() => setViewingApplicant(null)}
-          onBackToOnboarding={
-            viewedFromOnboarding ? () => navigate({ to: `/${role}/onboarding` }) : undefined
-          }
-          forceChecklist={viewedFromOnboarding}
           onReview={() => openReview(viewedApplicant)}
           onRecomputeRanking={() => recomputeRanking(viewedApplicant)}
           recomputingRanking={recomputingRanking}
@@ -10773,26 +10180,31 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           )}
 
           <Tabs value={tab} onValueChange={setTab} className="mt-6">
-            <TabsList className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
-              <TabsTrigger
-                className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-                value="ranking"
-              >
-                <Trophy className="h-3.5 w-3.5" /> Ranking &amp; Applicants
-              </TabsTrigger>
-              <TabsTrigger
-                className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-                value="scheduling"
-              >
-                <CalendarClock className="h-3.5 w-3.5" /> Interview Pipeline
-              </TabsTrigger>
-              <TabsTrigger
-                className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-                value="history"
-              >
-                <History className="h-3.5 w-3.5" /> History &amp; Audit
-              </TabsTrigger>
-            </TabsList>
+            {/* Sticky sub-header: pinned right below the 64px portal header so
+                the page's top bar (tabs) stays visible while the long ranking
+                and applicant list scrolls. */}
+            <div className="sticky top-16 z-20 border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
+              <TabsList className="py-2">
+                <TabsTrigger
+                  className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                  value="ranking"
+                >
+                  <Trophy className="h-3.5 w-3.5" /> Ranking &amp; Applicants
+                </TabsTrigger>
+                <TabsTrigger
+                  className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                  value="scheduling"
+                >
+                  <CalendarClock className="h-3.5 w-3.5" /> Interview Pipeline
+                </TabsTrigger>
+                <TabsTrigger
+                  className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                  value="history"
+                >
+                  <History className="h-3.5 w-3.5" /> History &amp; Audit
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
             {/* RANKING + TABLE */}
             <TabsContent value="ranking" className=" space-y-6">
@@ -11056,8 +10468,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 </Card>
               </div>
 
-              <Card ref={applicantListRef} className="scroll-mt-4 border-border/70">
-                <CardContent className="p-6">
+              <Card ref={applicantListRef} className="scroll-mt-28 border-border/70">
+                <CardContent className="p-4 sm:p-6">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
@@ -11081,15 +10493,15 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </Badge>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
                       <Input
                         placeholder="Search applicant—"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        className="w-56"
+                        className="w-full sm:w-56"
                       />
                       <Select value={positionFilter} onValueChange={setPositionFilter}>
-                        <SelectTrigger className="w-52">
+                        <SelectTrigger className="w-full sm:w-52">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -11102,7 +10514,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </SelectContent>
                       </Select>
                       <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger className="w-52">
+                        <SelectTrigger className="w-full sm:w-52">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -11115,7 +10527,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         </SelectContent>
                       </Select>
                       <Select value={stageFilter} onValueChange={setStageFilter}>
-                        <SelectTrigger className="w-48">
+                        <SelectTrigger className="w-full sm:w-48">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -11140,14 +10552,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
                   <div className="mt-4">
                     <ListBody>
-                      <Table className="table-fixed text-xs">
+                      {/* `min-w` keeps every column readable on phones: the shared
+                          Table wrapper already scrolls horizontally, so the table
+                          slides instead of squeezing the labels together. */}
+                      <Table className="table-fixed text-xs min-w-[840px]">
                         <TableHeader>
                           <TableRow>
                             <SortHead
                               sortKey="name"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[22%]"
+                              className="w-[18%]"
                             >
                               Applicant
                             </SortHead>
@@ -11155,7 +10570,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="contact"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="hidden w-[18%] md:table-cell"
+                              className="hidden w-[14%] md:table-cell"
                             >
                               Contact
                             </SortHead>
@@ -11163,7 +10578,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="position"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[16%]"
+                              className="w-[13%]"
                             >
                               Position
                             </SortHead>
@@ -11171,7 +10586,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="applied"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[11%]"
+                              className="w-[10%]"
                             >
                               Applied
                             </SortHead>
@@ -11179,7 +10594,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="score"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[8%]"
+                              className="w-[9%]"
                             >
                               Score
                             </SortHead>
@@ -11187,7 +10602,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="status"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[13%]"
+                              className="w-[11%]"
                             >
                               Status
                             </SortHead>
@@ -11195,11 +10610,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               sortKey="stage"
                               sort={applicantSort.sort}
                               onSort={applicantSort.toggle}
-                              className="w-[8%]"
+                              className="w-[9%]"
                             >
                               Stage
                             </SortHead>
-                            <TableHead className="w-[15%] text-right">Actions</TableHead>
+                            <TableHead className="w-[16%] text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -12570,7 +11985,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                               className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/5"
                                             >
                                               <span className="shrink-0 text-xs font-medium">
-                                                {calViewPreview.rangeLabel(i.time)}
+                                                {calViewPreview.rangeLabel(i.time, i.endTime)}
                                               </span>
                                               <span className="truncate text-right text-xs font-semibold">
                                                 {i.applicant}
@@ -12740,40 +12155,38 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               {slotSettings.slotCount} slots — {capacityPerSlot} applicants each
                             </span>
                           </div>
-                          <Select
-                            value={schedule.time}
-                            onValueChange={(v) => setSchedule((p) => ({ ...p, time: v }))}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a time slot" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {slotsForSelected.map((t) => {
-                                const used = bookedInSlot(schedule.date, t);
-                                const remaining = capacityPerSlot - used;
-                                const full = remaining <= 0;
-                                // Same room/meeting cannot take two interviews in
-                                // one slot, even when the slot has capacity.
-                                const roomBusy = facilityBookedInSlot(
-                                  schedule.facilityId,
-                                  schedule.date,
-                                  t,
-                                );
-                                return (
-                                  <SelectItem key={t} value={t} disabled={full || roomBusy}>
-                                    {t}
-                                    <span className="ml-1.5 text-xs text-muted-foreground">
-                                      {roomBusy
-                                        ? "(facility already booked)"
-                                        : full
-                                          ? "(full)"
-                                          : `(${remaining} left)`}
-                                    </span>
-                                  </SelectItem>
-                                );
-                              })}
-                            </SelectContent>
-                          </Select>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Input
+                              type="time"
+                              aria-label="Custom start time"
+                              className="h-9 w-[9.75rem]"
+                              value={customTime}
+                              onChange={(e) => applyCustomRange("start", e.target.value)}
+                            />
+                            <span className="text-xs text-muted-foreground">to</span>
+                            <Input
+                              type="time"
+                              aria-label="Custom end time"
+                              className="h-9 w-[9.75rem]"
+                              value={customEnd}
+                              onChange={(e) => applyCustomRange("end", e.target.value)}
+                            />
+                            <span className="text-[0.7rem] text-muted-foreground">
+                              {customEnd && !schedule.endTime ? (
+                                <span className="text-destructive">
+                                  {customTime
+                                    ? "End time must be after the start time."
+                                    : "Enter a start time first."}
+                                </span>
+                              ) : customTime ? (
+                                schedule.endTime
+                                  ? `Using ${schedule.time} – ${schedule.endTime}.`
+                                  : `End time optional — ${slotSettings.intervalMinutes} min by default.`
+                              ) : (
+                                "Pick a start time — e.g. 10:00."
+                              )}
+                            </span>
+                          </div>
                         </div>
 
                         <div className="space-y-3">
@@ -12783,7 +12196,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                             </Label>
                             <Select
                               value={schedule.mode}
-                              onValueChange={(v) => setSchedule({ ...schedule, mode: v })}
+                              onValueChange={(v) =>
+                                setSchedule({
+                                  ...schedule,
+                                  mode: v,
+                                  // Virtual needs no room — drop any picked facility.
+                                  facilityId: v === "Virtual" ? "" : schedule.facilityId,
+                                })
+                              }
                             >
                               <SelectTrigger>
                                 <SelectValue />
@@ -12816,32 +12236,34 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           </div>
                           <div className="space-y-2">
                             <Label className="text-sm">
-                              <span className="text-primary">6.</span> Request Facility
+                              <span className="text-primary">6.</span>{" "}
+                              {schedule.mode === "On-site" ? "Request Facility" : "Facility"}
                             </Label>
-                            <Select
-                              value={schedule.facilityId}
-                              onValueChange={(v) => setSchedule({ ...schedule, facilityId: v })}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select facility" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {facilities
-                                  .filter((f) => f.type === schedule.mode)
-                                  .map((f) => (
-                                    <SelectItem key={f.id} value={f.id}>
-                                      {f.name} · {f.type} — cap. {f.capacity}
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
-                            {schedule.mode === "Virtual" && (
+                            {schedule.mode === "On-site" ? (
+                              <Select
+                                value={schedule.facilityId}
+                                onValueChange={(v) => setSchedule({ ...schedule, facilityId: v })}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select facility" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {facilities
+                                    .filter((f) => f.type === schedule.mode)
+                                    .map((f) => (
+                                      <SelectItem key={f.id} value={f.id}>
+                                        {f.name} · {f.type} — cap. {f.capacity}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
                               <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50/70 p-2.5 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200">
                                 <Video className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                                 <span>
-                                  Virtual booking auto-generates a Zoom meeting. The applicant is
-                                  emailed the <b>1st Join link</b>, <b>2nd Continue link</b>,
-                                  password and interviewer name.
+                                  No facility request needed — Virtual interviews are held over
+                                  Zoom. The applicant is emailed the <b>1st Join link</b>,{" "}
+                                  <b>2nd Continue link</b>, password and interviewer name.
                                 </span>
                               </div>
                             )}
@@ -12860,7 +12282,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               : undefined
                           }
                         >
-                          <Mail className="mr-2 h-4 w-4" /> Request Facility to Scheduled
+                          <Mail className="mr-2 h-4 w-4" />{" "}
+                          {schedule.mode === "On-site"
+                            ? "Request Facility to Scheduled"
+                            : "Schedule Interview"}
                         </Button>
                         {bookingMissingFields.length > 0 && (
                           <p className="text-center text-xs text-muted-foreground">
@@ -13184,7 +12609,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                       className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/5"
                                     >
                                       <span className="shrink-0 text-xs font-medium">
-                                        {calViewPreview.rangeLabel(i.time)}
+                                        {calViewPreview.rangeLabel(i.time, i.endTime)}
                                       </span>
                                       <span className="truncate text-right text-xs font-semibold">
                                         {i.applicant}
@@ -13518,44 +12943,38 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                         applicants each
                                       </span>
                                     </div>
-                                    <Select
-                                      value={schedule.time}
-                                      onValueChange={(v) => setSchedule((p) => ({ ...p, time: v }))}
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Select a time slot" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {slotsForSelected.map((t) => {
-                                          const used = bookedInSlot(schedule.date, t);
-                                          const remaining = capacityPerSlot - used;
-                                          const full = remaining <= 0;
-                                          // Same room/meeting cannot take two interviews
-                                          // in one slot, even when the slot has capacity.
-                                          const roomBusy = facilityBookedInSlot(
-                                            schedule.facilityId,
-                                            schedule.date,
-                                            t,
-                                          );
-                                          return (
-                                            <SelectItem
-                                              key={t}
-                                              value={t}
-                                              disabled={full || roomBusy}
-                                            >
-                                              {t}
-                                              <span className="ml-1.5 text-xs text-muted-foreground">
-                                                {roomBusy
-                                                  ? "(facility already booked)"
-                                                  : full
-                                                    ? "(full)"
-                                                    : `(${remaining} left)`}
-                                              </span>
-                                            </SelectItem>
-                                          );
-                                        })}
-                                      </SelectContent>
-                                    </Select>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <Input
+                                        type="time"
+                                        aria-label="Custom start time"
+                                        className="h-9 w-[9.75rem]"
+                                        value={customTime}
+                                        onChange={(e) => applyCustomRange("start", e.target.value)}
+                                      />
+                                      <span className="text-xs text-muted-foreground">to</span>
+                                      <Input
+                                        type="time"
+                                        aria-label="Custom end time"
+                                        className="h-9 w-[9.75rem]"
+                                        value={customEnd}
+                                        onChange={(e) => applyCustomRange("end", e.target.value)}
+                                      />
+                                      <span className="text-[0.7rem] text-muted-foreground">
+                                        {customEnd && !schedule.endTime ? (
+                                          <span className="text-destructive">
+                                            {customTime
+                                              ? "End time must be after the start time."
+                                              : "Enter a start time first."}
+                                          </span>
+                                        ) : customTime ? (
+                                          schedule.endTime
+                                            ? `Using ${schedule.time} – ${schedule.endTime}.`
+                                            : `End time optional — ${slotSettings.intervalMinutes} min by default.`
+                                        ) : (
+                                          "Pick a start time — e.g. 10:00."
+                                        )}
+                                      </span>
+                                    </div>
                                   </div>
 
                                   <div className="space-y-3">
@@ -13565,7 +12984,14 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                       </Label>
                                       <Select
                                         value={schedule.mode}
-                                        onValueChange={(v) => setSchedule({ ...schedule, mode: v })}
+                                        onValueChange={(v) =>
+                                setSchedule({
+                                  ...schedule,
+                                  mode: v,
+                                  // Virtual needs no room — drop any picked facility.
+                                  facilityId: v === "Virtual" ? "" : schedule.facilityId,
+                                })
+                              }
                                       >
                                         <SelectTrigger>
                                           <SelectValue />
@@ -13600,27 +13026,40 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                     </div>
                                     <div className="space-y-2">
                                       <Label className="text-sm">
-                                        <span className="text-primary">6.</span> Request Facility
+                                        <span className="text-primary">6.</span>{" "}
+                                        {schedule.mode === "On-site" ? "Request Facility" : "Facility"}
                                       </Label>
-                                      <Select
-                                        value={schedule.facilityId}
-                                        onValueChange={(v) =>
-                                          setSchedule({ ...schedule, facilityId: v })
-                                        }
-                                      >
-                                        <SelectTrigger>
-                                          <SelectValue placeholder="Select facility" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {facilities
-                                            .filter((f) => f.type === schedule.mode)
-                                            .map((f) => (
-                                              <SelectItem key={f.id} value={f.id}>
-                                                {f.name} · {f.type} — cap. {f.capacity}
-                                              </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                      </Select>
+                                      {schedule.mode === "On-site" ? (
+                                        <Select
+                                          value={schedule.facilityId}
+                                          onValueChange={(v) =>
+                                            setSchedule({ ...schedule, facilityId: v })
+                                          }
+                                        >
+                                          <SelectTrigger>
+                                            <SelectValue placeholder="Select facility" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {facilities
+                                              .filter((f) => f.type === schedule.mode)
+                                              .map((f) => (
+                                                <SelectItem key={f.id} value={f.id}>
+                                                  {f.name} · {f.type} — cap. {f.capacity}
+                                                </SelectItem>
+                                              ))}
+                                          </SelectContent>
+                                        </Select>
+                                      ) : (
+                                        <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50/70 p-2.5 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200">
+                                          <Video className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                          <span>
+                                            No facility request needed — Virtual interviews are
+                                            held over Zoom. The applicant is emailed the{" "}
+                                            <b>1st Join link</b>, <b>2nd Continue link</b>,
+                                            password and interviewer name.
+                                          </span>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
@@ -13636,7 +13075,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                         : undefined
                                     }
                                   >
-                                    <Mail className="mr-2 h-4 w-4" /> Request Facility to Scheduled
+                                    <Mail className="mr-2 h-4 w-4" />{" "}
+                                     {schedule.mode === "On-site"
+                                       ? "Request Facility to Scheduled"
+                                       : "Schedule Interview"}
                                   </Button>
                                   {bookingMissingFields.length > 0 && (
                                     <p className="text-center text-xs text-muted-foreground">
@@ -13718,7 +13160,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                   className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/5"
                                 >
                                   <span className="shrink-0 text-xs font-medium">
-                                    {calViewPreview.rangeLabel(i.time)}
+                                    {calViewPreview.rangeLabel(i.time, i.endTime)}
                                   </span>
                                   <span className="truncate text-right text-xs font-semibold">
                                     {i.applicant}
@@ -13859,7 +13301,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   </div>
                   <div className="mt-4 [&_table]:table-auto [&_td]:max-w-none [&_td]:align-top [&_td_.truncate]:overflow-visible [&_td_.truncate]:whitespace-normal [&_td_.truncate]:break-words">
                     <ListBody>
-                      <Table className="table-fixed text-xs">
+                      <Table className="table-fixed text-xs min-w-[980px]">
                         <TableHeader>
                           <TableRow>
                             <SortHead
@@ -13980,9 +13422,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               // Scheduling rule that a booking is only confirmed once
                               // its facility request is approved: while approval is
                               // still pending, the interview cannot be started.
+                              // Virtual interviews reserve no facility, so the gate
+                              // never applies to them.
                               const bookingForFacility = liveInterview ?? interview;
                               const facilityPending =
                                 !!bookingForFacility?.facilityName &&
+                                bookingForFacility.mode === "On-site" &&
                                 (facilityStatuses[bookingForFacility.id] ??
                                   bookingForFacility.facilityStatus) ===
                                   "Waiting for Facility Approval";
@@ -14011,7 +13456,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                 ? getInterviewWindow(
                                     liveInterview?.date ?? interview?.date ?? "",
                                     liveInterview?.time ?? interview?.time ?? "",
-                                    slotSettings.intervalMinutes,
+                                    interviewDurationMinutes(
+                                      liveInterview?.time ?? interview?.time ?? "",
+                                      liveInterview?.endTime ?? interview?.endTime,
+                                      slotSettings.intervalMinutes,
+                                    ),
                                     new Date(nowMs),
                                   )
                                 : "past-day";
@@ -14455,7 +13904,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                                   : startWindow === "live"
                                                     ? undefined
                                                     : startWindow === "upcoming"
-                                                      ? `Starts at ${liveInterview?.time ?? interview?.time} (${slotSettings.intervalMinutes} min)`
+                                                      ? `Starts at ${liveInterview?.time ?? interview?.time} (${interviewDurationMinutes(
+                                                          liveInterview?.time ?? interview?.time ?? "",
+                                                          liveInterview?.endTime ?? interview?.endTime,
+                                                          slotSettings.intervalMinutes,
+                                                        )} min)`
                                                       : startWindow === "future-day"
                                                         ? "Available on interview day"
                                                         : "Interview window has passed"
@@ -15940,7 +15393,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     per criterion so rating during a live call takes one click. */}
                 <div className="order-2 flex min-h-0 flex-col border-l border-border bg-background">
                   <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <div className="space-y-1">
                         <Label className="text-[0.7rem] text-muted-foreground">Interviewer</Label>
                         <Select value={evalAssessor} onValueChange={setEvalAssessor}>
@@ -16053,7 +15506,7 @@ always one tap away, no scrolling to finish the interview. */}
                         %
                       </span>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <Button
                         variant="outline"
                         size="sm"

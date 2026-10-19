@@ -186,6 +186,15 @@ def preprocess(raw_text: str) -> Dict:
         text,
         flags=re.I,
     )
+    # Join ranges whose dash starts the continuation line: "July 1, 2019\n- September 20, 2021"
+    # (the bullet-prefix stripper below would otherwise delete that leading dash,
+    # losing the range entirely).
+    text = re.sub(
+        r"((?:(?:19|20)\d{2}|[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+(?:19|20)\d{2}|[A-Za-z]{3,9}\.?\s+(?:19|20)\d{2}))\s*\n\s*(?:-|–|—)\s*",
+        r"\1 - ",
+        text,
+        flags=re.I,
+    )
     text = _MULTIPLE_SPACES.sub(" ", text)
 
     # Process lines: strip trailing/leading spaces and bullet symbols + OCR header correction

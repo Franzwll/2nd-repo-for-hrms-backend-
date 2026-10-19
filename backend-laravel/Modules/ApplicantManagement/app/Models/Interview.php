@@ -15,6 +15,7 @@ class Interview extends Model
         'applicant_id',
         'scheduled_date',
         'scheduled_time',
+        'scheduled_end_time',
         'mode',
         'facility_id',
         'facility_status',

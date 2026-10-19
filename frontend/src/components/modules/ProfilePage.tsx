@@ -665,7 +665,7 @@ export function ProfilePage({ role }: { role: Role }) {
           <div className="h-1 w-full bg-gradient-to-r from-primary via-gold to-primary opacity-90" />
           <CardContent className="p-6">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="bg-muted/60 flex flex-wrap h-auto gap-1">
+              <TabsList>
                 <TabsTrigger
                   value="profile"
                   className="cursor-pointer data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
@@ -1159,7 +1159,7 @@ export function ProfilePage({ role }: { role: Role }) {
                               />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                               <div className="space-y-1.5">
                                 <Label htmlFor="em-rel" className="text-xs text-muted-foreground font-medium">Relationship</Label>
                                 <Input
@@ -1217,7 +1217,7 @@ export function ProfilePage({ role }: { role: Role }) {
                               />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                               <div className="space-y-1.5">
                                 <Label htmlFor="em2-rel" className="text-xs text-muted-foreground font-medium">Relationship</Label>
                                 <Input

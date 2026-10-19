@@ -23,6 +23,13 @@ export type Job = {
   active: boolean;
   experience: "No Experience" | "1-2 Years" | "3-5 Years" | "5+ Years";
   education: "High School Graduate" | "Vocational / TESDA" | "College Level" | "Bachelor's Degree";
+  /**
+   * Levels the post accepts ("any of these"), from the Screening Requirements
+   * chips. The scalars above stay the weakest accepted level, so every reader
+   * that only knows one value keeps working.
+   */
+  experienceLevels?: string[];
+  educationLevels?: string[];
   summary: string;
   description: string;
   responsibilities: string[];

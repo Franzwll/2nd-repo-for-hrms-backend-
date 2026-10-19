@@ -1,0 +1,154 @@
+﻿DUPLICATE COLUMN REPORT
+Source: C:\Users\Windows 10 Lite\Downloads\MUNJOR\4TH YR\DEV\LATEST CLONE\v14\2nd-repo-for-hrms-backend-\database\hotel_hr.sql
+Tables parsed: 42
+Distinct columns: 334
+
+COLUMNS THAT APPEAR IN 2+ TABLES (count = number of tables):
+================================================================================
+created_at                   x36  ->  announcements, applicants, applicant_screening_entities, applicant_screening_scores, attendance_records, chatbot_faqs, chatbot_unanswered, checklist_requests, employees, employee_benefits, employee_emergency_contacts, employee_exit_records, employee_learning, employee_position_history, ess_categories, ess_requests, hr3_recommendations, job_batches, job_posts, leave_balances, new_hires, onboarding_checklist_items, onboarding_checklist_templates, payroll_items, personal_access_tokens, positions, recognition_reactions, requisitions, salary_grades, screening_ground_truths, screening_reference_data, social_recognitions, system_roles, system_settings, system_users, users
+updated_at                   x30  ->  announcements, applicants, attendance_records, chatbot_faqs, checklist_requests, employees, employee_benefits, employee_emergency_contacts, employee_exit_records, employee_learning, ess_categories, ess_requests, hr3_recommendations, job_posts, leave_balances, new_hires, onboarding_checklist_templates, payroll_items, personal_access_tokens, positions, recognition_reactions, requisitions, salary_grades, screening_ground_truths, screening_reference_data, social_recognitions, system_roles, system_settings, system_users, users
+status                       x15  ->  announcements, applicants, attendance_records, checklist_requests, employees, employee_benefits, employee_learning, ess_requests, hr3_recommendations, job_posts, onboarding_checklist_templates, payroll_items, requisitions, system_users, user_login_activity
+employee_id                  x15  ->  attendance_records, checklist_requests, employees, employee_benefits, employee_emergency_contacts, employee_exit_records, employee_learning, employee_position_history, ess_requests, hr3_recommendations, leave_balances, new_hires, payroll_items, recognition_reactions, system_users
+name                         x8  ->  applicants, checklist_requests, employee_emergency_contacts, ess_categories, job_batches, new_hires, personal_access_tokens, users
+id                           x8  ->  chatbot_unanswered, ess_requests, hr3_recommendations, job_batches, migrations, personal_access_tokens, sessions, users
+title                        x7  ->  announcements, employee_benefits, job_posts, new_hires, onboarding_checklist_templates, positions, salary_grades
+applicant_id                 x6  ->  applicants, applicant_screening_entities, applicant_screening_scores, hr3_recommendations, new_hires, screening_ground_truths
+email                        x6  ->  applicants, employees, new_hires, onboarding_checklist_templates, system_users, users
+department_id                x6  ->  checklist_requests, employees, job_posts, new_hires, positions, requisitions
+position_id                  x5  ->  employees, job_posts, new_hires, positions, requisitions
+notes                        x5  ->  employee_exit_records, employee_learning, employee_position_history, salary_grades, screening_ground_truths
+salary_grade_id              x4  ->  employees, payroll_items, positions, salary_grades
+phone                        x4  ->  applicants, employees, employee_emergency_contacts, new_hires
+system_user_id               x4  ->  audit_logs, new_hires, system_users, user_login_activity
+description                  x4  ->  checklist_requests, ess_categories, job_posts, system_roles
+payload                      x3  ->  ess_requests, hr3_recommendations, sessions
+module_name                  x3  ->  audit_logs, new_hires, requisitions
+ip_address                   x3  ->  audit_logs, sessions, user_login_activity
+code                         x3  ->  checklist_requests, ess_categories, salary_grades
+job_post_id                  x3  ->  applicants, job_posts, screening_ground_truths
+sort_order                   x3  ->  chatbot_faqs, ess_categories, onboarding_checklist_items
+role_id                      x3  ->  requisitions, system_roles, system_users
+template_id                  x3  ->  checklist_requests, onboarding_checklist_items, onboarding_checklist_templates
+requested_by_user_id         x2  ->  checklist_requests, requisitions
+new_hire_id                  x2  ->  employee_learning, new_hires
+token                        x2  ->  onboarding_checklist_templates, personal_access_tokens
+user_agent                   x2  ->  sessions, user_login_activity
+expiration                   x2  ->  cache, cache_locks
+value                        x2  ->  applicant_screening_entities, cache
+stage                        x2  ->  applicants, new_hires
+salary_step                  x2  ->  employees, payroll_items
+employment_type              x2  ->  employees, job_posts
+file_path                    x2  ->  employee_benefits, employee_learning
+comments                     x2  ->  hr3_recommendations, payroll_items
+evaluator_user_id            x2  ->  hr3_recommendations, payroll_items
+effective_date               x2  ->  employee_benefits, employee_position_history
+level                        x2  ->  positions, salary_grades
+device_info                  x2  ->  audit_logs, user_login_activity
+active                       x2  ->  job_posts, screening_reference_data
+message                      x2  ->  chatbot_unanswered, social_recognitions
+details                      x2  ->  audit_logs, ess_requests
+label                        x2  ->  applicant_screening_entities, payroll_items
+address                      x2  ->  employees, employee_emergency_contacts
+recognition_id               x2  ->  recognition_reactions, social_recognitions
+score                        x2  ->  applicant_screening_scores, employee_learning
+phase                        x2  ->  checklist_requests, onboarding_checklist_templates
+key                          x2  ->  cache, cache_locks
+request_code                 x2  ->  checklist_requests, ess_requests
+target_id                    x2  ->  audit_logs, new_hires
+item_text                    x2  ->  employee_learning, onboarding_checklist_items
+course_id                    x2  ->  employee_learning, job_posts
+body                         x2  ->  announcements, new_hires
+template_item_id             x2  ->  employee_learning, onboarding_checklist_items
+filled_count                 x2  ->  job_posts, positions
+queue                        x2  ->  ess_requests, hr3_recommendations
+summary                      x2  ->  applicants, job_posts
+category                     x2  ->  employee_benefits, job_posts
+target_type                  x2  ->  audit_logs, new_hires
+requested_at                 x2  ->  checklist_requests, requisitions
+
+PER-TABLE COLUMN LISTS:
+================================================================================
+[announcements] (9 cols)
+   announcement_id, published_date, title, body, audience, created_by_user_id, status, created_at, updated_at
+[applicants] (45 cols)
+   applicant_id, applicant_code, job_post_id, name, email, phone, applied_at, fit_score, status, stage, source, resume_file_path, resume_original_name, summary, flags_json, created_at, updated_at, assessment_id, applicant_id, assessor_user_id, assessment_date, scores_json, total_score, outcome, remarks, created_at, updated_at, screening_id, applicant_id, job_post_id, processing_status, screening_result, match_score, score_breakdown_json, profile_json, entities_json, missing_information_json, validation_json, alternative_job_json, reasons_json, model_info_json, error_message, processed_at, created_at, updated_at
+[applicant_screening_entities] (5 cols)
+   entity_id, applicant_id, label, value, created_at
+[applicant_screening_scores] (5 cols)
+   score_id, applicant_id, criterion, score, created_at
+[attendance_records] (15 cols)
+   attendance_id, employee_id, work_date, time_in, time_out, break_in, break_out, hours_worked, late_minutes, undertime_minutes, overtime_hours, remark, status, created_at, updated_at
+[audit_logs] (14 cols)
+   audit_log_id, system_user_id, actor_role, actor_department, occurred_at, action, module_name, target_type, target_id, details, severity, ip_address, device_info, url
+[cache] (3 cols)
+   key, value, expiration
+[cache_locks] (3 cols)
+   key, owner, expiration
+[chatbot_faqs] (8 cols)
+   faq_id, question, answer, keywords, enabled, sort_order, created_at, updated_at
+[chatbot_unanswered] (5 cols)
+   id, session_id, message, intent, created_at
+[checklist_requests] (19 cols)
+   checklist_request_id, request_code, employee_id, template_id, phase, items_json, status, requested_by_user_id, requested_at, created_at, updated_at, department_id, code, name, description, head_employee_id, budget, created_at, updated_at
+[employees] (29 cols)
+   employee_id, employee_code, first_name, middle_name, last_name, email, personal_email, phone, address, birth_date, gender, civil_status, nationality, sss_number, philhealth_number, pagibig_number, tin_number, position_id, department_id, employment_type, date_hired, supervisor_employee_id, status, onboarding_complete, salary_grade_id, employee_record_last_updated_at, salary_step, created_at, updated_at
+[employee_benefits] (24 cols)
+   employee_benefit_id, employee_id, benefit_name, reference_value, note, effective_date, end_date, status, created_at, updated_at, document_id, employee_id, document_code, title, category, file_path, mime_type, file_size_bytes, document_status, document_date, expiry_date, last_updated_at, created_at, updated_at
+[employee_emergency_contacts] (9 cols)
+   emergency_contact_id, employee_id, name, relationship, phone, address, is_primary, created_at, updated_at
+[employee_exit_records] (9 cols)
+   exit_record_id, employee_id, exit_type, exit_date, clearance_status, coe_status, notes, created_at, updated_at
+[employee_learning] (23 cols)
+   employee_learning_id, employee_id, course_id, status, score, assigned_date, completed_date, created_at, updated_at, employee_onboarding_item_id, employee_id, new_hire_id, template_item_id, item_text, file_path, file_name, notes, done, submitted_at, completed_at, completed_by_user_id, created_at, updated_at
+[employee_position_history] (10 cols)
+   position_history_id, employee_id, effective_date, change_type, old_position_id, new_position_id, old_salary_grade_id, new_salary_grade_id, notes, created_at
+[ess_categories] (8 cols)
+   ess_category_id, code, name, description, is_open, sort_order, created_at, updated_at
+[ess_requests] (23 cols)
+   ess_request_id, request_code, employee_id, category_id, request_type, filed_at, date_from, date_to, status, assigned_to_user_id, details, review_note, returned_count, attachment_path, created_at, updated_at, id, uuid, connection, queue, payload, exception, failed_at
+[hr3_recommendations] (31 cols)
+   recommendation_id, employee_id, recommendation_type, evaluation_score, evaluator_user_id, date_submitted, status, suggested_position_id, suggested_salary_grade_id, current_employment_type, comments, created_at, updated_at, interview_id, interview_code, applicant_id, scheduled_date, scheduled_time, mode, interviewer_employee_id, interviewer_name, status, created_at, updated_at, id, queue, payload, attempts, reserved_at, available_at, created_at
+[job_batches] (10 cols)
+   id, name, total_jobs, pending_jobs, failed_jobs, failed_job_ids, options, cancelled_at, created_at, finished_at
+[job_posts] (38 cols)
+   job_post_id, slug, title, department_id, position_id, employment_type, schedule, salary_min, salary_max, vacancies, filled_count, posted_date, status, active, experience_level, education_level, summary, description, responsibilities_json, qualifications_json, skills_json, benefits_json, picture, created_at, updated_at, job_post_platform_id, job_post_id, platform, published_at, status, created_at, course_id, course_code, title, category, description, created_at, updated_at
+[leave_balances] (8 cols)
+   leave_balance_id, employee_id, leave_type, period_year, total_days, used_days, created_at, updated_at
+[migrations] (3 cols)
+   id, migration, batch
+[new_hires] (24 cols)
+   new_hire_id, new_hire_code, applicant_id, employee_id, name, email, phone, position_id, department_id, stage, start_date, created_at, updated_at, notification_id, system_user_id, type, title, body, module_name, target_type, target_id, is_read, read_at, created_at
+[onboarding_checklist_items] (8 cols)
+   template_item_id, template_id, item_text, instructions, requires_upload, upload_placeholder, sort_order, created_at
+[onboarding_checklist_templates] (11 cols)
+   template_id, template_code, title, phase, position_scope_json, status, created_at, updated_at, email, token, created_at
+[payroll_items] (38 cols)
+   payroll_item_id, payroll_record_id, item_type, label, amount, created_at, payroll_period_id, period_code, period_name, period_start, period_end, payout_date, status, created_at, updated_at, payroll_record_id, employee_id, payroll_period_id, pay_period_start, pay_period_end, payout_date, gross_pay, net_pay, status, created_at, updated_at, performance_review_id, employee_id, review_period, review_date, competency_level, overall_rating, salary_grade_id, salary_step, evaluator_user_id, comments, created_at, updated_at
+[personal_access_tokens] (10 cols)
+   id, tokenable_type, tokenable_id, name, token, abilities, last_used_at, expires_at, created_at, updated_at
+[positions] (10 cols)
+   position_id, position_code, title, department_id, salary_grade_id, level, headcount, filled_count, created_at, updated_at
+[recognition_reactions] (6 cols)
+   reaction_id, recognition_id, employee_id, reaction_type, created_at, updated_at
+[requisitions] (20 cols)
+   requisition_id, requisition_code, position_id, position_title, department_id, requested_by_user_id, requested_count, urgency, justification, status, requested_at, converted_job_post_id, created_at, updated_at, role_permission_id, role_id, module_name, permission_level, created_at, updated_at
+[salary_grades] (10 cols)
+   salary_grade_id, code, title, min_salary, max_salary, currency_code, level, notes, created_at, updated_at
+[screening_ground_truths] (10 cols)
+   gt_id, applicant_id, job_post_id, true_screening_result, true_qualification_score, true_missing_information_json, true_unrecognized_skills_json, notes, created_at, updated_at
+[screening_reference_data] (7 cols)
+   ref_id, data_type, canonical_value, aliases_json, active, created_at, updated_at
+[sessions] (6 cols)
+   id, user_id, ip_address, user_agent, payload, last_activity
+[social_recognitions] (15 cols)
+   recognition_id, sender_employee_id, recipient_employee_id, sender_name, recipient_name, sender_role, recipient_role, core_value, message, clap_count, heart_count, star_count, fire_count, created_at, updated_at
+[system_roles] (7 cols)
+   role_id, role_name, description, is_super_admin, is_protected, created_at, updated_at
+[system_settings] (6 cols)
+   setting_id, setting_key, setting_value, updated_by_user_id, created_at, updated_at
+[system_users] (14 cols)
+   system_user_id, username, email, password_hash, full_name, department_name, employee_id, role_id, status, otp_enabled, last_login_at, last_login_ip, created_at, updated_at
+[users] (8 cols)
+   id, name, email, email_verified_at, password, remember_token, created_at, updated_at
+[user_login_activity] (7 cols)
+   login_activity_id, system_user_id, login_at, ip_address, device_info, user_agent, status

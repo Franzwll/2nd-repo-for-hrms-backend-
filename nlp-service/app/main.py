@@ -3,6 +3,8 @@
 Endpoints:
     GET  /health                  -> liveness + model info
     POST /extract-resume          -> multipart file; text extraction + profile + validation
+    POST /extract-document        -> multipart file; generic handbook/learning-material text
+                                     extraction (PDF/DOCX/TXT/image OCR) returning raw text
     POST /ner/extract-entities    -> JSON {text}; raw entity extraction
     POST /screening/score         -> multipart file + requirements/open_jobs/reference_data form fields;
                                      full pipeline incl. match score and classification
@@ -90,6 +92,41 @@ async def extract_resume(file: UploadFile = File(...)):
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result)
         return result
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+@app.post("/extract-document")
+async def extract_document(file: UploadFile = File(...)):
+    """Generic handbook / learning-material extraction.
+
+    Unlike /extract-resume this returns the raw extracted text (no NER, no
+    scoring) plus the page count, so the LMS quiz generator can ground its
+    questions strictly in the source handbook. Reuses the same multi-format
+    extractor (pdfplumber / pypdfium2 / python-docx / Tesseract OCR).
+    """
+    name = file.filename or ""
+    suffix = Path(name).suffix or ".tmp"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(await file.read())
+        tmp_path = Path(tmp.name)
+    try:
+        try:
+            result = extract_text(tmp_path, name)
+        except ExtractionError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        except Exception as exc:  # noqa: BLE001 - deliberate boundary
+            logger.exception("Unhandled document extraction error")
+            raise HTTPException(status_code=500, detail=f"Internal extraction error: {exc}")
+
+        return {
+            "ok": True,
+            "text": result.get("text") or "",
+            "page_count": int(result.get("pages") or 1),
+            "method": result.get("method"),
+            "extension": result.get("extension"),
+            "warnings": result.get("warnings") or [],
+        }
     finally:
         tmp_path.unlink(missing_ok=True)
 

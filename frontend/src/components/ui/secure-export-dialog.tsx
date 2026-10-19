@@ -70,21 +70,20 @@ export function SecureExportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 font-display text-xl">
             <Lock className="h-5 w-5 text-primary" /> Protect {formatLabel} export
           </DialogTitle>
           <DialogDescription>
             <span className="font-medium text-foreground">{reportTitle}</span> will be exported as a
-            password-protected ZIP containing the {formatLabel} file
+            password-protected ZIP containing the {formatLabel} file. Enter a file password — it
+            will be required to open the ZIP.
             {fileHint ? (
-              <>
-                {" "}
-                (<span className="font-mono">{fileHint}</span>)
-              </>
+              <span className="mt-1.5 block break-all rounded bg-muted px-1.5 py-1 font-mono text-[11px]">
+                {fileHint}
+              </span>
             ) : null}
-            . Enter a file password — it will be required to open the ZIP.
           </DialogDescription>
         </DialogHeader>
 

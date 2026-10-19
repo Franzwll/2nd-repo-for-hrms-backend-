@@ -25,9 +25,22 @@ export function EssStatusBadge({ status }: { status: string }) {
           {status}
         </Badge>
       );
+    case "Verified":
+    case "Verified & Active":
+      return (
+        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 font-medium">
+          {status}
+        </Badge>
+      );
     case "Submitted":
       return (
         <Badge variant="outline" className="bg-purple-500/10 text-purple-600 border-purple-500/30 font-medium">
+          {status}
+        </Badge>
+      );
+    case "Pending Verification":
+      return (
+        <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 font-medium">
           {status}
         </Badge>
       );
@@ -61,3 +74,20 @@ export function EssStatusBadge({ status }: { status: string }) {
       return <Badge variant="outline">{status}</Badge>;
   }
 }
+
+/** Per-category tint for document icon tiles (tax blue, medical green, clearance amber, statutory violet). */
+export function docCategoryTint(category: string) {
+  const c = String(category ?? "").toLowerCase();
+  if (/(tax|bir)/.test(c))
+    return { tile: "bg-gradient-to-br from-blue-500/25 to-blue-500/5 border-blue-500/25", icon: "text-blue-500" };
+  if (/(med|health|hmo)/.test(c))
+    return { tile: "bg-gradient-to-br from-emerald-500/25 to-emerald-500/5 border-emerald-500/25", icon: "text-emerald-500" };
+  if (/(clear|nbi)/.test(c))
+    return { tile: "bg-gradient-to-br from-amber-500/25 to-amber-500/5 border-amber-500/25", icon: "text-amber-500" };
+  if (/(sss|philhealth|hdmf|pag-ibig|pagibig|statutory|government)/.test(c))
+    return { tile: "bg-gradient-to-br from-violet-500/25 to-violet-500/5 border-violet-500/25", icon: "text-violet-500" };
+  return { tile: "bg-gradient-to-br from-red-500/15 to-red-500/5 border-red-500/20", icon: "text-red-500" };
+}
+
+/** Statuses that mean the document is on file (drives the metric count). */
+export const ON_FILE_STATUSES = ["Submitted", "Available", "Released", "Verified", "Verified & Active", "Active"];

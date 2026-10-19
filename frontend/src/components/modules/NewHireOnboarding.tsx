@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
+  ChevronDown,
   Circle,
   Download,
   ClipboardCheck,
@@ -10,13 +11,11 @@ import {
   FileCheck2,
   FileText,
   Hourglass,
-  Inbox,
   Info,
   Loader2,
   Lock,
   Pencil,
   Plus,
-  Printer,
   RefreshCw,
   RotateCcw,
   Save,
@@ -35,7 +34,6 @@ import {
   Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useNavigate } from "@tanstack/react-router";
 
 import { PageHeader } from "@/components/portal/PageHeader";
 import { ListBody } from "@/components/portal/ListBody";
@@ -46,6 +44,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -80,7 +80,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { usePagination } from "@/hooks/usePagination";
@@ -107,12 +106,14 @@ import {
   settingsApi,
   type ApiChecklistRequest,
   type ApiNewHire,
-  type ApiOnboardingSubmission,
 } from "@/lib/api";
 import {
+  describeExport,
+  exportReport,
   type ReportData,
+  type ReportFormat,
 } from "@/lib/report-export";
-import { ReportMenu } from "@/components/ui/report-menu";
+import { SecureExportDialog } from "@/components/ui/secure-export-dialog";
 import { getUser } from "@/lib/auth";
 import {
   isValidEmail,
@@ -154,12 +155,17 @@ function DocumentPreviewModal({
   open,
   onOpenChange,
 }: {
-  fileUrl: string;
-  fileName?: string | undefined;
+  fileUrl?: string | null | undefined;
+  fileName?: string | null | undefined;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const ext = (fileName || fileUrl).split(".").pop()?.toLowerCase() ?? "";
+  if (!open || !fileUrl) {
+    return null;
+  }
+
+  const safeNameOrUrl = fileName || fileUrl || "";
+  const ext = safeNameOrUrl.includes(".") ? safeNameOrUrl.split(".").pop()?.toLowerCase() ?? "" : "";
   const kind: "image" | "pdf" | "other" = ["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(ext)
     ? "image"
     : ext === "pdf"
@@ -279,6 +285,295 @@ const initialsOf = (name: string) =>
     .join("")
     .toUpperCase();
 
+/** What an employee submitted for one onboarding checklist item
+ *  (document upload + notes), read from employee_onboarding_items. */
+type EmployeeSubmission = {
+  itemText: string;
+  done: boolean;
+  submittedAt?: string;
+  fileName?: string;
+  fileUrl?: string;
+  notes?: string;
+  completedAt?: string;
+  /** Database item id — lets Verify / Return act on the row directly. */
+  dbItemId?: number;
+  /** HR's correction note when returned (cleared automatically on verify). */
+  reviewNote?: string | null;
+  /** How many times HR has returned this requirement. */
+  returnedCount?: number;
+};
+
+/** Checklist items from the mock store and the API share the same text. */
+const normalizeChecklistKey = (text: string) => text.trim().toLowerCase();
+
+/** Renders the employee's submission (uploaded document + note) for admins.
+ *  `done` is the row's live (toggled) state, so unchecking a verified item
+ *  immediately flips the file name red instead of staying green. */
+function EmployeeSubmissionDetails({
+  submission,
+  done,
+  onVerify,
+  onReturn,
+  verifyBusy,
+}: {
+  submission: EmployeeSubmission;
+  done: boolean;
+  onVerify?: (() => void) | undefined;
+  onReturn?: (() => void) | undefined;
+  verifyBusy?: boolean | undefined;
+}) {
+  const [docOpen, setDocOpen] = useState(false);
+  /** HR already returned this submission once — it carries a correction note. */
+  const returned = !done && Boolean(submission.reviewNote?.trim());
+  return (
+    <div className="mb-1 mt-1 space-y-1 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+      <p
+        className={cn(
+          "flex items-center gap-1.5 text-xs font-medium",
+          done
+            ? "text-success"
+            : returned
+              ? "text-orange-600 dark:text-orange-400"
+              : "text-destructive",
+        )}
+      >
+        {done ? (
+          <>
+            <ShieldCheck className="h-3.5 w-3.5" /> Verified by HR
+            {submission.completedAt &&
+              ` · ${new Date(submission.completedAt).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}`}
+          </>
+        ) : returned ? (
+          <>
+            <RotateCcw className="h-3.5 w-3.5" /> Returned for correction
+            {(submission.returnedCount ?? 0) > 1 && ` · returned ${submission.returnedCount}×`}
+          </>
+        ) : (
+          <>
+            <Hourglass className="h-3.5 w-3.5" /> Awaiting HR verification
+          </>
+        )}
+      </p>
+      {submission.submittedAt && !submission.done && (
+        <p className="text-[11px] text-muted-foreground">
+          Submitted{" "}
+          {new Date(submission.submittedAt).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}{" "}
+          by the employee — verify it or return it for correction below.
+        </p>
+      )}
+      {returned && (
+        <p className="rounded-md border border-orange-500/30 bg-orange-500/10 px-2 py-1.5 text-[11px] leading-relaxed">
+          <span className="font-semibold text-orange-600 dark:text-orange-400">HR feedback: </span>
+          <span className="text-foreground">{submission.reviewNote}</span>
+        </p>
+      )}
+      {submission.fileName && (
+        <div
+          className={cn(
+            "flex items-center justify-between gap-2 rounded-md border px-2 py-1.5",
+            done ? "border-success/30 bg-success/5" : "border-destructive/30 bg-destructive/5",
+          )}
+        >
+          <span className="flex min-w-0 items-center gap-1.5 text-xs text-foreground">
+            <FileCheck2
+              className={cn("h-3.5 w-3.5 shrink-0", done ? "text-success" : "text-destructive")}
+            />
+            <span className="truncate" title={submission.fileName}>
+              {submission.fileName}
+            </span>
+          </span>
+          {submission.fileUrl && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 shrink-0 cursor-pointer px-2 text-[11px]"
+              onClick={() => setDocOpen(true)}
+            >
+              <ExternalLink className="mr-1 h-3 w-3" /> View
+            </Button>
+          )}
+        </div>
+      )}
+      {submission.notes && (
+        <p className="rounded-md bg-card px-2 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
+          <span className="font-semibold text-foreground">Employee note: </span>
+          {submission.notes}
+        </p>
+      )}
+      {!done && (onVerify || onReturn) && (
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+          {onVerify && (
+            <Button
+              size="sm"
+              className="h-7 cursor-pointer px-2.5 text-[11px]"
+              disabled={verifyBusy}
+              onClick={onVerify}
+            >
+              {verifyBusy ? (
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              ) : (
+                <ShieldCheck className="mr-1 h-3 w-3" />
+              )}
+              Verify
+            </Button>
+          )}
+          {onReturn && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 cursor-pointer border-orange-500/50 px-2.5 text-[11px] text-orange-600 hover:bg-orange-500/10 hover:text-orange-600 dark:text-orange-400 dark:hover:text-orange-400"
+              disabled={verifyBusy}
+              onClick={onReturn}
+            >
+              <RotateCcw className="mr-1 h-3 w-3" /> Return for correction
+            </Button>
+          )}
+        </div>
+      )}
+      {docOpen && submission.fileUrl && (
+        <DocumentPreviewModal
+          open={docOpen}
+          onOpenChange={setDocOpen}
+          fileUrl={submission.fileUrl}
+          fileName={submission.fileName}
+        />
+      )}
+    </div>
+  );
+}
+
+/** One admin/superadmin checklist row — a single bordered pill that contains
+ *  the toggle, the "Submitted · pending review" badge and the collapsible
+ *  "View employee submission" trigger. Pending items render in red; verified
+ *  items get a green background with default text color. */
+function AdminChecklistRow({
+  done,
+  submitted,
+  label,
+  disabled,
+  onClick,
+  submission,
+  onVerify,
+  onReturn,
+  verifyBusy,
+}: {
+  done: boolean;
+  submitted: boolean;
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  submission?: EmployeeSubmission | undefined;
+  onVerify?: (() => void) | undefined;
+  onReturn?: (() => void) | undefined;
+  verifyBusy?: boolean | undefined;
+}) {
+  const hasSubmission = Boolean(
+    submission && (submission.submittedAt || submission.fileName || submission.notes),
+  );
+  /** HR returned this submission with a correction note. */
+  const returned = !done && Boolean(submission?.reviewNote?.trim());
+
+  return (
+    <Collapsible className="group w-full">
+      <div
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-md border px-3 py-2 text-left text-sm transition-colors",
+          done
+            ? "border-success/30 bg-success/10"
+            : "border-border bg-card hover:border-primary/40",
+        )}
+      >
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onClick}
+          aria-label={label}
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2.5 bg-transparent text-left",
+            disabled ? "cursor-not-allowed opacity-80" : "cursor-pointer",
+          )}
+        >
+          {done ? (
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+          ) : returned ? (
+            <RotateCcw className="h-4 w-4 shrink-0 text-orange-500" />
+          ) : submitted ? (
+            <Hourglass className="h-4 w-4 shrink-0 text-destructive" />
+          ) : (
+            <Circle className="h-4 w-4 shrink-0 text-caution" />
+          )}
+          <span
+            className={cn(
+              "min-w-0",
+              returned
+                ? "text-orange-600 dark:text-orange-400"
+                : !done && submitted
+                  ? "text-destructive"
+                  : "text-foreground",
+            )}
+          >
+            {label}
+          </span>
+        </button>
+        {!done && returned && (
+          <Badge
+            variant="outline"
+            className="shrink-0 border-orange-500/40 bg-orange-500/10 text-[10px] text-orange-600 dark:text-orange-400"
+          >
+            Returned for correction
+          </Badge>
+        )}
+        {!done && !returned && submitted && (
+          <Badge
+            variant="outline"
+            className="shrink-0 border-destructive/40 bg-destructive/10 text-[10px] text-destructive"
+          >
+            Submitted · pending review
+          </Badge>
+        )}
+        {!done && !submitted && (
+          <Badge
+            variant="outline"
+            className="shrink-0 border-caution/40 bg-caution/10 text-[10px] text-caution"
+          >
+            Pending
+          </Badge>
+        )}
+        {hasSubmission && (
+          <CollapsibleTrigger
+            title="View employee submission"
+            className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            View employee submission
+            <ChevronDown className="h-3 w-3 transition-transform group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
+        )}
+      </div>
+      {hasSubmission && submission && (
+        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+          <div className="pb-1 pt-1">
+            <EmployeeSubmissionDetails
+              submission={submission}
+              done={done}
+              onVerify={onVerify}
+              onReturn={onReturn}
+              verifyBusy={verifyBusy}
+            />
+          </div>
+        </CollapsibleContent>
+      )}
+    </Collapsible>
+  );
+}
+
 export function NewHireOnboarding({ role }: { role: "superadmin" | "admin" | "employee" }) {
   if (role === "employee") {
     return <EmployeeOnboarding />;
@@ -288,9 +583,30 @@ export function NewHireOnboarding({ role }: { role: "superadmin" | "admin" | "em
 
 function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const isSuperAdmin = role === "superadmin";
-  const navigate = useNavigate();
+
+  /** Pending delete confirmation shared by the checklist template, checklist
+   *  item and requested-checklist delete buttons. */
+  const [confirmDelete, setConfirmDelete] = useState<
+    | { kind: "template"; id: string; label: string }
+    | { kind: "item"; index: number; label: string }
+    | { kind: "requested"; id: string; label: string }
+    | null
+  >(null);
+
+  const confirmDeleteNow = () => {
+    if (!confirmDelete) return;
+    if (confirmDelete.kind === "template") {
+      deleteMasterChecklist(confirmDelete.id);
+    } else if (confirmDelete.kind === "item") {
+      setEditChecklistRichItems((prev) => prev.filter((_, i) => i !== confirmDelete.index));
+      toast.success("Checklist item removed");
+    } else {
+      deleteRequestedItem(confirmDelete.id);
+    }
+    setConfirmDelete(null);
+  };
   const hires = useHires();
-  const loading = useHiresLoading();
+  const hiresLoading = useHiresLoading();
   const setHires = (updater: (prev: NewHire[]) => NewHire[]) => hireStore.setHires(updater);
   const pending = usePendingHire();
   const masterChecklists = useMasterChecklists();
@@ -313,12 +629,17 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const [autoRegularizeDays, setAutoRegularizeDays] = useState(180);
   const [autoRegOpen, setAutoRegOpen] = useState(false);
   const [autoRegDraft, setAutoRegDraft] = useState(180);
+  /** Hire ids whose checklist edit was explicitly saved — gates advancing. */
+  const [checklistSaved, setChecklistSaved] = useState<string[]>([]);
   /** Reference-only checklist items requested by Performance, scoped to a position. */
   const [requestedItems, setRequestedItems] = useState<RequestedChecklistItem[]>([]);
 
   /** Default password for new portal accounts, read from the database
    *  (system_settings.default_password); falls back to the shipped default. */
   const [defaultPassword, setDefaultPassword] = useState(DEFAULT_ACCOUNT_PASSWORD);
+  /** True once the DB value loaded. When false we're showing the shipped
+   *  fallback, which may differ from the real default password. */
+  const [passwordFromDb, setPasswordFromDb] = useState(false);
 
   /** Departments & positions from the Core HCM database. */
   const [knownDepartments, setKnownDepartments] = useState<
@@ -327,10 +648,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const [knownPositions, setKnownPositions] = useState<
     { dbId: number; id: string; title: string; department: string }[]
   >([]);
-  /** Hired/accepted applicants from the live database, for the add-hire form. */
+  /** Hired/candidate applicants from the live database, for the add-hire form. */
   const [candidateApplicants, setCandidateApplicants] = useState<
-    { id: string; name: string; position: string; email: string; phone: string }[]
+    { id: string; name: string; position: string; email: string; phone: string; stage?: string }[]
   >([]);
+  const [isManualName, setIsManualName] = useState(false);
 
   useEffect(() => {
     checklistRequestsApi
@@ -339,15 +661,22 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
         setRequestedItems((res?.data ?? []).map(transformApiRequest));
       })
       .catch((err) => console.warn("Could not fetch checklist requests from API:", err));
-    // default_password is sensitive (Settings:Full only) — non-Full roles 404
-    // by design. Silently keep the shipped default instead of warning.
     settingsApi
       .get("default_password")
       .then((res) => {
         const pw = res?.setting_value?.password;
-        if (pw) setDefaultPassword(pw);
+        if (pw) {
+          setDefaultPassword(pw);
+          setPasswordFromDb(true);
+        }
       })
-      .catch(() => {});
+      .catch((err) => {
+        // 404 is expected for accounts without Settings:Full — the page keeps
+        // the shipped default, so only warn on real failures.
+        if ((err as { status?: number })?.status !== 404) {
+          console.warn("Could not fetch default password from database:", err);
+        }
+      });
     // Auto-regularization threshold (days worked, default 180 = 6 months) —
     // shared through system_settings so every admin session follows the
     // same DOLE cap. Readable by all roles with Settings:View.
@@ -393,28 +722,18 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       .list({ per_page: 100 })
       .then((res) => {
         if (res?.data) {
-          const hired = res.data
-            .filter((a) => a.stage === "Accepted" || a.stage === "Hired")
-            .map((a) => ({
-              id: String(a.applicant_id),
-              name: a.name,
-              position: a.job_post?.title || "Staff",
-              email: a.email || "",
-              phone: a.phone || "",
-            }));
-          setCandidateApplicants(hired);
+          const candidates = res.data.map((a) => ({
+            id: String(a.applicant_id),
+            name: a.name,
+            position: a.job_post?.title || "Staff",
+            email: a.email || "",
+            phone: a.phone || "",
+            stage: a.stage || "Screened",
+          }));
+          setCandidateApplicants(candidates);
         }
       })
-      .catch((err) => {
-        // 401 (expired token) is handled globally (redirect to /login);
-        // NetworkError (CORS/offline) and SyntaxError (proxy returned HTML,
-        // e.g. stale-Vite/SSR fallback) both fall back to mock data, so only
-        // log unexpected failures.
-        const status = (err as { status?: number } | null)?.status;
-        if (status !== 401 && !(err instanceof TypeError) && !(err instanceof SyntaxError)) {
-          console.warn("Could not fetch applicants from API:", err);
-        }
-      });
+      .catch((err) => console.warn("Could not fetch applicants from API:", err));
   }, []);
 
   const [reqItemDraft, setReqItemDraft] = useState("");
@@ -435,68 +754,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const [newItemUploadPlaceholder, setNewItemUploadPlaceholder] = useState("");
   const [showItemDetails, setShowItemDetails] = useState(false);
   const [tab, setTab] = useState("pipeline");
-  /** HR review queue: submitted-but-unverified onboarding items across hires. */
-  const [submissions, setSubmissions] = useState<ApiOnboardingSubmission[]>([]);
-  const [subLoading, setSubLoading] = useState(true);
-  const [verifyingId, setVerifyingId] = useState<number | null>(null);
-  /** Submission being returned for correction + the HR note. */
-  const [returnTarget, setReturnTarget] = useState<ApiOnboardingSubmission | null>(null);
-  const [returnNote, setReturnNote] = useState("");
-  const [returnBusy, setReturnBusy] = useState(false);
-
-  const loadSubmissions = useCallback(async () => {
-    setSubLoading(true);
-    try {
-      const res = await onboardingItemsApi.submissions();
-      setSubmissions(res?.data ?? []);
-    } catch {
-      // Keep previous state on error
-    } finally {
-      setSubLoading(false);
-    }
-  }, []);
-
-  /** Refresh the review queue whenever HR opens the Submissions tab. */
-  useEffect(() => {
-    if (tab === "submissions") {
-      loadSubmissions();
-    }
-  }, [tab, loadSubmissions]);
-
-  const handleVerifySubmission = async (s: ApiOnboardingSubmission) => {
-    setVerifyingId(s.employee_onboarding_item_id);
-    try {
-      await onboardingItemsApi.toggle(s.employee_onboarding_item_id, { done: true });
-      toast.success(`Verified "${s.item_text}" for ${s.hire_name}.`);
-      await loadSubmissions();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not verify submission.");
-    } finally {
-      setVerifyingId(null);
-    }
-  };
-
-  const handleReturnSubmission = async () => {
-    if (!returnTarget) return;
-    if (!returnNote.trim()) {
-      toast.error("Please add a correction note so the employee knows what to fix.");
-      return;
-    }
-    setReturnBusy(true);
-    try {
-      await onboardingItemsApi.returnItem(returnTarget.employee_onboarding_item_id, {
-        note: returnNote.trim(),
-      });
-      toast.success(`Returned "${returnTarget.item_text}" for correction.`);
-      setReturnTarget(null);
-      setReturnNote("");
-      await loadSubmissions();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not return submission.");
-    } finally {
-      setReturnBusy(false);
-    }
-  };
   const [draftItems, setDraftItems] = useState<
     {
       item_text: string;
@@ -529,7 +786,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   );
   const [editChecklistAllPositions, setEditChecklistAllPositions] = useState(true);
   const [editChecklistPositions, setEditChecklistPositions] = useState<string[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const [editSnapshot, setEditSnapshot] = useState<{ item: string; done: boolean }[] | null>(null);
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState<string>("all");
   const [form, setForm] = useState({
@@ -589,10 +850,190 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       },
       intake.applicantId,
     );
+    setSelectedId(id);
     setStage("Pre-onboarding");
     setShowAllStages(false);
     toast.success(`${intake.name} filed under Pre-onboarding`);
   }, [pending]);
+
+  const selected = hires.find((h) => h.id === selectedId) ?? null;
+
+  /** Employee submissions (uploads / notes / completion dates) per hire id,
+   *  fetched live from employee_onboarding_items via the backend API so
+   *  admins see exactly what each new hire submitted per checklist item. */
+  const [submissionsByHire, setSubmissionsByHire] = useState<Record<string, EmployeeSubmission[]>>(
+    {},
+  );
+  /** Bump to re-pull submissions after a Verify / Return applied in the panel. */
+  const [submissionsRefresh, setSubmissionsRefresh] = useState(0);
+  const [verifyingKey, setVerifyingKey] = useState<string | null>(null);
+  /** Submission being returned for correction (opened from a checklist row). */
+  const [returnTarget, setReturnTarget] = useState<EmployeeSubmission | null>(null);
+  const [returnNote, setReturnNote] = useState("");
+  const [returnBusy, setReturnBusy] = useState(false);
+
+  useEffect(() => {
+    const dbId = selected?.dbId;
+    if (!selected || !dbId) return;
+    let cancelled = false;
+    onboardingItemsApi
+      .listForNewHire(dbId)
+      .then((items) => {
+        if (cancelled) return;
+        setSubmissionsByHire((prev) => ({
+          ...prev,
+          [selected.id]: items.map((i) => ({
+            itemText: i.item_text,
+            done: Boolean(i.done),
+            submittedAt: i.submitted_at ?? undefined,
+            fileName: i.file_name ?? undefined,
+            fileUrl:
+              i.employee_onboarding_item_id != null
+                ? onboardingItemsApi.documentUrl(i.employee_onboarding_item_id)
+                : (i.file_url ?? (i.file_path ? resolveStorageUrl(i.file_path) : undefined)),
+            notes: i.notes ?? undefined,
+            completedAt: i.completed_at ?? undefined,
+            dbItemId: i.employee_onboarding_item_id ?? undefined,
+            reviewNote: (i.review_note ?? null) as string | null,
+            returnedCount: (i.returned_count ?? 0) as number,
+          })),
+        }));
+      })
+      .catch((err) => console.warn("Could not load employee submissions:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, submissionsRefresh]);
+
+  /** Quick lookup: normalized checklist item text → employee submission. */
+  const selectedSubmissions = useMemo(() => {
+    if (!selected) return {} as Record<string, EmployeeSubmission>;
+    const list = submissionsByHire[selected.id] ?? [];
+    return Object.fromEntries(list.map((s) => [normalizeChecklistKey(s.itemText), s])) as Record<
+      string,
+      EmployeeSubmission
+    >;
+  }, [selected, submissionsByHire]);
+
+  const toggleItem = (hireId: string, item: string) => {
+    if (editingId !== hireId) return;
+    const target = hires.find((h) => h.id === hireId);
+    const index = target?.checklist.findIndex((c) => c.item === item) ?? -1;
+    const checklistItem = target?.checklist[index];
+    if (!target || !checklistItem) return;
+    const next = !checklistItem.done;
+    // Optimistic local update + persistence to the DB API (real-time sync).
+    hireStore.toggleItem(hireId, index, next);
+  };
+
+  /** Verify a submitted requirement straight from the checklist panel — the
+   *  same persistence as ticking it in Edit Checklist, without the edit mode. */
+  const verifySubmission = async (submission: EmployeeSubmission) => {
+    if (!selected) return;
+    const key = normalizeChecklistKey(submission.itemText);
+    const index = selected.checklist.findIndex((c) => normalizeChecklistKey(c.item) === key);
+    if (index < 0) return;
+    setVerifyingKey(key);
+    try {
+      await hireStore.toggleItem(selected.id, index, true);
+      // An explicit verification counts as saving the checklist, so a fully
+      // verified hire can advance without a separate Save round-trip.
+      setChecklistSaved((prev) => (prev.includes(selected.id) ? prev : [...prev, selected.id]));
+      toast.success(`"${submission.itemText}" verified`);
+    } finally {
+      setVerifyingKey(null);
+      setSubmissionsRefresh((n) => n + 1);
+    }
+  };
+
+  /** Return one submission for correction with HR's note. */
+  const submitReturn = async () => {
+    if (!returnTarget?.dbItemId) return;
+    const note = returnNote.trim();
+    if (!note) {
+      toast.error("Add a short reason so the employee knows what to fix");
+      return;
+    }
+    setReturnBusy(true);
+    try {
+      await onboardingItemsApi.returnItem(returnTarget.dbItemId, { note });
+      toast.success(`"${returnTarget.itemText}" returned for correction`);
+      setReturnTarget(null);
+      setReturnNote("");
+    } catch (e) {
+      console.warn("Return for correction failed:", e);
+      toast.error("Could not return this requirement for correction");
+    } finally {
+      setReturnBusy(false);
+      setSubmissionsRefresh((n) => n + 1);
+    }
+  };
+
+  /** Verify / return props for one checklist row — undefined while the row has
+   *  nothing pending HR review (verified or not yet submitted). */
+  const submissionActions = (itemText: string, done: boolean) => {
+    const submission = selectedSubmissions[normalizeChecklistKey(itemText)];
+    if (!submission || done || submission.done) {
+      return { onVerify: undefined, onReturn: undefined, verifyBusy: undefined };
+    }
+    return {
+      onVerify: () => void verifySubmission(submission),
+      onReturn: () => {
+        setReturnNote("");
+        setReturnTarget(submission);
+      },
+      verifyBusy: verifyingKey === normalizeChecklistKey(itemText),
+    };
+  };
+
+  const startEditChecklist = (hire: NewHire) => {
+    setEditingId(hire.id);
+    setEditSnapshot(hire.checklist.map((c) => ({ ...c })));
+    setSelectedId(hire.id);
+  };
+
+  const cancelEditChecklist = () => {
+    if (editingId && editSnapshot) {
+      setHires((prev) =>
+        prev.map((h) => (h.id === editingId ? { ...h, checklist: editSnapshot } : h)),
+      );
+    }
+    setEditingId(null);
+    setEditSnapshot(null);
+  };
+
+  const saveEditChecklist = () => {
+    if (editingId)
+      setChecklistSaved((prev) => (prev.includes(editingId) ? prev : [...prev, editingId]));
+    setEditingId(null);
+    setEditSnapshot(null);
+    toast.success("Checklist saved");
+  };
+
+  /** Closing the checklist card also drops out of edit mode (reverting changes). */
+  const closeChecklistPanel = () => {
+    cancelEditChecklist();
+    setSelectedId(null);
+  };
+
+  /** Pre-onboarding hires advance into Probationary through the Add New Hire modal. */
+  const advance = (hire: NewHire) => {
+    if (hire.stage !== "Pre-onboarding") return;
+    setEditingId(null);
+    setEditSnapshot(null);
+    setForm({
+      name: hire.name,
+      position: hire.position,
+      department: hire.department,
+      startDate: hire.startDate,
+      email: hire.email ?? "",
+      phone: hire.phone ?? "",
+    });
+    setNameLocked(true);
+    setCompletingId(hire.id);
+    setSelectedId(hire.id);
+    setAddOpen(true);
+  };
 
   const addDraftItem = () => {
     const item = newItem.trim();
@@ -782,6 +1223,18 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     toast.success("Checklist deleted");
   };
 
+  /** Hands a probationary hire over for performance evaluation — persisted on
+   *  the hire record (evaluation_requested_at) so every admin session sees it. */
+  const requestEvaluation = (hire: NewHire) => {
+    hireStore.requestEvaluation(hire.id);
+    toast.success(`Evaluation requested for ${hire.name}`);
+  };
+
+  /** Restores the checklist card / list row to its normal state. */
+  const cancelEvaluationRequest = (hire: NewHire) => {
+    hireStore.cancelEvaluationRequest(hire.id);
+  };
+
   const progress = (h: NewHire) => {
     // Probationary progress reflects only the Probationary phase items
     // (falls back to the whole checklist when items are not phase-tagged).
@@ -790,26 +1243,211 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     return Math.round((pool.filter((c) => c.done).length / pool.length) * 100);
   };
 
-  /** Pending delete confirmation shared by the checklist template, checklist
-   *  item and requested-checklist delete buttons. */
-  const [confirmDelete, setConfirmDelete] = useState<
-    | { kind: "template"; id: string; label: string }
-    | { kind: "item"; index: number; label: string }
-    | { kind: "requested"; id: string; label: string }
-    | null
-  >(null);
+  /** Predefined onboarding reports — the only reports this module exports. */
+  const onboardingReportOptions = [
+    {
+      id: "summary" as const,
+      title: "Onboarding Summary",
+      description: "Every active hire with stage, days of work and overall progress.",
+    },
+    {
+      id: "progress" as const,
+      title: "Checklist Progress",
+      description: "Verified vs. pending requirements per hire.",
+    },
+    {
+      id: "overdue" as const,
+      title: "Overdue & At-Risk",
+      description:
+        "Incomplete hires past the expected timeline (pre-onboarding > 7 days, probationary > 30 days).",
+    },
+  ];
+  type OnboardingReportId = (typeof onboardingReportOptions)[number]["id"];
 
-  const confirmDeleteNow = () => {
-    if (!confirmDelete) return;
-    if (confirmDelete.kind === "template") {
-      deleteMasterChecklist(confirmDelete.id);
-    } else if (confirmDelete.kind === "item") {
-      setEditChecklistRichItems((prev) => prev.filter((_, i) => i !== confirmDelete.index));
-      toast.success("Checklist item removed");
-    } else {
-      deleteRequestedItem(confirmDelete.id);
+  /** Password-protected export flow — predefined report + format awaiting a file password. */
+  const [reportsOpen, setReportsOpen] = useState(false);
+  const [csvOpen, setCsvOpen] = useState(false);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvPending, setCsvPending] = useState<{
+    id: OnboardingReportId;
+    format: ReportFormat;
+  } | null>(null);
+
+  const pendingCountOf = (h: NewHire) => h.checklist.filter((c) => !c.done).length;
+
+  const buildSummaryReport = (): ReportData => {
+    const pool = hires.filter((h) => h.stage !== "Regular");
+    const rowsData = pool.map((h) => ({
+      name: h.name,
+      position: h.position,
+      department: h.department,
+      stage: h.stage,
+      daysOfWork: daysOfWork(h.startDate),
+      progress: `${progress(h)}%`,
+      startDate: h.startDate,
+    }));
+    return {
+      title: "New Hire Onboarding Report",
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · Predefined report: Onboarding Summary`,
+      columns: [
+        { header: "New Hire", key: "name", width: "17%" },
+        { header: "Position", key: "position", width: "17%" },
+        { header: "Department", key: "department", width: "15%" },
+        { header: "Stage", key: "stage", width: "13%" },
+        { header: "Days of Work", key: "daysOfWork", width: "11%" },
+        { header: "Progress", key: "progress", width: "11%" },
+        { header: "Start Date", key: "startDate", width: "16%" },
+      ],
+      rows: rowsData,
+      summary: [
+        { label: "Total Hires", value: pool.length },
+        {
+          label: "Pre-onboarding",
+          value: pool.filter((h) => h.stage === "Pre-onboarding").length,
+        },
+        {
+          label: "Probationary",
+          value: pool.filter((h) => h.stage === "Probationary").length,
+        },
+      ],
+    };
+  };
+
+  const buildProgressReport = (): ReportData => {
+    const pool = hires.filter((h) => h.stage !== "Regular");
+    const rowsData = pool.map((h) => ({
+      name: h.name,
+      position: h.position,
+      department: h.department,
+      stage: h.stage,
+      total: h.checklist.length,
+      verified: h.checklist.filter((c) => c.done).length,
+      pending: pendingCountOf(h),
+      progress: `${progress(h)}%`,
+    }));
+    return {
+      title: "Onboarding Checklist Progress Report",
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · Predefined report: Checklist Progress`,
+      columns: [
+        { header: "New Hire", key: "name", width: "18%" },
+        { header: "Position", key: "position", width: "18%" },
+        { header: "Department", key: "department", width: "16%" },
+        { header: "Stage", key: "stage", width: "14%" },
+        { header: "Total Items", key: "total", width: "9%" },
+        { header: "Verified", key: "verified", width: "9%" },
+        { header: "Pending", key: "pending", width: "9%" },
+        { header: "Progress", key: "progress", width: "9%" },
+      ],
+      rows: rowsData,
+      summary: [
+        { label: "Total Hires", value: pool.length },
+        {
+          label: "Fully Verified",
+          value: pool.filter((h) => progress(h) === 100).length,
+        },
+        {
+          label: "In Progress",
+          value: pool.filter((h) => progress(h) < 100).length,
+        },
+      ],
+    };
+  };
+
+  const buildOverdueReport = (): ReportData => {
+    const pool = hires.filter((h) => h.stage !== "Regular");
+    const flagged = pool
+      .map((h) => {
+        const dw = daysOfWork(h.startDate);
+        const pct = progress(h);
+        const overdue =
+          pct < 100 &&
+          ((h.stage === "Pre-onboarding" && dw > 7) || (h.stage === "Probationary" && dw > 30));
+        const flag =
+          pct === 100
+            ? "Complete"
+            : !overdue
+              ? "On track"
+              : h.stage === "Pre-onboarding"
+                ? "Overdue pre-onboarding"
+                : "At-risk probationary";
+        return {
+          name: h.name,
+          position: h.position,
+          department: h.department,
+          stage: h.stage,
+          startDate: h.startDate,
+          daysOfWork: dw,
+          progress: `${pct}%`,
+          pending: pendingCountOf(h),
+          flag,
+          overdue,
+        };
+      })
+      .filter((r) => r.overdue);
+    return {
+      title: "Onboarding Overdue & At-Risk Report",
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · Predefined report: Overdue & At-Risk`,
+      columns: [
+        { header: "New Hire", key: "name", width: "16%" },
+        { header: "Position", key: "position", width: "16%" },
+        { header: "Department", key: "department", width: "14%" },
+        { header: "Stage", key: "stage", width: "12%" },
+        { header: "Start Date", key: "startDate", width: "11%" },
+        { header: "Days of Work", key: "daysOfWork", width: "9%" },
+        { header: "Progress", key: "progress", width: "8%" },
+        { header: "Pending", key: "pending", width: "8%" },
+        { header: "Flag", key: "flag", width: "16%" },
+      ],
+      rows: flagged.map(({ overdue: _o, ...rest }) => rest),
+      summary: [
+        { label: "Active Hires", value: pool.length },
+        { label: "Overdue / At-Risk", value: flagged.length },
+        {
+          label: "Overdue Pre-onboarding",
+          value: flagged.filter((r) => r.stage === "Pre-onboarding").length,
+        },
+        {
+          label: "At-Risk Probationary",
+          value: flagged.filter((r) => r.stage === "Probationary").length,
+        },
+      ],
+    };
+  };
+
+  const buildOnboardingReport = (id: OnboardingReportId): ReportData => {
+    if (id === "progress") return buildProgressReport();
+    if (id === "overdue") return buildOverdueReport();
+    return buildSummaryReport();
+  };
+
+  /** Every format is password-protected: picking one opens the password gate. */
+  const handleExportOnboardingReportById = (id: OnboardingReportId, format: ReportFormat) => {
+    if (buildOnboardingReport(id).rows.length === 0) {
+      toast.error("No onboarding records to export.");
+      return;
     }
-    setConfirmDelete(null);
+    setCsvPending({ id, format });
+    setCsvOpen(true);
+  };
+
+  const confirmOnboardingCsv = async (password: string) => {
+    if (!csvPending) return;
+    setCsvBusy(true);
+    try {
+      const data = buildOnboardingReport(csvPending.id);
+      await exportReport(data, csvPending.format, { password });
+      const { zipName } = describeExport(data, csvPending.format);
+      toast.success(
+        `${data.title} exported as password-protected ${csvPending.format.toUpperCase()} (${zipName}).`,
+      );
+      setCsvOpen(false);
+      setCsvPending(null);
+    } catch (e) {
+      console.error("Protected export failed:", e);
+      toast.error(e instanceof Error ? e.message : "Protected export failed.");
+    } finally {
+      setCsvBusy(false);
+    }
   };
 
   /**
@@ -894,75 +1532,12 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   const reqPage = usePagination(requestedItems, 6);
   const checklistPage = usePagination(masterChecklists, 3);
 
-  /**
-   * Org-chart–aligned report payload: Position immediately followed by
-   * Department, rows ordered Department → Position → Name (same hierarchy
-   * as the Organizational Chart), departments resolved against the Core HCM
-   * master. Exports the currently filtered pipeline view (department filter
-   * + search + stage), not the unfiltered store.
-   */
-  const buildOnboardingReportData = (): ReportData => {
-    const deptOfHire = (h: NewHire) =>
-      knownPositions.find((p) => p.title === h.position)?.department ?? h.department;
-    const rowsData = [...filtered]
-      .map((h) => ({
-        name: h.name,
-        position: h.position,
-        department: deptOfHire(h),
-        stage: h.stage,
-        daysOfWork: daysOfWork(h.startDate),
-        progress: `${progress(h)}%`,
-        startDate: h.startDate,
-      }))
-      .sort(
-        (a, b) =>
-          a.department.localeCompare(b.department) ||
-          a.position.localeCompare(b.position) ||
-          a.name.localeCompare(b.name),
-      );
-    const scope = awaitingOnly
-      ? "Awaiting evaluation"
-      : showAllStages
-        ? "All stages"
-        : stage;
-    return {
-      title: "New Hire Onboarding Report",
-      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} · Department: ${deptFilter} | Stage: ${scope}`,
-      columns: [
-        { header: "New Hire", key: "name", width: "17%" },
-        { header: "Position", key: "position", width: "17%" },
-        { header: "Department", key: "department", width: "15%" },
-        { header: "Stage", key: "stage", width: "13%" },
-        { header: "Days of Work", key: "daysOfWork", width: "11%" },
-        { header: "Progress", key: "progress", width: "11%" },
-        { header: "Start Date", key: "startDate", width: "16%" },
-      ],
-      rows: rowsData,
-      // Same security logic as every other module: hire rows carry PII.
-      sensitive: true,
-      summary: [
-        { label: "Total Hires", value: hires.length },
-        {
-          label: "Pre-onboarding",
-          value: hires.filter((h) => h.stage === "Pre-onboarding").length,
-        },
-        {
-          label: "Probationary",
-          value: hires.filter((h) => h.stage === "Probationary").length,
-        },
-        {
-          label: "Departments Covered",
-          value: new Set(rowsData.map((r) => r.department)).size,
-        },
-        { label: "Rows in Report", value: rowsData.length },
-      ],
-    };
-  };
-
   const selectStage = (s: Stage) => {
     setStage(s);
     setShowAllStages(false);
     setAwaitingOnly(false);
+    const firstInStage = hires.find((h) => h.stage === s);
+    setSelectedId(firstInStage?.id ?? null);
   };
 
   const resetHireForm = () => {
@@ -1029,11 +1604,14 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       );
       setStage("Probationary");
       setShowAllStages(false);
+      setSelectedId(id);
       const name = form.name;
       const targetEmail = form.email;
       resetHireForm();
       toast.success(
-        `${name} moved to Probationary — portal account created & login credentials sent to ${targetEmail} (default password: ${defaultPassword})`,
+        passwordFromDb
+          ? `${name} moved to Probationary — portal account created & login credentials sent to ${targetEmail} (default password: ${defaultPassword})`
+          : `${name} moved to Probationary — portal account created & login credentials sent to ${targetEmail}`,
       );
       hireStore.updateHire(id, {
         name: form.name,
@@ -1068,6 +1646,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       })),
     });
 
+    setSelectedId(id);
     setStage("Pre-onboarding");
     setShowAllStages(false);
     const name = form.name;
@@ -1082,12 +1661,107 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   return (
     <div>
       <PageHeader
-        eyebrow={role === "superadmin" ? "Super Admin · Recruitment" : "Admin · Recruitment"}
         title="New Hire Onboarding"
-        description="Pre-onboarding, probationary and regularization tracking with requirement checklists."
         actions={
-          <ReportMenu report={() => buildOnboardingReportData()} recordCount={onboardingHires.length} />
+          <Button variant="outline" className="gap-2" onClick={() => setReportsOpen(true)}>
+            <Download className="h-4 w-4" /> Generate Report
+          </Button>
         }
+      />
+
+      {/* PREDEFINED REPORTS DIALOG */}
+      <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">Generate Report</DialogTitle>
+            <DialogDescription>
+              Predefined reports — every format is password-protected (sealed in an AES-256 ZIP; you
+              will be asked for a file password on every export).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {onboardingReportOptions.map((r) => (
+              <div
+                key={r.id}
+                className="flex items-center justify-between gap-3 rounded-md border border-border p-3"
+              >
+                <div>
+                  <p className="text-sm font-medium">{r.title}</p>
+                  <p className="text-xs text-muted-foreground">{r.description}</p>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="outline">
+                      <Download className="mr-2 h-4 w-4" /> Generate
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-60">
+                    <DropdownMenuItem onClick={() => handleExportOnboardingReportById(r.id, "pdf")}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleExportOnboardingReportById(r.id, "docx")}
+                    >
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleExportOnboardingReportById(r.id, "excel")}
+                    >
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExportOnboardingReportById(r.id, "csv")}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      <span className="flex items-center gap-1.5">
+                        Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                      </span>
+                    </DropdownMenuItem>
+                    <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+                      Password-protected ZIP — password asked on every export.
+                    </p>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <SecureExportDialog
+        open={csvOpen}
+        onOpenChange={(o) => {
+          if (!csvBusy) {
+            setCsvOpen(o);
+            if (!o) setCsvPending(null);
+          }
+        }}
+        reportTitle={
+          csvPending
+            ? (onboardingReportOptions.find((o) => o.id === csvPending.id)?.title ??
+              "Onboarding report")
+            : "Onboarding report"
+        }
+        formatLabel={
+          !csvPending
+            ? ""
+            : csvPending.format === "pdf"
+              ? "PDF"
+              : csvPending.format === "docx"
+                ? "DOCX"
+                : csvPending.format === "excel"
+                  ? "Excel"
+                  : "CSV"
+        }
+        busy={csvBusy}
+        onConfirm={confirmOnboardingCsv}
       />
 
       <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -1127,20 +1801,12 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
-        <TabsList className="flex h-auto flex-wrap justify-start">
-          <TabsTrigger className="flex items-center gap-1.5" value="pipeline">
+        <TabsList>
+          <TabsTrigger className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="pipeline">
             <ClipboardList className="h-3.5 w-3.5" /> Onboarding Pipeline
           </TabsTrigger>
-          <TabsTrigger className="flex items-center gap-1.5" value="checklists">
+          <TabsTrigger className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="checklists">
             <Send className="h-3.5 w-3.5" /> Requested Checklists
-          </TabsTrigger>
-          <TabsTrigger className="flex items-center gap-1.5" value="submissions">
-            <Inbox className="h-3.5 w-3.5" /> Submissions
-            {submissions.length > 0 && (
-              <span className="ml-1 rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold text-primary">
-                {submissions.length}
-              </span>
-            )}
           </TabsTrigger>
         </TabsList>
 
@@ -1198,9 +1864,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                         <span className="mt-1 max-w-[220px] text-[0.7rem] text-muted-foreground">
                           {stageBlurb[s]}
                         </span>
-                        <Badge variant="secondary" className="mt-2">
-                          {onboardingHires.filter((h) => h.stage === s).length} hires
-                        </Badge>
                       </div>
                     );
                   })}
@@ -1209,7 +1872,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
             </CardContent>
           </Card>
 
-          <div className="mt-6">
+          <div className="mt-6 grid gap-6 2xl:grid-cols-[1.6fr_1fr]">
             <Card className="flex h-[42rem] min-w-0 flex-col border-border/70">
               <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col p-6">
                 <div className="flex flex-col gap-3">
@@ -1223,17 +1886,20 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             ? "All Hired Applicants"
                             : `${stage} List`}
                       </h2>
+                      <p className="text-xs text-muted-foreground">
+                        Click a hire to open their requirements checklist on the right.
+                      </p>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <div className="relative">
+                  <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+                    <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                       <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder="Search name, position..."
-                        className="w-56 pl-8"
+                        className="pl-8"
                       />
                     </div>
                     <Select value={deptFilter} onValueChange={setDeptFilter}>
@@ -1320,8 +1986,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {loading && <TableRowsSkeleton cols={7} rows={5} />}
-                        {!loading && hirePage.pageItems.map((h) => {
+                        {hiresLoading && hires.length === 0 && (
+                          <TableRowsSkeleton cols={7} rows={6} />
+                        )}
+                        {(!hiresLoading || hires.length > 0) &&
+                          hirePage.pageItems.map((h) => {
                           const pct = progress(h);
                           const complete = pct === 100;
                           const awaiting = evaluationRequested.includes(h.id);
@@ -1329,6 +1998,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             <TableRow
                               key={h.id}
                               className={cn(
+                                selectedId === h.id && "bg-primary/5",
                                 complete && !awaiting && "bg-success/5",
                                 awaiting && "bg-gold/5",
                               )}
@@ -1340,7 +2010,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                       className={cn(
                                         "text-xs",
                                         awaiting
-                                          ? "bg-gold/15 text-gold-foreground dark:text-gold"
+                                          ? "bg-gold/15 text-gold-foreground"
                                           : complete
                                             ? "bg-success/15 text-success"
                                             : "bg-primary/10 text-primary",
@@ -1371,7 +2041,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                           "font-medium",
                                           isProbationary &&
                                             remaining <= 0 &&
-                                            "text-gold-foreground dark:text-gold",
+                                            "text-gold-foreground",
                                         )}
                                       >
                                         {worked} {worked === 1 ? "day" : "days"}
@@ -1383,7 +2053,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                         </span>
                                       )}
                                       {isProbationary && remaining <= 0 && (
-                                        <span className="block text-[0.65rem] font-medium text-gold-foreground dark:text-gold">
+                                        <span className="block text-[0.65rem] font-medium text-gold-foreground">
                                           Probation cap reached — regularization due
                                         </span>
                                       )}
@@ -1401,7 +2071,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   )}
                                 />
                                 {awaiting ? (
-                                  <p className="mt-1 flex items-center gap-1.5 text-[0.7rem] text-gold-foreground dark:text-gold">
+                                  <p className="mt-1 flex items-center gap-1.5 text-[0.7rem] text-gold-foreground">
                                     <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
                                     Waiting for evaluation
                                   </p>
@@ -1422,7 +2092,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   variant="outline"
                                   className={cn(
                                     awaiting
-                                      ? "border-gold/40 bg-gold/15 text-gold-foreground dark:text-gold"
+                                      ? "border-gold/40 bg-gold/15 text-gold-foreground"
                                       : complete && "border-success/30 bg-success/15 text-success",
                                   )}
                                 >
@@ -1430,26 +2100,52 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                 </Badge>
                               </TableCell>
                               <TableCell>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="cursor-pointer"
-                                  title="Open this hire's Requirements Checklist in the applicant's View profile — view and modify it there"
-                                  onClick={() => {
-                                    hireStore.setPendingChecklistView({
-                                      applicantId: h.applicantId ?? null,
-                                      applicantName: h.name,
-                                    });
-                                    navigate({ to: `/${role}/applicants` });
-                                  }}
-                                >
-                                  <ClipboardList className="mr-1.5 h-3.5 w-3.5" /> View Checklist
-                                </Button>
+                                <div className="flex items-center gap-1.5">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="cursor-pointer"
+                                    onClick={() => {
+                                      if (editingId && editingId !== h.id) cancelEditChecklist();
+                                      setSelectedId(h.id);
+                                    }}
+                                  >
+                                    <Eye className="mr-1.5 h-3.5 w-3.5" /> View
+                                  </Button>
+                                  {editingId === h.id ? (
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        className="cursor-pointer"
+                                        onClick={saveEditChecklist}
+                                      >
+                                        <Save className="mr-1.5 h-3.5 w-3.5" /> Save
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="cursor-pointer"
+                                        onClick={cancelEditChecklist}
+                                      >
+                                        Cancel
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="cursor-pointer"
+                                      onClick={() => startEditChecklist(h)}
+                                    >
+                                      <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit Checklist
+                                    </Button>
+                                  )}
+                                </div>
                               </TableCell>
                             </TableRow>
                           );
                         })}
-                        {!loading && visible.length === 0 && (
+                        {(!hiresLoading || hires.length > 0) && visible.length === 0 && (
                           <TableRow>
                             <TableCell colSpan={7} className="py-8">
                               <ListEmptyState placeholder="Search name, position..." />
@@ -1474,6 +2170,505 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                 </div>
               </CardContent>
             </Card>
+
+            {/* CHECKLIST PANEL — right corner */}
+            <Card
+              className={cn(
+                "flex h-[42rem] min-w-0 flex-col border-border/70 transition-colors",
+                selected &&
+                  selected.stage === "Probationary" &&
+                  evaluationRequested.includes(selected.id) &&
+                  "border-gold/50 bg-gold/5 ring-1 ring-gold/30",
+                selected &&
+                  !(
+                    selected.stage === "Probationary" && evaluationRequested.includes(selected.id)
+                  ) &&
+                  progress(selected) === 100 &&
+                  "border-success/50 bg-success/5 ring-1 ring-success/30",
+              )}
+            >
+              <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-6">
+                {!selected ? (
+                  <div className="flex flex-1 flex-col items-center justify-center gap-3 py-10 text-center text-sm text-muted-foreground">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                      <Users className="h-6 w-6 text-muted-foreground" />
+                    </span>
+                    Select a hire from the list to view their requirements checklist.
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-12 w-12">
+                          <AvatarFallback
+                            className={cn(
+                              "font-display",
+                              progress(selected) === 100
+                                ? "bg-success/15 text-success"
+                                : "bg-primary/10 text-primary",
+                            )}
+                          >
+                            {selected.initials}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <h2 className="font-display text-xl font-semibold">{selected.name}</h2>
+                          <p className="text-xs text-muted-foreground">{selected.position}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="cursor-pointer"
+                          onClick={closeChecklistPanel}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 space-y-1 text-xs text-muted-foreground">
+                      <p>{selected.email}</p>
+                      <p>{selected.phone}</p>
+                      <p>Start date: {selected.startDate}</p>
+                    </div>
+
+                    {(() => {
+                      const isWaiting =
+                        selected.stage === "Probationary" &&
+                        evaluationRequested.includes(selected.id);
+                      return (
+                        <>
+                          <div className="mt-4 flex min-h-[16rem] flex-1 flex-col">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="eyebrow">Requirements checklist</span>
+                              <span
+                                className={cn(
+                                  "font-medium",
+                                  progress(selected) === 100
+                                    ? "text-gold-foreground"
+                                    : "text-muted-foreground",
+                                )}
+                              >
+                                {progress(selected)}%
+                              </span>
+                            </div>
+                            <Progress
+                              value={progress(selected)}
+                              className={cn(
+                                "mt-2 h-2 [&>div]:transition-all",
+                                isWaiting ? "[&>div]:bg-gold" : "[&>div]:bg-success",
+                                isWaiting &&
+                                  progress(selected) === 100 &&
+                                  "[&>div]:shadow-[0_0_10px_var(--gold)]",
+                              )}
+                            />
+
+                            <div className="mt-3 flex w-full items-center justify-between rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium">
+                              <span>Checklist items ({selected.checklist.length})</span>
+                              <span className="text-muted-foreground">
+                                {selected.checklist.filter((c) => c.done).length}/
+                                {selected.checklist.length}
+                              </span>
+                            </div>
+
+                            <>
+                              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+                                <ul className="mt-3 space-y-1.5">
+                                  {[...selected.checklist]
+                                    .filter(
+                                      (c) =>
+                                        ((c.phase ?? "Probationary") === "Pre-onboarding") ===
+                                        (selected.stage === "Pre-onboarding"),
+                                    )
+                                    .map((c, i) => ({
+                                      ...c,
+                                      i,
+                                      submission:
+                                        selectedSubmissions[normalizeChecklistKey(c.item)],
+                                    }))
+                                    .sort((a, b) => {
+                                      const rank = (x: {
+                                        done: boolean;
+                                        submission: EmployeeSubmission | undefined;
+                                      }) =>
+                                        x.done
+                                          ? 2
+                                          : x.submission &&
+                                              (x.submission.submittedAt ||
+                                                x.submission.fileName ||
+                                                x.submission.notes)
+                                            ? 1
+                                            : 0;
+                                      return rank(a) - rank(b) || a.i - b.i;
+                                    })
+                                    .map((c) => {
+                                      const isEditingThis = editingId === selected.id && !isWaiting;
+                                      const submission =
+                                        selectedSubmissions[normalizeChecklistKey(c.item)];
+                                      return (
+                                        <li
+                                          key={c.item}
+                                          className="rounded-md transition-all duration-300 ease-in-out"
+                                        >
+                                          <AdminChecklistRow
+                                            done={Boolean(c.done)}
+                                            submitted={Boolean(
+                                              submission &&
+                                              (submission.submittedAt ||
+                                                submission.fileName ||
+                                                submission.notes),
+                                            )}
+                                            label={c.item}
+                                            disabled={!isEditingThis}
+                                            onClick={() => toggleItem(selected.id, c.item)}
+                                            submission={submission}
+                                            {...submissionActions(c.item, Boolean(c.done))}
+                                          />
+                                        </li>
+                                      );
+                                    })}
+                                </ul>
+
+                                {selected.checklist.some(
+                                  (c) =>
+                                    ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                    (selected.stage === "Pre-onboarding"),
+                                ) && (
+                                  <Collapsible className="mt-3">
+                                    <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs font-medium transition-colors hover:bg-muted/50">
+                                      <span className="flex items-center gap-1.5">
+                                        <ChevronDown className="h-3.5 w-3.5" />
+                                        {selected.stage === "Pre-onboarding"
+                                          ? "Probationary tasks"
+                                          : "Finished pre-onboarding checklist"}
+                                      </span>
+                                      <span className="text-muted-foreground">
+                                        {
+                                          selected.checklist.filter(
+                                            (c) =>
+                                              ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                                (selected.stage === "Pre-onboarding") && c.done,
+                                          ).length
+                                        }
+                                        /
+                                        {
+                                          selected.checklist.filter(
+                                            (c) =>
+                                              ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                              (selected.stage === "Pre-onboarding"),
+                                          ).length
+                                        }{" "}
+                                        done
+                                      </span>
+                                    </CollapsibleTrigger>
+                                    <CollapsibleContent className="overflow-hidden transition-all data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+                                      <ul className="mt-2 space-y-1.5 pl-1.5">
+                                        {[...selected.checklist]
+                                          .filter(
+                                            (c) =>
+                                              ((c.phase ?? "Probationary") === "Pre-onboarding") !==
+                                              (selected.stage === "Pre-onboarding"),
+                                          )
+                                          .map((c, i) => ({
+                                            ...c,
+                                            i,
+                                            submission:
+                                              selectedSubmissions[normalizeChecklistKey(c.item)],
+                                          }))
+                                          .sort((a, b) => {
+                                            const rank = (x: {
+                                              done: boolean;
+                                              submission: EmployeeSubmission | undefined;
+                                            }) =>
+                                              x.done
+                                                ? 2
+                                                : x.submission &&
+                                                    (x.submission.submittedAt ||
+                                                      x.submission.fileName ||
+                                                      x.submission.notes)
+                                                  ? 1
+                                                  : 0;
+                                            return rank(a) - rank(b) || a.i - b.i;
+                                          })
+                                          .map((c) => {
+                                            const isEditingThis =
+                                              editingId === selected.id && !isWaiting;
+                                            const submission =
+                                              selectedSubmissions[normalizeChecklistKey(c.item)];
+                                            return (
+                                              <li
+                                                key={c.item}
+                                                className="rounded-md transition-all duration-300 ease-in-out"
+                                              >
+                                                <AdminChecklistRow
+                                                  done={Boolean(c.done)}
+                                                  submitted={Boolean(
+                                                    submission &&
+                                                    (submission.submittedAt ||
+                                                      submission.fileName ||
+                                                      submission.notes),
+                                                  )}
+                                                  label={c.item}
+                                                  disabled={!isEditingThis}
+                                                  onClick={() => toggleItem(selected.id, c.item)}
+                                                  submission={submission}
+                                                  {...submissionActions(c.item, Boolean(c.done))}
+                                                />
+                                              </li>
+                                            );
+                                          })}
+                                      </ul>
+                                    </CollapsibleContent>
+                                  </Collapsible>
+                                )}
+                              </div>
+                            </>
+
+                            {progress(selected) === 100 && !isWaiting && (
+                              <div className="mt-4 rounded-md border border-success/40 bg-success/10 p-3 text-xs text-success">
+                                All requirements complete — this hire is ready to advance.
+                              </div>
+                            )}
+
+                            {!isWaiting && (
+                              <div className="mt-auto flex flex-wrap items-stretch gap-2 pt-4">
+                                {editingId === selected.id ? (
+                                  <>
+                                    <Button
+                                      variant="outline"
+                                      className="h-10 cursor-pointer"
+                                      onClick={() => hireStore.setAllItemsDone(selected.id, true)}
+                                    >
+                                      Mark all done
+                                    </Button>
+                                    <Button
+                                      className="h-10 cursor-pointer"
+                                      onClick={saveEditChecklist}
+                                    >
+                                      <Save className="mr-1.5 h-4 w-4" /> Save
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      className="h-10 cursor-pointer"
+                                      onClick={cancelEditChecklist}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    className="h-10 cursor-pointer"
+                                    onClick={() => startEditChecklist(selected)}
+                                  >
+                                    <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit Checklist
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+
+                            {selected.stage === "Pre-onboarding" &&
+                              (progress(selected) === 100 &&
+                              checklistSaved.includes(selected.id) ? (
+                                <Button
+                                  className="mt-2 h-10 w-full cursor-pointer"
+                                  onClick={() => advance(selected)}
+                                >
+                                  Advance to Probationary
+                                </Button>
+                              ) : (
+                                <div className="mt-2 flex items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/40 p-3 text-center text-xs text-muted-foreground">
+                                  <span>Advance to Probationary is locked.</span>
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6 shrink-0"
+                                        aria-label="Why advancing is locked"
+                                      >
+                                        <Info className="h-4 w-4" />
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-72 text-xs">
+                                      Complete every checklist item and save the checklist to unlock
+                                      “Advance to Probationary”.
+                                    </PopoverContent>
+                                  </Popover>
+                                </div>
+                              ))}
+
+                            {selected.stage === "Probationary" && (
+                              <div className="mt-4">
+                                {isWaiting ? (
+                                  <div className="animate-in overflow-hidden rounded-xl border border-gold/40 bg-gold/5 fade-in duration-500">
+                                    <div className="flex items-center gap-3 border-b border-gold/30 bg-gold/10 px-4 py-3">
+                                      <span className="flex h-9 w-9 shrink-0 items-center justify-center">
+                                        <Loader2 className="h-4.5 w-4.5 animate-spin text-gold-foreground" />
+                                      </span>
+                                      <div className="min-w-0 flex-1">
+                                        <p className="font-display text-base font-semibold leading-tight text-gold-foreground">
+                                          Waiting for evaluation
+                                        </p>
+                                        <p className="text-[0.7rem] text-muted-foreground">
+                                          Sent to Performance — no result yet
+                                        </p>
+                                      </div>
+                                      <Badge
+                                        variant="outline"
+                                        className="shrink-0 border-gold/40 bg-gold/10 text-[0.65rem] text-gold-foreground"
+                                      >
+                                        In review
+                                      </Badge>
+                                    </div>
+                                    <div className="space-y-3 p-4">
+                                      <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-card px-3 py-2 text-xs">
+                                        <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold-foreground" />
+                                        {(() => {
+                                          const worked = daysOfWork(selected.startDate);
+                                          const remaining = autoRegularizeDays - worked;
+                                          return (
+                                            <span className="text-muted-foreground">
+                                              {remaining > 0 ? (
+                                                <>
+                                                  Regularized by operation of law after{" "}
+                                                  <span className="font-medium text-foreground">
+                                                    {autoRegularizeDays} days of work
+                                                  </span>{" "}
+                                                  — {worked} worked,{" "}
+                                                  <span className="font-medium text-foreground">
+                                                    {remaining} {remaining === 1 ? "day" : "days"}{" "}
+                                                    remaining
+                                                  </span>{" "}
+                                                  if no evaluation result comes back.
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <span className="font-medium text-gold-foreground">
+                                                    {worked} days of work
+                                                  </span>{" "}
+                                                  — the probation cap of {autoRegularizeDays} days
+                                                  has been reached. Regularization fires as soon as
+                                                  all requirements are complete.
+                                                </>
+                                              )}
+                                            </span>
+                                          );
+                                        })()}
+                                      </div>
+                                      <Button
+                                        variant="outline"
+                                        className="h-9 w-full cursor-pointer"
+                                        onClick={() => cancelEvaluationRequest(selected)}
+                                      >
+                                        <X className="mr-1.5 h-3.5 w-3.5" /> Cancel request
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : progress(selected) === 100 &&
+                                  checklistSaved.includes(selected.id) ? (
+                                  <div className="animate-in overflow-hidden rounded-xl border border-gold/45 bg-card shadow-[0_10px_30px_-18px_var(--gold)] fade-in duration-500">
+                                    <div className="relative flex items-center gap-3 border-b border-gold/30 bg-gradient-to-r from-gold/15 via-gold/5 to-transparent px-4 py-3">
+                                      <span className="flex h-10 w-10 shrink-0 items-center justify-center">
+                                        <ClipboardCheck className="h-5 w-5 text-gold-foreground" />
+                                      </span>
+                                      <div className="min-w-0 flex-1">
+                                        <p className="font-display text-base font-semibold leading-tight">
+                                          Ready for performance evaluation
+                                        </p>
+                                        <p className="truncate text-[0.7rem] text-muted-foreground">
+                                          {selected.name} · {selected.position}
+                                        </p>
+                                      </div>
+                                      <Badge
+                                        variant="outline"
+                                        className="shrink-0 border-gold/50 bg-gold/15 text-[0.65rem] font-medium text-gold-foreground"
+                                      >
+                                        100% complete
+                                      </Badge>
+                                    </div>
+                                    <div className="space-y-3 p-4">
+                                      <div className="space-y-1.5">
+                                        <div className="flex items-center justify-between text-[0.65rem] uppercase tracking-wide text-muted-foreground">
+                                          <span>Checklist completion</span>
+                                          <span className="font-semibold text-gold-foreground">
+                                            100%
+                                          </span>
+                                        </div>
+                                        <Progress
+                                          value={100}
+                                          className="h-2 [&>div]:bg-gold [&>div]:shadow-[0_0_10px_var(--gold)]"
+                                        />
+                                      </div>
+                                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 text-xs">
+                                        <div className="rounded-lg border border-gold/25 bg-gold/5 px-3 py-2">
+                                          <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">
+                                            Requirements
+                                          </p>
+                                          <p className="mt-0.5 font-medium">
+                                            {selected.checklist.filter((c) => c.done).length}/
+                                            {selected.checklist.length} done
+                                          </p>
+                                        </div>
+                                        <div className="rounded-lg border border-gold/25 bg-gold/5 px-3 py-2">
+                                          <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">
+                                            Checklist
+                                          </p>
+                                          <p className="mt-0.5 flex items-center gap-1 font-medium text-gold-foreground">
+                                            <CheckCircle2 className="h-3.5 w-3.5" /> Saved
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <p className="text-xs text-muted-foreground">
+                                        Every probationary requirement is complete and saved — hand
+                                        this hire over for evaluation.
+                                      </p>
+                                      <Button
+                                        className="h-10 w-full cursor-pointer bg-gold text-gold-foreground hover:bg-gold/90"
+                                        onClick={() => requestEvaluation(selected)}
+                                      >
+                                        <Send className="mr-1.5 h-4 w-4" /> Request for evaluation
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="rounded-xl border border-dashed border-border bg-muted/30 p-4 text-center">
+                                    <div className="flex items-center justify-center gap-2">
+                                      <p className="text-xs font-medium">
+                                        Request for evaluation is locked
+                                      </p>
+                                      <Popover>
+                                        <PopoverTrigger asChild>
+                                          <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="h-6 w-6"
+                                            aria-label="Why evaluation is locked"
+                                          >
+                                            <Info className="h-4 w-4" />
+                                          </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-72 text-xs">
+                                          Complete all {selected.checklist.length} checklist items (
+                                          {selected.checklist.filter((c) => c.done).length} done)
+                                          and save the checklist to unlock it.
+                                        </PopoverContent>
+                                      </Popover>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
@@ -1488,9 +2683,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                       <ClipboardCheck className="h-5 w-5 text-primary" /> Checklist Builder
                     </h2>
                   </div>
-                  <Badge variant="secondary">
-                    {hireStore.combinedProbationaryItems().length} combined items
-                  </Badge>
                 </div>
 
                 <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4">
@@ -1728,9 +2920,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <p className="font-medium">{c.title}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {c.items.length} item{c.items.length === 1 ? "" : "s"}
-                                </p>
                                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                                   <Badge variant="outline" className="text-[0.65rem]">
                                     {c.phase ?? "Probationary"}
@@ -1783,9 +2972,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   className="h-8 w-8 cursor-pointer hover:text-destructive"
                                   aria-label={`Delete ${c.title}`}
                                   title="Delete checklist"
-                                  onClick={() =>
-                                    setConfirmDelete({ kind: "template", id: c.id, label: c.title })
-                                  }
+                                  onClick={() => setConfirmDelete({ kind: "template", id: c.id, label: c.title })}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -2018,7 +3205,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                       <Send className="h-5 w-5 text-primary" /> Requested Checklists
                     </h2>
                   </div>
-                  <Badge variant="secondary">{requestedItems.length} requested</Badge>
                 </div>
 
                 <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_13rem_auto]">
@@ -2128,7 +3314,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                   className={cn(
                                     "text-xs",
                                     r.position === "all" &&
-                                      "border-gold/40 bg-gold/10 text-gold-foreground dark:text-gold",
+                                      "border-gold/40 bg-gold/10 text-gold-foreground",
                                   )}
                                 >
                                   {r.position === "all" ? "All positions" : r.position}
@@ -2153,13 +3339,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                     variant="ghost"
                                     className="h-8 w-8 cursor-pointer"
                                     aria-label="Delete requested item"
-                                    onClick={() =>
-                                      setConfirmDelete({
-                                        kind: "requested",
-                                        id: r.id,
-                                        label: r.item,
-                                      })
-                                    }
+                                    onClick={() => setConfirmDelete({ kind: "requested", id: r.id, label: r.item })}
                                   >
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
@@ -2197,126 +3377,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
-
-        <TabsContent value="submissions" className="mt-4 space-y-6">
-          {/* HR REVIEW QUEUE — every submitted-but-unverified item across
-              hires. Verifying notifies the employee; returning sends the
-              correction note back to their checklist. */}
-          <Card className="border-border/70">
-            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
-              <div>
-                <CardTitle className="flex items-center gap-2 font-display text-xl font-semibold">
-                  <Inbox className="h-5 w-5 text-primary" /> Submissions Awaiting Review
-                </CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {submissions.length === 0
-                    ? "Nothing pending — new employee uploads land here."
-                    : `${submissions.length} submission${submissions.length === 1 ? "" : "s"} need${submissions.length === 1 ? "s" : ""} verification.`}
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 cursor-pointer"
-                onClick={loadSubmissions}
-                disabled={subLoading}
-              >
-                <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", subLoading && "animate-spin")} />
-                Refresh
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {!subLoading && submissions.length === 0 ? (
-                <ListEmptyState
-                  subject="submissions awaiting review"
-                />
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>New Hire</TableHead>
-                      <TableHead>Requirement</TableHead>
-                      <TableHead>Submitted</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {subLoading && <TableRowsSkeleton cols={4} rows={5} />}
-                    {!subLoading && submissions.map((s) => (
-                      <TableRow key={s.employee_onboarding_item_id}>
-                        <TableCell>
-                          <p className="text-sm font-semibold">{s.hire_name}</p>
-                          <p className="text-[11px] text-muted-foreground">
-                            {s.hire_stage ?? "Probationary"}
-                            {s.returned_count > 0 ? ` · returned ${s.returned_count}×` : ""}
-                          </p>
-                        </TableCell>
-                        <TableCell>
-                          <p className="text-sm">{s.item_text}</p>
-                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                            {s.phase && (
-                              <Badge variant="outline" className="text-[10px]">
-                                {s.phase}
-                              </Badge>
-                            )}
-                            {s.file_name && (
-                              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                                <FileCheck2 className="h-3 w-3 text-primary" />
-                                {s.file_name}
-                              </span>
-                            )}
-                          </div>
-                          {s.notes && (
-                            <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
-                              Note: {s.notes}
-                            </p>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                          {s.submitted_at
-                            ? new Date(s.submitted_at).toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                              })
-                            : "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1.5">
-                            <Button
-                              size="sm"
-                              className="h-8 cursor-pointer text-xs"
-                              disabled={verifyingId === s.employee_onboarding_item_id}
-                              onClick={() => handleVerifySubmission(s)}
-                            >
-                              {verifyingId === s.employee_onboarding_item_id ? (
-                                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                              )}
-                              Verify
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 cursor-pointer text-xs"
-                              onClick={() => {
-                                setReturnTarget(s);
-                                setReturnNote(s.review_note ?? "");
-                              }}
-                            >
-                              <RotateCcw className="mr-1 h-3.5 w-3.5" />
-                              Return
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
 
@@ -2464,20 +3524,57 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
           </DialogHeader>
 
           <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
-            Account note: the employee portal account is created with the default password{" "}
-            <span className="font-medium text-foreground">{defaultPassword}</span> — the hire is
-            prompted to change it on first login.
+            {passwordFromDb ? (
+              <>
+                Account note: the employee portal account is created with the default password{" "}
+                <span className="font-medium text-foreground">{defaultPassword}</span> — the hire is
+                prompted to change it on first login.
+              </>
+            ) : (
+              <>
+                Account note: the employee portal account is created with the system default
+                password — login credentials are emailed to the hire, who is prompted to change the
+                password on first login.
+              </>
+            )}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>Full name</Label>
+              <div className="flex items-center justify-between">
+                <Label>Full name</Label>
+                {!nameLocked && candidateApplicants.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsManualName(!isManualName);
+                      setForm((prev) => ({ ...prev, name: "" }));
+                    }}
+                    className="text-[11px] font-medium text-primary hover:underline cursor-pointer"
+                  >
+                    {isManualName ? "Select from applicants" : "Or type custom name"}
+                  </button>
+                )}
+              </div>
               {nameLocked ? (
                 <>
                   <Input value={form.name} readOnly className="bg-muted/50" />
                   <p className="text-[0.7rem] text-muted-foreground">
                     Accepted applicant — details carried over from assessment.
                   </p>
+                </>
+              ) : isManualName || candidateApplicants.length === 0 ? (
+                <>
+                  <Input
+                    placeholder="Enter hire's full name"
+                    value={form.name}
+                    onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                  />
+                  {candidateApplicants.length === 0 && (
+                    <p className="text-[0.7rem] text-muted-foreground">
+                      No applicants found — enter the candidate's name manually.
+                    </p>
+                  )}
                 </>
               ) : (
                 <Select
@@ -2503,7 +3600,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                       .filter((a) => !hires.some((h) => h.name === a.name))
                       .map((a) => (
                         <SelectItem key={a.id} value={a.name}>
-                          {a.name} — {a.position}
+                          {a.name} — {a.position} {a.stage ? `(${a.stage})` : ""}
                         </SelectItem>
                       ))}
                   </SelectContent>
@@ -2619,11 +3716,11 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
         </DialogContent>
       </Dialog>
 
-      {/* Return-for-correction dialog: HR explains what the employee must fix */}
+      {/* Return-for-correction dialog — opened from a submission in the checklist panel */}
       <Dialog
         open={returnTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) {
+        onOpenChange={(o) => {
+          if (!o) {
             setReturnTarget(null);
             setReturnNote("");
           }
@@ -2634,26 +3731,28 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
             <DialogTitle className="flex items-center gap-2">
               <RotateCcw className="h-4 w-4 text-orange-500" /> Return for correction
             </DialogTitle>
+            <DialogDescription>
+              “{returnTarget?.itemText}” goes back to the employee with your note so they can fix
+              or re-upload it. You can verify it here once they resubmit.
+            </DialogDescription>
           </DialogHeader>
-          <p className="text-xs text-muted-foreground">
-            {returnTarget && (
-              <>
-                <strong className="text-foreground">{returnTarget.item_text}</strong> ·{" "}
-                {returnTarget.hire_name}. The employee keeps their uploaded file and
-                sees this note on their checklist.
-              </>
-            )}
-          </p>
-          <Textarea
-            value={returnNote}
-            onChange={(e) => setReturnNote(e.target.value)}
-            placeholder="e.g. The NBI clearance photo is blurry — please re-upload a clear scan."
-            rows={4}
-            className="text-xs"
-          />
+          <div className="space-y-1.5">
+            <Label htmlFor="return-correction-note" className="text-xs font-semibold">
+              Reason for return
+            </Label>
+            <Textarea
+              id="return-correction-note"
+              value={returnNote}
+              onChange={(e) => setReturnNote(e.target.value)}
+              placeholder="e.g. The uploaded document is blurry — please re-upload a clearer copy."
+              rows={3}
+              className="text-xs"
+            />
+          </div>
           <DialogFooter>
             <Button
               variant="outline"
+              className="cursor-pointer"
               onClick={() => {
                 setReturnTarget(null);
                 setReturnNote("");
@@ -2661,13 +3760,16 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
             >
               Cancel
             </Button>
-            <Button onClick={handleReturnSubmission} disabled={returnBusy}>
+            <Button className="cursor-pointer" onClick={submitReturn} disabled={returnBusy}>
               {returnBusy ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Sending...
+                </>
               ) : (
-                <Send className="mr-1.5 h-3.5 w-3.5" />
+                <>
+                  <RotateCcw className="mr-1.5 h-4 w-4" /> Return for correction
+                </>
               )}
-              Send correction
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2719,8 +3821,6 @@ function EmployeeChecklistRow({
   onView: (i: EmployeeChecklistItem) => void;
 }) {
   const submitted = Boolean(item.submittedAt || item.fileName || item.notes);
-  /** Pre-onboarding items are HR-owned context — visible but not actionable. */
-  const readOnly = item.phase === "Pre-onboarding";
   /** HR sent the submission back with a correction note. */
   const returned = !item.done && !!item.reviewNote;
 
@@ -2776,11 +3876,6 @@ function EmployeeChecklistRow({
                     ? "Submitted · pending review"
                     : "Pending"}
             </Badge>
-            {readOnly && (
-              <Badge variant="outline" className="bg-muted/40 text-muted-foreground text-[10px]">
-                Pre-onboarding · view only
-              </Badge>
-            )}
             {item.fileName && (
               <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                 <FileCheck2 className="h-3 w-3 text-primary" /> Attachment uploaded
@@ -2788,14 +3883,14 @@ function EmployeeChecklistRow({
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">{item.date}</p>
-            {returned && (
-              <p className="text-[11px] text-orange-600 dark:text-orange-400 mt-1 leading-snug">
-                HR feedback: {item.reviewNote}
-                {typeof item.returnedCount === "number" && item.returnedCount > 1
-                  ? ` (returned ${item.returnedCount}×)`
-                  : ""}
-              </p>
-            )}
+          {returned && (
+            <p className="text-[11px] text-orange-600 dark:text-orange-400 mt-1 leading-snug">
+              HR feedback: {item.reviewNote}
+              {typeof item.returnedCount === "number" && item.returnedCount > 1
+                ? ` (returned ${item.returnedCount}×)`
+                : ""}
+            </p>
+          )}
         </div>
       </div>
 
@@ -2829,74 +3924,62 @@ export function EmployeeOnboarding() {
 
   const loadOnboarding = useCallback(() => {
     setLoading(true);
-    // Resolve the signed-in portal user from the auth session (NOT the mock
-    // profile) so the checklist always reflects the logged-in employee's own
-    // new-hire record from the database.
-    const authUser = getUser();
-    const myName = authUser?.full_name?.trim().toLowerCase() ?? "";
-    const myEmployeeId = authUser?.employee_id ?? null;
-    const isEmployeePortal = (authUser?.role ?? "").toLowerCase() === "employee";
+    // Employees use the ESS-safe endpoint (no New Hire Onboarding module
+    // permission needed): GET /ess/my-checklist returns { data, new_hire }
+    // where data is the same read-time union the admin pipeline sees —
+    // materialized rows + virtual items from Active templates matching the
+    // hire's stage + position. Falling back to the staff-only new-hires list
+    // keeps local/dev sessions working, but ESS is authoritative.
+    essApi
+      .myChecklist()
+      .then((res) => {
+        if (res.new_hire) {
+          const mine = {
+            new_hire_id: res.new_hire.new_hire_id,
+            new_hire_code: res.new_hire.new_hire_code,
+            name: res.new_hire.name,
+            stage: res.new_hire.stage,
+          } as ApiNewHire;
+          setNewHire(mine);
+          return { mine, apiItems: res.data as any[] };
+        }
+        // Fallback: resolve the signed-in portal user from the auth session
+        // (NOT the mock profile) so the checklist reflects the logged-in
+        // employee's own new-hire record from the database.
+        const authUser = getUser();
+        const myName = authUser?.full_name?.trim().toLowerCase() ?? "";
+        const myEmployeeId = authUser?.employee_id ?? null;
 
-    // Employees use the ESS-safe endpoint (staff /new-hires list needs the
-    // New Hire Onboarding module permission, which employees don't have).
-    // hireLookup resolves the hire header; itemLookup resolves the rows the
-    // same way so NO staff-only call fires on the employee portal.
-    const hireLookup: Promise<ApiNewHire | null> = isEmployeePortal
-      ? essApi
-          .myChecklist()
-          .then((res) => {
-            const nh = res?.new_hire;
-            if (!nh) return null;
-            const mine = {
-              new_hire_id: nh.new_hire_id,
-              new_hire_code: nh.new_hire_code,
-              name: nh.name,
-              email: authUser?.email ?? "",
-              phone: "",
-              stage: nh.stage,
-            } as ApiNewHire;
-            setNewHire(mine);
-            return mine;
-          })
-          .catch(() => null)
-      : newHiresApi
-          .list({ per_page: 100 })
-          .then((res) => {
-            const mine =
-              (myEmployeeId != null
-                ? res.data.find((h) => h.employee_id === myEmployeeId)
-                : undefined) ??
-              (myName ? res.data.find((h) => h.name.trim().toLowerCase() === myName) : undefined) ??
-              // Demo fallback: prefer a Probationary hire so the probationary
-              // checklist view stays populated straight from the database.
-              res.data.find((h) => h.stage === "Probationary") ??
-              res.data[0] ??
-              null;
-            setNewHire(mine);
-            return mine;
-          });
-
-    // ESS-safe rows come bundled with myChecklist; staff rows come from the
-    // staff onboarding-items endpoint. Keeps employee + staff shapes identical.
-    const itemLookup = (mine: ApiNewHire): Promise<any[]> =>
-      isEmployeePortal
-        ? essApi
-            .myChecklist()
-            .then((res) => res?.data ?? [])
-            .catch(() => [])
-        : onboardingItemsApi
+        return newHiresApi.list({ per_page: 100 }).then((listRes) => {
+          const mine =
+            (myEmployeeId != null
+              ? listRes.data.find((h) => h.employee_id === myEmployeeId)
+              : undefined) ??
+            (myName ? listRes.data.find((h) => h.name.trim().toLowerCase() === myName) : undefined) ??
+            // Demo fallback: prefer a Probationary hire so the probationary
+            // checklist view stays populated straight from the database.
+            listRes.data.find((h) => h.stage === "Probationary") ??
+            listRes.data[0] ??
+            null;
+          setNewHire(mine);
+          if (!mine) return null;
+          return onboardingItemsApi
             .listForNewHire(mine.new_hire_id)
-            .catch(() => []);
-
-    hireLookup
-      .then((mine) => {
-        if (!mine) return;
-        return itemLookup(mine).then((apiItems) => {
-          // All assigned phases are visible. Probationary items are fully
-          // actionable; Pre-onboarding items are read-only context (HR-owned)
-          // so new hires see what's coming without editing it.
+            .then((apiItems) => ({ mine, apiItems }));
+        });
+      })
+      .then((result) => {
+        if (!result) return;
+        const { apiItems } = result;
+        {
+          // Show the hire's full visible checklist (pre-onboarding + probationary).
+          // The API (NewHire::visibleOnboardingItems) already returns only Active
+          // templates matching the hire's stage + position, so no phase filter
+          // here — filtering to Probationary only hid every active pre-onboarding
+          // template from employees.
+          const visibleItems = apiItems;
           setItems(
-            apiItems.map((i) => ({
+            visibleItems.map((i) => ({
               id: i.employee_onboarding_item_id
                 ? `chk-${i.employee_onboarding_item_id}`
                 : `virt-${i.template_item_id}`,
@@ -2927,12 +4010,12 @@ export function EmployeeOnboarding() {
                   : (i.submitted_at?.slice(0, 10) ?? "2026-08-01"),
               done: Boolean(i.done),
               rank: i.done ? 0 : i.submitted_at ? 1 : 2,
-              phase: ((i.phase ?? "Probationary") as Phase),
+              phase: (i.phase === "Pre-onboarding" ? "Pre-onboarding" : "Probationary") as Phase,
               reviewNote: (i.review_note ?? null) as string | null,
               returnedCount: (i.returned_count ?? 0) as number,
             })),
           );
-        });
+        }
       })
       .catch((err) => {
         console.warn("Could not load onboarding checklist from API:", err);
@@ -3188,6 +4271,18 @@ export function EmployeeOnboarding() {
     },
   ];
 
+  /** Every format is password-protected: picking one opens the password gate. */
+  const handleExportEmployeeReport = (format: ReportFormat) => {
+    const data = buildEmployeeReportData();
+    if (!data) return;
+    if (data.rows.length === 0) {
+      toast.error("No checklist items to export.");
+      return;
+    }
+    setEmpCsvPending(format);
+    setEmpCsvOpen(true);
+  };
+
   const buildEmployeeReportData = (): ReportData | null => {
     if (!newHire) {
       toast.error("Your onboarding record is still loading.");
@@ -3215,20 +4310,100 @@ export function EmployeeOnboarding() {
     };
   };
 
+  const [empCsvOpen, setEmpCsvOpen] = useState(false);
+  const [empCsvBusy, setEmpCsvBusy] = useState(false);
+  const [empCsvPending, setEmpCsvPending] = useState<ReportFormat | null>(null);
+
+  const confirmEmployeeCsv = async (password: string) => {
+    if (!empCsvPending) return;
+    const format = empCsvPending;
+    const data = buildEmployeeReportData();
+    if (!data) return;
+    setEmpCsvBusy(true);
+    try {
+      await exportReport(data, format, { password });
+      const { zipName } = describeExport(data, format);
+      toast.success(
+        `Onboarding checklist exported as password-protected ${format.toUpperCase()} (${zipName}).`,
+      );
+      setEmpCsvOpen(false);
+      setEmpCsvPending(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Protected export failed.");
+    } finally {
+      setEmpCsvBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Employee Portal"
         title="New Hire Onboarding"
-        description="Complete your onboarding requirements and track your employment stage."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" className="gap-2" onClick={loadOnboarding} disabled={loading}>
               <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /> Refresh
             </Button>
-            <ReportMenu
-              report={() => buildEmployeeReportData() ?? { title: "My Onboarding Checklist", columns: [], rows: [] }}
-              recordCount={items.length}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Download className="h-4 w-4" /> Generate Report
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuItem onClick={() => handleExportEmployeeReport("pdf")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportEmployeeReport("docx")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportEmployeeReport("excel")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportEmployeeReport("csv")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                </DropdownMenuItem>
+                <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+                  Every file is sealed in a password-protected ZIP (AES-256). You will be asked for
+                  a file password.
+                </p>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <SecureExportDialog
+              open={empCsvOpen}
+              onOpenChange={(o) => {
+                if (!empCsvBusy) {
+                  setEmpCsvOpen(o);
+                  if (!o) setEmpCsvPending(null);
+                }
+              }}
+              reportTitle="My Onboarding Checklist"
+              formatLabel={
+                !empCsvPending
+                  ? ""
+                  : empCsvPending === "pdf"
+                    ? "PDF"
+                    : empCsvPending === "docx"
+                      ? "DOCX"
+                      : empCsvPending === "excel"
+                        ? "Excel"
+                        : "CSV"
+              }
+              busy={empCsvBusy}
+              onConfirm={confirmEmployeeCsv}
             />
           </div>
         }
@@ -3356,7 +4531,7 @@ export function EmployeeOnboarding() {
                   <ClipboardList className="h-5 w-5 text-primary" /> Onboarding Checklist
                 </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Onboarding checklist requirements — probationary items are actionable, pre-onboarding items are view-only
+                  Probationary checklist requirements
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -3389,7 +4564,7 @@ export function EmployeeOnboarding() {
                 ) : filteredItems.length === 0 ? (
                   <div className="flex h-full items-center justify-center py-12 px-4 text-center text-sm text-muted-foreground">
                     {totalCount === 0
-                      ? "No onboarding checklist assigned yet — your HR admin will assign requirements once you start."
+                      ? "No probationary onboarding checklist assigned yet — your HR admin will assign requirements once you start."
                       : "No checklist items match the current filter."}
                   </div>
                 ) : (
@@ -3429,13 +4604,8 @@ export function EmployeeOnboarding() {
                       {viewingItem.done ? "Completed" : "Pending Action"}
                     </Badge>
                     <Badge variant="outline" className="text-xs">
-                      {viewingItem.phase}
+                      Probationary
                     </Badge>
-                    {viewingItem.phase === "Pre-onboarding" && (
-                      <Badge variant="outline" className="bg-muted/40 text-muted-foreground text-xs">
-                        View only · managed by HR
-                      </Badge>
-                    )}
                   </div>
                   <CardTitle className="font-display text-lg font-semibold leading-tight">
                     {viewingItem.title}
@@ -3477,15 +4647,6 @@ export function EmployeeOnboarding() {
                   </div>
                 )}
 
-                {/* Pre-onboarding items are HR-owned: details are visible,
-                    submission controls are hidden */}
-                {viewingItem.phase === "Pre-onboarding" && (
-                  <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground leading-relaxed">
-                    This is a pre-onboarding requirement managed by HR. No action
-                    is needed from you here — it will unlock for submission if HR
-                    assigns it to your probationary checklist.
-                  </div>
-                )}
                 {/* Existing Uploaded Document */}
                 {viewingItem.fileName && (
                   <div className="flex items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/5 p-3">
@@ -3523,8 +4684,7 @@ export function EmployeeOnboarding() {
                 {/* Upload Dropzone / Placeholder — only when the checklist
                     item requires an upload; stretches to fill leftover
                     vertical space in the card */}
-                {viewingItem.phase !== "Pre-onboarding" &&
-                  viewingItem.requiresUpload !== false && (
+                {viewingItem.requiresUpload !== false && (
                   <div className="flex flex-1 flex-col gap-2">
                     <Label className="text-xs font-semibold">
                       {viewingItem.fileName
@@ -3594,8 +4754,7 @@ export function EmployeeOnboarding() {
                   </div>
                 )}
 
-                {/* Optional Notes — hidden for read-only pre-onboarding items */}
-                {viewingItem.phase !== "Pre-onboarding" && (
+                {/* Optional Notes */}
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">
                     Notes / Details{" "}
@@ -3609,7 +4768,6 @@ export function EmployeeOnboarding() {
                     className="text-xs"
                   />
                 </div>
-                )}
 
                 {/* Action Buttons — pinned to the bottom of the card */}
                 <div className="mt-auto flex items-center justify-end gap-2 border-t border-border pt-3">
@@ -3624,7 +4782,6 @@ export function EmployeeOnboarding() {
                   >
                     Cancel
                   </Button>
-                  {viewingItem.phase !== "Pre-onboarding" && (
                   <Button
                     size="sm"
                     onClick={handleTaskSubmit}
@@ -3642,7 +4799,6 @@ export function EmployeeOnboarding() {
                       </>
                     )}
                   </Button>
-                  )}
                 </div>
               </CardContent>
             </Card>

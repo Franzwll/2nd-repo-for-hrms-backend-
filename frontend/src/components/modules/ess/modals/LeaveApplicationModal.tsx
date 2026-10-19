@@ -101,7 +101,7 @@ export function LeaveApplicationModal({ open, onOpenChange, onSubmitLeave }: Lea
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[540px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[540px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <div className="rounded-md bg-primary/10 p-2 text-primary">

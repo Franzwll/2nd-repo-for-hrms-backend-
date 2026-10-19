@@ -12,6 +12,10 @@ use Modules\EmployeeSelfService\Http\Controllers\EssPortalController;
 Route::prefix('v1/ess')->middleware('api')->group(function () {
     Route::get('my-documents/{id}/file', [EssPortalController::class, 'documentFile']);
     Route::get('requests/{id}/attachments/{attachmentId}/file', [EssPortalController::class, 'requestAttachmentFile']);
+    // File-based handbooks are streamed inline into the player's reading stage.
+    if (config('services.ess_lms.enabled')) {
+        Route::get('my-learning/{courseCode}/file', [EssPortalController::class, 'learningMaterialFile']);
+    }
 });
 
 Route::middleware(['auth:sanctum', 'permission:ESS Management'])->prefix('v1/ess')->group(function () {
@@ -33,6 +37,16 @@ Route::middleware(['auth:sanctum', 'permission:ESS Management'])->prefix('v1/ess
     Route::post('recognitions/{id}/share', [EssPortalController::class, 'shareKudos']);
     Route::post('my-learning/progress', [EssPortalController::class, 'updateLearningProgress']);
     Route::get('my-learning/certificate/{courseCode}', [EssPortalController::class, 'learningCertificate']);
+
+    // Tier-1 thin LMS: read handbook -> AI quiz -> auto-score. Kill switch:
+    // ESS_LMS_QUIZ_ENABLED=false unregisters these, so the cards fall back to
+    // updateLearningProgress + HR verification (verifyLearning).
+    if (config('services.ess_lms.enabled')) {
+        Route::get('my-learning/{courseCode}/material', [EssPortalController::class, 'learningMaterial']);
+        Route::get('my-learning/{courseCode}/quiz', [EssPortalController::class, 'learningQuiz']);
+        Route::post('my-learning/{courseCode}/quiz', [EssPortalController::class, 'submitLearningQuiz']);
+        Route::post('my-learning/{courseCode}/reading-complete', [EssPortalController::class, 'completeLearningReading']);
+    }
     Route::post('requests', [EssPortalController::class, 'createRequest']);
     Route::post('clock', [EssPortalController::class, 'clock']);
     Route::get('my-promotion-requests', [EssPortalController::class, 'myPromotionRequests']);

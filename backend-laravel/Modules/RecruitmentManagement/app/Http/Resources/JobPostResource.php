@@ -40,6 +40,13 @@ class JobPostResource extends JsonResource
             ),
             'experience_level'      => $this->experience_level,
             'education_level'       => $this->education_level,
+            /* Accepted level chips ("any of these"). Posts saved before the
+               columns existed fall back to their single scalar level, so the
+               panel always has at least the level that was already screening. */
+            'experience_levels'     => $this->experience_levels
+                ?? ($this->experience_level ? [$this->experience_level] : []),
+            'education_levels'      => $this->education_levels
+                ?? ($this->education_level ? [$this->education_level] : []),
             'summary'               => $this->summary,
             'description'           => $this->description,
             'responsibilities'      => $this->responsibilities_json ?? [],

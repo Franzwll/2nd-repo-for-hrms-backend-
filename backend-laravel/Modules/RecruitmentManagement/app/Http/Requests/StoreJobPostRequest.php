@@ -33,6 +33,13 @@ class StoreJobPostRequest extends FormRequest
             'requires_assessment' => ['boolean'],
             'experience_level' => ['nullable', 'string', 'in:No Experience,1-2 Years,3-5 Years,5+ Years'],
             'education_level' => ['nullable', 'string', 'in:High School Graduate,Vocational / TESDA,College Level,Bachelor\'s Degree'],
+            /* Accepted level lists from the Screening Requirements chips. The
+               scalar columns above are kept in step by the controller (the
+               weakest accepted level), so either shape can be sent. */
+            'experience_levels' => ['nullable', 'array'],
+            'experience_levels.*' => ['string', 'in:No Experience,1-2 Years,3-5 Years,5+ Years'],
+            'education_levels' => ['nullable', 'array'],
+            'education_levels.*' => ['string', 'in:High School Graduate,Vocational / TESDA,College Level,Bachelor\'s Degree'],
             'summary' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
             'responsibilities' => ['nullable', 'array'],
@@ -42,7 +49,9 @@ class StoreJobPostRequest extends FormRequest
             'instructions' => ['nullable', 'string'],
             'about' => ['nullable', 'string'],
             'platforms' => ['nullable', 'array'],
-            'platforms.*' => ['string', 'in:Website,Facebook,Instagram,Indeed'],
+            // Social media (Facebook / Instagram) and job-board (Indeed)
+            // posting targets were removed — Website is the only channel.
+            'platforms.*' => ['string', 'in:Website'],
             /* The recruiter's drag-and-drop block order on the builder canvas. */
             'blocks' => ['nullable', 'array'],
             'blocks.*' => ['string', 'in:title,info,picture,description,responsibilities,qualifications,skills,additional,instructions,about'],

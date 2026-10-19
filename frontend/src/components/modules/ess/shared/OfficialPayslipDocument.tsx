@@ -221,7 +221,7 @@ export function OfficialPayslipDocument({
             </div>
           </div>
 
-          <div className="border-t border-emerald-200/80 dark:border-emerald-800/40 pt-2.5 grid grid-cols-2 gap-2 text-xs">
+          <div className="border-t border-emerald-200/80 dark:border-emerald-800/40 pt-2.5 grid grid-cols-1 gap-2 text-xs min-[420px]:grid-cols-2 print:grid-cols-2">
             <div className="flex items-center justify-between">
               <span className="text-emerald-800 dark:text-emerald-300/80">Paid Days</span>
               <span className="font-bold text-slate-900 dark:text-foreground font-mono">

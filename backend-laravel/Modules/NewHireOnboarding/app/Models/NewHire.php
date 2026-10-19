@@ -162,6 +162,8 @@ class NewHire extends Model
                 'done'                         => (bool) $item->done,
                 'submitted_at'                 => $item->submitted_at?->toISOString(),
                 'completed_at'                 => $item->completed_at?->toISOString(),
+                'review_note'                  => $item->review_note,
+                'returned_count'               => (int) ($item->returned_count ?? 0),
                 'phase'                        => $template !== null
                     ? $template->phase
                     : $this->stageForOnboardingItem($item),
@@ -196,6 +198,8 @@ class NewHire extends Model
                     'notes'                        => null,
                     'done'                         => false,
                     'completed_at'                 => null,
+                    'review_note'                  => null,
+                    'returned_count'               => 0,
                     'phase'                        => $template->phase,
                 ];
             }
