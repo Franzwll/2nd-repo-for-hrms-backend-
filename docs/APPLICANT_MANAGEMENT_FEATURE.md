@@ -111,9 +111,9 @@ The centerpiece of Applicant Management is its **spaCy-based NLP Screening Engin
    ▼
 8. MULTI-CRITERIA SCORING & CLASSIFICATION
    ├── 40% Skills + 30% Experience + 20% Education + 10% Certifications
-   ├── RANKING SCORE = Resume Match Score × 85% + Document Verification Score × 15%
+   ├── RANKING SCORE = max(Resume Match Score, Resume × 85% + Documents × 15%)
    │   (VERIFIED = 100, UNABLE_TO_VERIFY = 50, DISCREPANCY_FOUND = 0;
-   │    no documents = resume-only score, unchanged)
+   │    floored at the resume score — evidence can only reward, never subtract)
    └── Official Classifications:
        • PERFECT_FOR_THE_JOB (Fit for position, ranking score >= 75%)
        • INVALID_CREDENTIAL (Format/verification concern, OR a supporting document
@@ -145,7 +145,7 @@ When an applicant applies for a role where they fail minimum requirements (e.g.,
 ### 4.4. Resume Screening + Supporting-Document Verification = Candidate Ranking
 The resume profile is also verified against its own paper proof: each uploaded COE, Certificate or Credential is compared field-by-field (employer, job title, employment dates, degree, institution, certification, issuer) with the resume claims, and those verdicts are blended into the same percentage HR ranks by:
 
-- **Ranking score** = resume match score × 85% + documents score × 15%, where a document earns 100 when `VERIFIED`, 50 when `UNABLE_TO_VERIFY` and 0 when `DISCREPANCY_FOUND`. Applicants who uploaded nothing keep their resume-only score — the blend never silently penalises them.
+- **Ranking score** = resume match score × 85% + documents score × 15%, floored at the resume-only score, where a document earns 100 when `VERIFIED`, 50 when `UNABLE_TO_VERIFY` and 0 when `DISCREPANCY_FOUND`. Evidence can only reward, never silently subtract: applicants who uploaded nothing keep their resume-only score, and an unverifiable document cannot lower it.
 - **Official status** — a document that contradicts the resume flags the candidate as `Invalid credential` for manual review (the mismatched field names are quoted), while fully verified documents keep `Perfect for the Job`.
 - **Live recompute** — uploading, re-verifying or deleting a document automatically re-runs the classification against the stored screening profile (`POST /applicants/{id}/screening/recompute` exposes a manual refresh), so Candidate Ranking, the Top 5 list, the applicant table and the review dialog always show the same verified percentage and status.
 - **Transparent breakdown** — the review dialog shows *Resume score → Documents score → Ranking score*, with the verified / discrepancy / unable counts and the applied points.

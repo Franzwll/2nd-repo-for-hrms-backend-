@@ -28,6 +28,10 @@ class Applicant extends Model
         'offer_sent_at',
         'offer_expires_at',
         'offer_start_date',
+        'offer_response_channel',
+        'offer_response_note',
+        'offer_responded_at',
+        'offer_response_recorded_by',
         'source',
         'resume_file_path',
         'resume_original_name',
@@ -45,6 +49,7 @@ class Applicant extends Model
         'offer_sent_at'           => 'datetime',
         'offer_expires_at'        => 'datetime',
         'offer_start_date'        => 'date',
+        'offer_responded_at'      => 'datetime',
     ];
 
     /* ------------------------------------------------------------------ */

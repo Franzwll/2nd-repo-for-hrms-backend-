@@ -4,7 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\Announcement;
 use App\Models\SystemUser;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\RefreshesSeededDatabase;
 use Tests\TestCase;
 
@@ -153,6 +156,8 @@ class NotificationAndAuditTest extends TestCase
 
     public function test_landing_apply_notifies_hr_admins(): void
     {
+        Storage::fake('public');
+        Http::fake(['*' => Http::response(['detail' => 'unavailable'], 503)]);
         DB::table('notifications')->delete();
 
         $jobPostId = DB::table('job_posts')
@@ -168,11 +173,12 @@ class NotificationAndAuditTest extends TestCase
 
         $email = 'landing.test.' . time() . '@example.com';
 
-        $this->postJson('/api/v1/landing/apply', [
+        $this->post('/api/v1/landing/apply', [
             'job_post_id' => $jobPostId,
             'name' => 'Landing Tester',
             'email' => $email,
             'phone' => '09171234567',
+            'resume' => UploadedFile::fake()->create('landing-tester.pdf', 100, 'application/pdf'),
         ])->assertCreated();
 
         $this->assertDatabaseHas('notifications', [

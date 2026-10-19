@@ -2,9 +2,10 @@
 
 Covers the approved policy: the resume match score is blended with the
 supporting-document evidence score at a 15% weighting (VERIFIED = 100,
-UNABLE_TO_VERIFY = 50, DISCREPANCY_FOUND = 0), documents without decisive
-evidence leave the resume score untouched, and a discrepancy escalates the
-official classification to INVALID_CREDENTIAL.
+UNABLE_TO_VERIFY = 50, DISCREPANCY_FOUND = 0), the blend is FLOORED at the
+resume score so evidence can only reward (never silently subtract), documents
+without decisive evidence leave the resume score untouched, and a discrepancy
+escalates the official classification to INVALID_CREDENTIAL.
 """
 import unittest
 
@@ -130,23 +131,32 @@ class TestBlending(unittest.TestCase):
         self.assertEqual(vs.apply_document_evidence(87.5, aggregate), 87.5)
         self.assertEqual(aggregate["score_penalty"], 0.0)
 
-    def test_blend_math_and_penalty(self):
+    def test_unverifiable_evidence_never_lowers_score(self):
         aggregate = vs.aggregate_document_verifications([doc("UNABLE_TO_VERIFY")])
-        # 80 * 0.85 + 50 * 0.15 = 68 + 7.5 = 75.5
-        self.assertEqual(vs.apply_document_evidence(80.0, aggregate), 75.5)
-        self.assertEqual(aggregate["score_penalty"], 4.5)
+        # Raw blend would be 80 * 0.85 + 50 * 0.15 = 75.5, floored at 80.
+        self.assertEqual(vs.apply_document_evidence(80.0, aggregate), 80.0)
+        self.assertEqual(aggregate["score_penalty"], 0.0)
+        self.assertEqual(aggregate["score_bonus"], 0.0)
 
-    def test_blend_never_goes_below_zero(self):
+    def test_verified_evidence_raises_score(self):
+        aggregate = vs.aggregate_document_verifications([doc("VERIFIED")])
+        # 80 * 0.85 + 100 * 0.15 = 83.0 (a reward, never a subtraction).
+        self.assertEqual(vs.apply_document_evidence(80.0, aggregate), 83.0)
+        self.assertEqual(aggregate["score_penalty"], 0.0)
+        self.assertEqual(aggregate["score_bonus"], 3.0)
+
+    def test_discrepancy_evidence_does_not_lower_score(self):
         aggregate = vs.aggregate_document_verifications([doc("DISCREPANCY_FOUND")])
-        self.assertEqual(vs.apply_document_evidence(4.0, aggregate), 3.4)
+        # Raw blend would dip below the resume score; it is floored instead.
+        self.assertEqual(vs.apply_document_evidence(4.0, aggregate), 4.0)
 
     def test_summary_describes_movement(self):
-        aggregate = vs.aggregate_document_verifications([doc("UNABLE_TO_VERIFY")])
-        vs.apply_document_evidence(80.0, aggregate)
-        text = vs.summarize_evidence(aggregate, 80.0, 75.5)
+        aggregate = vs.aggregate_document_verifications([doc("VERIFIED")])
+        final = vs.apply_document_evidence(80.0, aggregate)
+        text = vs.summarize_evidence(aggregate, 80.0, final)
         self.assertIn("80.0%", text)
-        self.assertIn("75.5%", text)
-        self.assertIn("1 unverifiable", text)
+        self.assertIn("83.0%", text)
+        self.assertIn("1 verified", text)
 
 
 class TestScreeningIntegration(unittest.TestCase):
@@ -171,15 +181,16 @@ class TestScreeningIntegration(unittest.TestCase):
         self.assertEqual(result["resume_match_score"], 100.0)
         self.assertTrue(any("Supporting-document verification" in r for r in result["reasons"]))
 
-    def test_unverifiable_document_blends_score_without_escalation(self):
+    def test_unverifiable_document_does_not_lower_score(self):
         result = screening.full_classification(
             FULL_PROFILE, VALIDATION, matching.parse_requirements(REQUIREMENTS),
             document_verifications=[doc("UNABLE_TO_VERIFY")],
         )
         self.assertEqual(result["screening_status"], config.CLASS_PERFECT)
-        self.assertEqual(result["match_score"], 92.5)
+        self.assertEqual(result["match_score"], 100.0)
         self.assertEqual(result["resume_match_score"], 100.0)
-        self.assertEqual(result["document_verification"]["score_penalty"], 7.5)
+        self.assertEqual(result["document_verification"]["score_penalty"], 0.0)
+        self.assertEqual(result["document_verification"]["score_bonus"], 0.0)
         self.assertEqual(result["document_verification"]["status"], config.EVIDENCE_PARTIAL)
 
     def test_discrepancy_escalates_to_invalid_credential(self):
@@ -188,7 +199,8 @@ class TestScreeningIntegration(unittest.TestCase):
             document_verifications=[doc("DISCREPANCY_FOUND", checks=COE_MISMATCH_CHECKS)],
         )
         self.assertEqual(result["screening_status"], config.CLASS_INVALID_CREDENTIAL)
-        self.assertEqual(result["match_score"], 85.0)
+        # Escalation is the consequence, not a hidden score penalty.
+        self.assertEqual(result["match_score"], 100.0)
         self.assertTrue(any("Employer" in r for r in result["reasons"]))
 
     def test_resume_credential_blocker_still_blends_document_evidence(self):
@@ -206,7 +218,7 @@ class TestScreeningIntegration(unittest.TestCase):
         )
         self.assertEqual(result["screening_status"], config.CLASS_INVALID_CREDENTIAL)
         self.assertEqual(result["resume_match_score"], 100.0)
-        self.assertEqual(result["match_score"], 92.5)
+        self.assertEqual(result["match_score"], 100.0)
 
     def test_alternative_job_uses_blended_score(self):
         open_job = {
@@ -230,11 +242,11 @@ class TestScreeningIntegration(unittest.TestCase):
         alternative_score = result["alternative_job"]["alternative_match_score"]
         # Applied job resume-only score = skills 40 (both recognized in the
         # validation payload) + experience 0 + education 0 + certifications 10
-        # = 50 -> blended 50 * 0.85 + 50 * 0.15 = 50.
+        # = 50 -> evidence is a no-op, so the floored score stays 50.
         self.assertEqual(applied_score, 50.0)
-        # Open job resume-only score = 40 + 30 + 20 + 10 = 100
-        # -> blended 100 * 0.85 + 50 * 0.15 = 92.5.
-        self.assertEqual(alternative_score, 92.5)
+        # Open job resume-only score = 40 + 30 + 20 + 10 = 100; the unverifiable
+        # document would drag the raw blend to 92.5 but the floor keeps it at 100.
+        self.assertEqual(alternative_score, 100.0)
 
 
 if __name__ == "__main__":

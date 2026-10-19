@@ -10,6 +10,7 @@ use App\Models\SystemSetting;
 use App\Services\DuplicateApplicationService;
 use App\Services\NlpService;
 use App\Services\NotificationService;
+use App\Services\ResumeStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -59,6 +60,7 @@ class LandingController extends Controller
             }
         };
     }
+
     public function company(): JsonResponse
     {
         $keys = [
@@ -299,13 +301,18 @@ class LandingController extends Controller
             'summary' => $request->string('summary'),
         ];
 
-        // Store resume file if provided — same allow-list as Recruitment Management (add applicant)
+        // Store the resume — mandatory for every public application (see
+        // JobApplicationRequest) and the reference the NLP screening scores
+        // against. Same allow-list as Recruitment Management (add applicant).
         // Content hash is stored for audit; it is NOT used to block (filename/hash
         // alone must never trigger a duplicate — only email+job+active stage does).
         if ($request->hasFile('resume')) {
             $payload['resume_hash'] = DuplicateApplicationService::hashFile($request->file('resume'));
-            $path = $request->file('resume')->store('resumes', 'public');
-            $payload['resume_file_path'] = $path;
+            // Preserve the real extension from the original client filename.
+            // store()/'guessExtension()' derives it from the MIME type, which
+            // returns ".bin" for common formats (e.g. .docx), breaking the NLP
+            // screening that keys off the stored file name.
+            $payload['resume_file_path'] = ResumeStorage::store($request->file('resume'));
             $payload['resume_original_name'] = $request->file('resume')->getClientOriginalName();
         }
 
@@ -349,7 +356,8 @@ class LandingController extends Controller
             }
         }
 
-        // Run spaCy NLP screening when a resume is present — same pipeline as Recruitment Management
+        // Run spaCy NLP screening on the (now mandatory) resume — same pipeline
+        // as Recruitment Management.
         if (! empty($payload['resume_file_path'])) {
             try {
                 $managed = ManagedApplicant::find($applicant->applicant_id);

@@ -214,7 +214,12 @@ class RecruitmentManagementController extends Controller
                         $weakestRank = $rank;
                     }
                 }
-                $data[$scalarKey] = $weakest;
+                /* Reference Data can offer levels outside the base ranking
+                   (degree specialisations, Master's, Doctorate). None of those
+                   match the order, so fall back to the first accepted level —
+                   the same choice the builder makes, keeping a non-null scalar
+                   for the parking and NLP education/experience scoring. */
+                $data[$scalarKey] = $weakest ?? ($levels[0] ?? null);
             } elseif (array_key_exists($scalarKey, $data)) {
                 // Older client that only knows the scalar: the list is just it.
                 $data[$listKey] = $data[$scalarKey] ? [$data[$scalarKey]] : [];

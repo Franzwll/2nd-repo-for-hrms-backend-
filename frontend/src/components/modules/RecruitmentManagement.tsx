@@ -5200,9 +5200,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         ? prev.map((j) => (j.id === editingJobId ? jobPayload : j))
         : [jobPayload, ...prev],
     );
-    if (sourceReqId) {
-      requisitionStore.update(sourceReqId, { status: "Converted" });
-    }
+    /* The requisition is converted only after the job post is actually
+       persisted (see markConverted below). Converting it optimistically here
+       stranded it as "Converted" with no linked job post whenever the save
+       failed, hiding it from the pending requisitions list. */
     setTab("postings");
     setEditingJobId(null);
     setSourceReqId(null);

@@ -21,7 +21,10 @@ class JobApplicationRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:40'],
             'source' => ['nullable', 'string', 'max:60'],
             'summary' => ['nullable', 'string', 'max:255'],
-            'resume' => ['nullable', 'file', LandingController::uploadExtensionRule(), 'max:20480'],
+            // A resume/CV is mandatory for every public application — the NLP
+            // screening (and therefore the applicant's ranking) needs the
+            // resume as its reference. Supporting documents stay optional.
+            'resume' => ['required', 'file', LandingController::uploadExtensionRule(), 'max:20480'],
             // Supporting docs from the unified 1-box uploader (recognized types
             // sent alongside each file: COE | Certificate | Credential | Others).
             // Cap is 20 (PHP max_file_uploads=20) so larger bundles go through.

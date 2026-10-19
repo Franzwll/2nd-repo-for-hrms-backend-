@@ -31,6 +31,12 @@ class ApplicantResource extends JsonResource
             'offer_sent_at'    => $this->offer_sent_at?->toISOString(),
             'offer_expires_at' => $this->offer_expires_at?->toISOString(),
             'offer_start_date' => $this->offer_start_date?->toDateString(),
+            /* How the reply came in (Email / SMS / Call / In person) and who
+               recorded it — there is no applicant portal, so HR logs it. */
+            'offer_response_channel'     => $this->offer_response_channel,
+            'offer_response_note'        => $this->offer_response_note,
+            'offer_responded_at'         => $this->offer_responded_at?->toISOString(),
+            'offer_response_recorded_by' => $this->offer_response_recorded_by,
             'offer_days_left'  => $this->offerDaysLeft(),
             'source'          => $this->source,
             'summary'         => $this->summary,

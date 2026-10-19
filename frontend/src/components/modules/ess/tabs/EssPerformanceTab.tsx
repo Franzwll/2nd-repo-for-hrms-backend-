@@ -181,8 +181,7 @@ export function EssPerformanceTab() {
     essApi
       .myPerformance()
       .then(applyPerformance)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => {});
   }, []);
 
   const handleOpenCert = (course: any) => {

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge, docCategoryTint, ON_FILE_STATUSES } from "@/components/modules/ess/shared/EssStatusBadge";
 import { ReportMenu } from "@/components/ui/report-menu";
@@ -79,6 +80,7 @@ export function EssDocumentsTab() {
     Promise.allSettled([docsPromise, reqPromise]).finally(() => setLoading(false));
   }, []);
 
+  const [activeTab, setActiveTab] = useState<"documents" | "requests">("documents");
   const [docSearch, setDocSearch] = useState("");
   const [docSort, setDocSort] = useState("date-desc");
   const [requestModalOpen, setRequestModalOpen] = useState(false);
@@ -108,6 +110,7 @@ export function EssDocumentsTab() {
 
   const handleDocRequestSuccess = (newReq: any) => {
     setDocRequests([newReq, ...docRequests]);
+    setActiveTab("requests");
   };
 
   const handleUploadSuccess = (uploadedDoc: any) => {
@@ -167,7 +170,10 @@ export function EssDocumentsTab() {
   });
 
   const scrollToDocRequests = () => {
-    document.getElementById("doc-request-history")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    setActiveTab("requests");
+    requestAnimationFrame(() => {
+      document.getElementById("doc-request-history")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
   };
 
   return (
@@ -290,6 +296,32 @@ export function EssDocumentsTab() {
         </div>
       </div>
 
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as "documents" | "requests")}
+        className="mt-2"
+      >
+        <TabsList>
+          <TabsTrigger
+            className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+            value="documents"
+          >
+            <FileCheck className="h-3.5 w-3.5" /> My Documents
+          </TabsTrigger>
+          <TabsTrigger
+            className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+            value="requests"
+          >
+            <FileText className="h-3.5 w-3.5" /> My Requests
+            {pendingDocRequests.length > 0 && (
+              <span className="ml-1 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                {pendingDocRequests.length}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="documents" className="mt-4">
       {/* Employment Documents — TRY: grid cards + viewer modal, list = old table fallback */}
       <Card className="border-border/70 shadow-xs">
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3">
@@ -465,6 +497,9 @@ export function EssDocumentsTab() {
         </CardContent>
       </Card>
 
+        </TabsContent>
+
+        <TabsContent value="requests" className="mt-4">
       {/* Document Requests History */}
       <Card id="doc-request-history" className="border-border/70 shadow-xs scroll-mt-4">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
@@ -540,6 +575,9 @@ export function EssDocumentsTab() {
           />
         </CardContent>
       </Card>
+
+        </TabsContent>
+      </Tabs>
 
       {/* Modals */}
       <DocumentRequestModal

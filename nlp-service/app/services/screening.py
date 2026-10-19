@@ -117,7 +117,8 @@ def classify_applied_job(
 
     # The resume-only score is final once the resume-internal credential
     # penalty is applied, and the supporting-document evidence is blended into
-    # the RANKING score that HR ranks by (no-op without usable documents).
+    # the RANKING score that HR ranks by — floored at the resume score, so
+    # evidence can only reward (or escalate on a contradiction), never subtract.
     resume_score = float(match["match_score"])
     result["resume_match_score"] = resume_score
     blended_score = verification_scoring.apply_document_evidence(resume_score, evidence)

@@ -21,6 +21,7 @@ export type ScreeningDetail = {
     ignored_count?: number;
     credit_ratio?: number | null;
     documents_score?: number | null;
+    score_bonus?: number;
     score_penalty?: number;
     escalate_invalid?: boolean;
     mismatched_fields?: string[];
@@ -123,6 +124,12 @@ export type Applicant = {
    *  onboarding start date (anchor for the "Days of Work" counter). */
   offerStartDate?: string | null;
   offerDaysLeft?: number | null;
+  /** How the applicant replied (Email / SMS / Call / In person) — HR records
+   *  it since replies arrive outside the app. */
+  offerResponseChannel?: "Email" | "SMS" | "Call" | "In person" | null;
+  offerResponseNote?: string | null;
+  offerRespondedAt?: string | null;
+  offerResponseRecordedBy?: string | null;
   /** Re-apply cooldown anchors — rejected_at starts the waiting period,
    *  cooldown_lifted_at records an HR early override. */
   rejectedAt?: string | null;

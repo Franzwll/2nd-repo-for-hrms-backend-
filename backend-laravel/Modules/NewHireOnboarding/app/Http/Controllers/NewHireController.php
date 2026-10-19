@@ -3,107 +3,20 @@
 namespace Modules\NewHireOnboarding\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Mail\NewHireCredentialsMail;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
 use Modules\NewHireOnboarding\Http\Requests\StoreNewHireRequest;
 use Modules\NewHireOnboarding\Http\Requests\UpdateNewHireRequest;
 use Modules\NewHireOnboarding\Http\Resources\NewHireResource;
 use Modules\NewHireOnboarding\Models\NewHire;
 use Modules\NewHireOnboarding\Models\OnboardingChecklistTemplate;
+use Modules\NewHireOnboarding\Services\NewHireIntakeService;
 use App\Services\AuditLogger;
 use Modules\CoreHCM\Services\EmployeeLifecycleService;
-use Modules\Settings\Models\SystemSetting;
-use Modules\Settings\Models\SystemUser;
 
 class NewHireController extends Controller
 {
-    /* ------------------------------------------------------------------ */
-    /* Portal account creation                                              */
-    /* ------------------------------------------------------------------ */
-
-    /**
-     * Creates (or reuses) a system_users portal account for the new hire so
-     * they can log into the Employee portal. The account starts with the
-     * default password stored in system_settings.default_password (falls back
-     * to the shipped default) and is linked to the hire's employee record.
-     *
-     * Returns an array with the account, the plain-text password (only when a
-     * new account was created) and whether it was newly created:
-     * ['user' => SystemUser, 'password' => ?string, 'created' => bool]
-     */
-    private function ensurePortalAccount(NewHire $newHire): ?array
-    {
-        $email = trim((string) $newHire->email);
-        if ($email === '') {
-            return null;
-        }
-
-        $existing = SystemUser::where('email', $email)->first();
-        if ($existing) {
-            return ['user' => $existing, 'password' => null, 'created' => false];
-        }
-
-        $defaultPassword = SystemSetting::getValue('default_password', []);
-        $password = is_array($defaultPassword) && isset($defaultPassword['password'])
-            ? (string) $defaultPassword['password']
-            : Str::password(12, symbols: false);
-
-        // Unique username derived from the email's local part
-        $base = strtolower(preg_replace('/[^a-z0-9._-]/i', '', explode('@', $email)[0] ?? 'user'));
-        $username = $base;
-        $suffix = 1;
-        while (SystemUser::where('username', $username)->exists()) {
-            $username = $base . $suffix++;
-        }
-
-        $user = SystemUser::create([
-            'username' => $username,
-            'email' => $email,
-            'password_hash' => Hash::make($password),
-            'full_name' => $newHire->name,
-            'department_name' => $newHire->department?->name,
-            'employee_id' => $newHire->employee_id,
-            'role_id' => 3, // Employee portal role
-            'status' => 'Active',
-        ]);
-
-        return ['user' => $user, 'password' => $password, 'created' => true];
-    }
-
-    /**
-     * Emails the new hire their Employee portal login credentials (email +
-     * password) right after their portal account is created. Failures are
-     * logged but never block the hire creation itself.
-     */
-    private function sendCredentialsEmail(NewHire $newHire, ?array $account): void
-    {
-        if (!$account || !($account['created'] ?? false) || empty($account['password'])) {
-            return;
-        }
-
-        try {
-            Mail::to($newHire->email)->send(new NewHireCredentialsMail(
-                recipientEmail: $newHire->email,
-                employeeName: $newHire->name,
-                email: $newHire->email,
-                password: (string) $account['password'],
-                position: $newHire->position?->title,
-                startDate: $newHire->start_date?->format('F j, Y'),
-            ));
-        } catch (\Throwable $e) {
-            Log::warning('Could not send new hire credentials email', [
-                'new_hire_id' => $newHire->new_hire_id,
-                'email' => $newHire->email,
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
     /* ------------------------------------------------------------------ */
     /* GET /api/v1/new-hires                                               */
     /* ------------------------------------------------------------------ */
@@ -184,10 +97,17 @@ class NewHireController extends Controller
         OnboardingChecklistTemplate::applyAllFor($newHire);
 
         // Create the portal account so the hire can log into the Employee portal
-        $account = $this->ensurePortalAccount($newHire);
+        $account = NewHireIntakeService::ensurePortalAccount($newHire);
 
         // Email the employee their portal credentials (email + password)
-        $this->sendCredentialsEmail($newHire, $account);
+        NewHireIntakeService::sendCredentialsEmail($newHire, $account);
+
+        // Hires added straight at Probationary/Regular are Core HCM employees;
+        // Pre-onboarding hires are not employees yet and get their record when
+        // they are promoted (see promoteStage).
+        if ($newHire->stage !== 'Pre-onboarding') {
+            NewHireIntakeService::ensureEmployeeRecord($newHire, $newHire->stage);
+        }
 
         return response()->json(
             new NewHireResource($newHire->load(['department', 'position', 'onboardingItems.templateItem.template'])),
@@ -283,6 +203,13 @@ class NewHireController extends Controller
         // Auto-apply matching Active checklist templates for the new stage
         OnboardingChecklistTemplate::applyAllFor($model);
 
+        // Entering Probationary makes the hire a Core HCM employee — create
+        // the `employees` row now (idempotent) instead of waiting for a portal
+        // login or regularization.
+        if ($nextStage === 'Probationary') {
+            NewHireIntakeService::ensureEmployeeRecord($model);
+        }
+
         // Regularization must reach the Core HCM employee record too — the
         // employee list / org chart reads employment_type from `employees`,
         // so without this a regularized hire would still show Probationary.
@@ -292,10 +219,10 @@ class NewHireController extends Controller
 
         // Portal account (re)creation — hires completing their record at
         // probation get their Employee portal login here.
-        $account = $this->ensurePortalAccount($model);
+        $account = NewHireIntakeService::ensurePortalAccount($model);
 
         // Email the employee their portal credentials (email + password)
-        $this->sendCredentialsEmail($model, $account);
+        NewHireIntakeService::sendCredentialsEmail($model, $account);
 
         return response()->json(
             new NewHireResource($model->load(['department', 'position', 'onboardingItems.templateItem.template']))
@@ -371,32 +298,27 @@ class NewHireController extends Controller
         }
 
         // Employee Records: copy the originating applicant's resume + supporting
-        // documents into the employee's 201 file. Best-effort — a copy failure
-        // must never block the regularization itself.
-        if ($newHire->applicant_id) {
-            try {
-                $applicant = \Modules\ApplicantManagement\Models\Applicant::find($newHire->applicant_id);
-                if ($applicant) {
-                    $copied = app(\Modules\EmployeeRecords\Services\EmployeeRecordProvisioner::class)
-                        ->fromApplicant($applicant, $employee);
+        // documents and the hire's onboarding uploads into the 201 file.
+        // Best-effort — a copy failure must never block regularization.
+        try {
+            $copied = app(\Modules\EmployeeRecords\Services\EmployeeRecordProvisioner::class)
+                ->fromNewHire($newHire, $employee);
 
-                    if ($copied > 0) {
-                        AuditLogger::log(
-                            action: 'Applicant Documents Copied to Employee Record',
-                            module: 'Employee Records',
-                            targetType: 'Employee',
-                            targetId: (string) $employee->employee_id,
-                            details: "Copied {$copied} document(s) from applicant {$applicant->applicant_code} into employee record {$employee->employee_code}.",
-                        );
-                    }
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Could not copy applicant documents into employee record', [
-                    'new_hire_id' => $newHire->new_hire_id,
-                    'applicant_id' => $newHire->applicant_id,
-                    'error' => $e->getMessage(),
-                ]);
+            if ($copied > 0) {
+                AuditLogger::log(
+                    action: 'Applicant Documents Copied to Employee Record',
+                    module: 'Employee Records',
+                    targetType: 'Employee',
+                    targetId: (string) $employee->employee_id,
+                    details: "Copied {$copied} document(s) from new hire {$newHire->new_hire_code} into employee record {$employee->employee_code}.",
+                );
             }
+        } catch (\Throwable $e) {
+            Log::warning('Could not copy documents into employee record', [
+                'new_hire_id' => $newHire->new_hire_id,
+                'applicant_id' => $newHire->applicant_id,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         \App\Models\EmployeePositionHistory::create([

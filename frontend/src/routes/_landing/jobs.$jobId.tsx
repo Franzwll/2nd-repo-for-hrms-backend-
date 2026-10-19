@@ -332,35 +332,29 @@ function JobDetail() {
                         toast.error("Enter a valid location (≥2 chars).");
                         return;
                       }
+                      // Resume/CV is mandatory — it is the reference NLP screening scores against.
+                      if (!resumeFile) {
+                        toast.error("Please attach your resume/CV to apply.");
+                        return;
+                      }
                       setApplying(true);
                       try {
-                        let res;
-                        if (resumeFile) {
-                          const fd = new FormData();
-                          fd.append("job_post_id", String(job.id));
-                          fd.append("name", n);
-                          fd.append("email", em);
-                          fd.append("phone", ph);
-                          fd.append("source", "Landing Page");
-                          fd.append("resume", resumeFile);
-                          // Verification documents (COE / Certificate /
-                          // Credential / Others) proving the resume content.
-                          // Capped at MAX_VERIFY_DOCS (backend max) — extras are
-                          // left behind and reported in the success note below.
-                          verifyDocsCapped.forEach((d, i) => {
-                            fd.append(`verification_doc_types[${i}]`, d.type);
-                            fd.append(`verification_docs[${i}]`, d.file);
-                          });
-                          res = await landingApi.apply(fd);
-                        } else {
-                          res = await landingApi.apply({
-                            job_post_id: Number(job.id),
-                            name: n,
-                            email: em,
-                            phone: ph,
-                            source: "Landing Page",
-                          });
-                        }
+                        const fd = new FormData();
+                        fd.append("job_post_id", String(job.id));
+                        fd.append("name", n);
+                        fd.append("email", em);
+                        fd.append("phone", ph);
+                        fd.append("source", "Landing Page");
+                        fd.append("resume", resumeFile);
+                        // Verification documents (COE / Certificate /
+                        // Credential / Others) proving the resume content.
+                        // Capped at MAX_VERIFY_DOCS (backend max) — extras are
+                        // left behind and reported in the success note below.
+                        verifyDocsCapped.forEach((d, i) => {
+                          fd.append(`verification_doc_types[${i}]`, d.type);
+                          fd.append(`verification_docs[${i}]`, d.file);
+                        });
+                        const res = await landingApi.apply(fd);
                         setSubmitted(true);
                         toast.success("Application submitted", {
                           description:
@@ -487,7 +481,7 @@ function JobDetail() {
                       </div>
                       <div className="space-y-1.5">
                         <Label>
-                          Resume + Supporting Documents (optional){" "}
+                          Resume/CV * + Supporting Documents{" "}
                           {extracting && <span className="text-xs text-gold">Extracting…</span>}
                         </Label>
                         <UnifiedDocumentsUploader
@@ -497,6 +491,10 @@ function JobDetail() {
                           title="Drop resume + COE + certificates here"
                           hint="Any order — every file is auto-recognized. Your name, email, phone and address are filled from the first recognized resume."
                         />
+                        <p className="text-[11px] text-muted-foreground">
+                          A resume/CV is required. Supporting documents (COE, certificates,
+                          credentials) are optional.
+                        </p>
                         {verifyDocs.length > 0 && (
                           <p
                             className={

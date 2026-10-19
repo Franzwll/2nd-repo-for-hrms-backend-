@@ -10,6 +10,7 @@ use App\Models\SystemUser;
 use App\Services\AuditLogger;
 use App\Services\DuplicateApplicationService;
 use App\Services\NotificationService;
+use App\Services\ResumeStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -141,8 +142,9 @@ class ApplicantManagementController extends Controller
         // Handle resume upload
         if ($request->hasFile('resume')) {
             $data['resume_hash'] = DuplicateApplicationService::hashFile($request->file('resume'));
-            $path = $request->file('resume')->store('resumes', 'public');
-            $data['resume_file_path'] = $path;
+            // Preserve the real extension (store() would yield ".bin" for e.g.
+            // .docx, which the NLP screening rejects).
+            $data['resume_file_path'] = ResumeStorage::store($request->file('resume'));
             $data['resume_original_name'] = $request->file('resume')->getClientOriginalName();
         }
         unset($data['resume']);
@@ -652,7 +654,7 @@ class ApplicantManagementController extends Controller
                 Storage::disk('public')->delete($model->resume_file_path);
             }
             $data['resume_hash'] = DuplicateApplicationService::hashFile($request->file('resume'));
-            $data['resume_file_path'] = $request->file('resume')->store('resumes', 'public');
+            $data['resume_file_path'] = ResumeStorage::store($request->file('resume'));
             $data['resume_original_name'] = $request->file('resume')->getClientOriginalName();
         }
         unset($data['resume']);

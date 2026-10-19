@@ -11,7 +11,12 @@ evidence block the screening classifier blends into the final ranking score:
         UNABLE_TO_VERIFY  -> DOCUMENT_VERIFICATION_CREDIT_UNABLE     (0.50)
         DISCREPANCY_FOUND -> DOCUMENT_VERIFICATION_CREDIT_DISCREPANCY (0.00)
 
-    final_score = resume_score * (1 - weight) + documents_score * weight
+    final_score = max(resume_score, resume_score * (1 - weight) + documents_score * weight)
+
+Evidence may only REWARD, never silently subtract: the blend is floored at the
+resume-only score, so verified documents raise the ranking, documents that
+cannot be compared (UNABLE_TO_VERIFY) are a no-op, and a contradiction is
+escalated to INVALID_CREDENTIAL rather than being applied as a hidden penalty.
 
 Only "decisive" documents participate: still PENDING/PROCESSING rows and
 documents that cannot be mapped to a resume section ("Others") are ignored, so
@@ -134,9 +139,9 @@ def aggregate_document_verifications(
     Returns a JSON-serialisable block:
         status, weight, documents_total, decisive_count, verified_count,
         discrepancy_count, unable_count, pending_count, ignored_count,
-        credit_ratio, documents_score, score_penalty (filled by the caller),
-        escalate_invalid, flags (human-readable sentences),
-        mismatched_fields, per_document (compact audit rows).
+        credit_ratio, documents_score, score_penalty (always 0), score_bonus
+        (filled by the caller), escalate_invalid, flags (human-readable
+        sentences), mismatched_fields, per_document (compact audit rows).
     """
     documents = [d for d in (documents or []) if isinstance(d, dict)]
 
@@ -226,6 +231,7 @@ def aggregate_document_verifications(
         "credit_ratio": round(credit_ratio, 4) if credit_ratio is not None else None,
         "documents_score": documents_score,
         "score_penalty": 0.0,
+        "score_bonus": 0.0,
         "escalate_invalid": escalate_invalid,
         "mismatched_fields": sorted(set(mismatched_fields)),
         "flags": flags,
@@ -236,9 +242,15 @@ def aggregate_document_verifications(
 def apply_document_evidence(match_score: float, aggregate: Optional[Dict[str, Any]]) -> float:
     """Blends the resume score with the document evidence score.
 
+    Evidence may only reward, never silently hurt: the blended score is floored
+    at the resume-only score, so a verified document can raise the ranking, an
+    unverifiable document is a no-op, and a contradiction is escalated to
+    INVALID_CREDENTIAL by the caller rather than applied as a hidden penalty.
     Returns `match_score` unchanged when there is no decisive evidence, so
     applicants without verifiable documents are scored exactly as before.
-    Also annotates `aggregate` with the applied `score_penalty` when given.
+
+    Also annotates `aggregate`: `score_penalty` stays 0 (kept for backward
+    compatibility) and `score_bonus` carries the non-negative points earned.
     """
     if not aggregate or aggregate.get("credit_ratio") is None:
         return float(match_score)
@@ -247,9 +259,11 @@ def apply_document_evidence(match_score: float, aggregate: Optional[Dict[str, An
     weight = min(max(weight, 0.0), 1.0)
     documents_score = float(aggregate.get("documents_score") or 0.0)
     blended = float(match_score) * (1.0 - weight) + documents_score * weight
-    blended = max(0.0, round(blended, 2))
+    # Floor at the resume score: evidence can add points, never quietly subtract.
+    blended = max(0.0, round(max(float(match_score), blended), 2))
 
-    aggregate["score_penalty"] = round(float(match_score) - blended, 2)
+    aggregate["score_penalty"] = 0.0
+    aggregate["score_bonus"] = round(blended - float(match_score), 2)
     return blended
 
 

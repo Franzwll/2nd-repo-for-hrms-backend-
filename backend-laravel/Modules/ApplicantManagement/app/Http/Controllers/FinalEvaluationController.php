@@ -18,6 +18,7 @@ use Modules\ApplicantManagement\Services\AssessmentRequirement;
 use Modules\ApplicantManagement\Services\FinalEvaluationScoreService;
 use Modules\ApplicantManagement\Services\OfferService;
 use Modules\ApplicantManagement\Services\PracticalRequirement;
+use Modules\NewHireOnboarding\Services\NewHireIntakeService;
 use Modules\RecruitmentManagement\Models\JobPost;
 
 class FinalEvaluationController extends Controller
@@ -118,6 +119,11 @@ class FinalEvaluationController extends Controller
         // System-calculated scores from existing records (never from request).
         $screeningScore = $model->latestScreening?->match_score !== null
             ? (float) $model->latestScreening->match_score : null;
+        // No screening record at all → the applicant was never screened (e.g. a
+        // walk-in / phone applicant with no resume). Exclude Screening and
+        // normalize, rather than blocking the Overall Score. A resume that
+        // exists but failed to screen still leaves this true → incomplete.
+        $screeningApplicable = $model->latestScreening !== null;
         $interviewScore = $assessment->total_score !== null ? (float) $assessment->total_score : null;
         // Assessment score only counts when the Core HCM position requires it —
         // non-required positions skip the stage (weight normalized, never zero).
@@ -132,7 +138,8 @@ class FinalEvaluationController extends Controller
             $assessmentScore,
             $practicalScore,
             $requiresPractical,
-            $requiresAssessment
+            $requiresAssessment,
+            $screeningApplicable
         );
 
         $recommendation = $data['recommendation'];
@@ -397,7 +404,19 @@ class FinalEvaluationController extends Controller
         $data = $request->validate([
             'response'   => ['required', 'string', 'in:accepted,declined'],
             'start_date' => ['required_if:response,accepted', 'nullable', 'date'],
+            // How the applicant replied — no applicant portal / inbound email
+            // integration exists, so HR records the channel it came through.
+            'channel'    => ['required', 'string', 'in:Email,SMS,Call,In person'],
+            'note'       => ['nullable', 'string', 'max:1000'],
         ]);
+
+        $responseMeta = [
+            'offer_response_channel'     => $data['channel'],
+            'offer_response_note'        => $data['note'] ?? null,
+            'offer_responded_at'         => now(),
+            'offer_response_recorded_by' => $request->user()?->full_name
+                ?? $request->user()?->username,
+        ];
 
         if ($model->offer_status === 'Accepted') {
             return response()->json(['message' => 'This applicant already accepted the offer.'], 422);
@@ -432,6 +451,7 @@ class FinalEvaluationController extends Controller
             $model->stage = 'Hired';
             $model->offer_status = 'Accepted';
             $model->offer_start_date = $data['start_date'];
+            $model->fill($responseMeta);
             $model->save();
 
             // Filling a slot: auto-closes the job post when vacancies reach 0.
@@ -443,6 +463,20 @@ class FinalEvaluationController extends Controller
                 }
             }
 
+            // File the accepted applicant into New Hire Onboarding right here
+            // on the server (idempotent per applicant). The browser handoff
+            // used to be the only creator, so a reload could silently drop the
+            // hire; doing it server-side guarantees the Pre-onboarding record.
+            $newHire = null;
+            try {
+                $newHire = NewHireIntakeService::fileApplicant(
+                    $model->applicant_id,
+                    ['start_date' => $data['start_date']]
+                );
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('New hire intake failed for applicant ' . $model->applicant_id . ': ' . $e->getMessage());
+            }
+
             AuditLogger::log(
                 action: 'Applicant Accepted Offer',
                 module: 'Applicant Management',
@@ -450,7 +484,10 @@ class FinalEvaluationController extends Controller
                 targetType: 'Applicant',
                 targetId: (string) $model->applicant_id,
                 details: "{$model->name} accepted the offer for {$model->jobPost?->title} — "
-                    . 'start of work ' . $data['start_date'] . ' (heads to New Hire Onboarding as Pre-onboarding).'
+                    . 'start of work ' . $data['start_date']
+                    . ($newHire ? " (filed under New Hire Onboarding as Pre-onboarding, {$newHire->new_hire_code}). " : ' (New Hire Onboarding intake pending). ')
+                    . "Replied via {$data['channel']}"
+                    . (! empty($data['note']) ? " — {$data['note']}" : '') . '.'
             );
 
             NotificationService::send(
@@ -472,6 +509,7 @@ class FinalEvaluationController extends Controller
             'stage'        => 'Rejected',
             'offer_status' => 'Declined',
             'rejected_at'  => null,
+            ...$responseMeta,
         ]);
 
         AuditLogger::log(
@@ -480,7 +518,9 @@ class FinalEvaluationController extends Controller
             severity: 'Warning',
             targetType: 'Applicant',
             targetId: (string) $model->applicant_id,
-            details: "{$model->name} declined the offer — recorded as Failed in the Pipeline Overview."
+            details: "{$model->name} declined the offer — recorded as Failed in the Pipeline Overview. "
+                . "Replied via {$data['channel']}"
+                . (! empty($data['note']) ? " — {$data['note']}" : '') . '.'
         );
 
         return response()->json(new ApplicantResource($model->fresh()->load(['jobPost.department'])));
@@ -528,6 +568,9 @@ class FinalEvaluationController extends Controller
 
         $screeningScore = $model->latestScreening?->match_score !== null
             ? (float) $model->latestScreening->match_score : null;
+        // Same rule as store(): no screening record → Screening is not part of
+        // the calculation (walk-in / phone applicants are never screened).
+        $screeningApplicable = $model->latestScreening !== null;
         $interviewScore = $assessment?->total_score !== null ? (float) $assessment->total_score : null;
         $assessmentScore = ($requiresAssessment && $test?->total_score !== null) ? (float) $test->total_score : null;
         $practicalScore = ($requiresPractical && $practical && $practical->total_score !== null)
@@ -539,7 +582,8 @@ class FinalEvaluationController extends Controller
             $assessmentScore,
             $practicalScore,
             $requiresPractical,
-            $requiresAssessment
+            $requiresAssessment,
+            $screeningApplicable
         );
 
         $blockingDiscrepancies = ApplicantDocument::where('applicant_id', $model->applicant_id)
@@ -555,6 +599,7 @@ class FinalEvaluationController extends Controller
             'position' => $positionTitle,
             'assessment_required' => $requiresAssessment,
             'practical_required' => $requiresPractical,
+            'screening_applicable' => $screeningApplicable,
             'scores' => [
                 'screening_score' => $screeningScore,
                 'screening_status' => $model->latestScreening?->screening_result,

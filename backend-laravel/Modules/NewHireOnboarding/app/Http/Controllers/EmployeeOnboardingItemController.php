@@ -413,6 +413,25 @@ class EmployeeOnboardingItemController extends Controller
             ]);
         });
 
+        // Once the hire is an employee, route the uploaded document into ERM
+        // immediately. Pre-onboarding uploads are picked up when the employee
+        // record is created (NewHireIntakeService::ensureEmployeeRecord).
+        $hire = $model->newHire;
+        if ($file && $hire?->employee_id) {
+            try {
+                $employee = \App\Models\Employee::find($hire->employee_id);
+                if ($employee) {
+                    app(\Modules\EmployeeRecords\Services\EmployeeRecordProvisioner::class)
+                        ->fromOnboardingItems($hire, $employee);
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Could not route onboarding document to Employee Records', [
+                    'onboarding_item_id' => $model->employee_onboarding_item_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         AuditLogger::log(
             action: 'Onboarding Item Document Submitted',
             module: 'New Hire Onboarding',

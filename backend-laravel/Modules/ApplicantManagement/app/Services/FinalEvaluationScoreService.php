@@ -15,6 +15,12 @@ namespace Modules\ApplicantManagement\Services;
  * Positions WITHOUT a practical test normalize the applicable weights to 100%:
  *   Overall = (screening*wS + interview*wI + assessment*wA) / (wS+wI+wA)
  * Missing practical is never counted as zero.
+ *
+ * Screening is normally applicable. When an applicant was never screened at
+ * all (no resume — e.g. a walk-in / phone applicant), pass
+ * `$screeningApplicable = false` so Screening is excluded and the remaining
+ * weights are normalized, instead of blocking the Overall Score. A resume that
+ * exists but failed to screen still keeps Screening applicable → incomplete.
  */
 class FinalEvaluationScoreService
 {
@@ -53,7 +59,8 @@ class FinalEvaluationScoreService
         ?float $assessment,
         ?float $practical,
         bool $practicalRequired,
-        ?bool $assessmentRequired = null
+        ?bool $assessmentRequired = null,
+        bool $screeningApplicable = true
     ): array {
         $weights = self::weights();
         $assessmentRequired ??= AssessmentConfig::assessmentTestEnabled();
@@ -103,7 +110,7 @@ class FinalEvaluationScoreService
             $applicableWeight += $weight;
         };
 
-        $add('screening', 'Screening / Role Fit', $screening, $weights['screening'], true);
+        $add('screening', 'Screening / Role Fit', $screening, $weights['screening'], $screeningApplicable);
         $add('interview', 'Interview', $interview, $weights['interview'], true);
         $add('assessment', 'Assessment Test', $assessment, $weights['assessment'], $assessmentRequired);
         $add('practical', 'Practical Test', $practical, $weights['practical'], $practicalRequired);

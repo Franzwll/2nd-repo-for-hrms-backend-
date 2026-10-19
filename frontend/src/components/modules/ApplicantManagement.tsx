@@ -278,10 +278,19 @@ function transformApiApplicant(a: ApiApplicant): Applicant {
     offerExpiresAt: a.offer_expires_at ?? null,
     offerStartDate: a.offer_start_date ?? null,
     offerDaysLeft: a.offer_days_left ?? null,
+    offerResponseChannel: a.offer_response_channel ?? null,
+    offerResponseNote: a.offer_response_note ?? null,
+    offerRespondedAt: a.offer_responded_at ?? null,
+    offerResponseRecordedBy: a.offer_response_recorded_by ?? null,
     rejectedAt: a.rejected_at ?? null,
     cooldownLiftedAt: a.cooldown_lifted_at ?? null,
   };
 }
+
+/** How an applicant's offer reply reached HR. There is no applicant portal /
+ *  inbound email-SMS integration, so HR records the medium. */
+type OfferResponseChannel = "Email" | "SMS" | "Call" | "In person";
+const OFFER_RESPONSE_CHANNELS: OfferResponseChannel[] = ["Email", "SMS", "Call", "In person"];
 
 /** Normalized offer state for the final-evaluation decision (null when no
  *  offer was ever sent). Drives the offer banners + Accept / Decline gates. */
@@ -471,6 +480,22 @@ function transformApiPracticalTest(a: ApiPracticalTest): PracticalTestRow {
   };
 }
 
+/** Saved final evaluations persist the score as a wrapper object
+ *  (`{ weights, breakdown: [...] }`), while the live preview endpoint returns
+ *  the breakdown array directly. Normalize both shapes to the array the UI
+ *  renders so neither path calls array methods on an object. */
+function normalizeScoreBreakdown(value: unknown): FinalScoreBreakdownItem[] | null {
+  if (Array.isArray(value)) return value as FinalScoreBreakdownItem[];
+  if (
+    value &&
+    typeof value === "object" &&
+    Array.isArray((value as { breakdown?: unknown }).breakdown)
+  ) {
+    return (value as { breakdown: FinalScoreBreakdownItem[] }).breakdown;
+  }
+  return null;
+}
+
 /** Maps an API final evaluation into the local row shape. */
 function transformApiFinalEvaluation(f: ApiFinalEvaluation): FinalEvaluationRow {
   return {
@@ -492,7 +517,7 @@ function transformApiFinalEvaluation(f: ApiFinalEvaluation): FinalEvaluationRow 
     overallScoreRounded:
       f.overall_score_rounded ??
       (f.overall_score != null ? Math.round(f.overall_score * 10) / 10 : null),
-    scoreBreakdown: (f.score_breakdown as FinalScoreBreakdownItem[] | null) ?? null,
+    scoreBreakdown: normalizeScoreBreakdown(f.score_breakdown),
     recommendation: f.recommendation,
     recommendedJobPostId: f.recommended_job_post_id ?? null,
     recommendedPositionTitle: f.recommended_position_title ?? null,
@@ -832,7 +857,10 @@ const interviewDurationMinutes = (
   if (endLabel) {
     const start = parseInterviewTimeToMinutes(timeLabel);
     const end = parseInterviewTimeToMinutes(endLabel);
-    if (start !== null && end !== null && end > start) return end - start;
+    // An end before the start means the interview runs past midnight.
+    if (start !== null && end !== null && end !== start) {
+      return (end - start + 24 * 60) % (24 * 60);
+    }
   }
   return fallbackMinutes;
 };
@@ -6519,11 +6547,20 @@ function ApplicantViewScreen({
                                   )}
                                 >
                                   {offerStateLabel(offer)}
+                                  {offer.status !== "Pending" && a.offerResponseChannel && (
+                                    <span className="font-normal text-muted-foreground">
+                                      {" "}
+                                      · replied via {a.offerResponseChannel}
+                                      {a.offerResponseRecordedBy
+                                        ? ` (recorded by ${a.offerResponseRecordedBy})`
+                                        : ""}
+                                    </span>
+                                  )}
                                   {offer.status === "Pending" && !offer.expired && (
                                     <span className="font-normal text-muted-foreground">
                                       {" "}
-                                      — record the reply via Accept / Decline applicant in the
-                                      Final Evaluation modal.
+                                      — record the reply (and how it arrived) via Record
+                                      acceptance / Record decline in the Final Evaluation modal.
                                     </span>
                                   )}
                                 </p>
@@ -6563,6 +6600,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const { id: highlightId, tab: highlightTab } = useHighlightId();
   const [rows, setRows] = useState<Applicant[]>([]);
   const [loading, setLoading] = useState(true);
+  /* Only the very first load shows skeletons. The 20s background poll and the
+     focus/visibility re-read refresh silently, so the table stays clickable
+     instead of flashing its loading state (and blocking actions) every time. */
+  const hasLoadedRef = useRef(false);
 
   /**
    * Loads every pipeline record that drives the applicant progress bar:
@@ -6577,7 +6618,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     // rejected applicants stay in the list, only labelled as "Rejected".
     const excludeStages = "Hired";
     try {
-      setLoading(true);
+      if (!hasLoadedRef.current) setLoading(true);
       const [appRes, intRes, asmRes, testRes, practRes, finalRes] = await Promise.allSettled([
         fetchAllPages(applicantsApi.list, { exclude_stages: excludeStages }),
         fetchAllPages(interviewsApi.list),
@@ -6626,6 +6667,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     } catch (err) {
       console.warn("Could not fetch applicants/interviews/assessments from API:", err);
     } finally {
+      hasLoadedRef.current = true;
       setLoading(false);
     }
   }, []);
@@ -6835,6 +6877,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [acceptOfferDate, setAcceptOfferDate] = useState(() => isoOf(new Date()));
   /** In-flight offer API call (send / accept / decline) — disables buttons. */
   const [offerActionBusy, setOfferActionBusy] = useState(false);
+  /** "Decline applicant" — records the reply medium before failing the candidate. */
+  const [declineOfferFor, setDeclineOfferFor] = useState<Applicant | null>(null);
+  /** How the applicant replied (Email / SMS / Call / In person) — HR records it. */
+  const [offerResponseChannel, setOfferResponseChannel] = useState<OfferResponseChannel | "">("");
+  const [offerResponseNote, setOfferResponseNote] = useState("");
   const [assessmentSearch, setAssessmentSearch] = useState("");
   const [assessmentDept, setAssessmentDept] = useState<string>("all");
   const [assessmentOutcome, setAssessmentOutcome] = useState<string>("all");
@@ -7122,10 +7169,12 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [customEnd, setCustomEnd] = useState<string>("");
 
   /** Applies a manually entered start/end time (24h "HH:MM") to the schedule.
-   *  The end defaults to start + interval and is only honoured when it is
-   *  strictly after the start (blank end = duration comes from the interval). */
+   *  The end defaults to start + interval. An earlier end is honoured too — it
+   *  means the interview runs past midnight (an end equal to the start is
+   *  treated as blank so the interval duration applies). */
   const applyCustomRange = (which: "start" | "end", v: string) => {
     const step = Math.max(5, slotSettings.intervalMinutes);
+    const DAY = 24 * 60;
     if (which === "start") {
       if (!v) {
         // Cleared — the form blocks submit until a start time is picked.
@@ -7137,8 +7186,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       const startMins = parseTimeToMinutes(v);
       setCustomTime(v);
       const keptEnd = customEnd ? parseTimeToMinutes(customEnd) : null;
+      // Keep an explicit end that still differs from the new start; otherwise
+      // default to one interval later (wrapping past midnight when needed).
       const endMins =
-        keptEnd !== null && keptEnd > startMins ? keptEnd : Math.min(startMins + step, 23 * 60 + 59);
+        keptEnd !== null && keptEnd !== startMins ? keptEnd : (startMins + step) % DAY;
       setCustomEnd(minutesToInputTime(endMins));
       setSchedule((p) => ({
         ...p,
@@ -7157,7 +7208,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const endMins = parseTimeToMinutes(v);
     setSchedule((p) => ({
       ...p,
-      endTime: startMins !== null && endMins > startMins ? formatMinutesAsTime(endMins) : "",
+      // Any end other than one equal to the start is valid — an earlier end
+      // means the interview runs past midnight (e.g. 10:00 pm – 12:30 am).
+      endTime: startMins !== null && endMins !== startMins ? formatMinutesAsTime(endMins) : "",
     }));
   };
 
@@ -7993,6 +8046,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           offerExpiresAt: api.offer_expires_at ?? null,
           offerStartDate: api.offer_start_date ?? null,
           offerDaysLeft: api.offer_days_left ?? null,
+          offerResponseChannel: api.offer_response_channel ?? null,
+          offerResponseNote: api.offer_response_note ?? null,
+          offerRespondedAt: api.offer_responded_at ?? null,
+          offerResponseRecordedBy: api.offer_response_recorded_by ?? null,
         };
       }),
     );
@@ -8027,12 +8084,39 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     }
   };
 
-  /** Accepts the applicant from the Final Evaluation modal: HR records the
-   *  applicant's reply to the offer together with the agreed start-of-work
-   *  date — that date anchors New Hire Onboarding ("Days of Work"). */
-  const acceptApplicantOffer = async (a: Applicant, startDate: string) => {
+  const resetOfferResponseForm = () => {
+    setOfferResponseChannel("");
+    setOfferResponseNote("");
+  };
+
+  /** Opens the accept dialog and resets the reply-medium fields. */
+  const openAcceptOffer = (a: Applicant) => {
+    resetOfferResponseForm();
+    setAcceptOfferFor(a);
+    setAcceptOfferDate(isoOf(new Date()));
+  };
+
+  /** Opens the decline dialog and resets the reply-medium fields. */
+  const openDeclineOffer = (a: Applicant) => {
+    resetOfferResponseForm();
+    setDeclineOfferFor(a);
+  };
+
+  /** Accepts the applicant from the Final Evaluation modal: HR records how the
+   *  reply arrived plus the agreed start-of-work date — that date anchors New
+   *  Hire Onboarding ("Days of Work"). */
+  const acceptApplicantOffer = async (
+    a: Applicant,
+    startDate: string,
+    channel: OfferResponseChannel | "",
+    note: string,
+  ) => {
     if (!a.dbId) {
       toast.error("This applicant has no database record — cannot accept.");
+      return;
+    }
+    if (!channel) {
+      toast.error("Select how the applicant replied (Email / SMS / Call / In person).");
       return;
     }
     setOfferActionBusy(true);
@@ -8040,29 +8124,29 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       const saved = await applicantsApi.respondToOffer(a.dbId, {
         response: "accepted",
         start_date: startDate,
+        channel,
+        note: note.trim() || undefined,
       });
       applyOfferResult(saved);
       addAudit({
         actionType: "Offer Accepted",
         target: a.name,
         module: "Applicant Management",
-        details: `Accepted the offer — start of work ${startDate}. Sent to New Hire Onboarding as Pre-onboarding.`,
+        details: `Accepted the offer — replied via ${channel}${
+          note.trim() ? ` (${note.trim()})` : ""
+        } — start of work ${startDate}. Sent to New Hire Onboarding as Pre-onboarding.`,
       });
       setAcceptOfferFor(null);
+      setDeclineOfferFor(null);
+      resetOfferResponseForm();
       setViewingFinal(null);
       setFinalizing(null);
-      const hirePosition = saved.job_post?.title ?? a.position;
-      hireStore.setPending({
-        name: a.name,
-        position: hirePosition,
-        department: positions.find((p) => p.title === hirePosition)?.department ?? "",
-        email: a.email,
-        phone: a.phone,
-        ...(a.dbId !== undefined ? { applicantId: a.dbId } : {}),
-        startDate,
-      });
-      toast.success(`${a.name} accepted — filing their pre-onboarding record`, {
-        description: `Start of work ${startDate} — the days-of-work count runs from this date.`,
+      // The Pre-onboarding record is created on the server the moment the
+      // offer is accepted (idempotent per applicant), so no in-memory handoff
+      // is needed — just refresh the New Hire list so it shows on arrival.
+      void hireStore.refresh();
+      toast.success(`${a.name} accepted — added to New Hire Onboarding`, {
+        description: `Replied via ${channel} · start of work ${startDate} — filed under Pre-onboarding; the days-of-work count runs from this date.`,
       });
       // Hired closes the pipeline — refresh so the progress bar shows it at once.
       syncAfterStageChange();
@@ -8076,21 +8160,37 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
   /** Records the applicant's declined reply (or an expired 7-day window):
    *  the applicant is failed in the pipeline — no onboarding. */
-  const declineApplicantOffer = async (a: Applicant) => {
+  const declineApplicantOffer = async (
+    a: Applicant,
+    channel: OfferResponseChannel | "",
+    note: string,
+  ) => {
     if (!a.dbId) {
       toast.error("This applicant has no database record — cannot decline.");
       return;
     }
+    if (!channel) {
+      toast.error("Select how the applicant replied (Email / SMS / Call / In person).");
+      return;
+    }
     setOfferActionBusy(true);
     try {
-      const saved = await applicantsApi.respondToOffer(a.dbId, { response: "declined" });
+      const saved = await applicantsApi.respondToOffer(a.dbId, {
+        response: "declined",
+        channel,
+        note: note.trim() || undefined,
+      });
       applyOfferResult(saved);
       addAudit({
         actionType: "Offer Declined",
         target: a.name,
         module: "Applicant Management",
-        details: "Declined the offer — recorded as Failed in the Pipeline Overview.",
+        details: `Declined the offer — replied via ${channel}${
+          note.trim() ? ` (${note.trim()})` : ""
+        } — recorded as Failed in the Pipeline Overview.`,
       });
+      setDeclineOfferFor(null);
+      resetOfferResponseForm();
       setViewingFinal(null);
       setFinalizing(null);
       toast.success(`${a.name} declined — marked as Failed in the pipeline`);
@@ -8710,8 +8810,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         if (updateTarget.dbId) {
           const rescheduled = await interviewsApi.update(updateTarget.dbId, {
             scheduled_date: schedule.date,
-            scheduled_time: schedule.time.includes(":") ? schedule.time.slice(0, 5) : "09:00",
-            scheduled_end_time: schedule.endTime ? schedule.endTime.slice(0, 5) : null,
+            scheduled_time: customTime || "09:00",
+            scheduled_end_time: customEnd || null,
             mode: schedule.mode,
             interviewer_name: schedule.interviewer,
             status: "Scheduled",
@@ -8845,8 +8945,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       const createdInterview = await interviewsApi.create({
         applicant_id: applicantId,
         scheduled_date: schedule.date,
-        scheduled_time: schedule.time.includes(":") ? schedule.time.slice(0, 5) : "09:00",
-        scheduled_end_time: schedule.endTime ? schedule.endTime.slice(0, 5) : null,
+        scheduled_time: customTime || "09:00",
+        scheduled_end_time: customEnd || null,
         mode: schedule.mode,
         interviewer_name: schedule.interviewer,
         status: "Scheduled",
@@ -9723,6 +9823,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     breakdown: FinalScoreBreakdownItem[] | null;
     loading?: boolean;
     screeningScore: number | null;
+    /** False when the applicant was never screened (no resume) — shown as "Not applied". */
+    screeningApplicable?: boolean;
     interviewScore: number | null;
     assessmentScore: number | null;
     assessmentRequired: boolean;
@@ -9790,7 +9892,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
             ) : (
               <>
                 <div className="flex flex-wrap gap-1">
-                  {chip("Screening", info.screeningScore)}
+                  {chip("Screening", info.screeningScore, info.screeningApplicable === false)}
                   {chip("Interview", info.interviewScore)}
                   {chip("Test", info.assessmentScore, !info.assessmentRequired)}
                   {chip("Practical", info.practicalScore, !info.practicalRequired)}
@@ -9834,6 +9936,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     applicant: Applicant;
     screeningScore: number | null;
     screeningStatus: string | null;
+    screeningApplicable?: boolean;
     interviewScore: number | null;
     interviewResult: PassFail | null;
     assessmentRequired: boolean;
@@ -9889,10 +9992,18 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               <p className="flex items-center gap-1.5 text-sm font-medium">
                 <FileText className="h-3.5 w-3.5 text-primary" /> Resume Screening
               </p>
-              {scoreLine(info.screeningScore)}
+              {info.screeningApplicable === false ? (
+                <Badge variant="outline" className="border-border text-muted-foreground">
+                  Not applied
+                </Badge>
+              ) : (
+                scoreLine(info.screeningScore)
+              )}
             </div>
             <p className="line-clamp-2 text-xs text-muted-foreground">
-              {info.screeningStatus ?? "No screening record yet."}
+              {info.screeningApplicable === false
+                ? "Not applicable — no resume on file."
+                : (info.screeningStatus ?? "No screening record yet.")}
             </p>
           </div>
 
@@ -10024,11 +10135,17 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
           <span>No response within the 7-day window — treated as a declined applicant (Failed).</span>
         ) : offer.status === "Accepted" ? (
           <span>
-            Offer accepted{offer.startDate ? ` — start of work ${offer.startDate}` : ""}. Filed
-            under New Hire Onboarding → Pre-onboarding.
+            Offer accepted
+            {a.offerResponseChannel ? ` — replied via ${a.offerResponseChannel}` : ""}
+            {offer.startDate ? `, start of work ${offer.startDate}` : ""}. Filed under New Hire
+            Onboarding → Pre-onboarding.
           </span>
         ) : (
-          <span>Offer declined — recorded as Failed in the Pipeline Overview.</span>
+          <span>
+            Offer declined
+            {a.offerResponseChannel ? ` — replied via ${a.offerResponseChannel}` : ""} — recorded
+            as Failed in the Pipeline Overview.
+          </span>
         )}
       </div>
     );
@@ -10048,36 +10165,26 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       <div className="space-y-2">
         <p className="eyebrow">Applicant's reply to the offer</p>
         <p className="text-xs text-muted-foreground">
-          HR records the applicant's emailed reply here. Accepting asks for the start-of-work
-          date — it anchors the New Hire Onboarding days-of-work count.
+          HR records the applicant's reply here and how it arrived (Email, SMS, call or in
+          person). Accepting also asks for the start-of-work date — it anchors the New Hire
+          Onboarding days-of-work count.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
             disabled={!enabled || !canAnswer || offerActionBusy}
-            onClick={() => {
-              setAcceptOfferFor(a);
-              setAcceptOfferDate(isoOf(new Date()));
-            }}
+            onClick={() => openAcceptOffer(a)}
           >
-            <CheckCircle2 className="mr-1.5 h-4 w-4" /> Accept applicant
+            <CheckCircle2 className="mr-1.5 h-4 w-4" /> Record acceptance
           </Button>
           <Button
             size="sm"
             variant="outline"
             className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
             disabled={!enabled || !canAnswer || offerActionBusy}
-            onClick={() =>
-              askConfirm({
-                title: "Decline this applicant?",
-                description: `${a.name} will be recorded as Failed in the Pipeline Overview — no onboarding record is created.`,
-                confirmLabel: "Yes, decline",
-                destructive: true,
-                onConfirm: () => void declineApplicantOffer(a),
-              })
-            }
+            onClick={() => openDeclineOffer(a)}
           >
-            <XCircle className="mr-1.5 h-4 w-4" /> Decline applicant
+            <XCircle className="mr-1.5 h-4 w-4" /> Record decline
           </Button>
         </div>
         {!enabled ? (
@@ -10332,15 +10439,16 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   );
 
   /** True when an interview row occupies the slot label — same start time, or
-   *  a custom range (start – end) that spans across the slot. */
+   *  a custom range (start – end) that spans the slot (including past midnight). */
   const interviewCoversSlot = (i: Interview, slotLabel: string) => {
     if (i.time === slotLabel) return true;
     if (!i.endTime) return false;
     const start = parseInterviewTimeToMinutes(i.time);
     const end = parseInterviewTimeToMinutes(i.endTime);
     const slot = parseInterviewTimeToMinutes(slotLabel);
-    if (start === null || end === null || slot === null) return false;
-    return start < slot && slot < end;
+    if (start === null || end === null || slot === null || start === end) return false;
+    // Same-day range, or an overnight range that wraps past midnight.
+    return end > start ? start < slot && slot < end : slot > start || slot < end;
   };
 
   /** True when the requested facility (room / meeting space) already holds a
@@ -10655,17 +10763,25 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
    */
   const scheduleInterviewers = useMemo(() => {
     const inDept = (dept: string) => scheduleDept === "all" || dept === scheduleDept;
-    const seeded = interviewers.filter((s) => inDept(s.department));
-    const taken = new Set(seeded.map((s) => s.name.trim().toLowerCase()));
-    const users = assessors
-      .map((u) => ({
-        id: `U${u.system_user_id}`,
-        name: (u.full_name ?? "").trim(),
-        role: u.department_name ?? "System user",
-        department: u.department_name ?? "",
-      }))
-      .filter((u) => !!u.name && !taken.has(u.name.toLowerCase()) && inDept(u.department));
-    return [...seeded, ...users];
+    const build = (scoped: boolean) => {
+      const matches = (dept: string) => (scoped ? inDept(dept) : true);
+      const seeded = interviewers.filter((s) => matches(s.department));
+      const taken = new Set(seeded.map((s) => s.name.trim().toLowerCase()));
+      const users = assessors
+        .map((u) => ({
+          id: `U${u.system_user_id}`,
+          name: (u.full_name ?? "").trim(),
+          role: u.department_name ?? "System user",
+          department: u.department_name ?? "",
+        }))
+        .filter((u) => !!u.name && !taken.has(u.name.toLowerCase()) && matches(u.department));
+      return [...seeded, ...users];
+    };
+    // A department may have no designated interviewers (e.g. a freshly added
+    // one). Never leave the required Interviewer field empty — fall back to
+    // every available interviewer so the booking can still be completed.
+    const scoped = build(true);
+    return scoped.length > 0 ? scoped : build(false);
   }, [assessors, scheduleDept]);
 
   /**
@@ -12962,7 +13078,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               {customEnd && !schedule.endTime ? (
                                 <span className="text-destructive">
                                   {customTime
-                                    ? "End time must be after the start time."
+                                    ? "End time can't equal the start time."
                                     : "Enter a start time first."}
                                 </span>
                               ) : customTime ? (
@@ -13750,7 +13866,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                         {customEnd && !schedule.endTime ? (
                                           <span className="text-destructive">
                                             {customTime
-                                              ? "End time must be after the start time."
+                                              ? "End time can't equal the start time."
                                               : "Enter a start time first."}
                                           </span>
                                         ) : customTime ? (
@@ -14816,28 +14932,15 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                             </DropdownMenuItem>
                                           ) : null}
                                           {canAcceptApplicant ? (
-                                            <DropdownMenuItem
-                                              onClick={() => {
-                                                setAcceptOfferFor(a);
-                                                setAcceptOfferDate(isoOf(new Date()));
-                                              }}
-                                            >
-                                              Accept applicant
+                                            <DropdownMenuItem onClick={() => openAcceptOffer(a)}>
+                                              Record acceptance
                                             </DropdownMenuItem>
                                           ) : null}
                                           {canDeclineApplicant ? (
                                             <DropdownMenuItem
-                                              onClick={() =>
-                                                askConfirm({
-                                                  title: "Decline this applicant?",
-                                                  description: `${a.name} will be recorded as Failed in the Pipeline Overview — no onboarding record is created.`,
-                                                  confirmLabel: "Yes, decline",
-                                                  destructive: true,
-                                                  onConfirm: () => void declineApplicantOffer(a),
-                                                })
-                                              }
+                                              onClick={() => openDeclineOffer(a)}
                                             >
-                                              Decline applicant
+                                              Record decline
                                             </DropdownMenuItem>
                                           ) : null}
                                           {hasStageActions && hasViews ? (
@@ -16925,6 +17028,7 @@ always one tap away, no scrolling to finish the interview. */}
                       breakdown,
                       loading: finalPreviewLoading,
                       screeningScore: screening,
+                      screeningApplicable: preview?.screening_applicable ?? true,
                       interviewScore: interview,
                       assessmentScore: assessment,
                       assessmentRequired,
@@ -16937,6 +17041,7 @@ always one tap away, no scrolling to finish the interview. */}
                       applicant: finalizing,
                       screeningScore: screening,
                       screeningStatus: preview?.scores.screening_status ?? snap.screeningStatus,
+                      screeningApplicable: preview?.screening_applicable ?? true,
                       interviewScore: interview,
                       interviewResult,
                       assessmentRequired,
@@ -17102,6 +17207,8 @@ always one tap away, no scrolling to finish the interview. */}
                     overallScore: row.overallScoreRounded ?? row.overallScore ?? null,
                     breakdown: row.scoreBreakdown ?? null,
                     screeningScore: row.screeningScore,
+                    screeningApplicable:
+                      row.scoreBreakdown?.find((b) => b.key === "screening")?.applied ?? true,
                     interviewScore: row.interviewScore,
                     assessmentScore: row.assessmentTestScore,
                     assessmentRequired,
@@ -17114,6 +17221,8 @@ always one tap away, no scrolling to finish the interview. */}
                     applicant: a,
                     screeningScore: row.screeningScore,
                     screeningStatus: row.screeningStatus,
+                    screeningApplicable:
+                      row.scoreBreakdown?.find((b) => b.key === "screening")?.applied ?? true,
                     interviewScore: row.interviewScore,
                     interviewResult: row.interviewResult ?? null,
                     assessmentRequired,
@@ -17179,29 +17288,60 @@ always one tap away, no scrolling to finish the interview. */}
         </DialogContent>
       </Dialog>
 
-      {/* ACCEPT APPLICANT — records the applicant's acceptance with the
-          start-of-work date that anchors New Hire Onboarding. */}
+      {/* RECORD ACCEPTANCE — captures how the reply arrived + the start-of-work
+          date that anchors New Hire Onboarding. */}
       <Dialog open={!!acceptOfferFor} onOpenChange={(o) => !o && setAcceptOfferFor(null)}>
         <DialogContent className="sm:max-w-md">
           {acceptOfferFor && (
             <>
               <DialogHeader>
-                <DialogTitle className="font-display text-2xl">Accept applicant</DialogTitle>
+                <DialogTitle className="font-display text-2xl">Record acceptance</DialogTitle>
                 <DialogDescription>
-                  {acceptOfferFor.name} accepted the offer for {acceptOfferFor.position}. Pick the
-                  start-of-work date — it becomes the day-count anchor for New Hire Onboarding
-                  ("Days of Work").
+                  {acceptOfferFor.name} accepted the offer for {acceptOfferFor.position}. Record how
+                  the reply arrived and the start-of-work date — it becomes the day-count anchor for
+                  New Hire Onboarding ("Days of Work").
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-1.5">
-                <Label>
-                  Start of work date <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  type="date"
-                  value={acceptOfferDate}
-                  onChange={(e) => setAcceptOfferDate(e.target.value)}
-                />
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label>
+                    Applicant replied via <span className="text-destructive">*</span>
+                  </Label>
+                  <Select
+                    value={offerResponseChannel}
+                    onValueChange={(v) => setOfferResponseChannel(v as OfferResponseChannel)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Email, SMS, call or in person" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {OFFER_RESPONSE_CHANNELS.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Note (optional)</Label>
+                  <Textarea
+                    rows={2}
+                    value={offerResponseNote}
+                    onChange={(e) => setOfferResponseNote(e.target.value)}
+                    placeholder="e.g. called the front desk on 19 Oct, 3:12 PM"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>
+                    Start of work date <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    type="date"
+                    value={acceptOfferDate}
+                    onChange={(e) => setAcceptOfferDate(e.target.value)}
+                  />
+                </div>
               </div>
               <DialogFooter>
                 <Button
@@ -17212,10 +17352,15 @@ always one tap away, no scrolling to finish the interview. */}
                   Cancel
                 </Button>
                 <Button
-                  disabled={!acceptOfferDate || offerActionBusy}
+                  disabled={!acceptOfferDate || !offerResponseChannel || offerActionBusy}
                   onClick={() => {
-                    if (!acceptOfferDate) return;
-                    void acceptApplicantOffer(acceptOfferFor, acceptOfferDate);
+                    if (!acceptOfferDate || !offerResponseChannel) return;
+                    void acceptApplicantOffer(
+                      acceptOfferFor,
+                      acceptOfferDate,
+                      offerResponseChannel,
+                      offerResponseNote,
+                    );
                   }}
                 >
                   {offerActionBusy ? (
@@ -17223,7 +17368,84 @@ always one tap away, no scrolling to finish the interview. */}
                   ) : (
                     <CheckCircle2 className="mr-1.5 h-4 w-4" />
                   )}
-                  Accept &amp; send to onboarding
+                  Record acceptance &amp; send to onboarding
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* RECORD DECLINE — captures how the reply arrived before failing the
+          candidate (no onboarding record is created). */}
+      <Dialog open={!!declineOfferFor} onOpenChange={(o) => !o && setDeclineOfferFor(null)}>
+        <DialogContent className="sm:max-w-md">
+          {declineOfferFor && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="font-display text-2xl">Record decline</DialogTitle>
+                <DialogDescription>
+                  {declineOfferFor.name} declined the offer. This records the applicant as Failed in
+                  the Pipeline Overview — no onboarding record is created.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label>
+                    Applicant replied via <span className="text-destructive">*</span>
+                  </Label>
+                  <Select
+                    value={offerResponseChannel}
+                    onValueChange={(v) => setOfferResponseChannel(v as OfferResponseChannel)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Email, SMS, call or in person" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {OFFER_RESPONSE_CHANNELS.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Note (optional)</Label>
+                  <Textarea
+                    rows={2}
+                    value={offerResponseNote}
+                    onChange={(e) => setOfferResponseNote(e.target.value)}
+                    placeholder="e.g. emailed on 19 Oct asking for a later start"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setDeclineOfferFor(null)}
+                  disabled={offerActionBusy}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={!offerResponseChannel || offerActionBusy}
+                  onClick={() => {
+                    if (!offerResponseChannel) return;
+                    void declineApplicantOffer(
+                      declineOfferFor,
+                      offerResponseChannel,
+                      offerResponseNote,
+                    );
+                  }}
+                >
+                  {offerActionBusy ? (
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  ) : (
+                    <XCircle className="mr-1.5 h-4 w-4" />
+                  )}
+                  Record decline
                 </Button>
               </DialogFooter>
             </>

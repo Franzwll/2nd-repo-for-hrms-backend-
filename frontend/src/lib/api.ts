@@ -166,6 +166,12 @@ export interface ApiApplicant {
   offer_expires_at?: string | null;
   offer_start_date?: string | null;
   offer_days_left?: number | null;
+  /** How the applicant replied (Email / SMS / Call / In person) — HR records
+   *  it since replies arrive outside the app. */
+  offer_response_channel?: "Email" | "SMS" | "Call" | "In person" | null;
+  offer_response_note?: string | null;
+  offer_responded_at?: string | null;
+  offer_response_recorded_by?: string | null;
   /** Re-apply cooldown anchors — rejected_at starts the waiting period,
    *  cooldown_lifted_at records an HR early override. */
   rejected_at?: string | null;
@@ -212,7 +218,9 @@ export interface ApiDocumentEvidence {
   credit_ratio?: number | null;
   /** Mean document credit as a percentage (VERIFIED 100, UNABLE 50, DISCREPANCY 0). */
   documents_score?: number | null;
-  /** Points the evidence moved the resume score (positive = reduction). */
+  /** Points the evidence added to the resume score (non-negative; evidence can only reward). */
+  score_bonus?: number;
+  /** Always 0 — kept for backward compatibility; documents never lower the score. */
   score_penalty?: number;
   escalate_invalid?: boolean;
   mismatched_fields?: string[];
@@ -328,6 +336,7 @@ export interface ApiInterview {
   applicant_id: number;
   scheduled_date: string;
   scheduled_time: string;
+  scheduled_end_time: string | null;
   mode: "On-site" | "Virtual";
   facility_id: number | null;
   facility_status:
@@ -583,11 +592,16 @@ export const applicantsApi = {
       method: "POST",
       body: JSON.stringify(details ? { details } : {}),
     }),
-  /** Records the applicant's reply to the offer (HR reads the email reply).
-   *  Accepting requires the start-of-work date that anchors onboarding. */
+  /** Records the applicant's reply to the offer (HR reads the email/SMS/call).
+   *  `channel` is how it arrived; accepting requires the start-of-work date. */
   respondToOffer: (
     id: number | string,
-    body: { response: "accepted" | "declined"; start_date?: string },
+    body: {
+      response: "accepted" | "declined";
+      start_date?: string;
+      channel: "Email" | "SMS" | "Call" | "In person";
+      note?: string | undefined;
+    },
   ) =>
     request<ApiApplicant>(`/applicants/${id}/offer/response`, {
       method: "POST",
@@ -998,6 +1012,8 @@ export interface ApiFinalEvaluationPreview {
   applicant_id: number;
   position: string | null;
   practical_required: boolean;
+  /** False when the applicant was never screened (no resume) — Screening is then excluded from the overall. */
+  screening_applicable: boolean;
   scores: {
     screening_score: number | null;
     screening_status: string | null;
