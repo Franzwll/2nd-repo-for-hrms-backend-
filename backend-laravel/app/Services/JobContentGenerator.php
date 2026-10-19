@@ -53,6 +53,17 @@ class JobContentGenerator
 
     protected int $timeout;
 
+    /**
+     * Hard wall-clock ceiling (seconds) for one generate() call across the whole
+     * provider chain. Keeps the request comfortably under PHP's
+     * max_execution_time so a slow provider returns a JSON failure instead of
+     * a fatal error that drops the connection ("Failed to fetch" client-side).
+     */
+    protected int $totalTimeout;
+
+    /** Don't start an HTTP call with less than this many seconds left. */
+    protected int $minCallWindow = 6;
+
     protected int $maxAttempts = 3;
 
     /** Optional app-level cap on successful drafts per day (0 = unlimited). */
@@ -91,6 +102,30 @@ class JobContentGenerator
         $this->fallbackApiKey = config('services.gemini.fallback_key') ?: env('GEMINI_FALLBACK_API_KEY') ?: null;
         $this->timeout = (int) (config('services.gemini.timeout') ?: env('GEMINI_TIMEOUT', 30));
         $this->dailyLimit = max(0, (int) (config('services.job_ai.daily_limit') ?? env('JOB_AI_DAILY_LIMIT', 0)));
+        $this->totalTimeout = $this->resolveTotalTimeout();
+    }
+
+    /**
+     * The overall generation budget, clamped so the request always finishes
+     * before PHP's max_execution_time (0 = unlimited). Leaves a 15s reserve for
+     * boot, response encoding and the request lifecycle around the AI calls.
+     */
+    protected function resolveTotalTimeout(): int
+    {
+        $configured = max(10, (int) (config('services.job_ai.total_timeout') ?: env('JOB_AI_TOTAL_TIMEOUT', 45)));
+
+        $iniLimit = (int) ini_get('max_execution_time');
+        if ($iniLimit > 0) {
+            $configured = min($configured, max(10, $iniLimit - 15));
+        }
+
+        return $configured;
+    }
+
+    /** Public view of the per-request budget (used by the usage snapshot/tests). */
+    public function totalTimeout(): int
+    {
+        return $this->totalTimeout;
     }
 
     /**
@@ -189,7 +224,14 @@ class JobContentGenerator
             'resets_at' => null,
         ];
 
-        foreach ($providers as $provider) {
+        // Absolute wall-clock ceiling for this call. Every HTTP timeout is
+        // capped to the time left, and the chain stops once the budget is spent
+        // — so the endpoint always returns JSON instead of being killed by
+        // PHP's max_execution_time (which reads as "Failed to fetch").
+        $deadline = microtime(true) + $this->totalTimeout;
+        $providerCount = max(1, count($providers));
+
+        foreach ($providers as $index => $provider) {
             // A provider that just reported a usage limit / dead key is skipped
             // instead of burning 3 slow retries on it.
             $block = $this->providerBlock($provider);
@@ -203,12 +245,34 @@ class JobContentGenerator
                 continue;
             }
 
+            // Split what's left evenly across the remaining providers so one
+            // slow provider (e.g. a stalled free model) cannot starve the rest.
+            $remainingProviders = max(1, $providerCount - $index);
+            $share = (int) floor(($deadline - microtime(true)) / $remainingProviders);
+            $providerDeadline = min($deadline, microtime(true) + max($this->minCallWindow, $share));
+
             for ($attempt = 1; $attempt <= $this->maxAttempts; $attempt++) {
+                $left = (int) floor(min($providerDeadline, $deadline) - microtime(true));
+                if ($left < $this->minCallWindow) {
+                    // This provider's window (or the whole budget) is spent.
+                    $last = $this->keepFailure($last, $this->timeoutFailure());
+
+                    // No time left for anyone else either — stop the chain.
+                    if (($deadline - microtime(true)) < $this->minCallWindow) {
+                        break 2;
+                    }
+
+                    break;
+                }
+
+                // Never let a single call outlive the remaining budget.
+                $callTimeout = max(5, min($this->timeout, $left));
+
                 try {
                     $response = match ($provider['kind']) {
-                        'groq' => $this->postGroq($provider, $prompt),
-                        'openrouter' => $this->postOpenRouter($provider, $prompt),
-                        default => $this->postGemini($provider, $prompt),
+                        'groq' => $this->postGroq($provider, $prompt, $callTimeout),
+                        'openrouter' => $this->postOpenRouter($provider, $prompt, $callTimeout),
+                        default => $this->postGemini($provider, $prompt, $callTimeout),
                     };
                 } catch (\Throwable $e) {
                     // Connection/timeout — always retryable.
@@ -302,12 +366,12 @@ class JobContentGenerator
     }
 
     /** Single generateContent call against Google's API. */
-    protected function postGemini(array $provider, string $prompt): \Illuminate\Http\Client\Response
+    protected function postGemini(array $provider, string $prompt, ?int $timeout = null): \Illuminate\Http\Client\Response
     {
         $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
             . $provider['model'] . ':generateContent?key=' . urlencode($provider['key']);
 
-        return Http::timeout($this->timeout)
+        return Http::timeout($timeout ?? $this->timeout)
             ->acceptJson()
             ->post($url, [
                 'contents' => [
@@ -324,9 +388,9 @@ class JobContentGenerator
     }
 
     /** Single chat-completions call routed through Groq. */
-    protected function postGroq(array $provider, string $prompt): \Illuminate\Http\Client\Response
+    protected function postGroq(array $provider, string $prompt, ?int $timeout = null): \Illuminate\Http\Client\Response
     {
-        return Http::timeout($this->timeout)
+        return Http::timeout($timeout ?? $this->timeout)
             ->acceptJson()
             ->withHeaders([
                 'Authorization' => 'Bearer ' . $provider['key'],
@@ -342,9 +406,9 @@ class JobContentGenerator
     }
 
     /** Single chat-completions call routed through OpenRouter. */
-    protected function postOpenRouter(array $provider, string $prompt): \Illuminate\Http\Client\Response
+    protected function postOpenRouter(array $provider, string $prompt, ?int $timeout = null): \Illuminate\Http\Client\Response
     {
-        return Http::timeout($this->timeout)
+        return Http::timeout($timeout ?? $this->timeout)
             ->acceptJson()
             ->withHeaders([
                 'Authorization' => 'Bearer ' . $provider['key'],
@@ -498,6 +562,21 @@ class JobContentGenerator
     }
 
     /**
+     * Reported when the provider chain runs out of its wall-clock budget.
+     *
+     * @return array{message:string,code:string,retry_after_seconds:?int,resets_at:?string}
+     */
+    protected function timeoutFailure(): array
+    {
+        return [
+            'message' => 'The AI service took too long to answer. Please retry, or use a Content Template.',
+            'code' => 'timeout',
+            'retry_after_seconds' => null,
+            'resets_at' => null,
+        ];
+    }
+
+    /**
      * Failure envelope + a fresh usage snapshot, so the controller and the UI
      * indicator see the limit state without a second request.
      */
@@ -542,7 +621,7 @@ class JobContentGenerator
             'rate_minute', 'quota' => 4,
             'auth' => 3,
             'model', 'request' => 2,
-            'overloaded' => 1,
+            'overloaded', 'timeout' => 1,
             default => 0,
         };
     }

@@ -32,7 +32,9 @@ class JobPost extends Model
         'responsibilities_json',
         'qualifications_json',
         'skills_json',
+        'additional_json',
         'benefits_json',
+        'blocks_json',
     ];
 
     protected $casts = [
@@ -43,7 +45,9 @@ class JobPost extends Model
         'responsibilities_json' => 'array',
         'qualifications_json' => 'array',
         'skills_json' => 'array',
+        'additional_json' => 'array',
         'benefits_json' => 'array',
+        'blocks_json' => 'array',
     ];
 
     public function department(): BelongsTo

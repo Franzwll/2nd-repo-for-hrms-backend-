@@ -5,9 +5,12 @@ namespace Modules\RecruitmentManagement\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Modules\RecruitmentManagement\Enums\WorkSchedule;
+use Modules\RecruitmentManagement\Http\Requests\Concerns\ResolvesLevelOptions;
 
 class UpdateJobPostRequest extends FormRequest
 {
+    use ResolvesLevelOptions;
+
     public function authorize(): bool
     {
         return true;
@@ -31,15 +34,18 @@ class UpdateJobPostRequest extends FormRequest
             'requires_practical' => ['sometimes', 'boolean'],
             /* Assessment test requirement for this position. */
             'requires_assessment' => ['sometimes', 'boolean'],
-            'experience_level' => ['nullable', 'string', 'in:No Experience,1-2 Years,3-5 Years,5+ Years'],
-            'education_level' => ['nullable', 'string', 'in:High School Graduate,Vocational / TESDA,College Level,Bachelor\'s Degree'],
+            /* Level values come from Screening Reference Data (admin-managed),
+               so accept every canonical level it defines - not only the four
+               built-in bands. See ResolvesLevelOptions. */
+            'experience_level' => ['nullable', ...$this->experienceLevelRule()],
+            'education_level' => ['nullable', ...$this->educationLevelRule()],
             /* Accepted level lists from the Screening Requirements chips. The
                scalar columns above are kept in step by the controller (the
                weakest accepted level), so either shape can be sent. */
             'experience_levels' => ['nullable', 'array'],
-            'experience_levels.*' => ['string', 'in:No Experience,1-2 Years,3-5 Years,5+ Years'],
+            'experience_levels.*' => $this->experienceLevelRule(),
             'education_levels' => ['nullable', 'array'],
-            'education_levels.*' => ['string', 'in:High School Graduate,Vocational / TESDA,College Level,Bachelor\'s Degree'],
+            'education_levels.*' => $this->educationLevelRule(),
             'summary' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
             'responsibilities' => ['nullable', 'array'],

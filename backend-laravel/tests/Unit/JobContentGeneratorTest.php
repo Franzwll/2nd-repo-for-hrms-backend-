@@ -222,10 +222,53 @@ class JobContentGeneratorTest extends TestCase
         $this->assertSame('overloaded', $keep->invoke($generator, $overloaded, $network)['code']);
     }
 
+    /** The per-request budget must never be allowed to outlive PHP's own limit. */
+    public function test_it_clamps_the_total_budget_to_php_execution_limit(): void
+    {
+        $original = ini_get('max_execution_time');
+
+        try {
+            ini_set('max_execution_time', '40');
+
+            config(['services.job_ai.total_timeout' => 45]);
+            $this->assertSame(25, (new JobContentGenerator())->totalTimeout());
+
+            // A smaller configured budget is kept as-is (still under the limit).
+            config(['services.job_ai.total_timeout' => 12]);
+            $this->assertSame(12, (new JobContentGenerator())->totalTimeout());
+        } finally {
+            ini_set('max_execution_time', (string) $original);
+        }
+    }
+
+    /** A spent budget returns a "timeout" failure instead of a fatal/dropped connection. */
+    public function test_it_reports_a_timeout_when_the_budget_is_spent(): void
+    {
+        $generator = new JobContentGenerator();
+
+        $this->setProtected($generator, 'totalTimeout', 1);
+        $this->setProtected($generator, 'minCallWindow', 2);
+
+        $result = $generator->generate(
+            ['position_title' => 'Front Desk Associate'],
+            ['skills' => [], 'certifications' => []],
+        );
+
+        $this->assertFalse($result['ok']);
+        $this->assertSame('timeout', $result['code']);
+        $this->assertNotNull($result['usage']);
+    }
+
     /* ------------------------------------------------------------------ */
     /* Reflection helpers — the classification/cool-down internals are      */
     /* protected on purpose; these tests pin their contract.                */
     /* ------------------------------------------------------------------ */
+
+    private function setProtected(JobContentGenerator $generator, string $property, mixed $value): void
+    {
+        $ref = new \ReflectionProperty(JobContentGenerator::class, $property);
+        $ref->setValue($generator, $value);
+    }
 
     /** @return array{message:string,code:string,retry_after_seconds:?int,resets_at:?string} */
     private function classify(int $status, string $body): array

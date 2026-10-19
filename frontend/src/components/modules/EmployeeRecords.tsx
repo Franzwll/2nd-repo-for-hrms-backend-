@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
+  BadgeCheck,
   CheckCircle2,
   Clock,
   Download,
@@ -67,7 +68,14 @@ import type { Employee } from "@/data/hr";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 
-import { auditLogApi, hcmApi, type ApiAuditLog, type ApiEmployee } from "@/lib/api";
+import {
+  auditLogApi,
+  ermApi,
+  hcmApi,
+  type ApiAuditLog,
+  type ApiDocument,
+  type ApiEmployee,
+} from "@/lib/api";
 import { DocumentRequestInbox } from "./employee-records/DocumentRequestInbox";
 import {
   getEmployeeByCode,

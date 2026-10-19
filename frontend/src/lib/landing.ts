@@ -25,6 +25,24 @@ export interface LandingJob {
   picture?: string | null;
 }
 
+/**
+ * Coerce a list field to string[]. The API normally sends arrays, but a raw
+ * JSON string ("[\"...\"]") must never reach `.map()` in the page and throw —
+ * that surfaced as the generic "This page didn't load" error boundary.
+ */
+export function asStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 export function mapJob(j: ApiLandingJob): LandingJob {
   return {
     id: String(j.job_post_id),
@@ -40,13 +58,13 @@ export function mapJob(j: ApiLandingJob): LandingJob {
     education: j.education_level ?? "",
     summary: j.summary ?? "",
     description: j.description ?? "",
-    responsibilities: (j.responsibilities as any) ?? [],
-    qualifications: (j.qualifications as any) ?? [],
-    skills: (j.skills as any) ?? [],
-    additional: (j.additional as any) ?? [],
+    responsibilities: asStringArray(j.responsibilities),
+    qualifications: asStringArray(j.qualifications),
+    skills: asStringArray(j.skills),
+    additional: asStringArray(j.additional),
     instructions: j.instructions ?? "",
     about: j.about ?? "",
-    benefits: (j.benefits as any) ?? [],
+    benefits: asStringArray(j.benefits),
     picture: j.picture_url ?? j.picture ?? null,
   };
 }

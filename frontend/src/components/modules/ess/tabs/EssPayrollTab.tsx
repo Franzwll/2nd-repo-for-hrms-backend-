@@ -33,6 +33,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { usePagination } from "@/hooks/usePagination";

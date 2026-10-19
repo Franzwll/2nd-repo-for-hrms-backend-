@@ -9931,6 +9931,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     const inDept = (dept: string) => scheduleDept === "all" || dept === scheduleDept;
     const seeded = interviewers.filter((s) => inDept(s.department));
     const taken = new Set(seeded.map((s) => s.name.trim().toLowerCase()));
+    /* Any active staff account can conduct an interview — the department
+       filter scopes the postings/applicants, not who is allowed to interview.
+       Restricting system users to the selected department emptied the picker
+       for a custom/new department that no staff member is assigned to, so
+       department-matched people are listed first and everyone else after. */
     const users = assessors
       .map((u) => ({
         id: `U${u.system_user_id}`,
@@ -9938,7 +9943,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         role: u.department_name ?? "System user",
         department: u.department_name ?? "",
       }))
-      .filter((u) => !!u.name && !taken.has(u.name.toLowerCase()) && inDept(u.department));
+      .filter((u) => !!u.name && !taken.has(u.name.toLowerCase()));
+    users.sort((a, b) => Number(inDept(b.department)) - Number(inDept(a.department)));
     return [...seeded, ...users];
   }, [assessors, scheduleDept]);
 

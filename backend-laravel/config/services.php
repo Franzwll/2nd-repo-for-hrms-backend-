@@ -93,6 +93,14 @@ return [
         // (0 = unlimited). When set, the builder's AI usage indicator shows
         // "used X of N today" and the API answers 429 past the cap.
         'daily_limit' => (int) env('JOB_AI_DAILY_LIMIT', 0),
+
+        // Wall-clock ceiling (seconds) for one draft across the whole provider
+        // chain. The service always answers before this budget runs out, so a
+        // slow/unreachable provider can never push the request past PHP's
+        // max_execution_time (which used to kill the response and surface as
+        // the browser's "Failed to fetch"). Lowered automatically when PHP's
+        // own limit is smaller. Set JOB_AI_TOTAL_TIMEOUT to override.
+        'total_timeout' => (int) env('JOB_AI_TOTAL_TIMEOUT', 45),
     ],
 
     /*

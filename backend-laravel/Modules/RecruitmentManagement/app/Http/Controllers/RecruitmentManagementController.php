@@ -186,9 +186,24 @@ class RecruitmentManagementController extends Controller
      */
     private function normalizeLevelLists(array $data): array
     {
-        // Weakest first — the order the screener's own ranking uses.
+        // Weakest first — the order the screener's own ranking uses. The extra
+        // education entries are Screening Reference Data degrees: they all rank
+        // as a bachelor's (4) in the NLP EDUCATION_RANKS map, so they follow
+        // "Bachelor's Degree"; the master's / doctorate bands come last.
         $orders = [
-            'education' => ['High School Graduate', 'Vocational / TESDA', 'College Level', "Bachelor's Degree"],
+            'education' => [
+                'High School Graduate',
+                'Vocational / TESDA',
+                'College Level',
+                "Bachelor's Degree",
+                'BS Tourism',
+                'Bachelor of Science in Hospitality Management',
+                'Bachelor of Science in Tourism Management',
+                'Bachelor of Science in Business Administration',
+                'Bachelor degree in Hospitality or related field',
+                "Master's Degree",
+                'Doctorate',
+            ],
             'experience' => ['No Experience', '1-2 Years', '3-5 Years', '5+ Years'],
         ];
 
@@ -212,7 +227,10 @@ class RecruitmentManagementController extends Controller
                         $weakestRank = $rank;
                     }
                 }
-                $data[$scalarKey] = $weakest;
+                // A level outside the known order (Reference Data added a new
+                // one) must not blank the scalar — the screener can still rank
+                // it by name, so keep the first selected level as a fallback.
+                $data[$scalarKey] = $weakest ?? ($levels[0] ?? null);
             } elseif (array_key_exists($scalarKey, $data)) {
                 // Older client that only knows the scalar: the list is just it.
                 $data[$listKey] = $data[$scalarKey] ? [$data[$scalarKey]] : [];
