@@ -103,7 +103,9 @@ export function RequestTimelineModal({
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div>
               <p className="text-muted-foreground">Category</p>
-              <p className="font-semibold text-foreground">{request.category || "General HR Request"}</p>
+              <p className="font-semibold text-foreground">
+                {request.category || "General HR Request"}
+              </p>
             </div>
             <div>
               <p className="text-muted-foreground">Date Filed</p>
@@ -111,11 +113,15 @@ export function RequestTimelineModal({
             </div>
             <div>
               <p className="text-muted-foreground">Assigned Officer</p>
-              <p className="font-semibold text-foreground">{request.assignedTo || "Juan Dela Cruz (HR Admin)"}</p>
+              <p className="font-semibold text-foreground">
+                {request.assignedTo || "Juan Dela Cruz (HR Admin)"}
+              </p>
             </div>
             <div>
               <p className="text-muted-foreground">Service SLA</p>
-              <p className="font-semibold text-emerald-600 dark:text-emerald-400">Within 24–48 Hours</p>
+              <p className="font-semibold text-emerald-600 dark:text-emerald-400">
+                Within 24–48 Hours
+              </p>
             </div>
           </div>
           {request.details && (

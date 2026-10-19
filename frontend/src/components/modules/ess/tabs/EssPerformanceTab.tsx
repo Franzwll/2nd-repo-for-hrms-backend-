@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { myPerformance, myLearningCourses, myProfile } from "@/data/ess";
 import { LmsCertificateModal } from "@/components/modules/ess/modals/LmsCertificateModal";
 import { LmsActivityPlayer } from "@/components/modules/ess/modals/LmsActivityPlayer";
@@ -180,7 +181,8 @@ export function EssPerformanceTab() {
     essApi
       .myPerformance()
       .then(applyPerformance)
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   const handleOpenCert = (course: any) => {

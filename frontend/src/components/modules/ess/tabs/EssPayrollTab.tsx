@@ -63,9 +63,10 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
   const [selectedPayslip, setSelectedPayslip] = useState<ApiPayrollData["payslips"][number] | null>(null);
   const [payslipModalOpen, setPayslipModalOpen] = useState(false);
   const [loanSubmitting, setLoanSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    essApi
+    const payrollPromise = essApi
       .myPayroll()
       .then((res) => {
         setPayrollData(res);
@@ -73,7 +74,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
       })
       .catch(() => {});
 
-    essApi
+    const requestsPromise = essApi
       .myRequests()
       .then((res) => {
         if (res?.requests?.length) {
@@ -94,6 +95,8 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
         }
       })
       .catch(() => {});
+
+    Promise.allSettled([payrollPromise, requestsPromise]).finally(() => setLoading(false));
   }, []);
 
   const currentNet = payrollData?.net ?? 28080;
@@ -845,7 +848,9 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payPage.pageItems.length === 0 ? (
+                  {loading ? (
+                    <TableRowsSkeleton cols={6} rows={5} />
+                  ) : payPage.pageItems.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="h-24 text-center text-muted-foreground text-xs">
                         No payroll requests filed yet.

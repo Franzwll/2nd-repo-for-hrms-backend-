@@ -151,7 +151,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     returned: seed.filter((r) => (r.returnedCount ?? 0) > 0).length,
   });
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const categories = useEssCategories();
   const [newCategory, setNewCategory] = useState<{
     name: string;
@@ -1374,7 +1374,8 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {logPage.pageItems.map((a) => (
+                        {loading && <TableRowsSkeleton cols={7} rows={5} />}
+                        {!loading && logPage.pageItems.map((a) => (
                           <TableRow key={a.id}>
                             <TableCell className="text-xs">{a.timestamp}</TableCell>
                             <TableCell className="text-xs">{a.user}</TableCell>
@@ -1385,7 +1386,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                             <TableCell className="text-xs font-medium">{a.requestId}</TableCell>
                           </TableRow>
                         ))}
-                        {logPage.pageItems.length === 0 && (
+                        {!loading && logPage.pageItems.length === 0 && (
                           <TableRow>
                             <TableCell colSpan={7} className="py-8">
                               <ListEmptyState placeholder="Search user, action, request…" />

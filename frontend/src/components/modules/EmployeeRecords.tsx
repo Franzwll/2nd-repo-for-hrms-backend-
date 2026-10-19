@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
-  BadgeCheck,
+  CheckCircle2,
   Clock,
   Download,
   FileText,
@@ -65,7 +65,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Employee } from "@/data/hr";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
+import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 
 import { auditLogApi, hcmApi, type ApiAuditLog, type ApiEmployee } from "@/lib/api";
 import { DocumentRequestInbox } from "./employee-records/DocumentRequestInbox";
@@ -181,17 +181,39 @@ type Profile = {
 };
 
 /** One row in the 201 file Documents tab. */
-type ProfileDoc = { name: string; status: "Submitted" | "Missing"; file?: string | undefined };
+type ProfileDoc = {
+  id?: number;
+  name: string;
+  status: "Submitted" | "Pending" | "Missing";
+  file?: string | undefined;
+};
 
-/** True when a record's last-updated date is older than the configured threshold. */
-function olderThanYears(dateStr: string, years: number, now: Date = new Date()) {
-  const t = new Date(dateStr).getTime();
-  if (Number.isNaN(t)) return false;
-  return now.getTime() - t >= years * 365.25 * 24 * 60 * 60 * 1000;
+/** Map an ERM document row to the compact 201-file row the UI renders. */
+function toProfileDoc(d: ApiDocument): ProfileDoc {
+  const status: ProfileDoc["status"] =
+    d.document_status === "Verified" || d.document_status === "Submitted"
+      ? "Submitted"
+      : d.document_status === "Rejected"
+        ? "Missing"
+        : "Pending";
+  return {
+    id: d.document_id,
+    name: d.title,
+    status,
+    file: d.original_name ?? d.file_path ?? undefined,
+  };
 }
 
-function lastUpdatedForEmployee(code: string): string {
-  return getEmployeeByCode(code)?.employee_record_last_updated_at ?? "";
+/** Derive a sensible 201-file category from a document's name. */
+function deriveCategory(name: string): string {
+  const n = name.toLowerCase();
+  if (/clearance|nbi|police|permit/.test(n)) return "Clearance";
+  if (/medical|health|exam|fit to work/.test(n)) return "Medical";
+  if (/\bsss\b|philhealth|pag-?ibig|\btin\b/.test(n)) return "Government";
+  if (/certificate|coe/.test(n)) return "Certificate";
+  if (/resume|curriculum|\bcv\b/.test(n)) return "Resume";
+  if (/contract|agreement/.test(n)) return "Contract";
+  return "Others";
 }
 
 function classifyDocuments(api: ApiEmployee | undefined) {
@@ -276,17 +298,6 @@ function buildHistory(e: Employee): HistoryEntry[] {
   ];
 }
 
-const emptyEmployee = {
-  name: "",
-  position: "",
-  department: "Front Office",
-  employmentType: "Probationary" as Employee["employmentType"],
-  dateHired: new Date().toISOString().slice(0, 10),
-  email: "",
-  phone: "",
-  supervisor: "",
-};
-
 export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const isSuper = role === "superadmin";
   const { id: highlightId } = useHighlightId();
@@ -332,18 +343,28 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     };
   }, []);
 
-  const [archivedIds, setArchivedIds] = useState<string[]>([]);
-
-  /** Auto-archive records untouched for 10+ years once the roster loads. */
-  useEffect(() => {
-    if (!roster.loaded) return;
-    const auto = roster.employees
-      .filter((e) => olderThanYears(e.employee_record_last_updated_at ?? "", 10))
-      .map((e) => e.employee_code);
-    setArchivedIds((prev) => Array.from(new Set([...prev, ...auto])));
-  }, [roster.loaded, roster.employees]);
+  const [archivedList, setArchivedList] = useState<Employee[]>([]);
+  const [archivedApi, setArchivedApi] = useState<ApiEmployee[]>([]);
   const [listView, setListView] = useState<"active" | "archived">("active");
-  const [form, setForm] = useState(emptyEmployee);
+  const [mainTab, setMainTab] = useState("list");
+
+  /** ESS document-request metrics surfaced at the top of the ERM page. */
+  const [requestCounts, setRequestCounts] = useState({ total: 0, pending: 0, fulfilled: 0 });
+  const [requestCountsLoading, setRequestCountsLoading] = useState(true);
+
+  const loadRequestCounts = useCallback(() => {
+    setRequestCountsLoading(true);
+    ermApi
+      .documentRequests()
+      .then((res) => setRequestCounts(res.counts ?? { total: 0, pending: 0, fulfilled: 0 }))
+      .catch(() => {})
+      .finally(() => setRequestCountsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    loadRequestCounts();
+  }, [loadRequestCounts]);
+
   const [history, setHistory] = useState<Record<string, HistoryEntry[]>>({});
   const [newHistory, setNewHistory] = useState({
     type: "Promotion" as HistoryEntry["type"],
@@ -365,21 +386,40 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const [archiveYears, setArchiveYears] = useState("10");
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveDraft, setArchiveDraft] = useState("10");
-  const [manualArchived, setManualArchived] = useState<string[]>([]);
   const [docsById, setDocsById] = useState<Record<string, ProfileDoc[]>>({});
+  const [docSaving, setDocSaving] = useState(false);
   const [docDialog, setDocDialog] = useState<{
     mode: "add" | "edit";
     index: number;
+    id?: number;
     name: string;
     file: string;
+    fileObj?: File;
   } | null>(null);
 
   const profile = list.find((e) => e.id === profileId) ?? null;
   useRecordDetail(profileId);
 
-  const filtered = list.filter((e) => {
-    const archived = archivedIds.includes(e.id);
-    if (listView === "archived" ? !archived : archived) return false;
+  /** Archived records are soft-deleted server-side; load them on demand. */
+  const loadArchived = useCallback(() => {
+    ermApi.employees
+      .archived()
+      .then((res) => {
+        const rows = res.data ?? [];
+        setArchivedApi(rows);
+        setArchivedList(rows.map(toUiEmployee));
+      })
+      .catch(() => {
+        setArchivedApi([]);
+        setArchivedList([]);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (listView === "archived") loadArchived();
+  }, [listView, loadArchived]);
+
+  const filtered = (listView === "archived" ? archivedList : list).filter((e) => {
     if (dept !== "all" && e.department !== dept) return false;
     if (typeFilter !== "all" && e.employmentType !== typeFilter) return false;
     if (statusFilter !== "all" && e.status !== statusFilter) return false;
@@ -397,7 +437,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     department: (e) => e.department,
     type: (e) => e.employmentType,
     dateHired: (e) => e.dateHired,
-    status: (e) => (archivedIds.includes(e.id) ? "Archived" : e.status),
+    status: (e) => e.status,
   });
 
   const logSort = useSort<
@@ -474,101 +514,56 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     toast.success("History record updated");
   };
 
-  const createEmployee = async () => {
-    if (!form.name.trim() || !form.position.trim()) {
-      toast.error("Name and position are required");
-      return;
-    }
-    const nameParts = form.name.trim().split(" ");
-    const dept = roster.departments.find((d) => d.name === form.department);
-    const pos = roster.positions.find(
-      (p) => p.title.toLowerCase() === form.position.trim().toLowerCase(),
-    );
-    if (!dept) {
-      toast.error("Department not found");
-      return;
-    }
-    if (!pos) {
-      toast.error("Position not found — create it under Core HCM first");
-      return;
-    }
-    const supervisor =
-      form.supervisor && form.supervisor !== "—"
-        ? (roster.employees.find((e) => e.full_name === form.supervisor)?.employee_id ?? null)
-        : null;
-    try {
-      const res = await hcmApi.employees.create({
-        first_name: nameParts[0] ?? "",
-        last_name: (nameParts.slice(1).join(" ") || nameParts[0]) ?? "",
-        email: form.email,
-        phone: form.phone,
-        department_id: dept.department_id,
-        position_id: pos.position_id,
-        supervisor_employee_id: supervisor,
-        employment_type: form.employmentType,
-        status: "Active",
-        date_hired: form.dateHired,
-      });
-      setList((prev) => [toUiEmployee(res.data), ...prev]);
-      setForm(emptyEmployee);
-      setAddOpen(false);
-      refreshRoster();
-      toast.success(`${res.data.full_name} added to employee records`);
-    } catch (e: any) {
-      toast.error(e?.message ?? "Could not create employee record");
-    }
-  };
+  const employeeIdFor = (code: string) =>
+    getEmployeeByCode(code)?.employee_id ??
+    archivedApi.find((e) => e.employee_code === code)?.employee_id;
 
-  const removeEmployee = async (id: string) => {
-    const api = getEmployeeByCode(id);
-    if (api && (api.status === "Active" || api.status === "On Leave")) {
-      toast.error("Use the exit process to off-board an active employee");
+  const archiveEmployee = async (id: string) => {
+    const employeeId = employeeIdFor(id);
+    if (!employeeId) {
+      toast.error("Employee record not found");
       return;
     }
     try {
-      if (api) await hcmApi.employees.remove(api.employee_id);
-      setList((prev) => prev.filter((e) => e.id !== id));
+      await ermApi.employees.archive(employeeId);
+      toast.success("Record moved to Archived");
       setProfileId(null);
       refreshRoster();
-      toast.success("Employee record deleted");
+      loadArchived();
     } catch (e: any) {
-      toast.error(e?.message ?? "Could not delete employee record");
+      toast.error(e?.message ?? "Could not archive record");
     }
   };
 
-  const archiveEmployee = (id: string) => {
-    setManualArchived((prev) => (prev.includes(id) ? prev : [...prev, id]));
-    setArchivedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-    toast.success("Record moved to Archived");
+  const restoreEmployee = async (id: string) => {
+    const employeeId = employeeIdFor(id);
+    if (!employeeId) {
+      toast.error("Employee record not found");
+      return;
+    }
+    try {
+      await ermApi.employees.restore(employeeId);
+      toast.success("Record restored to active list");
+      refreshRoster();
+      loadArchived();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not restore record");
+    }
   };
 
-  const restoreEmployee = (id: string) => {
-    setManualArchived((prev) => prev.filter((x) => x !== id));
-    setArchivedIds((prev) => prev.filter((x) => x !== id));
-    toast.success("Record restored to active list");
-  };
-
-  /** Re-runs auto-archiving with a new retention threshold. */
+  /** Retention threshold is informational — archiving itself is manual/backend. */
   const applyArchiveYears = (years: string) => {
     setArchiveYears(years);
-    const auto = roster.employees
-      .filter((e) => olderThanYears(e.employee_record_last_updated_at ?? "", Number(years)))
-      .map((e) => e.employee_code);
-    setArchivedIds(Array.from(new Set([...manualArchived, ...auto])));
-    toast.success(`Auto-archiving records inactive for ${years}+ years`);
+    toast.success(`Retention threshold set to ${years}+ years`);
   };
 
-  /** Documents currently on a 201 file (from the DB, then edited in place). */
+  /** Documents currently on a 201 file (server data first, then local fallback). */
   const docsFor = (emp: Employee): ProfileDoc[] => {
     const existing = docsById[emp.id];
     if (existing) return existing;
     const detail = getRecordDetail(emp.id);
     if (detail?.documents?.length) {
-      return detail.documents.map((d) => ({
-        name: d.title,
-        status: d.document_status === "Submitted" ? ("Submitted" as const) : ("Missing" as const),
-        file: d.file_path ?? undefined,
-      }));
+      return detail.documents.map(toProfileDoc);
     }
     const p = buildProfile(emp);
     return [
@@ -582,41 +577,119 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const setDocs = (empId: string, next: ProfileDoc[]) =>
     setDocsById((prev) => ({ ...prev, [empId]: next }));
 
-  const saveDoc = () => {
+  /** Re-read the 201 file's documents from the server after a mutation. */
+  const reloadDocs = async (emp: Employee) => {
+    const employeeId = employeeIdFor(emp.id);
+    if (!employeeId) return;
+    try {
+      const res = await ermApi.employees.documents(employeeId);
+      setDocs(emp.id, (res.documents ?? []).map(toProfileDoc));
+    } catch {
+      /* best-effort refresh */
+    }
+  };
+
+  const saveDoc = async () => {
     if (!profile || !docDialog) return;
     const name = docDialog.name.trim();
     if (!name) {
       toast.error("Document name is required");
       return;
     }
-    const current = docsFor(profile);
-    if (docDialog.mode === "add") {
-      setDocs(profile.id, [
-        ...current,
-        { name, status: "Submitted", file: docDialog.file || undefined },
-      ]);
-      toast.success("Document added to 201 file");
-    } else {
-      setDocs(
-        profile.id,
-        current.map((d, i) =>
-          i === docDialog.index
-            ? { ...d, name, status: "Submitted", file: docDialog.file || d.file }
-            : d,
-        ),
-      );
-      toast.success("Document updated");
+    const employeeId = employeeIdFor(profile.id);
+    if (!employeeId) {
+      toast.error("Employee record not found");
+      return;
     }
-    setDocDialog(null);
+    setDocSaving(true);
+    try {
+      if (docDialog.mode === "add") {
+        await ermApi.employees.uploadDocument(employeeId, {
+          title: name,
+          category: deriveCategory(name),
+          ...(docDialog.fileObj ? { file: docDialog.fileObj } : {}),
+        });
+        toast.success("Document added to 201 file");
+      } else if (docDialog.id) {
+        if (docDialog.fileObj) {
+          // Replace: drop the old row, add the new file.
+          await ermApi.employees.removeDocument(employeeId, docDialog.id);
+          await ermApi.employees.uploadDocument(employeeId, {
+            title: name,
+            category: deriveCategory(name),
+            file: docDialog.fileObj,
+          });
+        } else {
+          await ermApi.employees.updateDocument(employeeId, docDialog.id, { title: name });
+        }
+        toast.success("Document updated");
+      } else {
+        // Legacy local-only row (no server id) — edit in place.
+        const current = docsFor(profile);
+        setDocs(
+          profile.id,
+          current.map((d, i) =>
+            i === docDialog.index
+              ? { ...d, name, status: "Submitted", file: docDialog.file || d.file }
+              : d,
+          ),
+        );
+        toast.success("Document updated");
+      }
+      await reloadDocs(profile);
+      setDocDialog(null);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not save document");
+    } finally {
+      setDocSaving(false);
+    }
   };
 
-  const removeDoc = (index: number) => {
+  const removeDoc = async (index: number) => {
     if (!profile) return;
+    const doc = docsFor(profile)[index];
+    const employeeId = employeeIdFor(profile.id);
+    if (employeeId && doc?.id) {
+      try {
+        await ermApi.employees.removeDocument(employeeId, doc.id);
+        toast.success("Document removed from 201 file");
+        await reloadDocs(profile);
+      } catch (e: any) {
+        toast.error(e?.message ?? "Could not remove document");
+      }
+      return;
+    }
     setDocs(
       profile.id,
       docsFor(profile).filter((_, i) => i !== index),
     );
     toast.success("Document removed");
+  };
+
+  /** Toggle a document between Verified and Pending Verification. */
+  const verifyDoc = async (index: number) => {
+    if (!profile) return;
+    const doc = docsFor(profile)[index];
+    const employeeId = employeeIdFor(profile.id);
+    const next = doc?.status === "Submitted" ? "Pending Verification" : "Verified";
+    if (employeeId && doc?.id) {
+      try {
+        await ermApi.employees.verifyDocument(employeeId, doc.id, next);
+        toast.success("Document status updated");
+        await reloadDocs(profile);
+      } catch (e: any) {
+        toast.error(e?.message ?? "Could not update document");
+      }
+      return;
+    }
+    setDocs(
+      profile.id,
+      docsFor(profile).map((d, i) =>
+        i === index
+          ? { ...d, status: next === "Verified" ? ("Submitted" as const) : ("Pending" as const) }
+          : d,
+      ),
+    );
   };
 
   // Security gate: 201 files are confidential — password is required before
@@ -807,8 +880,8 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                   </h2>
                   {listView === "archived" ? (
                     <p className="text-xs text-muted-foreground">
-                      Records inactive/unmodified for 10+ years (DOLE/BIR retention). Hidden
-                      from the default list.
+                      Soft-archived 201 files (retained for statutory retention). Restore to return
+                      a record to the active list.
                     </p>
                   ) : selected.length > 0 ? (
                     <p className="text-xs text-muted-foreground">
@@ -848,9 +921,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="active">Active records</SelectItem>
-                      <SelectItem value="archived">
-                        Archived ({archiveYears}+ years) · {archivedIds.length}
-                      </SelectItem>
+                      <SelectItem value="archived">Archived · {archivedList.length}</SelectItem>
                     </SelectContent>
                   </Select>
                   <Button
@@ -868,21 +939,16 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                   </Button>
 
                   {listView === "active" && (
-                    <>
-                      <Button
-                        size="sm"
-                        disabled={selected.length === 0}
-                        onClick={() => {
-                          setBulkTypes([documentTypes[0]!]);
-                          setBulkPickOpen(true);
-                        }}
-                      >
-                        <Download className="mr-2 h-4 w-4" /> Bulk generate
-                      </Button>
-                      <Button size="sm" onClick={() => setAddOpen(true)}>
-                        <Plus className="mr-2 h-4 w-4" /> Add employee
-                      </Button>
-                    </>
+                    <Button
+                      size="sm"
+                      disabled={selected.length === 0}
+                      onClick={() => {
+                        setBulkTypes([documentTypes[0]!]);
+                        setBulkPickOpen(true);
+                      }}
+                    >
+                      <Download className="mr-2 h-4 w-4" /> Bulk generate
+                    </Button>
                   )}
                 </div>
               </div>
@@ -951,6 +1017,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                             <Checkbox
                               checked={selected.includes(e.id)}
                               onCheckedChange={() => toggle(e.id)}
+                              disabled={listView === "archived"}
                             />
                           </TableCell>
                           <TableCell>
@@ -984,28 +1051,29 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                               >
                                 {e.status}
                               </Badge>
-                              {archivedIds.includes(e.id) && (
+                              {listView === "archived" && (
                                 <Badge
                                   variant="outline"
                                   className="border-gold/40 bg-gold-soft text-foreground"
-                                  title={`Last updated ${lastUpdatedForEmployee(e.id)}`}
                                 >
-                                  Archived · since {lastUpdatedForEmployee(e.id)}
+                                  Archived
                                 </Badge>
                               )}
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex flex-wrap items-center justify-end gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => open201File(e)}
-                              >
-                                <FolderOpen className="mr-2 h-3.5 w-3.5" /> View Records
-                              </Button>
+                              {listView === "active" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => open201File(e)}
+                                >
+                                  <FolderOpen className="mr-2 h-3.5 w-3.5" /> View Records
+                                </Button>
+                              )}
                               {isSuper &&
-                                (archivedIds.includes(e.id) ? (
+                                (listView === "archived" ? (
                                   <Button
                                     size="sm"
                                     variant="outline"
@@ -1214,7 +1282,8 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
               <span className="text-sm text-muted-foreground">years</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Currently archiving {archivedIds.length} record(s) at {archiveYears}+ years.
+              Retention threshold: records older than {archiveYears}+ years should be archived
+              manually. Currently {archivedList.length} record(s) archived.
             </p>
           </div>
           <DialogFooter>
@@ -1379,13 +1448,46 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                                 className={
                                   doc.status === "Submitted"
                                     ? "border-success/30 bg-success/15 text-success"
-                                    : "border-warning/40 bg-warning/20 text-warning-foreground"
+                                    : doc.status === "Pending"
+                                      ? "border-warning/40 bg-warning/20 text-warning-foreground"
+                                      : "border-destructive/30 bg-destructive/10 text-destructive"
                                 }
                               >
-                                {doc.status}
+                                {doc.status === "Submitted"
+                                  ? "Verified"
+                                  : doc.status === "Pending"
+                                    ? "Pending verification"
+                                    : "Missing"}
                               </Badge>
+                              {doc.id && doc.file && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  title="Open file"
+                                  onClick={() =>
+                                    window.open(
+                                      ermApi.employees.documentFileUrl(
+                                        employeeIdFor(profile.id) ?? "",
+                                        doc.id as number,
+                                      ),
+                                      "_blank",
+                                      "noopener",
+                                    )
+                                  }
+                                >
+                                  <FolderOpen className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
                               {isSuper && (
                                 <>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    title="Toggle verification"
+                                    onClick={() => verifyDoc(i)}
+                                  >
+                                    <ShieldCheck className="h-3.5 w-3.5" />
+                                  </Button>
                                   <Button
                                     size="sm"
                                     variant="ghost"
@@ -1393,6 +1495,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                                       setDocDialog({
                                         mode: "edit",
                                         index: i,
+                                        ...(doc.id !== undefined ? { id: doc.id } : {}),
                                         name: doc.name,
                                         file: doc.file ?? "",
                                       })
@@ -1597,108 +1700,6 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
         </DialogContent>
       </Dialog>
 
-      {/* ADD EMPLOYEE */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Add employee</DialogTitle>
-            <DialogDescription>Create a new 201 file record.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label>Full name</Label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Position</Label>
-              <Input
-                value={form.position}
-                onChange={(e) => setForm({ ...form, position: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Department</Label>
-              <Select
-                value={form.department}
-                onValueChange={(v) => setForm({ ...form, department: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {roster.departments.map((d) => (
-                    <SelectItem key={d.code} value={d.name}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Employment type</Label>
-              <Select
-                value={form.employmentType}
-                onValueChange={(v) =>
-                  setForm({ ...form, employmentType: v as Employee["employmentType"] })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {["Regular", "Probationary", "Contractual"].map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Date hired</Label>
-              <Input
-                type="date"
-                value={form.dateHired}
-                onChange={(e) => setForm({ ...form, dateHired: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Immediate supervisor</Label>
-              <Input
-                value={form.supervisor}
-                onChange={(e) => setForm({ ...form, supervisor: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Email</Label>
-              <Input
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Phone number</Label>
-              <Input
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setAddOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={createEmployee}>
-              <Plus className="mr-2 h-4 w-4" /> Create employee
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* BULK GENERATE RESULTS */}
       <Dialog open={generatedOpen} onOpenChange={setGeneratedOpen}>
         <DialogContent className="max-h-[80vh] overflow-y-auto">
@@ -1881,7 +1882,11 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                 type="file"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  setDocDialog((prev) => (prev ? { ...prev, file: f?.name ?? prev.file } : prev));
+                  setDocDialog((prev) =>
+                    prev
+                      ? { ...prev, ...(f ? { fileObj: f } : {}), file: f?.name ?? prev.file }
+                      : prev,
+                  );
                 }}
               />
               {docDialog?.file && (
@@ -1890,11 +1895,15 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDocDialog(null)}>
+            <Button variant="outline" onClick={() => setDocDialog(null)} disabled={docSaving}>
               Cancel
             </Button>
-            <Button onClick={saveDoc}>
-              {docDialog?.mode === "edit" ? "Save changes" : "Add document"}
+            <Button onClick={saveDoc} disabled={docSaving}>
+              {docSaving
+                ? "Saving…"
+                : docDialog?.mode === "edit"
+                  ? "Save changes"
+                  : "Add document"}
             </Button>
           </DialogFooter>
         </DialogContent>

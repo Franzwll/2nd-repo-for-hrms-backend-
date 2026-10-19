@@ -131,6 +131,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { Textarea } from "@/components/ui/textarea";
@@ -3416,12 +3417,7 @@ export function ScreeningReferenceManager() {
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                        <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> Loading reference
-                        data…
-                      </TableCell>
-                    </TableRow>
+                    <TableRowsSkeleton cols={5} rows={5} />
                   ) : rows.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
@@ -5074,12 +5070,13 @@ function ApplicantViewScreen({
    *  Loaded so View profile → Resume & Documents shows every uploaded
    *  supporting document, not just session-staged ones. */
   const [serverDocs, setServerDocs] = useState<Record<string, ApiApplicantDocument>>({});
-  const [serverDocsLoading, setServerDocsLoading] = useState(false);
+  const [serverDocsLoading, setServerDocsLoading] = useState(true);
   const [reverifyingServerDocId, setReverifyingServerDocId] = useState<string | null>(null);
   const serverDocList = Object.values(serverDocs);
   useEffect(() => {
     if (!a.dbId) {
       setServerDocs({});
+      setServerDocsLoading(false);
       return;
     }
     let cancelled = false;
@@ -5807,7 +5804,10 @@ function ApplicantViewScreen({
                                               </TableRow>
                                             </TableHeader>
                                             <TableBody>
-                                              {group.map((d) => (
+                                              {serverDocsLoading && (
+                                                <TableRowsSkeleton cols={3} rows={5} />
+                                              )}
+                                              {!serverDocsLoading && group.map((d) => (
                                                 <TableRow key={`${d.docType}-${d.fileName}`}>
                                                   <TableCell>
                                                     <p className="text-sm font-medium">{d.title}</p>
@@ -13372,7 +13372,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {pipelinePage.pageItems.map(
+                          {loading && <TableRowsSkeleton cols={9} rows={5} />}
+                          {!loading && pipelinePage.pageItems.map(
                             ({
                               a,
                               interview,
@@ -14292,7 +14293,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {auditPage.pageItems.map((e) => (
+                          {auditLoading && <TableRowsSkeleton cols={8} rows={5} />}
+                          {!auditLoading && auditPage.pageItems.map((e) => (
                             <TableRow key={e.id}>
                               <TableCell className="whitespace-nowrap text-xs">
                                 <span className="font-medium">{e.date}</span>
@@ -14323,19 +14325,6 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               </TableCell>
                             </TableRow>
                           ))}
-                          {auditLoading && (
-                            <TableRow>
-                              <TableCell
-                                colSpan={8}
-                                className="py-10 text-center text-sm text-muted-foreground"
-                              >
-                                <span className="inline-flex items-center gap-2">
-                                  <Loader2 className="h-4 w-4 animate-spin" /> Loading audit
-                                  history…
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                          )}
                           {!auditLoading && auditLog.length === 0 && (
                             <TableRow>
                               <TableCell
@@ -15255,8 +15244,8 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                         SDK keys are missing. */}
                     <div className="relative aspect-video w-full max-h-full">
                       <ZoomEmbeddedMeeting
-                        interviewDbId={zoomRoom.interview.dbId}
-                        joinUrl={zoomRoom.interview.zoomJoinUrl}
+                        interviewDbId={zoomRoom.interview.dbId ?? null}
+                        joinUrl={zoomRoom.interview.zoomJoinUrl ?? null}
                         userName={zoomRoom.interview.interviewer || zoomRoom.applicant.name}
                         onStateChange={setZoomEmbed}
                         fill

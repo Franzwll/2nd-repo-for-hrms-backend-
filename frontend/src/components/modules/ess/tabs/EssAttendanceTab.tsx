@@ -35,7 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { StatCardsSkeleton } from "@/components/ui/loading-skeletons";
+import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { myAttendance } from "@/data/ess";
@@ -214,6 +214,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
 
   // Schedule state
   const [scheduleLoading, setScheduleLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [employeeInfo, setEmployeeInfo] = useState<ApiEssEmployee | null>(null);
   const [roster, setRoster] = useState<ApiScheduleDay[]>(DEFAULT_ROSTER);
 
@@ -277,6 +278,7 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
     } catch {
       // ignore
     }
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -674,7 +676,9 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {leavePage.pageItems.length === 0 ? (
+                    {loading ? (
+                      <TableRowsSkeleton cols={6} rows={5} />
+                    ) : leavePage.pageItems.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={5}>
                           <ListEmptyState placeholder="Search leave…" subject="leave requests" />

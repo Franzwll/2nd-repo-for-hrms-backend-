@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge, docCategoryTint, ON_FILE_STATUSES } from "@/components/modules/ess/shared/EssStatusBadge";
 import { ReportMenu } from "@/components/ui/report-menu";
@@ -28,10 +29,11 @@ import { toast } from "sonner";
 export function EssDocumentsTab() {
   const [documents, setDocuments] = useState(myEmployeeDocuments);
   const [docRequests, setDocRequests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // Live Database Fetch
   useEffect(() => {
-    essApi
+    const docsPromise = essApi
       .myDocuments()
       .then((res) => {
         if (res?.documents?.length) {
@@ -52,7 +54,7 @@ export function EssDocumentsTab() {
       })
       .catch(() => {});
 
-    essApi
+    const reqPromise = essApi
       .myRequests()
       .then((res) => {
         if (res?.requests?.length) {
@@ -73,6 +75,8 @@ export function EssDocumentsTab() {
         }
       })
       .catch(() => {});
+
+    Promise.allSettled([docsPromise, reqPromise]).finally(() => setLoading(false));
   }, []);
 
   const [docSearch, setDocSearch] = useState("");
@@ -502,7 +506,8 @@ export function EssDocumentsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {docPage.pageItems.map((r, idx) => (
+              {loading && <TableRowsSkeleton cols={5} rows={5} />}
+              {!loading && docPage.pageItems.map((r, idx) => (
                 <TableRow
                   key={idx}
                   className="cursor-pointer transition-colors"
