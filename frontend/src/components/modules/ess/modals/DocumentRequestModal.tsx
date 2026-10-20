@@ -13,13 +13,52 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { FileCheck, Send, Clock, ShieldCheck, Sparkles } from "lucide-react";
+import { FileCheck, Send, Clock, ShieldCheck, Sparkles, Paperclip } from "lucide-react";
 import { toast } from "sonner";
 import { essApi } from "@/lib/api";
 import { subtypesFor } from "@/data/essRequestCatalogue";
 
 /** HR-document sub-items from the shared categorized request template. */
 const DOCUMENT_TYPES = subtypesFor("HR Document");
+
+/**
+ * Normalize a raw EssRequest (POST /ess/requests response) into the flat
+ * request shape the ESS tabs render. Raw rows use snake_case DB columns
+ * (request_code, request_type, filed_at, date_from) while the tab lists use
+ * flat keys (id, type, filed, isoDate, statusRank, purpose). Without this the
+ * tab's .type/.isoDate lookups hit undefined and the error boundary fires.
+ */
+function toEssRequestItem(raw: any, opts?: { fallbackType?: string }) {
+  const filed =
+    raw?.filed_at ?? raw?.filed ?? raw?.created_at ?? raw?.isoDate ?? new Date().toISOString();
+  let dateLabel: string = raw?.filed ?? raw?.date ?? "";
+  if (!dateLabel) {
+    try {
+      dateLabel = new Date(filed).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    } catch {
+      dateLabel = String(filed ?? "");
+    }
+  }
+  const status = String(raw?.status ?? "Pending");
+  return {
+    id: raw?.request_code ?? raw?.id ?? `REQ-${Date.now()}`,
+    date: raw?.filed ?? dateLabel,
+    filed: raw?.filed ?? dateLabel,
+    isoDate: raw?.date_from ?? (typeof filed === "string" ? filed : String(filed ?? "")),
+    type: raw?.request_type ?? raw?.type ?? opts?.fallbackType ?? "HR Document",
+    category: raw?.category?.name ?? raw?.category_name ?? "HR Document",
+    status,
+    statusRank: status === "Approved" || status === "Completed" ? 1 : 2,
+    purpose: raw?.details ?? raw?.purpose ?? "",
+    details: raw?.details ?? raw?.purpose ?? "",
+    date_from: raw?.date_from ?? null,
+    date_to: raw?.date_to ?? null,
+  };
+}
 
 interface DocumentRequestModalProps {
   open: boolean;
@@ -32,6 +71,7 @@ export function DocumentRequestModal({ open, onOpenChange, onRequestSuccess }: D
   const [purpose, setPurpose] = useState("Bank Loan Application");
   const [deliveryFormat, setDeliveryFormat] = useState<"digital" | "hardcopy">("digital");
   const [remarks, setRemarks] = useState("");
+  const [attachments, setAttachments] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,17 +79,25 @@ export function DocumentRequestModal({ open, onOpenChange, onRequestSuccess }: D
 
     try {
       setSubmitting(true);
-      const res = await essApi.createRequest({
-        category_code: "hr_document",
-        category_name: "HR Document",
-        request_type: docType,
-        details: `Purpose: ${purpose} | Format: ${deliveryFormat === "digital" ? "Digital PDF" : "Physical Hardcopy"}${remarks ? ` | Remarks: ${remarks}` : ""}`,
-      });
+      const form = new FormData();
+      form.append("category_code", "hr_document");
+      form.append("category_name", "HR Document");
+      form.append("request_type", docType);
+      form.append(
+        "details",
+        `Purpose: ${purpose} | Format: ${deliveryFormat === "digital" ? "Digital PDF" : "Physical Hardcopy"}${remarks ? ` | Remarks: ${remarks}` : ""}`,
+      );
+      attachments.forEach((file) => form.append("attachments[]", file));
 
-      onRequestSuccess?.(res.request);
+      const res = await essApi.createRequest(form);
+
+      // Pass the flat item up (not the raw EssRequest) so the tab can insert
+      // it without crashing — the raw shape uses request_code/request_type/filed_at.
+      onRequestSuccess?.(toEssRequestItem(res.request, { fallbackType: docType }));
       toast.success(`Request for ${docType} submitted to HR Services.`);
       onOpenChange(false);
       setRemarks("");
+      setAttachments([]);
     } catch (err: any) {
       toast.error(err.message || "Failed to submit document request.");
     } finally {
@@ -157,6 +205,21 @@ export function DocumentRequestModal({ open, onOpenChange, onRequestSuccess }: D
             />
           </div>
 
+          <div className="space-y-1.5">
+            <Label className="flex items-center gap-1.5 text-xs font-semibold">
+              <Paperclip className="h-3.5 w-3.5" /> Supporting document (Optional)
+            </Label>
+            <Input
+              type="file"
+              multiple
+              accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+              onChange={(e) => setAttachments(Array.from(e.target.files ?? []))}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Attach any reference file HR may need (up to 5 files, 10 MB each).
+            </p>
+          </div>
+
           <div className="rounded-md bg-muted/40 border border-border/70 p-2.5 text-[11px] text-muted-foreground flex items-center justify-between">
             <span className="flex items-center gap-1.5">
               <Clock className="h-3.5 w-3.5 text-primary" /> Standard Turnaround Time:
@@ -165,11 +228,11 @@ export function DocumentRequestModal({ open, onOpenChange, onRequestSuccess }: D
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-border">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button type="submit" className="gap-1.5">
-              <Send className="h-4 w-4" /> Submit Request
+            <Button type="submit" className="gap-1.5" disabled={submitting}>
+              <Send className="h-4 w-4" /> {submitting ? "Submitting…" : "Submit Request"}
             </Button>
           </DialogFooter>
         </form>

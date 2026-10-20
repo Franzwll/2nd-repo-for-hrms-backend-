@@ -52,8 +52,10 @@ const statusClass: Record<string, string> = {
   Pending: "bg-amber-500/10 text-amber-600 border-amber-500/30",
   "Under Review": "bg-blue-500/10 text-blue-600 border-blue-500/30",
   Approved: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
+  "For Fulfillment": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30",
   Rejected: "bg-rose-500/10 text-rose-600 border-rose-500/30",
   Completed: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
+  Cancelled: "bg-slate-500/10 text-slate-600 border-slate-500/30",
 };
 
 function formatSize(bytes: number | null | undefined) {
@@ -197,6 +199,7 @@ export function DocumentRequestInbox() {
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
                 <SelectItem value="Pending">Pending</SelectItem>
+                <SelectItem value="For Fulfillment">For Fulfillment</SelectItem>
                 <SelectItem value="Completed">Completed</SelectItem>
               </SelectContent>
             </Select>
@@ -284,9 +287,17 @@ export function DocumentRequestInbox() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button size="sm" variant="outline" onClick={() => void openFulfil(r)}>
-                            {hr ? "Replace" : "Fulfil"}
-                          </Button>
+                          {["For Fulfillment", "Approved"].includes(r.status) ? (
+                            <Button size="sm" variant="outline" onClick={() => void openFulfil(r)}>
+                              {hr ? "Replace" : "Fulfil"}
+                            </Button>
+                          ) : r.status === "Completed" && hr ? (
+                            <Button size="sm" variant="outline" onClick={() => void openFulfil(r)}>
+                              Replace
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                       </TableRow>
                     );

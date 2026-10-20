@@ -754,7 +754,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
         }
       />
 
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid items-start gap-5 lg:grid-cols-2">
         {/* Chatbot FAQ — compact manager in the former Notifications slot (admins only) */}
         {(isSuperAdmin || role === "admin") && (
           <ChatbotFaqSettingsCard />

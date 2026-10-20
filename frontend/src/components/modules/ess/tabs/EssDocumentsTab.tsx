@@ -18,7 +18,6 @@ import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge, docCategoryTint, ON_FILE_STATUSES } from "@/components/modules/ess/shared/EssStatusBadge";
-import { ReportMenu } from "@/components/ui/report-menu";
 import { myEmployeeDocuments } from "@/data/ess";
 import { DocumentRequestModal } from "@/components/modules/ess/modals/DocumentRequestModal";
 import { DocumentUploadModal } from "@/components/modules/ess/modals/DocumentUploadModal";
@@ -26,6 +25,36 @@ import { DocumentViewerModal } from "@/components/modules/ess/modals/DocumentVie
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
 import { essApi } from "@/lib/api";
 import { toast } from "sonner";
+
+/** Map a raw EssRequest (create-request response) to the flat shape this tab renders. */
+function toDocRequestItem(raw: any) {
+  const filed =
+    raw?.filed_at ?? raw?.filed ?? raw?.created_at ?? raw?.isoDate ?? new Date().toISOString();
+  const dateLabel =
+    raw?.filed ??
+    raw?.date ??
+    (() => {
+      try {
+        return new Date(filed).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+      } catch {
+        return String(filed ?? "");
+      }
+    })();
+  const status = String(raw?.status ?? "Pending");
+  return {
+    id: raw?.request_code ?? raw?.id ?? `REQ-${Date.now()}`,
+    date: dateLabel,
+    isoDate: raw?.date_from ?? (typeof filed === "string" ? filed : String(filed ?? "")),
+    type: raw?.request_type ?? raw?.type ?? "HR Document",
+    status,
+    statusRank: status === "Approved" || status === "Completed" ? 1 : 2,
+    purpose: raw?.details ?? raw?.purpose ?? "",
+  };
+}
 
 export function EssDocumentsTab() {
   const [documents, setDocuments] = useState(myEmployeeDocuments);
@@ -97,11 +126,20 @@ export function EssDocumentsTab() {
 
   const filteredDocRequests = useMemo(() => {
     return docRequests
-      .filter((r) => !docSearch || r.type.toLowerCase().includes(docSearch.toLowerCase()) || r.status.toLowerCase().includes(docSearch.toLowerCase()))
+      .filter(
+        (r) =>
+          !docSearch ||
+          String(r?.type ?? "")
+            .toLowerCase()
+            .includes(docSearch.toLowerCase()) ||
+          String(r?.status ?? "")
+            .toLowerCase()
+            .includes(docSearch.toLowerCase())
+      )
       .sort((a, b) => {
-        if (docSort === "date-desc") return b.isoDate.localeCompare(a.isoDate);
-        if (docSort === "date-asc") return a.isoDate.localeCompare(b.isoDate);
-        if (docSort === "status") return a.statusRank - b.statusRank;
+        if (docSort === "date-desc") return String(b?.isoDate ?? "").localeCompare(String(a?.isoDate ?? ""));
+        if (docSort === "date-asc") return String(a?.isoDate ?? "").localeCompare(String(b?.isoDate ?? ""));
+        if (docSort === "status") return (a?.statusRank ?? 2) - (b?.statusRank ?? 2);
         return 0;
       });
   }, [docRequests, docSearch, docSort]);
@@ -109,7 +147,13 @@ export function EssDocumentsTab() {
   const docPage = usePagination(filteredDocRequests);
 
   const handleDocRequestSuccess = (newReq: any) => {
-    setDocRequests([newReq, ...docRequests]);
+    if (!newReq) {
+      setActiveTab("requests");
+      return;
+    }
+    // Modal already normalizes to the flat shape; keep this as a second guard.
+    const alreadyFlat = newReq?.type && newReq?.isoDate !== undefined;
+    setDocRequests((prev) => [alreadyFlat ? newReq : toDocRequestItem(newReq), ...prev]);
     setActiveTab("requests");
   };
 
@@ -256,51 +300,13 @@ export function EssDocumentsTab() {
         </Card>
       </div>
 
-      {/* Toolbar row above the cards — Export sits outside, like Export payroll */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
-        <div className="flex shrink-0 items-center gap-2">
-          <ReportMenu
-            size="sm"
-            label="Export documents"
-            showPrint={false}
-            recordCount={documents.length + filteredDocRequests.length}
-            report={() => ({
-              title: "My Employment Documents Report",
-              subtitle: `Employee Self-Service · Company Documents · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })}`,
-              columns: [
-                { header: "Document / Request", key: "title" },
-                { header: "Category / Type", key: "category" },
-                { header: "Status", key: "status" },
-                { header: "Date Filed / Verified", key: "date" },
-              ],
-              rows: [
-                ...documents.map((d) => ({
-                  title: d.title,
-                  category: d.category,
-                  status: d.status,
-                  date: d.date,
-                })),
-                ...filteredDocRequests.map((r) => ({
-                  title: `${r.id} — ${r.type}`,
-                  category: "Document Request",
-                  status: r.status,
-                  date: r.date,
-                })),
-              ],
-              summary: [
-                { label: "Documents", value: documents.length },
-                { label: "Document Requests", value: filteredDocRequests.length },
-              ],
-            })}
-          />
-        </div>
-      </div>
-
       <Tabs
         value={activeTab}
         onValueChange={(v) => setActiveTab(v as "documents" | "requests")}
         className="mt-2"
       >
+      {/* Sub-navigation Tabs — Export lives in the page header top-right */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
         <TabsList>
           <TabsTrigger
             className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
@@ -320,6 +326,7 @@ export function EssDocumentsTab() {
             )}
           </TabsTrigger>
         </TabsList>
+      </div>
 
         <TabsContent value="documents" className="mt-4">
       {/* Employment Documents — TRY: grid cards + viewer modal, list = old table fallback */}

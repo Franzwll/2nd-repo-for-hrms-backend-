@@ -239,19 +239,31 @@ def analyze_with_certifications(
         analysis_rows.append(row)
         unrecognized_extracted.append(cert)
 
+    def _is_candidate_for_cert(extracted: str, required: str) -> bool:
+        req_clean = re.sub(r"[^\w\s]", " ", required.lower())
+        ext_clean = re.sub(r"[^\w\s]", " ", extracted.lower())
+        stop_words = {"in", "and", "or", "of", "the", "for", "certificate", "certification", "training", "seminar", "workshop", "program", "course"}
+        req_tokens = {t for t in req_clean.split() if t not in stop_words and len(t) > 1}
+        ext_tokens = {t for t in ext_clean.split() if t not in stop_words and len(t) > 1}
+        return len(req_tokens & ext_tokens) >= 1
+
     if required_certifications and not matched_required:
-        if unrecognized_extracted:
+        unverifiable_candidates = [
+            cert for cert in unrecognized_extracted
+            if any(_is_candidate_for_cert(cert, req) for req in missing_required)
+        ]
+        if unverifiable_candidates:
             issues.append({
                 "type": "UNVERIFIABLE_REQUIRED_CREDENTIAL",
                 "detail": (
                     f"The applied job requires a certification ({', '.join(missing_required)}) and the "
-                    f"certification(s) listed in the resume could not be recognized against system "
+                    f"certification(s) listed in the resume ({', '.join(unverifiable_candidates)}) could not be recognized against system "
                     f"reference data."
                 ),
                 "note": "Invalid or requires verification based on system validation rules.",
             })
             for row in analysis_rows:
-                if row.get("status") == "MISSING":
+                if row.get("status") == "MISSING" and any(_is_candidate_for_cert(c, row.get("required", "")) for c in unverifiable_candidates):
                     row["status"] = "UNVERIFIABLE"
                     row["note"] = "Listed credentials could not be verified against reference data."
 

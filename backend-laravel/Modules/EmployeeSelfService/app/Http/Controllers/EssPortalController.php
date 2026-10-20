@@ -26,6 +26,7 @@ use App\Models\SystemUser;
 use Modules\EmployeeSelfService\Events\EssRequestFiled;
 use Modules\EmployeeSelfService\Models\RecognitionReaction;
 use Modules\EmployeeSelfService\Models\SocialRecognition;
+use Modules\EmployeeSelfService\Services\EssRequestWorkflow;
 use Modules\EmployeeRecords\Services\EmployeeDocumentCodeGenerator;
 use Modules\Settings\Models\SystemSetting;
 
@@ -569,6 +570,7 @@ class EssPortalController extends Controller
                 'details' => $r->details,
                 'review_note' => $r->review_note,
                 'returned_count' => $r->returned_count,
+                'completed_at' => $r->completed_at?->toIso8601String(),
                 'assigned_to' => $r->assignedTo?->full_name ?? 'HR Admin',
                 'attachments' => $r->attachments->map(fn ($a) => [
                     'id' => $a->ess_request_attachment_id,
@@ -576,7 +578,7 @@ class EssPortalController extends Controller
                     'original_name' => $a->original_name,
                     'mime_type' => $a->mime_type,
                     'file_size_bytes' => $a->file_size_bytes,
-                    'has_file' => Storage::disk('public')->exists($a->file_path),
+                    'has_file' => $this->attachmentFileExists($a->file_path),
                 ])->values(),
                 'has_fulfillment' => $r->attachments->contains(fn ($a) => $a->direction === 'hr'),
                 'timeline' => $r->statusHistory->map(fn ($h) => [
@@ -607,6 +609,8 @@ class EssPortalController extends Controller
             'date_to' => 'nullable|date',
             'details' => 'required|string',
             'attachment_path' => ['nullable', 'string', 'max:255', 'regex:/^[\w\-.\/\\: ]+$/'],
+            'attachments' => 'nullable|array|max:5',
+            'attachments.*' => 'file|max:10240|mimes:pdf,png,jpg,jpeg,doc,docx',
         ]);
 
         // Find or associate category. Fall back to the human name when the
@@ -654,7 +658,24 @@ class EssPortalController extends Controller
         ]);
 
         // If the employee attached a file with the request, keep it in the
-        // attachment ledger (direction = employee).
+        // attachment ledger (direction = employee). Supports multiple files
+        // from the real upload form, plus the legacy single path field.
+        $workflow = app(EssRequestWorkflow::class);
+        if ($request->hasFile('attachments')) {
+            foreach ($request->file('attachments') as $file) {
+                $payload = $workflow->storeUpload($file, 'ess-request-attachments');
+                EssRequestAttachment::create([
+                    'ess_request_id' => $essRequest->ess_request_id,
+                    'direction' => 'employee',
+                    'file_path' => $payload['file_path'],
+                    'original_name' => $payload['original_name'],
+                    'mime_type' => $payload['mime_type'],
+                    'file_size_bytes' => $payload['file_size_bytes'],
+                    'uploaded_by_user_id' => $request->user()?->system_user_id,
+                ]);
+            }
+        }
+
         if (! empty($validated['attachment_path'])) {
             EssRequestAttachment::create([
                 'ess_request_id' => $essRequest->ess_request_id,
@@ -1136,8 +1157,76 @@ class EssPortalController extends Controller
             return response()->json(['message' => 'Employee not found.'], 404);
         }
 
-        $essRequest = EssRequest::where('ess_request_id', (int) $id)
-            ->where('employee_id', $employee->employee_id)
+        $essRequest = EssRequest::where('employee_id', $employee->employee_id)
+            ->where(function ($q) use ($id) {
+                $q->where('request_code', $id)->orWhere('ess_request_id', $id);
+            })
+            ->first();
+        if (! $essRequest) {
+            return response()->json(['message' => 'Request not found.'], 404);
+        }
+
+        $attachment = EssRequestAttachment::where('ess_request_attachment_id', (int) $attachmentId)
+            ->where('ess_request_id', $essRequest->ess_request_id)
+            ->first();
+        if (! $attachment) {
+            return response()->json(['message' => 'Attachment not found.'], 404);
+        }
+
+        $relative = ltrim((string) $attachment->file_path, '/');
+        if (str_starts_with($relative, 'storage/')) {
+            $relative = substr($relative, strlen('storage/'));
+        }
+        if (! $relative || ! Storage::disk('public')->exists($relative)) {
+            return response()->json(['message' => 'No file on record for this attachment.'], 404);
+        }
+
+        $path = Storage::disk('public')->path($relative);
+        $name = $attachment->original_name ?: basename($relative);
+        $safeName = (string) preg_replace('/[\r\n"]+/', '_', (string) $name);
+
+        return response()->file($path, [
+            'Content-Type' => $attachment->mime_type ?: 'application/octet-stream',
+            'Content-Disposition' => 'inline; filename="' . $safeName . '"',
+        ]);
+    }
+
+    /**
+     * GET /api/v1/ess/admin/requests/{id}/attachments/{attachmentId}/file
+     *
+     * HR preview/download of an attachment on any employee request. Token auth
+     * because browser opens cannot send an Authorization header.
+     */
+    public function adminRequestAttachmentFile(Request $request, string $id, string $attachmentId): object
+    {
+        $user = $this->resolveTokenUser($request) ?? $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        $level = $user->permissions
+            ->firstWhere('module_name', 'ESS Management')?->permission_level ?? 'None';
+
+        // Attachments are the sensitive half of the workflow: require edit-grade
+        // access (Edit / Write / Approve / Full), not just View.
+        $rank = [
+            'Full' => 3,
+            'Edit' => 2,
+            'Write' => 2,
+            'Approve / Reject Only' => 2,
+            'View' => 1,
+            'Read' => 1,
+            'None' => 0,
+        ][$level] ?? 0;
+
+        if (! $user->isSuperAdmin() && $rank < 2) {
+            return response()->json([
+                'message' => 'Access denied: you do not have permission to view this attachment.',
+            ], 403);
+        }
+
+        $essRequest = EssRequest::where('request_code', $id)
+            ->orWhere('ess_request_id', $id)
             ->first();
         if (! $essRequest) {
             return response()->json(['message' => 'Request not found.'], 404);
@@ -1184,8 +1273,18 @@ class EssPortalController extends Controller
         return $pat->tokenable;
     }
 
+    private function attachmentFileExists(?string $path): bool
+    {
+        $relative = ltrim((string) $path, '/');
+        if (str_starts_with($relative, 'storage/')) {
+            $relative = substr($relative, strlen('storage/'));
+        }
+
+        return $relative !== '' && Storage::disk('public')->exists($relative);
+    }
+
     /**
-     * DELETE /api/v1/ess/requests/{id}
+     * POST /api/v1/ess/requests/{id}/cancel
      * Employee withdraws their own request while still Pending/Under Review.
      */
     public function cancelRequest(Request $request, string $id): JsonResponse
@@ -1203,24 +1302,79 @@ class EssPortalController extends Controller
         if (! $row) {
             return response()->json(['message' => 'Request not found.'], 404);
         }
-        if (! in_array($row->status, ['Pending', 'Under Review'], true)) {
-            return response()->json(['message' => 'Only pending requests can be withdrawn.'], 422);
+
+        try {
+            app(EssRequestWorkflow::class)->cancel($row, $request->user());
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        $code = $row->request_code;
-        $row->delete();
+        return response()->json([
+            'message' => "Request {$row->request_code} withdrawn.",
+            'request' => $row->fresh(['category', 'attachments', 'statusHistory']),
+        ]);
+    }
 
-        AuditLogger::log(
-            action: 'ESS Request Withdrawn',
-            module: 'Employee Self-Service',
-            severity: 'Info',
-            targetType: 'EssRequest',
-            targetId: (string) $code,
-            details: "Employee withdrew request {$code} ({$row->request_type})",
-            request: $request
-        );
+    /**
+     * POST /api/v1/ess/requests/{id}/respond
+     *
+     * The employee answers a "Returned for Clarification" request with a note
+     * and/or additional files. It goes back to Under Review.
+     */
+    public function respondToRequest(Request $request, string $id): JsonResponse
+    {
+        $employee = $this->resolveEmployee($request);
+        if (! $employee) {
+            return response()->json(['message' => 'Employee not found.'], 404);
+        }
 
-        return response()->json(['message' => "Request {$code} withdrawn."]);
+        $validated = $request->validate([
+            'note' => 'nullable|string|max:2000',
+            'attachments' => 'nullable|array|max:5',
+            'attachments.*' => 'file|max:10240|mimes:pdf,png,jpg,jpeg,doc,docx',
+        ]);
+
+        if (trim((string) ($validated['note'] ?? '')) === '' && ! $request->hasFile('attachments')) {
+            return response()->json([
+                'message' => 'Add a note or attach a file so HR knows what changed.',
+            ], 422);
+        }
+
+        $row = EssRequest::where('employee_id', $employee->employee_id)
+            ->where(function ($q) use ($id) {
+                $q->where('request_code', $id)->orWhere('ess_request_id', $id);
+            })
+            ->first();
+
+        if (! $row) {
+            return response()->json(['message' => 'Request not found.'], 404);
+        }
+
+        if ($row->status !== 'Returned for Clarification') {
+            return response()->json([
+                'message' => 'Only a returned request can be resubmitted.',
+            ], 422);
+        }
+
+        $workflow = app(EssRequestWorkflow::class);
+        $payloads = [];
+
+        if ($request->hasFile('attachments')) {
+            foreach ($request->file('attachments') as $file) {
+                $payloads[] = $workflow->storeUpload($file, 'ess-request-attachments');
+            }
+        }
+
+        try {
+            $workflow->resubmit($row, $request->user(), $validated['note'] ?? null, $payloads);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Clarification submitted. Your request is back with HR.',
+            'request' => $row->fresh(['category', 'attachments', 'statusHistory']),
+        ]);
     }
 
     /**

@@ -17,11 +17,13 @@ class EssCategory extends Model
         'name',
         'description',
         'is_open',
+        'requires_fulfillment',
         'sort_order',
     ];
 
     protected $casts = [
         'is_open' => 'boolean',
+        'requires_fulfillment' => 'boolean',
         'sort_order' => 'integer',
     ];
 

@@ -100,12 +100,18 @@ export function EssAllRequestsTab() {
               ? 0
               : r.status === "Under Review"
               ? 1
-              : r.status === "Approved"
+              : r.status === "Approved" || r.status === "For Fulfillment"
               ? 2
               : r.status === "Completed"
               ? 3
               : 4,
           details: r.details,
+          ...(r.db_id != null ? { dbId: r.db_id } : {}),
+          ...(r.review_note ?? r.note
+            ? { note: r.review_note ?? r.note }
+            : {}),
+          ...(r.attachments ? { attachments: r.attachments } : {}),
+          ...(r.timeline ? { timeline: r.timeline } : {}),
         }));
         setRequests(liveItems);
       }
@@ -148,12 +154,16 @@ export function EssAllRequestsTab() {
   const handleRowClick = (req: any) => {
     setSelectedRequest({
       id: req.id,
+      ...(req.dbId != null ? { dbId: req.dbId } : {}),
       type: req.type,
       category: req.category,
       date: req.date,
       status: req.status,
       assignedTo: req.assignedOfficer,
       details: req.details,
+      ...(req.note ? { note: req.note } : {}),
+      ...(req.attachments ? { attachments: req.attachments } : {}),
+      ...(req.timeline ? { timeline: req.timeline } : {}),
     });
     setTimelineOpen(true);
   };
@@ -420,6 +430,7 @@ export function EssAllRequestsTab() {
         open={timelineOpen}
         onOpenChange={setTimelineOpen}
         request={selectedRequest}
+        onUpdated={loadRequests}
       />
     </div>
   );

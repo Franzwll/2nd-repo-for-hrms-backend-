@@ -2625,14 +2625,20 @@ export interface ApiEssRequestItem {
     | "Pending"
     | "Under Review"
     | "Approved"
+    | "For Fulfillment"
     | "Rejected"
     | "Completed"
+    | "Cancelled"
     | "Returned for Clarification";
   assignedTo?: string;
   assigned_to?: string;
   details: string;
   note?: string;
+  review_note?: string | null;
   returnedCount?: number;
+  returned_count?: number;
+  completed_at?: string | null;
+  employeeDbId?: number;
   attachment_path?: string | null;
   /** Files attached to the request — employee uploads and HR fulfilment. */
   attachments?: ApiEssRequestAttachment[];
@@ -2907,25 +2913,76 @@ export const essApi = {
     const qs = params ? new URLSearchParams(params).toString() : "";
     return request<{ requests: ApiEssRequestItem[] }>(`/ess/my-requests${qs ? `?${qs}` : ""}`);
   },
-  createRequest: (data: {
-    category_code?: string | undefined;
-    category_name?: string | undefined;
-    request_type: string;
-    date_from?: string | undefined;
-    date_to?: string | undefined;
-    details: string;
-    attachment_path?: string | null | undefined;
-  }) =>
-    request<{ message: string; request: any }>("/ess/requests", {
+  createRequest: (data: Record<string, any> | FormData) => {
+    const isForm = data instanceof FormData;
+    return request<{ message: string; request: any }>("/ess/requests", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: isForm ? data : JSON.stringify(data),
+    });
+  },
+  /** Employee answers a "Returned for Clarification" request. */
+  respondToRequest: (id: string | number, data: FormData) =>
+    request<{ message: string; request: any }>(`/ess/requests/${id}/respond`, {
+      method: "POST",
+      body: data,
     }),
+  /** Employee withdraws an open request. */
+  cancelRequest: (id: string | number) =>
+    request<{ message: string; request: any }>(`/ess/requests/${id}/cancel`, {
+      method: "POST",
+    }),
+  /** HR review action: start | approve | reject | return. */
+  reviewRequest: (
+    id: string | number,
+    decision: "start" | "approve" | "reject" | "return",
+    note?: string,
+    file?: File | null,
+  ) => {
+    if (file) {
+      const form = new FormData();
+      form.append("decision", decision);
+      if (note) form.append("note", note);
+      form.append("file", file);
+      return request<{ message: string; request: any }>(`/ess/admin/requests/${id}/review`, {
+        method: "POST",
+        body: form,
+      });
+    }
+
+    return request<{ message: string; request: any }>(`/ess/admin/requests/${id}/review`, {
+      method: "POST",
+      body: JSON.stringify({ decision, ...(note ? { note } : {}) }),
+    });
+  },
+  /** Attach the requested document and complete the request. */
+  fulfillRequest: (
+    id: string | number,
+    data: { file?: File | null; document_id?: number | null; note?: string },
+  ) => {
+    const form = new FormData();
+    if (data.file) form.append("file", data.file);
+    if (data.document_id) form.append("document_id", String(data.document_id));
+    if (data.note) form.append("note", data.note);
+    return request<{ message: string; request: any }>(`/ess/admin/requests/${id}/fulfill`, {
+      method: "POST",
+      body: form,
+    });
+  },
   /** Same-origin URL to stream a file attached to the employee's own request
    *  (their upload or HR's fulfilment) with ?token= auth for browser opens. */
   requestAttachmentUrl: (requestId: string | number, attachmentId: string | number) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
     return `/api/v1/ess/requests/${requestId}/attachments/${attachmentId}/file${qs}`;
+  },
+  /** HR view of an attachment on any employee request (ESS Management access). */
+  adminRequestAttachmentUrl: (
+    requestId: string | number,
+    attachmentId: string | number,
+  ) => {
+    const token = getToken();
+    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `/api/v1/ess/admin/requests/${requestId}/attachments/${attachmentId}/file${qs}`;
   },
   /** Same-origin URL to stream the employee's own document file with ?token= auth. */
   documentFileUrl: (documentId: string | number) => {
@@ -2969,9 +3026,11 @@ export const essApi = {
         pending: number;
         under_review: number;
         approved: number;
+        for_fulfillment: number;
         completed: number;
         rejected: number;
         returned: number;
+        cancelled: number;
       };
       requests: ApiEssRequestItem[];
     }>(`/ess/admin/requests${qs ? `?${qs}` : ""}`);

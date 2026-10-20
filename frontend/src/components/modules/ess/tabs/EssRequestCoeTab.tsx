@@ -12,6 +12,7 @@ import {
   HelpCircle,
   QrCode,
   Info,
+  Paperclip,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ export function EssRequestCoeTab() {
   const [purpose, setPurpose] = useState("Bank Loan / Mortgage Application");
   const [deliveryFormat, setDeliveryFormat] = useState<"digital" | "hardcopy">("digital");
   const [remarks, setRemarks] = useState("");
+  const [attachments, setAttachments] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   const handleReset = () => {
@@ -36,6 +38,7 @@ export function EssRequestCoeTab() {
     setPurpose("Bank Loan / Mortgage Application");
     setDeliveryFormat("digital");
     setRemarks("");
+    setAttachments([]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -43,12 +46,17 @@ export function EssRequestCoeTab() {
 
     try {
       setSubmitting(true);
-      await essApi.createRequest({
-        category_code: "hr_document",
-        category_name: "HR Document",
-        request_type: docType,
-        details: `Purpose: ${purpose} | Format: ${deliveryFormat === "digital" ? "Digital PDF" : "Physical Hardcopy"}${remarks ? ` | Addressee/Remarks: ${remarks}` : ""}`,
-      });
+      const form = new FormData();
+      form.append("category_code", "hr_document");
+      form.append("category_name", "HR Document");
+      form.append("request_type", docType);
+      form.append(
+        "details",
+        `Purpose: ${purpose} | Format: ${deliveryFormat === "digital" ? "Digital PDF" : "Physical Hardcopy"}${remarks ? ` | Addressee/Remarks: ${remarks}` : ""}`,
+      );
+      attachments.forEach((file) => form.append("attachments[]", file));
+
+      await essApi.createRequest(form);
 
       toast.success(`Request for ${docType} successfully submitted to HR Services.`);
       handleReset();
@@ -218,6 +226,22 @@ export function EssRequestCoeTab() {
                     value={remarks}
                     onChange={(e) => setRemarks(e.target.value)}
                   />
+                </div>
+
+                {/* Optional supporting document */}
+                <div className="space-y-1.5">
+                  <Label className="flex items-center gap-1.5 text-xs font-semibold">
+                    <Paperclip className="h-3.5 w-3.5" /> Supporting document (optional)
+                  </Label>
+                  <Input
+                    type="file"
+                    multiple
+                    accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                    onChange={(e) => setAttachments(Array.from(e.target.files ?? []))}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Add any reference file HR may need (up to 5 files, 10 MB each).
+                  </p>
                 </div>
 
                 {/* Turnaround Time Banner */}

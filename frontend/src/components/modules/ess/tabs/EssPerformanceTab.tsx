@@ -14,17 +14,57 @@ import { LmsActivityPlayer } from "@/components/modules/ess/modals/LmsActivityPl
 import { PromotionRequestForm } from "@/components/modules/ess/modals/PromotionRequestForm";
 import { essApi } from "@/lib/api";
 
-// Card visuals matching LMS reference (Big Data / Capstone / IT Elective / OJT):
-// dark geometric gradient tiles, white title, category subtitle, bottom % bar.
+// Light-theme course cards — soft tinted whites that match the ESS light page
+// (ivory page bg, white metric cards). Each index keeps its own accent so the
+// three modules stay visually distinct without dark gradients.
 const COURSE_THEMES = [
-  "from-[#6b5320] via-[#4a3a16] to-[#2a230f]", // gold/brown
-  "from-[#4b5563] via-[#374151] to-[#1f2937]", // graphite
-  "from-[#7a2f4a] via-[#5c2238] to-[#3a1624]", // magenta/maroon
-  "from-[#2f6b6b] via-[#234f4f] to-[#163333]", // teal
+  {
+    card: "bg-[#FFFEF7] border-[#E3C964]/60",
+    accent: "bg-[#A67C00]",
+    softIcon: "bg-[#A67C00]/10 text-[#7C5C00]",
+    track: "bg-[#3F3403]/10",
+    fill: "bg-[#A67C00]",
+    decorBorder: "border-[#A67C00]/15",
+    decorSolid: "bg-[#A67C00]/[0.07]",
+  },
+  {
+    card: "bg-[#FDFEFF] border-slate-300/60",
+    accent: "bg-[#475569]",
+    softIcon: "bg-slate-500/10 text-slate-600",
+    track: "bg-slate-900/10",
+    fill: "bg-[#475569]",
+    decorBorder: "border-slate-400/20",
+    decorSolid: "bg-slate-500/[0.07]",
+  },
+  {
+    card: "bg-[#FFFBFC] border-[#E5A8B8]/60",
+    accent: "bg-[#881337]",
+    softIcon: "bg-[#881337]/10 text-[#881337]",
+    track: "bg-[#881337]/10",
+    fill: "bg-[#881337]",
+    decorBorder: "border-[#881337]/15",
+    decorSolid: "bg-[#881337]/[0.06]",
+  },
+  {
+    card: "bg-[#FAFEFE] border-teal-600/25",
+    accent: "bg-[#0F766E]",
+    softIcon: "bg-teal-600/10 text-teal-700",
+    track: "bg-teal-950/10",
+    fill: "bg-[#0F766E]",
+    decorBorder: "border-teal-600/15",
+    decorSolid: "bg-teal-600/[0.06]",
+  },
 ];
 
 function courseTheme(index: number) {
   return COURSE_THEMES[index % COURSE_THEMES.length];
+}
+
+function courseStatusBadge(status: string): string {
+  const s = String(status ?? "").toLowerCase();
+  if (s.includes("complet")) return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (s.includes("progress") || s.includes("continu")) return "bg-amber-50 text-amber-800 border-amber-200";
+  return "bg-slate-100 text-slate-600 border-slate-200";
 }
 
 function courseProgress(c: any): number {
@@ -460,30 +500,34 @@ export function EssPerformanceTab() {
                         const pct = courseProgress(c);
                         const isDone = String(c.status).toLowerCase().includes("complet");
                         const urgent = urgentReason(c);
+                        const theme = courseTheme(i);
                         return (
                           <div
                             key={c.id}
-                            className={`group relative flex min-h-[260px] flex-col justify-between rounded-xl bg-gradient-to-br ${courseTheme(i)} p-5 text-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md ${urgent ? "ring-2 ring-red-500/80" : ""}`}
+                            className={`group relative flex min-h-[260px] flex-col justify-between rounded-xl border p-5 text-foreground shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md ${theme.card} ${urgent ? "ring-2 ring-red-500/80" : ""}`}
                           >
                             {urgent && (
-                              <span title={urgent} aria-label={`Urgent: ${urgent}`} className="absolute -right-1.5 -top-1.5 z-10 h-4 w-4 rounded-full border-2 border-white/90 bg-red-600 shadow-sm" />
+                              <span title={urgent} aria-label={`Urgent: ${urgent}`} className="absolute -right-1.5 -top-1.5 z-10 h-4 w-4 rounded-full border-2 border-white bg-red-600 shadow-sm" />
                             )}
-                            {/* geometric overlay */}
-                            <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl opacity-25">
-                              <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full border-[10px] border-white/15" />
-                              <div className="absolute right-10 top-16 h-16 w-16 rotate-45 border-[6px] border-white/10" />
-                              <div className="absolute -left-6 bottom-10 h-24 w-24 rotate-12 bg-white/[0.06]" style={{ clipPath: "polygon(50% 0%, 100% 100%, 0% 100%)" }} />
+                            {/* geometric overlay — light */}
+                            <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl opacity-100">
+                              <div className={`absolute -right-8 -top-8 h-32 w-32 rounded-full border-[10px] ${theme.decorBorder}`} />
+                              <div className={`absolute right-10 top-16 h-16 w-16 rotate-45 border-[6px] ${theme.decorBorder}`} />
+                              <div className={`absolute -left-6 bottom-10 h-24 w-24 rotate-12 ${theme.decorSolid}`} style={{ clipPath: "polygon(50% 0%, 100% 100%, 0% 100%)" }} />
                             </div>
                             <div className="relative flex items-start justify-between gap-2">
-                              <span className="inline-flex items-center rounded-full bg-black/30 px-2 py-0.5 text-[10px] font-semibold backdrop-blur-xs">
+                              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${courseStatusBadge(c.status)}`}>
                                 {c.status}
                               </span>
                             </div>
                             <div className="relative">
-                              <p className="text-xl font-extrabold leading-tight tracking-tight">{c.title}</p>
-                              <p className="mt-1 text-xs font-medium text-white/75">{c.category}</p>
+                              <div className={`mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg ${theme.softIcon}`}>
+                                <BookOpen className="h-4.5 w-4.5" />
+                              </div>
+                              <p className="text-xl font-extrabold leading-tight tracking-tight text-foreground">{c.title}</p>
+                              <p className="mt-1 text-xs font-medium text-muted-foreground">{c.category}</p>
                               {(c.estimated_reading_minutes || c.estimated_pages || c.mandatory) && (
-                                <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-white/60">
+                                <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/80">
                                   {[
                                     c.estimated_reading_minutes ? `~${c.estimated_reading_minutes} min read` : null,
                                     c.estimated_pages ? `${c.estimated_pages} pages` : null,
@@ -495,18 +539,20 @@ export function EssPerformanceTab() {
                               )}
                             </div>
                             <div className="relative space-y-1.5">
-                              <div className="flex items-center gap-1.5 text-xs font-semibold text-white/90">
-                                <TrendingUp className="h-3.5 w-3.5" />
+                              <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                                <span className={`inline-flex h-5 w-5 items-center justify-center rounded-md ${theme.softIcon}`}>
+                                  <TrendingUp className="h-3 w-3" />
+                                </span>
                                 <span>{pct}% complete</span>
-                                <span className="ml-auto font-mono opacity-80">{c.score}</span>
+                                <span className="ml-auto font-mono text-foreground/70">{c.score}</span>
                               </div>
-                              <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/50">
-                                <div className="h-full rounded-full bg-white/90 transition-all" style={{ width: `${pct}%` }} />
+                              <div className={`h-1.5 w-full overflow-hidden rounded-full ${theme.track}`}>
+                                <div className={`h-full rounded-full transition-all ${theme.fill}`} style={{ width: `${pct}%` }} />
                               </div>
                               <button
                                 type="button"
                                 onClick={() => handleOpenPlayer(c, "reading")}
-                                className="mt-1 w-full rounded-lg bg-white/15 py-2 text-xs font-bold backdrop-blur-xs transition-colors hover:bg-white/25 disabled:opacity-50 cursor-pointer"
+                                className={`mt-1 w-full rounded-lg py-2 text-xs font-bold text-white transition-all hover:opacity-90 hover:shadow-sm cursor-pointer ${theme.accent}`}
                               >
                                 {isDone ? "Review Handbook" : String(c.status) === "Assigned" ? "Start Reading →" : "Continue Reading →"}
                               </button>
@@ -582,42 +628,48 @@ export function EssPerformanceTab() {
                         const isDone = String(c.status).toLowerCase().includes("complet");
                         const readDone = Boolean(c.reading_completed_at);
                         const urgent = urgentReason(c);
+                        const theme = courseTheme(i);
                         return (
                           <div
                             key={c.id}
-                            className={`group relative flex min-h-[260px] flex-col justify-between rounded-xl bg-gradient-to-br ${courseTheme(i)} p-5 text-white shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md ${urgent ? "ring-2 ring-red-500/80" : ""}`}
+                            className={`group relative flex min-h-[260px] flex-col justify-between rounded-xl border p-5 text-foreground shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md ${theme.card} ${urgent ? "ring-2 ring-red-500/80" : ""}`}
                           >
                             {urgent && (
-                              <span title={urgent} aria-label={`Urgent: ${urgent}`} className="absolute -right-1.5 -top-1.5 z-10 h-4 w-4 rounded-full border-2 border-white/90 bg-red-600 shadow-sm" />
+                              <span title={urgent} aria-label={`Urgent: ${urgent}`} className="absolute -right-1.5 -top-1.5 z-10 h-4 w-4 rounded-full border-2 border-white bg-red-600 shadow-sm" />
                             )}
-                            <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl opacity-25">
-                              <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full border-[10px] border-white/15" />
-                              <div className="absolute right-10 top-16 h-16 w-16 rotate-45 border-[6px] border-white/10" />
-                              <div className="absolute -left-6 bottom-10 h-24 w-24 rotate-12 bg-white/[0.06]" style={{ clipPath: "polygon(50% 0%, 100% 100%, 0% 100%)" }} />
+                            <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl opacity-100">
+                              <div className={`absolute -right-8 -top-8 h-32 w-32 rounded-full border-[10px] ${theme.decorBorder}`} />
+                              <div className={`absolute right-10 top-16 h-16 w-16 rotate-45 border-[6px] ${theme.decorBorder}`} />
+                              <div className={`absolute -left-6 bottom-10 h-24 w-24 rotate-12 ${theme.decorSolid}`} style={{ clipPath: "polygon(50% 0%, 100% 100%, 0% 100%)" }} />
                             </div>
                             <div className="relative flex items-start justify-between gap-2">
-                              <span className="inline-flex items-center rounded-full bg-black/30 px-2 py-0.5 text-[10px] font-semibold backdrop-blur-xs">
+                              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${courseStatusBadge(c.status)}`}>
                                 {c.status}
                               </span>
                             </div>
                             <div className="relative">
-                              <p className="text-xl font-extrabold leading-tight tracking-tight">{c.title}</p>
-                              <p className="mt-1 text-xs font-medium text-white/75">{c.category}{c.completedDate && c.completedDate !== "—" ? ` · ${c.completedDate}` : ""}</p>
+                              <div className={`mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg ${theme.softIcon}`}>
+                                <Award className="h-4.5 w-4.5" />
+                              </div>
+                              <p className="text-xl font-extrabold leading-tight tracking-tight text-foreground">{c.title}</p>
+                              <p className="mt-1 text-xs font-medium text-muted-foreground">{c.category}{c.completedDate && c.completedDate !== "—" ? ` · ${c.completedDate}` : ""}</p>
                             </div>
                             <div className="relative space-y-1.5">
-                              <div className="flex items-center gap-1.5 text-xs font-semibold text-white/90">
-                                <Award className="h-3.5 w-3.5" />
+                              <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                                <span className={`inline-flex h-5 w-5 items-center justify-center rounded-md ${theme.softIcon}`}>
+                                  <Award className="h-3 w-3" />
+                                </span>
                                 <span>{isDone ? c.score : `${pct}% complete`}</span>
                               </div>
-                              <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/50">
-                                <div className="h-full rounded-full bg-white/90 transition-all" style={{ width: `${isDone ? 100 : pct}%` }} />
+                              <div className={`h-1.5 w-full overflow-hidden rounded-full ${theme.track}`}>
+                                <div className={`h-full rounded-full transition-all ${theme.fill}`} style={{ width: `${isDone ? 100 : pct}%` }} />
                               </div>
                               <button
                                 type="button"
                                 disabled={!isDone && !readDone}
                                 title={!isDone && !readDone ? "Read the handbook first" : undefined}
                                 onClick={() => (isDone ? handleOpenCert(c) : handleOpenPlayer(c, "quiz"))}
-                                className="mt-1 w-full rounded-lg bg-white/15 py-2 text-xs font-bold backdrop-blur-xs transition-colors hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                                className={`mt-1 w-full rounded-lg py-2 text-xs font-bold transition-all cursor-pointer ${isDone || readDone ? `${theme.accent} text-white hover:opacity-90 hover:shadow-sm` : "bg-muted text-muted-foreground/70 cursor-not-allowed"}`}
                               >
                                 {isDone ? "View Result" : readDone ? "Take Assessment →" : "Read the handbook first"}
                               </button>

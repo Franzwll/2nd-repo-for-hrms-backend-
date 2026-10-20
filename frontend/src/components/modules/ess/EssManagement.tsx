@@ -19,6 +19,7 @@ import {
   ListChecks,
   Lock,
   LockOpen,
+  Paperclip,
   Plus,
   RotateCcw,
   Search,
@@ -98,23 +99,44 @@ import { useSort, SortHead } from "@/components/portal/sortable";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { EmployeeEss } from "./EmployeeEss";
-import { essApi, type ApiEssRequestItem } from "@/lib/api";
+import { essApi, type ApiEssRequestAttachment, type ApiEssRequestItem } from "@/lib/api";
 
 type Status = ESSRequest["status"] | "Returned for Clarification";
 type Row = Omit<ESSRequest, "status" | "note"> & {
   status: Status;
   note?: string | undefined;
   returnedCount?: number | undefined;
+  dbId?: number | undefined;
+  categoryCode?: string | undefined;
+  attachments?: ApiEssRequestAttachment[] | undefined;
+  hasFulfillment?: boolean | undefined;
 };
 
 const statusClass: Record<Status, string> = {
   Pending: "bg-amber-500/10 text-amber-600 border-amber-500/30",
   "Under Review": "bg-blue-500/10 text-blue-600 border-blue-500/30",
   Approved: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
+  "For Fulfillment": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30",
   Rejected: "bg-rose-500/10 text-rose-600 border-rose-500/30",
   Completed: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
+  Cancelled: "bg-slate-500/10 text-slate-600 border-slate-500/30",
   "Returned for Clarification": "bg-orange-500/10 text-orange-600 border-orange-500/30",
 };
+
+/** Mirrors EssRequestWorkflow::requiresFulfillment for row-level UI choices. */
+function requiresDocument(row: Row): boolean {
+  const code = (row.categoryCode ?? "").toLowerCase();
+  const category = (row.category ?? "").toLowerCase();
+  const type = (row.type ?? "").toLowerCase();
+
+  if (code === "ess-hrdoc" || code === "hr_document" || category.includes("document")) {
+    return true;
+  }
+
+  return ["document", "certificate", "coe", "service record", "employment"].some((needle) =>
+    type.includes(needle),
+  );
+}
 
 const reportOptions = [
   "ESS Requests Summary",
@@ -138,17 +160,21 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     pending: number;
     under_review: number;
     approved: number;
+    for_fulfillment: number;
     completed: number;
     rejected: number;
     returned: number;
+    cancelled: number;
   }>({
     total: seed.length,
     pending: seed.filter((r) => r.status === "Pending").length,
     under_review: seed.filter((r) => r.status === "Under Review").length,
     approved: seed.filter((r) => r.status === "Approved").length,
+    for_fulfillment: 0,
     completed: seed.filter((r) => r.status === "Completed").length,
     rejected: seed.filter((r) => r.status === "Rejected").length,
-    returned: seed.filter((r) => (r.returnedCount ?? 0) > 0).length,
+    returned: seed.filter((r) => r.status === "Returned for Clarification").length,
+    cancelled: 0,
   });
 
   const [loading, setLoading] = useState(true);
@@ -182,7 +208,17 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     "Approved" | "Rejected" | "Returned for Clarification"
   >("Approved");
   const [reviewNote, setReviewNote] = useState("");
+  const [reviewFile, setReviewFile] = useState<File | null>(null);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewStarting, setReviewStarting] = useState(false);
   const [confirmReject, setConfirmReject] = useState(false);
+  const [fulfillRow, setFulfillRow] = useState<Row | null>(null);
+  const [fulfillFile, setFulfillFile] = useState<File | null>(null);
+  const [fulfillNote, setFulfillNote] = useState("");
+  const [fulfilling, setFulfilling] = useState(false);
+  const [bulkRejectOpen, setBulkRejectOpen] = useState(false);
+  const [bulkRejectNote, setBulkRejectNote] = useState("");
+  const [bulkRejecting, setBulkRejecting] = useState(false);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [behalfDept, setBehalfDept] = useState("all");
@@ -212,8 +248,12 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
             status: r.status as Status,
             assignedTo: r.assignedTo || r.assigned_to || "HR Admin",
             details: r.details,
-            note: r.note,
-            returnedCount: r.returnedCount,
+            note: r.note ?? r.review_note ?? undefined,
+            returnedCount: r.returnedCount ?? r.returned_count,
+            dbId: r.db_id,
+            categoryCode: r.category_code,
+            attachments: r.attachments,
+            hasFulfillment: r.has_fulfillment,
           })),
         );
       }
@@ -321,39 +361,41 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   const requestPage = usePagination(sortedFiltered);
   const logPage = usePagination(sortedLogs);
 
-  const setReqStatus = async (id: string, s: Status, note?: string | undefined) => {
+  const bulk = async () => {
+    if (selected.length === 0) return;
     try {
-      await essApi.updateRequestStatus(id, { status: s, note });
+      await Promise.all(selected.map((id) => essApi.reviewRequest(id, "approve")));
+      toast.success(`${selected.length} request(s) processed.`);
+      setSelected([]);
       loadRequests();
       loadAuditLogs();
-    } catch {
-      setRows((prev) =>
-        prev.map((r) =>
-          r.id === id
-            ? {
-              ...r,
-              status: s,
-              note,
-              returnedCount:
-                s === "Returned for Clarification" ? (r.returnedCount ?? 0) + 1 : r.returnedCount,
-            }
-            : r,
-        ),
-      );
+    } catch (err: any) {
+      toast.error(err.message || "Some requests could not be approved.");
     }
   };
 
-  const bulk = async (s: Status) => {
+  const bulkReject = async () => {
+    if (selected.length === 0) return;
+    if (!bulkRejectNote.trim()) {
+      toast.error("A reason for rejection is required.");
+      return;
+    }
+
+    setBulkRejecting(true);
     try {
-      await Promise.all(selected.map((id) => essApi.updateRequestStatus(id, { status: s })));
-      toast.success(`${selected.length} request(s) ${s.toLowerCase()}`);
+      await Promise.all(
+        selected.map((id) => essApi.reviewRequest(id, "reject", bulkRejectNote.trim())),
+      );
+      toast.success(`${selected.length} request(s) rejected.`);
       setSelected([]);
+      setBulkRejectOpen(false);
+      setBulkRejectNote("");
       loadRequests();
       loadAuditLogs();
-    } catch {
-      setRows((prev) => prev.map((r) => (selected.includes(r.id) ? { ...r, status: s } : r)));
-      toast.success(`${selected.length} request(s) ${s.toLowerCase()}`);
-      setSelected([]);
+    } catch (err: any) {
+      toast.error(err.message || "Some requests could not be rejected.");
+    } finally {
+      setBulkRejecting(false);
     }
   };
 
@@ -465,8 +507,10 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     if (s === "Pending") return countsData.pending;
     if (s === "Under Review") return countsData.under_review;
     if (s === "Approved") return countsData.approved;
+    if (s === "For Fulfillment") return countsData.for_fulfillment;
     if (s === "Completed") return countsData.completed;
     if (s === "Returned for Clarification") return countsData.returned;
+    if (s === "Cancelled") return countsData.cancelled;
     return rows.filter((r) => r.status === s).length;
   };
 
@@ -522,29 +566,75 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
 
   const reviewRow = rows.find((r) => r.id === reviewId) ?? null;
 
-  // Opening a review takes ownership: Pending auto-promotes to Under Review.
-  const openReview = (id: string) => {
-    setRows((prev) =>
-      prev.map((r) =>
-        r.id === id && r.status === "Pending" ? { ...r, status: "Under Review" } : r,
-      ),
-    );
+  // Opening a review takes ownership: Pending is persisted as Under Review so
+  // the employee's timeline reflects what actually happened.
+  const openReview = async (id: string) => {
+    const row = rows.find((r) => r.id === id);
     setReviewId(id);
     setReviewDecision("Approved");
     setReviewNote("");
+    setReviewFile(null);
+    setReviewSubmitting(false);
+    setReviewStarting(false);
     setConfirmReject(false);
+
+    if (row?.status === "Pending") {
+      setReviewStarting(true);
+      try {
+        await essApi.reviewRequest(id, "start");
+        setRows((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, status: "Under Review" } : r)),
+        );
+        loadAuditLogs();
+      } catch (err: any) {
+        toast.error(err.message || "Could not open this request for review.");
+      } finally {
+        setReviewStarting(false);
+      }
+    }
   };
 
-  // Employee answered a returned request → back into the reviewer's queue.
-  const employeeReplied = (id: string) => {
-    setRows((prev) =>
-      prev.map((r) =>
-        r.id === id
-          ? { ...r, status: "Under Review", note: "Employee submitted clarification" }
-          : r,
-      ),
-    );
-    toast.success(`${id} returned to review queue`);
+  const openFulfill = (row: Row) => {
+    setFulfillRow(row);
+    setFulfillFile(null);
+    setFulfillNote("");
+  };
+
+  const submitFulfill = async () => {
+    if (!fulfillRow) return;
+    if (!fulfillFile) {
+      toast.error("Upload the document before completing this request.");
+      return;
+    }
+
+    setFulfilling(true);
+    try {
+      const payload: { file: File; note?: string } = { file: fulfillFile };
+      if (fulfillNote.trim()) payload.note = fulfillNote.trim();
+
+      const res = await essApi.fulfillRequest(fulfillRow.id, payload);
+      toast.success(res.message || `${fulfillRow.id} completed — the employee has been notified.`);
+      setFulfillRow(null);
+      setFulfillFile(null);
+      setFulfillNote("");
+      loadRequests();
+      loadAuditLogs();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to attach the document.");
+    } finally {
+      setFulfilling(false);
+    }
+  };
+
+  const quickApprove = async (row: Row) => {
+    try {
+      const res = await essApi.reviewRequest(row.id, "approve");
+      toast.success(res.message || `${row.id} approved.`);
+      loadRequests();
+      loadAuditLogs();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to approve request.");
+    }
   };
 
   const submitReview = async () => {
@@ -562,22 +652,31 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
       return;
     }
 
+    setReviewSubmitting(true);
+    const decision =
+      reviewDecision === "Rejected"
+        ? "reject"
+        : reviewDecision === "Returned for Clarification"
+          ? "return"
+          : "approve";
+
     try {
-      await essApi.updateRequestStatus(reviewRow.id, {
-        status: reviewDecision,
-        note: reviewNote.trim() || undefined,
-      });
-      toast.success(
-        reviewDecision === "Returned for Clarification"
-          ? `${reviewRow.id} returned to the employee`
-          : `${reviewRow.id} marked as ${reviewDecision.toLowerCase()}`,
+      const res = await essApi.reviewRequest(
+        reviewRow.id,
+        decision,
+        reviewNote.trim() || undefined,
+        decision === "approve" ? reviewFile : null,
       );
+      toast.success(res.message || `${reviewRow.id} updated.`);
       setReviewId(null);
+      setReviewFile(null);
       setConfirmReject(false);
       loadRequests();
       loadAuditLogs();
     } catch (err: any) {
       toast.error(err.message || "Failed to update request status.");
+    } finally {
+      setReviewSubmitting(false);
     }
   };
 
@@ -621,11 +720,11 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
           onClick={() => setStatus("Returned for Clarification")}
         />
         <StatCard
-          label="Approved"
-          value={count("Approved")}
-          icon={CheckCircle2}
-          tone="success"
-          onClick={() => setStatus("Approved")}
+          label="For Fulfillment"
+          value={count("For Fulfillment")}
+          icon={Upload}
+          tone="gold"
+          onClick={() => setStatus("For Fulfillment")}
         />
         <StatCard
           label="Completed"
@@ -696,9 +795,11 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                         "Pending",
                         "Under Review",
                         "Returned for Clarification",
+                        "For Fulfillment",
                         "Approved",
                         "Rejected",
                         "Completed",
+                        "Cancelled",
                       ].map((s) => (
                         <SelectItem key={s} value={s}>
                           {s === "Returned for Clarification" ? "Returned" : s}
@@ -727,7 +828,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                         variant="outline"
                         className="border-success/40 bg-success/10 text-success hover:bg-success/20 hover:text-success"
                         disabled={selected.length === 0}
-                        onClick={() => bulk("Approved")}
+                        onClick={() => void bulk()}
                       >
                         <CheckCircle2 className="mr-2 h-4 w-4" /> Bulk approve
                       </Button>
@@ -736,7 +837,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                         variant="outline"
                         className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
                         disabled={selected.length === 0}
-                        onClick={() => bulk("Rejected")}
+                        onClick={() => setBulkRejectOpen(true)}
                       >
                         <XCircle className="mr-2 h-4 w-4" /> Bulk reject
                       </Button>
@@ -861,6 +962,12 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                             <TableCell>
                               <Checkbox
                                 checked={selected.includes(r.id)}
+                                disabled={!["Pending", "Under Review"].includes(r.status)}
+                                title={
+                                  ["Pending", "Under Review"].includes(r.status)
+                                    ? "Select for bulk action"
+                                    : "Only pending/review requests can be bulk processed"
+                                }
                                 onCheckedChange={() =>
                                   setSelected((p) =>
                                     p.includes(r.id) ? p.filter((x) => x !== r.id) : [...p, r.id],
@@ -893,13 +1000,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                           <TableCell>
                             <div className="flex justify-end gap-1">
                               {r.status === "Returned for Clarification" ? (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => employeeReplied(r.id)}
-                                >
-                                  <RotateCcw className="mr-2 h-4 w-4" /> Employee replied
-                                </Button>
+                                <span className="text-xs text-muted-foreground">
+                                  Awaiting employee response
+                                </span>
                               ) : r.status === "Pending" || r.status === "Under Review" ? (
                                 <>
                                   <Button
@@ -907,10 +1010,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                                     variant="outline"
                                     className="border-success/40 bg-success/10 text-success hover:bg-success/20 hover:text-success"
                                     title="Approve"
-                                    onClick={() => {
-                                      setReqStatus(r.id, "Approved");
-                                      toast.success(`${r.id} approved`);
-                                    }}
+                                    onClick={() => void quickApprove(r)}
                                   >
                                     <CheckCircle2 className="mr-2 h-4 w-4" /> Approve
                                   </Button>
@@ -920,7 +1020,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                                     className="border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
                                     title="Reject (opens review — a reason is required)"
                                     onClick={() => {
-                                      openReview(r.id);
+                                      void openReview(r.id);
                                       setReviewDecision("Rejected");
                                     }}
                                   >
@@ -929,11 +1029,19 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => openReview(r.id)}
+                                    onClick={() => void openReview(r.id)}
                                   >
                                     <Eye className="mr-2 h-4 w-4" /> Review
                                   </Button>
                                 </>
+                              ) : r.status === "For Fulfillment" ? (
+                                <Button
+                                  size="sm"
+                                  className="bg-primary text-primary-foreground"
+                                  onClick={() => openFulfill(r)}
+                                >
+                                  <Upload className="mr-2 h-4 w-4" /> Fulfill / Upload
+                                </Button>
                               ) : (
                                 <span className="text-xs text-muted-foreground">Closed</span>
                               )}
@@ -1439,6 +1547,48 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                 )}
               </div>
 
+              {(reviewRow.attachments?.length ?? 0) > 0 && (
+                <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3 text-xs">
+                  <p className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-muted-foreground">
+                    <Paperclip className="h-3.5 w-3.5 text-primary" /> Files on this request
+                  </p>
+                  {(reviewRow.attachments ?? []).map((a) => {
+                    const href = reviewRow.dbId
+                      ? essApi.adminRequestAttachmentUrl(reviewRow.dbId, a.id)
+                      : undefined;
+                    return (
+                      <div
+                        key={a.id}
+                        className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-background px-2.5 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-foreground">
+                            {a.original_name || "Attachment"}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {a.direction === "hr" ? "Provided by HR" : "Attached by employee"}
+                          </p>
+                        </div>
+                        {a.has_file && href ? (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="shrink-0 text-xs text-primary hover:underline"
+                          >
+                            View
+                          </a>
+                        ) : (
+                          <span className="shrink-0 text-[11px] text-muted-foreground">
+                            Unavailable
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label>Decision</Label>
                 <RadioGroup
@@ -1513,6 +1663,25 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                   </div>
                 )}
               </div>
+
+              {reviewDecision === "Approved" && requiresDocument(reviewRow) && (
+                <div className="space-y-2 rounded-md border border-dashed border-primary/40 bg-primary/5 p-3">
+                  <Label htmlFor="review-document">
+                    Attach the requested document now (optional)
+                  </Label>
+                  <Input
+                    id="review-document"
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                    onChange={(e) => setReviewFile(e.target.files?.[0] ?? null)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    If you skip this, the request moves to <strong>For Fulfillment</strong> and
+                    stays there until a file is uploaded. It cannot be marked Completed without a
+                    file.
+                  </p>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
@@ -1522,6 +1691,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
             <Button
               variant={reviewDecision === "Rejected" ? "destructive" : "default"}
               onClick={submitReview}
+              disabled={reviewSubmitting || reviewStarting}
             >
               {reviewDecision === "Rejected"
                 ? confirmReject
@@ -1529,7 +1699,126 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                   : "Reject request"
                 : reviewDecision === "Returned for Clarification"
                   ? "Return to employee"
-                  : "Approve request"}
+                  : reviewFile
+                    ? "Approve & complete"
+                    : reviewRow && requiresDocument(reviewRow)
+                      ? "Approve → For Fulfillment"
+                      : "Approve request"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkRejectOpen} onOpenChange={setBulkRejectOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">
+              Reject {selected.length} request{selected.length === 1 ? "" : "s"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="bulk-reject-reason">
+              Reason for rejection <span className="text-destructive">*</span>
+            </Label>
+            <Textarea
+              id="bulk-reject-reason"
+              rows={4}
+              value={bulkRejectNote}
+              onChange={(e) => setBulkRejectNote(e.target.value)}
+              placeholder="Explain why these requests are being rejected. Every employee will see this note."
+            />
+            <p className="text-xs text-muted-foreground">
+              This reason is written to each request's timeline and shown to the employee.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setBulkRejectOpen(false)}
+              disabled={bulkRejecting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void bulkReject()}
+              disabled={bulkRejecting || !bulkRejectNote.trim()}
+            >
+              {bulkRejecting ? "Rejecting…" : "Confirm rejection"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!fulfillRow} onOpenChange={(open) => !open && setFulfillRow(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">
+              Fulfill {fulfillRow?.id}
+            </DialogTitle>
+          </DialogHeader>
+          {fulfillRow && (
+            <div className="space-y-4">
+              <div className="rounded-md border border-border bg-muted/30 p-3 text-sm">
+                <p className="font-medium">{fulfillRow.employee}</p>
+                <p className="text-xs text-muted-foreground">
+                  {fulfillRow.type} · {fulfillRow.category}
+                </p>
+                {fulfillRow.details && (
+                  <p className="mt-1 text-xs text-muted-foreground">{fulfillRow.details}</p>
+                )}
+              </div>
+
+              {(fulfillRow.attachments?.length ?? 0) > 0 && (
+                <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3 text-xs">
+                  <p className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-muted-foreground">
+                    <Paperclip className="h-3.5 w-3.5 text-primary" /> Files already on this request
+                  </p>
+                  {(fulfillRow.attachments ?? []).map((a) => (
+                    <div key={a.id} className="flex items-center justify-between gap-2">
+                      <span className="truncate">{a.original_name || "Attachment"}</span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        {a.direction === "hr" ? "HR" : "Employee"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="fulfill-document">
+                  Document to release <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="fulfill-document"
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                  onChange={(e) => setFulfillFile(e.target.files?.[0] ?? null)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  The employee is notified and can download this file from their Request Center.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="fulfill-note">Note to employee (optional)</Label>
+                <Textarea
+                  id="fulfill-note"
+                  rows={3}
+                  value={fulfillNote}
+                  onChange={(e) => setFulfillNote(e.target.value)}
+                  placeholder="Attached your Certificate of Employment as requested."
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFulfillRow(null)} disabled={fulfilling}>
+              Cancel
+            </Button>
+            <Button onClick={() => void submitFulfill()} disabled={fulfilling || !fulfillFile}>
+              <Upload className="mr-2 h-4 w-4" />
+              {fulfilling ? "Uploading…" : "Complete & notify"}
             </Button>
           </DialogFooter>
         </DialogContent>

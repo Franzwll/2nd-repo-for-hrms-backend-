@@ -22,6 +22,9 @@ const EssPayrollTab = lazy(() =>
 const EssDocumentsTab = lazy(() =>
   import("@/components/modules/ess/tabs/EssDocumentsTab").then((m) => ({ default: m.EssDocumentsTab }))
 );
+const EssDocumentsExport = lazy(() =>
+  import("@/components/modules/ess/tabs/EssDocumentsExport").then((m) => ({ default: m.EssDocumentsExport }))
+);
 const EssAllRequestsTab = lazy(() =>
   import("@/components/modules/ess/tabs/EssAllRequestsTab").then((m) => ({ default: m.EssAllRequestsTab }))
 );
@@ -162,11 +165,20 @@ export function EmployeeEss() {
 
   const attendanceInitialTab = categoryParam === "Schedule" ? "roster" : "clocking";
 
+  const isDocumentsPage = categoryParam === "Documents" || categoryParam === "RequestDoc";
+
   return (
     <div className="space-y-6">
       <PageHeader
         title={getPageTitle()}
         description={getPageDescription()}
+        actions={
+          isDocumentsPage ? (
+            <Suspense fallback={null}>
+              <EssDocumentsExport />
+            </Suspense>
+          ) : undefined
+        }
       />
 
       {/* ── Module Content with Skeleton Loading ── */}

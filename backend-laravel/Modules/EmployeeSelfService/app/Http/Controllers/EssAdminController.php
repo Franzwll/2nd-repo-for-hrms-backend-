@@ -5,6 +5,7 @@ namespace Modules\EmployeeSelfService\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Employee;
+use App\Models\EmployeeDocument;
 use App\Models\EssCategory;
 use App\Models\EssRequest;
 use App\Models\EssRequestStatusHistory;
@@ -14,6 +15,8 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Modules\EmployeeSelfService\Services\EssRequestWorkflow;
 
 class EssAdminController extends Controller
 {
@@ -22,7 +25,7 @@ class EssAdminController extends Controller
      */
     public function getRequests(Request $request): JsonResponse
     {
-        $query = EssRequest::with(['employee.department', 'category', 'assignedTo']);
+        $query = EssRequest::with(['employee.department', 'category', 'assignedTo', 'attachments', 'statusHistory']);
 
         if ($request->filled('department') && $request->department !== 'all') {
             $query->whereHas('employee.department', function ($q) use ($request) {
@@ -62,9 +65,11 @@ class EssAdminController extends Controller
             'pending' => EssRequest::where('status', 'Pending')->count(),
             'under_review' => EssRequest::where('status', 'Under Review')->count(),
             'approved' => EssRequest::where('status', 'Approved')->count(),
+            'for_fulfillment' => EssRequest::where('status', 'For Fulfillment')->count(),
             'completed' => EssRequest::where('status', 'Completed')->count(),
             'rejected' => EssRequest::where('status', 'Rejected')->count(),
-            'returned' => EssRequest::where('returned_count', '>', 0)->count(),
+            'returned' => EssRequest::where('status', 'Returned for Clarification')->count(),
+            'cancelled' => EssRequest::where('status', 'Cancelled')->count(),
         ];
 
         return response()->json([
@@ -88,6 +93,23 @@ class EssAdminController extends Controller
                     'note' => $r->review_note,
                     'returnedCount' => $r->returned_count,
                     'attachment_path' => $r->attachment_path,
+                    'employeeDbId' => $r->employee_id,
+                    'completed_at' => $r->completed_at?->toIso8601String(),
+                    'attachments' => $r->attachments->map(fn ($a) => [
+                        'id' => $a->ess_request_attachment_id,
+                        'direction' => $a->direction,
+                        'original_name' => $a->original_name,
+                        'mime_type' => $a->mime_type,
+                        'file_size_bytes' => $a->file_size_bytes,
+                        'has_file' => $a->file_path
+                            && Storage::disk('public')->exists(ltrim((string) $a->file_path, '/')),
+                    ])->values(),
+                    'has_fulfillment' => $r->attachments->contains(fn ($a) => $a->direction === 'hr'),
+                    'timeline' => $r->statusHistory->map(fn ($h) => [
+                        'status' => $h->status,
+                        'note' => $h->note,
+                        'at' => $h->created_at?->toIso8601String(),
+                    ])->values(),
                 ];
             }),
         ]);
@@ -95,31 +117,58 @@ class EssAdminController extends Controller
 
     /**
      * PATCH /api/v1/ess/admin/requests/{id}/status
+     *
+     * Legacy status endpoint. Kept for bulk/older clients, but it refuses to
+     * complete document requests: those must go through the fulfil action so
+     * a file is guaranteed to exist.
      */
     public function updateStatus(Request $request, $id): JsonResponse
     {
         $validated = $request->validate([
-            'status' => 'required|in:Pending,Under Review,Approved,Rejected,Completed,Returned for Clarification',
+            'status' => 'required|in:Pending,Under Review,Approved,For Fulfillment,Rejected,Completed,Returned for Clarification,Cancelled',
             'note' => 'nullable|string',
         ]);
 
-        $essRequest = EssRequest::where('request_code', $id)
-            ->orWhere('ess_request_id', $id)
-            ->first();
+        $essRequest = $this->findRequest($id);
 
         if (! $essRequest) {
             return response()->json(['message' => 'Request not found.'], 404);
         }
 
+        $workflow = app(EssRequestWorkflow::class);
         $user = $request->user();
         $targetStatus = $validated['status'];
         $previousStatus = $essRequest->status;
 
+        if (
+            in_array($targetStatus, ['Rejected', 'Returned for Clarification'], true)
+            && trim((string) ($validated['note'] ?? '')) === ''
+        ) {
+            return response()->json([
+                'message' => $targetStatus === 'Rejected'
+                    ? 'A reason for rejection is required.'
+                    : 'A note explaining what clarification is needed is required.',
+            ], 422);
+        }
+
+        if ($targetStatus === 'Completed') {
+            return response()->json([
+                'message' => 'Attach the requested document through the fulfil action to complete this request.',
+            ], 422);
+        }
+
+        if ($targetStatus === 'Approved' && $workflow->requiresFulfillment($essRequest)) {
+            $targetStatus = 'For Fulfillment';
+        }
+
+        if ($targetStatus === 'For Fulfillment' && ! $workflow->requiresFulfillment($essRequest)) {
+            return response()->json(['message' => 'This request does not require a document.'], 422);
+        }
+
+        $essRequest->status = $targetStatus;
+
         if ($targetStatus === 'Returned for Clarification') {
-            $essRequest->status = 'Pending';
-            $essRequest->returned_count += 1;
-        } else {
-            $essRequest->status = $targetStatus;
+            $essRequest->returned_count = (int) $essRequest->returned_count + 1;
         }
 
         if ($user) {
@@ -140,18 +189,16 @@ class EssAdminController extends Controller
             'note' => $validated['note'] ?? "Marked {$targetStatus}.",
         ]);
 
-        // If Approved and is a Leave request, automatically deduct/update leave balances
+        // Leave requests still deduct on approval.
         if ($targetStatus === 'Approved' && $previousStatus !== 'Approved') {
             if (stripos($essRequest->request_type, 'Leave') !== false) {
-                // Calculate days
                 $days = 1.0;
                 if ($essRequest->date_from && $essRequest->date_to) {
                     $start = Carbon::parse($essRequest->date_from);
                     $end = Carbon::parse($essRequest->date_to);
-                    $days = max(1.0, (float) ($end->diffInDays($start) + 1));
+                    $days = max(1.0, (float) ($start->diffInDays($end) + 1));
                 }
 
-                // Determine leave type (Vacation, Sick, Emergency)
                 $leaveType = 'Vacation Leave';
                 if (stripos($essRequest->request_type, 'Sick') !== false) {
                     $leaveType = 'Sick Leave';
@@ -179,15 +226,168 @@ class EssAdminController extends Controller
             severity: $targetStatus === 'Rejected' ? 'Warning' : 'Info',
             targetType: 'EssRequest',
             targetId: (string) $essRequest->ess_request_id,
-            details: "Request {$essRequest->request_code} marked as {$targetStatus} by " . ($user?->full_name ?? 'Admin') . ($validated['note'] ? ": {$validated['note']}" : ''),
+            details: "Request {$essRequest->request_code} marked as {$targetStatus} by " . ($user?->full_name ?? 'Admin') . (! empty($validated['note']) ? ": {$validated['note']}" : ''),
             request: $request
         );
 
         return response()->json([
             'message' => "Request {$essRequest->request_code} updated to {$targetStatus}.",
-            'request' => $essRequest->load(['employee', 'category']),
+            'request' => $essRequest->fresh(['employee', 'category', 'attachments', 'statusHistory']),
         ]);
     }
+
+    /**
+     * POST /api/v1/ess/admin/requests/{id}/review
+     *
+     * decision=start    -> Pending becomes Under Review
+     * decision=approve  -> Approved (non-documents) or For Fulfillment (documents)
+     * decision=return   -> Returned for Clarification (note required)
+     * decision=reject   -> Rejected (note required)
+     *
+     * A document may be attached with an approval; when present the request is
+     * completed immediately.
+     */
+    public function review(Request $request, $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'decision' => 'required|in:start,approve,reject,return',
+            'note' => 'nullable|string|max:2000',
+            'file' => 'nullable|file|max:10240|mimes:pdf,png,jpg,jpeg,doc,docx',
+        ]);
+
+        $essRequest = $this->findRequest($id);
+
+        if (! $essRequest) {
+            return response()->json(['message' => 'Request not found.'], 404);
+        }
+
+        $workflow = app(EssRequestWorkflow::class);
+        $user = $request->user();
+
+        try {
+            if ($validated['decision'] === 'start') {
+                $workflow->startReview($essRequest, $user);
+            } else {
+                $workflow->review(
+                    $essRequest,
+                    $user,
+                    $validated['decision'],
+                    $validated['note'] ?? null
+                );
+
+                // Approval + file in one step: complete immediately.
+                if (
+                    $validated['decision'] === 'approve'
+                    && $request->hasFile('file')
+                    && $workflow->requiresFulfillment($essRequest->fresh())
+                ) {
+                    $payload = $workflow->storeUpload(
+                        $request->file('file'),
+                        'ess-request-fulfillments'
+                    );
+                    $workflow->fulfill(
+                        $essRequest->fresh(),
+                        $user,
+                        $payload,
+                        $validated['note'] ?? null
+                    );
+                }
+            }
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $essRequest->refresh();
+
+        return response()->json([
+            'message' => $validated['decision'] === 'start'
+                ? "Request {$essRequest->request_code} is now under review."
+                : "Request {$essRequest->request_code} updated to {$essRequest->status}.",
+            'request' => $essRequest->load(['employee', 'category', 'attachments', 'statusHistory']),
+        ]);
+    }
+
+    /**
+     * POST /api/v1/ess/admin/requests/{id}/fulfill
+     *
+     * The only path that can complete a document request. A fresh upload or an
+     * archived employee document is required.
+     */
+    public function fulfill(Request $request, $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'file' => 'nullable|file|max:10240|mimes:pdf,png,jpg,jpeg,doc,docx|required_without:document_id',
+            'document_id' => 'nullable|integer|exists:employee_documents,document_id|required_without:file',
+            'note' => 'nullable|string|max:2000',
+        ]);
+
+        $essRequest = $this->findRequest($id);
+
+        if (! $essRequest) {
+            return response()->json(['message' => 'Request not found.'], 404);
+        }
+
+        $workflow = app(EssRequestWorkflow::class);
+
+        if (! $workflow->requiresFulfillment($essRequest)) {
+            return response()->json(['message' => 'This request does not require a document.'], 422);
+        }
+
+        if (! in_array($essRequest->status, ['For Fulfillment', 'Approved', 'Completed'], true)) {
+            return response()->json([
+                'message' => 'Approve the request before attaching the document.',
+            ], 422);
+        }
+
+        try {
+            if ($request->hasFile('file')) {
+                $payload = $workflow->storeUpload(
+                    $request->file('file'),
+                    'ess-request-fulfillments'
+                );
+            } else {
+                $source = EmployeeDocument::where('document_id', $validated['document_id'])
+                    ->where('employee_id', $essRequest->employee_id)
+                    ->first();
+
+                if (! $source) {
+                    return response()->json([
+                        'message' => 'The selected archived document does not belong to this employee.',
+                    ], 422);
+                }
+
+                $payload = [
+                    'file_path' => $source->file_path,
+                    'original_name' => $source->original_name ?: $source->title,
+                    'mime_type' => $source->mime_type,
+                    'file_size_bytes' => $source->file_size_bytes,
+                ];
+            }
+
+            $workflow->fulfill(
+                $essRequest,
+                $request->user(),
+                $payload,
+                $validated['note'] ?? null
+            );
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => "Request {$essRequest->request_code} fulfilled.",
+            'request' => $essRequest->fresh(['employee', 'category', 'attachments', 'statusHistory']),
+        ]);
+    }
+
+    private function findRequest($id): ?EssRequest
+    {
+        return EssRequest::with(['employee', 'category', 'attachments', 'statusHistory'])
+            ->where('request_code', $id)
+            ->orWhere('ess_request_id', $id)
+            ->first();
+    }
+
 
     /**
      * POST /api/v1/ess/admin/requests/behalf
@@ -205,9 +405,16 @@ class EssAdminController extends Controller
 
         $category = EssCategory::where('name', $validated['category_name'])->first();
 
-        $latest = EssRequest::max('ess_request_id') ?? 0;
-        $nextNumber = 4400 + $latest + 1;
-        $requestCode = 'REQ-' . $nextNumber;
+        // Same numeric-suffix generator as employee-filed requests so the two
+        // paths can never mint overlapping REQ codes.
+        $highest = (int) EssRequest::query()
+            ->selectRaw('MAX(CAST(SUBSTRING(request_code, 5) AS UNSIGNED)) as n')
+            ->value('n');
+        $nextNumber = ($highest ?: 4400) + 1;
+        do {
+            $requestCode = 'REQ-' . $nextNumber;
+            $nextNumber++;
+        } while (EssRequest::where('request_code', $requestCode)->exists());
 
         $user = $request->user();
 
@@ -222,6 +429,13 @@ class EssAdminController extends Controller
             'status' => 'Pending',
             'assigned_to_user_id' => $user?->system_user_id,
             'details' => $validated['details'] . ' (Filed by HR on behalf)',
+        ]);
+
+        EssRequestStatusHistory::create([
+            'ess_request_id' => $essRequest->ess_request_id,
+            'status' => 'Pending',
+            'actor_user_id' => $user?->system_user_id,
+            'note' => 'Request filed by HR on behalf of the employee.',
         ]);
 
         $employee = Employee::find($validated['employee_id']);

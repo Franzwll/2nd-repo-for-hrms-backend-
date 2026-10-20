@@ -8,7 +8,7 @@ export type ESSRequest = {
   category: string;
   type: string;
   filed: string;
-  status: "Pending" | "Under Review" | "Approved" | "Rejected" | "Completed" | "Returned for Clarification";
+  status: "Pending" | "Under Review" | "Approved" | "For Fulfillment" | "Rejected" | "Completed" | "Cancelled" | "Returned for Clarification";
   assignedTo: string;
   details: string;
   returnedCount?: number | undefined;
