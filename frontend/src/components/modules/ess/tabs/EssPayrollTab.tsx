@@ -33,6 +33,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { usePagination } from "@/hooks/usePagination";
@@ -63,9 +64,10 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
   const [selectedPayslip, setSelectedPayslip] = useState<ApiPayrollData["payslips"][number] | null>(null);
   const [payslipModalOpen, setPayslipModalOpen] = useState(false);
   const [loanSubmitting, setLoanSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    essApi
+    const payrollPromise = essApi
       .myPayroll()
       .then((res) => {
         setPayrollData(res);
@@ -73,7 +75,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
       })
       .catch(() => {});
 
-    essApi
+    const requestsPromise = essApi
       .myRequests()
       .then((res) => {
         if (res?.requests?.length) {
@@ -94,6 +96,8 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
         }
       })
       .catch(() => {});
+
+    Promise.allSettled([payrollPromise, requestsPromise]).finally(() => setLoading(false));
   }, []);
 
   const currentNet = payrollData?.net ?? 28080;
@@ -311,7 +315,7 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
 
       {/* Sub-navigation Tabs + module Export (same flat Export org chart menu) */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
+        <div className="flex h-auto flex-1 flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none [&>button]:flex-1 [&>button]:justify-center xl:flex-none xl:[&>button]:flex-initial">
           <button
             type="button"
             onClick={() => setActiveTab("payslips")}
@@ -845,7 +849,9 @@ export function EssPayrollTab({ initialTab = "payslips" }: EssPayrollTabProps = 
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payPage.pageItems.length === 0 ? (
+                  {loading ? (
+                    <TableRowsSkeleton cols={6} rows={5} />
+                  ) : payPage.pageItems.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="h-24 text-center text-muted-foreground text-xs">
                         No payroll requests filed yet.

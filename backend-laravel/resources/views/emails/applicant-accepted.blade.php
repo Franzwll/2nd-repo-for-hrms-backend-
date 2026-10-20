@@ -39,7 +39,7 @@
                 <p style="margin:0 0 8px;font-size:13px;font-weight:bold;color:#166534;text-transform:uppercase;letter-spacing:0.05em;">Interview Schedule Details</p>
                 <p style="margin:4px 0;font-size:13px;color:#15803d;"><strong>Date:</strong> {{ $interviewDate }}</p>
                 @if(!empty($interviewTime))
-                <p style="margin:4px 0;font-size:13px;color:#15803d;"><strong>Time:</strong> {{ $interviewTime }}</p>
+                <p style="margin:4px 0;font-size:13px;color:#15803d;"><strong>Time:</strong> {{ \Illuminate\Support\Carbon::parse($interviewTime)->format('h:i A') }}{{ !empty($interviewEndTime) ? ' – ' . \Illuminate\Support\Carbon::parse($interviewEndTime)->format('h:i A') : '' }}</p>
                 @endif
                 @if(!empty($interviewMode))
                 <p style="margin:4px 0;font-size:13px;color:#15803d;"><strong>Mode:</strong> {{ $interviewMode }}</p>

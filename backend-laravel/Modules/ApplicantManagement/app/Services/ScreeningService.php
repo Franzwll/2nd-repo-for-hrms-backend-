@@ -124,7 +124,7 @@ class ScreeningService
     /* ------------------------------------------------------------------ */
 
     /**
-     * Reference data (skills/job_roles/certifications + aliases) sourced from
+     * Reference data (skills/job_roles/certifications/education/experience + aliases) sourced from
      * the screening_reference_data table (cached 5 min). Returns null when the
      * table has no rows yet, letting the NLP service fall back to its bundled
      * seed JSON - no silent behavior change before seeding.
@@ -134,7 +134,7 @@ class ScreeningService
         try {
             $mapping = ScreeningReferenceController::groupedMapping();
 
-            return ($mapping['skills'] || $mapping['job_roles'] || $mapping['certifications'])
+            return ($mapping['skills'] || $mapping['job_roles'] || $mapping['certifications'] || $mapping['education'] || $mapping['experience'])
                 ? $mapping
                 : null;
         } catch (\Throwable $e) {

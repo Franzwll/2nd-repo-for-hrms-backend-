@@ -14,6 +14,7 @@ use App\Models\EssRequestStatusHistory;
 use App\Models\LeaveBalance;
 use App\Models\WorkSchedule;
 use App\Services\AuditLogger;
+use App\Services\HandbookTextCleaner;
 use App\Services\LmsQuizGenerator;
 use App\Services\NlpService;
 use Carbon\Carbon;
@@ -26,6 +27,7 @@ use App\Models\SystemUser;
 use Modules\EmployeeSelfService\Events\EssRequestFiled;
 use Modules\EmployeeSelfService\Models\RecognitionReaction;
 use Modules\EmployeeSelfService\Models\SocialRecognition;
+use Modules\EmployeeRecords\Services\EmployeeDocumentCodeGenerator;
 use Modules\Settings\Models\SystemSetting;
 
 class EssPortalController extends Controller
@@ -990,35 +992,6 @@ class EssPortalController extends Controller
 
         $documents = EmployeeDocument::where('employee_id', $employee->employee_id)->get();
 
-        // If no documents exist in database yet, auto-provision initial employment document records
-        if ($documents->isEmpty()) {
-            $defaultDocs = [
-                ['title' => 'Certificate of Employment (Latest)', 'category' => 'COE', 'code' => 'DOC-COE-01', 'status' => 'Verified', 'date' => Carbon::today()->subMonths(1)],
-                ['title' => 'BIR Form 2316 (Annual Tax Return)', 'category' => 'Tax', 'code' => 'DOC-BIR-2316', 'status' => 'Verified', 'date' => Carbon::today()->subMonths(7)],
-                ['title' => 'Social Security System (SSS E-1 Form)', 'category' => 'Statutory', 'code' => 'DOC-SSS-01', 'status' => 'Verified', 'date' => Carbon::today()->subMonths(12)],
-                ['title' => 'PhilHealth Member Data Record (MDR)', 'category' => 'Statutory', 'code' => 'DOC-PH-01', 'status' => 'Verified', 'date' => Carbon::today()->subMonths(12)],
-                ['title' => 'HDMF / Pag-IBIG Member ID & Registration', 'category' => 'Statutory', 'code' => 'DOC-HDMF-01', 'status' => 'Verified', 'date' => Carbon::today()->subMonths(12)],
-                ['title' => 'Annual Medical & Sanitation Clearance', 'category' => 'Medical', 'code' => 'DOC-MED-01', 'status' => 'Verified', 'date' => Carbon::today()->subMonths(3)],
-            ];
-
-            foreach ($defaultDocs as $d) {
-                EmployeeDocument::create([
-                    'employee_id' => $employee->employee_id,
-                    'document_code' => $d['code'],
-                    'title' => $d['title'],
-                    'category' => $d['category'],
-                    'file_path' => '/storage/documents/' . strtolower(str_replace([' ', '/'], '_', $d['category'])) . '.pdf',
-                    'mime_type' => 'application/pdf',
-                    'file_size_bytes' => 1258291, // ~1.2 MB
-                    'document_status' => $d['status'],
-                    'document_date' => $d['date'],
-                    'expiry_date' => $d['category'] === 'Medical' ? Carbon::today()->addMonths(9) : null,
-                ]);
-            }
-
-            $documents = EmployeeDocument::where('employee_id', $employee->employee_id)->get();
-        }
-
         return response()->json([
             'documents' => $documents->map(function ($doc) {
                 $relative = ltrim((string) $doc->file_path, '/');
@@ -1076,15 +1049,12 @@ class EssPortalController extends Controller
             $fileSize = $file->getSize() ?: 0;
         }
 
-        $nextNum = (EmployeeDocument::max('document_id') ?? 0) + 1;
-        $code = 'DOC-UPL-' . str_pad((string) $nextNum, 4, '0', STR_PAD_LEFT);
-
-        $doc = EmployeeDocument::create([
-            'employee_id' => $employee->employee_id,
-            'document_code' => $code,
+        // Code minted through the shared, lock-serialised generator so ESS
+        // uploads and ERM uploads can never collide.
+        $doc = app(EmployeeDocumentCodeGenerator::class)->create($employee, [
             'title' => $validated['title'],
             'category' => $validated['category'],
-            'file_path' => $storedPath ?? $validated['file_path'] ?? '/storage/documents/uploaded_doc.pdf',
+            'file_path' => $storedPath ?? ($validated['file_path'] ?? null),
             'mime_type' => $mimeType,
             'file_size_bytes' => $fileSize,
             'document_status' => 'Pending Verification',
@@ -1276,6 +1246,11 @@ class EssPortalController extends Controller
         $courseList = $courses->map(function ($c) use ($byCourse) {
             $row = $byCourse->get($c->course_id);
             $status = $row?->status ?? 'Assigned';
+            // Text courses may not have been opened yet; derive the badge from
+            // their content rather than showing a hand-typed (or missing) value.
+            $meta = filled($c->content_text)
+                ? $this->deriveReadingMeta((string) $c->content_text)
+                : ['pages' => null, 'minutes' => null];
             return [
                 'id' => $c->course_code,
                 'course_id' => $c->course_id,
@@ -1292,8 +1267,9 @@ class EssPortalController extends Controller
                 // lets the cards show the parity badge (pages / read-time).
                 'reading_completed_at' => $row?->reading_completed_at,
                 'estimated_reading_minutes' => $c->estimated_reading_minutes !== null
-                    ? (int) $c->estimated_reading_minutes : null,
-                'estimated_pages' => $c->estimated_pages !== null ? (int) $c->estimated_pages : null,
+                    ? (int) $c->estimated_reading_minutes : $meta['minutes'],
+                'estimated_pages' => $c->estimated_pages !== null
+                    ? (int) $c->estimated_pages : $meta['pages'],
                 'mandatory' => (bool) ($c->mandatory ?? false),
             ];
         })->values()->all();
@@ -1677,21 +1653,45 @@ class EssPortalController extends Controller
     /* Tier-1 thin LMS: handbook -> AI quiz -> auto-score (ESS only)        */
     /* ------------------------------------------------------------------ */
 
+    private const CHARS_PER_PAGE = 1800;
+    private const WORDS_PER_MINUTE = 200;
+
     /**
-     * Lazy handbook text: the cached content_text, or (for file-based
-     * handbooks) text extracted once via the NLP service and cached back onto
-     * the course. Returns null when nothing usable is available.
+     * Estimate reading metadata from handbook text. A real PDF page count
+     * (from the NLP extractor) always wins over the character estimate.
+     *
+     * @return array{pages:int, minutes:int}
      */
-    private function resolveCourseText(object $course): ?string
+    private function deriveReadingMeta(string $text, ?int $realPageCount = null): array
+    {
+        $words = str_word_count(strip_tags($text));
+        $pages = ($realPageCount !== null && $realPageCount > 0)
+            ? $realPageCount
+            : max(1, (int) ceil(mb_strlen($text) / self::CHARS_PER_PAGE));
+
+        return [
+            'pages' => $pages,
+            'minutes' => max(1, (int) ceil($words / self::WORDS_PER_MINUTE)),
+        ];
+    }
+
+    /**
+     * Lazy handbook material: the cached content_text, or (for file-based
+     * handbooks) text extracted once via the NLP service and cached back onto
+     * the course together with its real page count.
+     *
+     * @return array{text:?string, source:?string, page_count:?int}
+     */
+    private function resolveCourseMaterial(object $course): array
     {
         $cached = trim((string) ($course->content_text ?? ''));
         if ($cached !== '') {
-            return $cached;
+            return ['text' => $cached, 'source' => 'content_text', 'page_count' => null];
         }
 
         $relative = $this->courseFilePath($course);
         if ($relative === null) {
-            return null;
+            return ['text' => null, 'source' => null, 'page_count' => null];
         }
 
         $result = app(NlpService::class)->extractDocumentText(
@@ -1699,16 +1699,27 @@ class EssPortalController extends Controller
             basename($relative),
         );
 
-        $text = trim((string) data_get($result, 'data.text', ''));
+        $text = HandbookTextCleaner::clean((string) data_get($result, 'data.text', ''));
         if (! ($result['ok'] ?? false) || $text === '') {
-            return null;
+            return ['text' => null, 'source' => null, 'page_count' => null];
+        }
+
+        $pageCount = (int) data_get($result, 'data.page_count', 0) ?: null;
+        $meta = $this->deriveReadingMeta($text, $pageCount);
+
+        $patch = ['content_text' => $text];
+        if ($course->estimated_pages === null) {
+            $patch['estimated_pages'] = $meta['pages'];
+        }
+        if ($course->estimated_reading_minutes === null) {
+            $patch['estimated_reading_minutes'] = $meta['minutes'];
         }
 
         DB::table('learning_courses')
             ->where('course_id', $course->course_id)
-            ->update(['content_text' => $text]);
+            ->update($patch);
 
-        return $text;
+        return ['text' => $text, 'source' => 'file', 'page_count' => $pageCount];
     }
 
     /** Normalised, existing public-disk path for a course handbook, or null. */
@@ -1748,6 +1759,28 @@ class EssPortalController extends Controller
         }
 
         $relative = $this->courseFilePath($course);
+        $material = $this->resolveCourseMaterial($course);
+
+        // Backfill derived metadata so the badge is honest on first open, and
+        // patch the in-memory row so this response already reflects it.
+        if ($material['text'] !== null
+            && ($course->estimated_pages === null || $course->estimated_reading_minutes === null)) {
+            $meta = $this->deriveReadingMeta($material['text'], $material['page_count']);
+            $patch = [];
+            if ($course->estimated_pages === null) {
+                $patch['estimated_pages'] = $meta['pages'];
+            }
+            if ($course->estimated_reading_minutes === null) {
+                $patch['estimated_reading_minutes'] = $meta['minutes'];
+            }
+            if ($patch !== []) {
+                DB::table('learning_courses')
+                    ->where('course_id', $course->course_id)
+                    ->update($patch);
+                $course = (object) array_merge((array) $course, $patch);
+            }
+        }
+
         $row = $this->learningRow((int) $employee->employee_id, (int) $course->course_id);
 
         return response()->json([
@@ -1761,7 +1794,7 @@ class EssPortalController extends Controller
                     ? (int) $course->estimated_pages : null,
                 'mandatory' => (bool) ($course->mandatory ?? false),
             ],
-            'content' => $this->resolveCourseText($course),
+            'content' => $material['text'],
             'file_url' => $relative !== null
                 ? '/api/v1/ess/my-learning/' . rawurlencode($courseCode) . '/file'
                 : null,
@@ -1857,7 +1890,8 @@ class EssPortalController extends Controller
         $quiz = $course->quiz_json ? json_decode((string) $course->quiz_json, true) : null;
 
         if (! is_array($quiz) || empty($quiz['questions'])) {
-            $text = $this->resolveCourseText($course);
+            $material = $this->resolveCourseMaterial($course);
+            $text = $material['text'];
             if ($text === null) {
                 return response()->json([
                     'code' => 'ai_unavailable',
@@ -2183,11 +2217,13 @@ class EssPortalController extends Controller
             return response()->json(['message' => 'No linked employee record found.'], 404);
         }
 
-        $hire = \Modules\NewHireOnboarding\Models\NewHire::with(['onboardingItems.templateItem.template'])
-            ->where('employee_id', $employee->employee_id)
-            ->orWhere(function ($q) use ($employee) {
-                $q->where('email', $employee->email)
-                    ->orWhere('name', trim(($employee->first_name ?? '').' '.($employee->last_name ?? '')));
+        $hire = \Modules\NewHireOnboarding\Models\NewHire::with(['position', 'onboardingItems.templateItem.template'])
+            ->where(function ($outer) use ($employee) {
+                $outer->where('employee_id', $employee->employee_id)
+                    ->orWhere(function ($q) use ($employee) {
+                        $q->where('email', $employee->email)
+                            ->orWhere('name', trim(($employee->first_name ?? '').' '.($employee->last_name ?? '')));
+                    });
             })
             ->orderByDesc('start_date')
             ->first();
@@ -2196,8 +2232,14 @@ class EssPortalController extends Controller
             return response()->json(['data' => [], 'new_hire' => null]);
         }
 
+        // Use the same read-time union as the admin pipeline
+        // (NewHire::visibleOnboardingItems()): materialized rows + virtual
+        // items from Active checklist templates that match the hire's stage
+        // and position. Raw onboardingItems alone hides every Active template
+        // that has not been materialized yet — which is exactly why active
+        // pre-onboarding templates were invisible to employees.
         return response()->json([
-            'data' => $hire->onboardingItems ?? [],
+            'data' => $hire->visibleOnboardingItems(),
             'new_hire' => [
                 'new_hire_id' => $hire->new_hire_id,
                 'new_hire_code' => $hire->new_hire_code,

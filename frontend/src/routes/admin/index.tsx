@@ -155,7 +155,7 @@ function AdminDashboard() {
   ];
   const funnelActive = funnel.reduce((s, f) => s + f.count, 0);
   const funnelConversion =
-    funnelActive > 0 ? Math.round((funnel[4].count / funnelActive) * 100) : 0;
+    funnelActive > 0 ? Math.round(((funnel[4]?.count ?? 0) / funnelActive) * 100) : 0;
 
   const topApplicants = [...applicants]
     .sort((a, b) => (b.fit_score ?? 0) - (a.fit_score ?? 0));
@@ -309,7 +309,7 @@ function AdminDashboard() {
             <div className="flex items-center justify-between">
               <h2 className="font-display text-2xl font-semibold">Hiring Funnel</h2>
               <Button asChild variant="outline" size="sm">
-                <Link to="/admin/applicants">Open pipeline</Link>
+                <Link to="/admin/applicants" search={{ highlight: undefined, tab: undefined }}>Open pipeline</Link>
               </Button>
             </div>
             {loading ? (
@@ -416,7 +416,7 @@ function AdminDashboard() {
             <div className="flex items-center justify-between">
               <h2 className="font-display text-2xl font-semibold">Top Ranked Applicants</h2>
               <Button asChild variant="outline" size="sm">
-                <Link to="/admin/applicants">View all</Link>
+                <Link to="/admin/applicants" search={{ highlight: undefined, tab: undefined }}>View all</Link>
               </Button>
             </div>
             {loading ? (

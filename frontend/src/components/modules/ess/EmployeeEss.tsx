@@ -28,9 +28,6 @@ const EssAllRequestsTab = lazy(() =>
 const EssPromotionTab = lazy(() =>
   import("@/components/modules/ess/tabs/EssPromotionTab").then((m) => ({ default: m.EssPromotionTab }))
 );
-const EssPerformanceTab = lazy(() =>
-  import("@/components/modules/ess/tabs/EssPerformanceTab").then((m) => ({ default: m.EssPerformanceTab }))
-);
 const EssRecognitionTab = lazy(() =>
   import("@/components/modules/ess/tabs/EssRecognitionTab").then((m) => ({ default: m.EssRecognitionTab }))
 );
@@ -111,6 +108,7 @@ export function EmployeeEss() {
       case "Payslip":
         return "Employee Self-Service · Payroll";
       case "Performance":
+      case "Promotion":
         return "Employee Self-Service · Performance";
       case "Documents":
       case "RequestDoc":
@@ -123,8 +121,6 @@ export function EmployeeEss() {
       case "Benefits":
       case "Statutory":
         return "Employee Self-Service · Statutory Benefits & HMO";
-      case "Promotion":
-        return "Employee Self-Service · Request Promotion";
       case "Attendance":
         return "Employee Self-Service · Attendance, Schedule & Balances";
       default:
@@ -144,7 +140,8 @@ export function EmployeeEss() {
       case "Payslip":
         return "View net pay information, released payslips history, statutory benefits, and submit inquiries.";
       case "Performance":
-        return "Track LMS learning modules, view evaluation scores, and competency rating.";
+      case "Promotion":
+        return "Review your performance evaluation and request a promotion review, then track your HR decision.";
       case "Documents":
       case "RequestDoc":
         return "View submitted, missing, and available employee documents and request official HR records.";
@@ -156,8 +153,6 @@ export function EmployeeEss() {
       case "Benefits":
       case "Statutory":
         return "Review SSS, PhilHealth, Pag-IBIG HDMF, and healthcare coverage.";
-      case "Promotion":
-        return "Request a promotion review and track your HR decision.";
       case "Attendance":
         return "Live web clocking terminal, weekly shift roster, biometric time records, and leave applications.";
       default:
@@ -182,12 +177,11 @@ export function EmployeeEss() {
           categoryParam === "Schedule" ||
           categoryParam === "Leave") && <EssAttendanceTab initialTab={attendanceInitialTab} />}
         {(categoryParam === "Payroll" || categoryParam === "Payslip") && <EssPayrollTab />}
-        {categoryParam === "Performance" && <EssPerformanceTab />}
         {(categoryParam === "Documents" || categoryParam === "RequestDoc") && <EssDocumentsTab />}
         {(categoryParam === "Requests" || categoryParam === "COE") && <EssAllRequestsTab />}
         {categoryParam === "Recognition" && <EssRecognitionTab />}
         {(categoryParam === "Benefits" || categoryParam === "Statutory") && <EssBenefitsTab />}
-        {categoryParam === "Promotion" && <EssPromotionTab />}
+        {(categoryParam === "Promotion" || categoryParam === "Performance") && <EssPromotionTab />}
       </Suspense>
 
       {/* ── Global Modals ── */}

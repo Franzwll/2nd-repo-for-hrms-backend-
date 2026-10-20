@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Zoom meeting embed</title>
+    <style>
+      html, body {
+        margin: 0; height: 100%; background: #0b0f19; overflow: hidden;
+      }
+      #zoom-root { height: 100vh; width: 100%; background: #0b0f19; }
+      #zoom-err {
+        display: none; color: #fff; font: 13px/1.5 system-ui, sans-serif;
+        padding: 24px; text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="zoom-root"></div>
+    <div id="zoom-err"></div>
+    <!-- Zoom Meeting SDK exactly as Zoom ships it: plain UMD <script>s in a
+         React-free document. The SDK pins React 18 (the app is on React 19),
+         so matching React 18 UMD globals load first and the SDK attaches
+         window.ReactWidgets. All files are vendored into /zoom-sdk/ by
+         `npm run build:zoom-embed` (runs with every build) — identical paths
+         in dev (public/) and production (dist/). -->
+    <script src="/zoom-sdk/react.production.min.js"></script>
+    <script src="/zoom-sdk/react-dom.production.min.js"></script>
+    <script src="/zoom-sdk/zoomus-websdk-embedded.umd.min.js"></script>
+    <script>
+      (function () {
+        function report(msg) {
+          if (window.__zoomEmbedBoot) return;
+          window.__zoomEmbedBoot = true;
+          var el = document.getElementById("zoom-err");
+          if (el) {
+            el.style.display = "block";
+            el.textContent = msg;
+          }
+          parent.postMessage({ zoomEmbedError: msg }, "*");
+        }
+        function ready() {
+          window.__zoomEmbedBoot = true;
+          parent.postMessage({ zoomEmbedReady: true }, "*");
+        }
+        try {
+          var NS =
+            window.ReactWidgets ||
+            window.ZoomMtgEmbedded ||
+            window.ZoomMtg;
+          if (!NS || typeof NS.createClient !== "function") {
+            report(
+              "Zoom SDK failed to initialise (React=" +
+                !!window.React +
+                " ReactDOM=" +
+                !!window.ReactDOM +
+                " SDK=" +
+                !!NS +
+                ") — re-run npm run build:zoom-embed and hard-refresh",
+            );
+            return;
+          }
+          var client = NS.createClient();
+          // Report camera state so the parent popup can nudge HR when all
+          // video is off (an all-black stage means no feeds, not a bug).
+          function reportVideo(users) {
+            try {
+              var list = Array.isArray(users)
+                ? users
+                : users && users.users
+                  ? users.users
+                  : [users];
+              var anyOn = list.some(function (u) {
+                return (
+                  !!u &&
+                  (u.bVideoOn === true ||
+                    u.videoOn === true ||
+                    u.isVideoOn === true)
+                );
+              });
+              parent.postMessage({ zoomVideoOn: anyOn }, "*");
+            } catch (e) {
+              /* ignore */
+            }
+          }
+          try {
+            if (typeof client.on === "function") {
+              client.on("user-added", reportVideo);
+              client.on("user-updated", reportVideo);
+            }
+          } catch (e) {
+            /* older SDK without events — parent simply never gets the hint */
+          }
+          window.addEventListener("message", function (ev) {
+            var d = ev.data || {};
+            if (!d || d.type !== "zoom-join") return;
+            var root = document.getElementById("zoom-root");
+            if (!root) {
+              report("Zoom embed page missing #zoom-root.");
+              return;
+            }
+            // Size the video stage to this iframe, which the parent already holds at
+            // 16:9. Using the real window size (instead of a hardcoded
+            // 800x450) means the meeting fills the pane at any window size.
+            // The SDK lays out (and subtracts) its own toolbar internally, so
+            // the full iframe box is what it should be told to fill.
+            var w = Math.max(320, Math.round(window.innerWidth));
+            var h = Math.max(200, Math.round(window.innerHeight));
+            client
+              .init({
+                zoomAppRoot: root,
+                language: "en-US",
+                patchJsMedia: true,
+                leaveOnPageUnload: true,
+                customize: {
+                  video: {
+                    // Auto-resize with the pane: without it the stage is
+                    // user-draggable and can drift away from the container.
+                    isResizable: false,
+                    // Start with the local camera ON so HR sees their own
+                    // preview immediately instead of a black name tile.
+                    // The toolbar Start/Stop Video button still toggles it.
+                    defaultCameraOn: true,
+                    // Size BOTH layouts to the pane: with one participant the
+                    // SDK uses the ribbon filmstrip, with more it uses the
+                    // default (gallery/speaker) stage.
+                    viewSizes: {
+                      ribbon: { width: w, height: h },
+                      default: { width: w, height: h },
+                    },
+                    defaultViewType: "speaker",
+                  },
+                },
+              })
+              .then(function () {
+                return client.join({
+                  sdkKey: String(d.sdkKey || ""),
+                  signature: String(d.signature || ""),
+                  meetingNumber: String(d.meetingNumber || ""),
+                  password: String(d.password || ""),
+                  userName: String(d.userName || "HR Interviewer"),
+                });
+              })
+              .then(function () {
+                // Force speaker view deterministically: defaultViewType is
+                // only a boot hint and the SDK sometimes still lands in the
+                // narrow ribbon filmstrip. Speaker fills the pane; HR can
+                // still switch via the toolbar View button.
+                try {
+                  if (typeof client.setViewType === "function") {
+                    client.setViewType("speaker");
+                  }
+                } catch (e) {
+                  /* view toggle unavailable — keep whatever booted */
+                }
+                // Publish the local camera right after join (browser already
+                // granted permission — the iframe allow="camera; microphone"
+                // attribute carries it through). Without this the stage stays
+                // a black name tile until HR finds Start Video themselves.
+                // Skipped only when the parent explicitly opts out.
+                if (d.startVideo !== false) {
+                  try {
+                    var stream =
+                      (client.getMediaStream && client.getMediaStream()) ||
+                      client.stream;
+                    if (stream && typeof stream.startVideo === "function") {
+                      stream
+                        .startVideo()
+                        .then(function () {
+                          parent.postMessage({ zoomVideoOn: true }, "*");
+                        })
+                        .catch(function (err) {
+                          parent.postMessage(
+                            {
+                              zoomVideoHint:
+                                "Camera is allowed but Zoom could not start video (" +
+                                String(
+                                  (err && (err.reason || err.message)) || err,
+                                ) +
+                                ") — click Start Video in the meeting toolbar.",
+                            },
+                            "*",
+                          );
+                        });
+                    }
+                  } catch (e) {
+                    /* older SDK — toolbar Start Video still works */
+                  }
+                }
+                parent.postMessage({ zoomEmbedJoined: true }, "*");
+              })
+              .catch(function (e) {
+                report(
+                  "Zoom join failed: " +
+                    String((e && (e.reason || e.message)) || e),
+                );
+              });
+          });
+          window.addEventListener("beforeunload", function () {
+            try {
+              client.leaveMeeting();
+            } catch (e) {
+              /* ignore */
+            }
+          });
+          ready();
+        } catch (e) {
+          report(
+            "Zoom embed failed to boot: " + String((e && e.message) || e),
+          );
+        }
+      })();
+    </script>
+  </body>
+</html>

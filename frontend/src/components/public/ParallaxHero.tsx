@@ -30,7 +30,7 @@ export function ParallaxHero({
 
   return (
     <section
-      className={cn("relative overflow-hidden perspective-1000", className)}
+      className={cn("relative overflow-hidden md:perspective-1000", className)}
       aria-label={typeof eyebrow === "string" ? eyebrow : "Featured"}
     >
       <div ref={far.ref} className="absolute inset-0 parallax-will-change" aria-hidden="true">
@@ -63,11 +63,11 @@ export function ParallaxHero({
       />
       <div
         ref={near.ref}
-        className="relative mx-auto max-w-7xl px-4 py-24 md:px-8 md:py-32 preserve-3d parallax-will-change"
+        className="relative mx-auto w-full min-w-0 max-w-7xl px-4 py-16 sm:py-20 md:px-8 md:py-32 preserve-3d parallax-will-change"
         style={{ transform: `translate3d(0, ${near.offset * 0.4}px, 80px)` }}
       >
         {eyebrow}
-        <h1 className="mt-3 max-w-3xl font-display text-5xl font-semibold text-primary-foreground md:text-7xl">
+        <h1 className="mt-3 max-w-3xl font-display text-4xl font-semibold text-balance text-primary-foreground sm:text-5xl md:text-7xl">
           {title}
         </h1>
         {body}

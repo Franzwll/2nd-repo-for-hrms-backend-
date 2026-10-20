@@ -29,25 +29,15 @@ import {
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { usePagination } from "@/hooks/usePagination";
-import { TableSkeleton } from "@/components/ui/loading-skeletons";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { RequestTimelineModal, type RequestItem } from "@/components/modules/ess/modals/RequestTimelineModal";
 import { essApi, type ApiEssRequestItem } from "@/lib/api";
+import { REQUEST_CATEGORY_SUBTYPES } from "@/data/essRequestCatalogue";
 import { toast } from "sonner";
 
-// Dynamic Request Subtypes Mapping
-const CATEGORY_SUBTYPES: Record<string, string[]> = {
-  Leave: ["Vacation", "Sick", "Emergency", "Maternity", "Paternity", "Solo Parent", "Bereavement"],
-  Attendance: ["Time In Correction", "Missed Time Out", "Overtime Claim", "Rest Day Duty", "Official Business (OB)"],
-  "Career & Position": ["Promotion Request", "Lateral Transfer", "Job Reclassification", "Salary Grade Review"],
-  Payroll: ["Payroll Clarification", "Overtime Discrepancy", "Night Differential Claim", "Tax Withholding Clarification"],
-  "Payroll Update": ["Bank Account Update", "Tax Exemption Status Update", "Direct Deposit Update"],
-  Loan: ["SSS Salary Loan", "Pag-IBIG Calamity Loan", "Company Emergency Loan", "Educational Assistance Loan"],
-  Reimbursement: ["Transportation", "Medical Reimbursement", "Meal Allowance Claim", "Official Expense / Travel"],
-  "HR Document": ["Certificate of Employment (with Salary)", "Certificate of Employment (without Salary)", "BIR Form 2316", "Certificate of Compensation & Benefits", "Service Record"],
-  "Personal Info": ["Address Update", "Emergency Contact Update", "Civil Status Update", "Dependent Registration"],
-  Account: ["Portal Password Reset", "Biometric ID Sync", "Email Address Update"],
-};
+// Dynamic Request Subtypes Mapping (shared categorized template)
+const CATEGORY_SUBTYPES = REQUEST_CATEGORY_SUBTYPES;
 
 export function EssAllRequestsTab() {
   const [loading, setLoading] = useState(true);
@@ -258,10 +248,6 @@ export function EssAllRequestsTab() {
         </CardHeader>
 
         <CardContent>
-          {loading ? (
-            <TableSkeleton cols={7} rows={6} />
-          ) : (
-          <>
           <Table>
             <TableHeader>
               <TableRow>
@@ -275,7 +261,9 @@ export function EssAllRequestsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pagination.pageItems.length === 0 ? (
+              {loading ? (
+                <TableRowsSkeleton cols={7} rows={5} />
+              ) : pagination.pageItems.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="h-24 text-center text-muted-foreground text-xs">
                     No matching requests found.
@@ -322,8 +310,6 @@ export function EssAllRequestsTab() {
             label="requests"
             onPageChange={pagination.setPage}
           />
-          </>
-          )}
         </CardContent>
       </Card>
 

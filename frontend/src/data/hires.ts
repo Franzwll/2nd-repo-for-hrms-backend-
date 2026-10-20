@@ -8,7 +8,7 @@ import {
   type ApiNewHire,
   type ApiChecklistTemplate,
 } from "@/lib/api";
-import { getUser } from "@/lib/auth";
+import { getUser, isStaffRole } from "@/lib/auth";
 
 /** Draft handed over from Applicant Management when an assessment is accepted. */
 export type PendingHire = {
@@ -111,7 +111,6 @@ function transformApiTemplate(t: ApiChecklistTemplate): MasterChecklistTemplate 
 let hires: NewHire[] = [];
 let hireEmployees: Employee[] = [];
 let pendingHire: PendingHire | null = null;
-let pendingChecklistView: ChecklistViewTarget | null = null;
 
 let masterChecklists: MasterChecklistTemplate[] = [];
 
@@ -156,9 +155,8 @@ let syncing = false;
  *  the employee portal loads its own checklist via /ess/my-checklist. */
 async function syncFromApi() {
   if (syncing) return;
-  const role = (getUser()?.role ?? "").toLowerCase();
-  const isStaff = role === "admin" || role === "superadmin";
-  if (!isStaff) return;
+  // Backend sends "Super Admin" (with space) — isStaffRole normalizes it.
+  if (!isStaffRole(getUser()?.role)) return;
   syncing = true;
   try {
     const [hiresRes, tmplRes] = await Promise.allSettled([
@@ -298,18 +296,6 @@ export const hireStore = {
     pendingHire = null;
     if (p) emit();
     return p;
-  },
-  /** Queues the "View Checklist" hand-off from New Hire Onboarding. */
-  setPendingChecklistView: (t: ChecklistViewTarget | null) => {
-    pendingChecklistView = t;
-    emit();
-  },
-  /** Atomically takes the queued checklist view (returns null if none). */
-  consumePendingChecklistView: () => {
-    const t = pendingChecklistView;
-    pendingChecklistView = null;
-    if (t) emit();
-    return t;
   },
   /** True when a hire with the same name + position already exists. */
   exists: (name: string, position: string) =>

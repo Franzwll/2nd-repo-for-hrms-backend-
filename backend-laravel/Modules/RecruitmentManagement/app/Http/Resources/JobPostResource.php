@@ -40,11 +40,23 @@ class JobPostResource extends JsonResource
             ),
             'experience_level'      => $this->experience_level,
             'education_level'       => $this->education_level,
+            /* Accepted level chips ("any of these"). Posts saved before the
+               columns existed fall back to their single scalar level, so the
+               panel always has at least the level that was already screening. */
+            'experience_levels'     => $this->experience_levels
+                ?? ($this->experience_level ? [$this->experience_level] : []),
+            'education_levels'      => $this->education_levels
+                ?? ($this->education_level ? [$this->education_level] : []),
             'summary'               => $this->summary,
             'description'           => $this->description,
             'responsibilities'      => $this->responsibilities_json ?? [],
             'qualifications'        => $this->qualifications_json ?? [],
             'skills'                => $this->skills_json ?? [],
+            'additional'            => $this->additional_json ?? [],
+            'instructions'          => $this->instructions,
+            'about'                 => $this->about,
+            /* Saved canvas arrangement; null means "use the default order". */
+            'blocks'                => $this->blocks_json,
             'platforms'             => $this->whenLoaded('platforms',
                 fn () => $this->platforms->where('status', 'published')->pluck('platform')->values()
             ),

@@ -97,6 +97,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Zoom Meeting SDK (embedded virtual interviews)
+    |--------------------------------------------------------------------------
+    | Mock provider (default) needs no keys — ZoomMeetingService generates
+    | Zoom-style links stored on the interview row. To embed a REAL meeting
+    | inside the HRMS popup (no Zoom app), create a Meeting SDK app +
+    | Server-to-Server OAuth app at https://marketplace.zoom.us and fill:
+    |   ZOOM_PROVIDER=api
+    |   ZOOM_SDK_KEY=..., ZOOM_SDK_SECRET=...
+    |   ZOOM_ACCOUNT_ID=..., ZOOM_CLIENT_ID=..., ZOOM_CLIENT_SECRET=...
+    | The frontend joins via @zoom/meetingsdk Component View using the
+    | signature minted by POST /api/v1/interviews/{id}/zoom-signature.
+    */
+    'zoom' => [
+        'provider'      => env('ZOOM_PROVIDER', 'mock'),
+        'sdk_key'       => env('ZOOM_SDK_KEY'),
+        'sdk_secret'    => env('ZOOM_SDK_SECRET'),
+        'account_id'    => env('ZOOM_ACCOUNT_ID'),
+        'client_id'     => env('ZOOM_CLIENT_ID'),
+        'client_secret' => env('ZOOM_CLIENT_SECRET'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Tier-1 thin LMS (ESS Performance: handbook -> AI quiz -> auto-score)
     |--------------------------------------------------------------------------
     | Kill switch: set ESS_LMS_QUIZ_ENABLED=false to unregister the new ESS
@@ -109,6 +132,10 @@ return [
         'pass_mark' => (int) env('ESS_LMS_PASS_MARK', 80),
         'time_limit_seconds' => (int) env('ESS_LMS_TIME_LIMIT', 600),
         'question_count' => (int) env('ESS_LMS_QUESTION_COUNT', 10),
+        // Wall-clock cap for one quiz-generation call. Kept well under PHP's
+        // 60s max_execution_time so a slow AI provider falls back to the
+        // deterministic bank instead of fatalling the request.
+        'quiz_budget_seconds' => (int) env('ESS_LMS_QUIZ_BUDGET', 45),
     ],
 
 ];

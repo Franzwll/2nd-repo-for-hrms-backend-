@@ -32,6 +32,7 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
+import { ReportMenu } from "@/components/ui/report-menu";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
@@ -150,7 +151,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     returned: seed.filter((r) => (r.returnedCount ?? 0) > 0).length,
   });
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const categories = useEssCategories();
   const [newCategory, setNewCategory] = useState<{
     name: string;
@@ -182,7 +183,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   >("Approved");
   const [reviewNote, setReviewNote] = useState("");
   const [confirmReject, setConfirmReject] = useState(false);
-  const [reportsOpen, setReportsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [behalfDept, setBehalfDept] = useState("all");
@@ -470,6 +470,56 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     return rows.filter((r) => r.status === s).length;
   };
 
+  const buildEssReport = (reportName: string) => {
+    const baseRows = sortedFiltered.map((r) => ({
+      reference: r.id,
+      employee: r.employee,
+      department: r.department,
+      category: r.category,
+      type: r.type,
+      filed: r.filed,
+      assignedTo: r.assignedTo,
+      status: r.status,
+    }));
+    return {
+      title: reportName,
+      subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Department: ${dept} | Status: ${status}`,
+      columns: [
+        { header: "Reference", key: "reference" },
+        { header: "Employee", key: "employee" },
+        { header: "Department", key: "department" },
+        { header: "Category", key: "category" },
+        { header: "Type", key: "type" },
+        { header: "Filed", key: "filed" },
+        { header: "Assigned To", key: "assignedTo" },
+        { header: "Status", key: "status" },
+      ],
+      rows: baseRows,
+      summary: [
+        { label: "Total Requests", value: countsData.total },
+        { label: "Pending", value: countsData.pending },
+        { label: "Under Review", value: countsData.under_review },
+        { label: "Approved", value: countsData.approved },
+        { label: "Completed", value: countsData.completed },
+        { label: "Rows in Report", value: baseRows.length },
+      ],
+    };
+  };
+
+  const essReportOptions = (
+    role === "superadmin"
+      ? reportOptions
+      : reportOptions.filter(
+          (r) =>
+            !["Branch Performance", "Approval Performance", "ESS Usage Statistics"].includes(r),
+        )
+  ).map((reportName) => ({
+    id: reportName,
+    title: reportName,
+    build: () => buildEssReport(reportName),
+    recordCount: sortedFiltered.length,
+  }));
+
   const reviewRow = rows.find((r) => r.id === reviewId) ?? null;
 
   // Opening a review takes ownership: Pending auto-promotes to Under Review.
@@ -535,11 +585,8 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     <div>
       <PageHeader
         title="ESS Management"
-        actions={
-          <Button size="sm" variant="outline" onClick={() => setReportsOpen(true)}>
-            <FileText className="mr-2 h-4 w-4" /> Generate reports
-          </Button>
-        }
+        description="Monitor, process and configure employee self-service requests."
+        actions={<ReportMenu size="sm" reports={essReportOptions} />}
       />
 
       {loading ? (
@@ -590,7 +637,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
       )}
 
       <Tabs defaultValue="requests" className="mt-6">
-        <TabsList className="flex h-auto flex-wrap justify-start">
+        <TabsList>
           <TabsTrigger className="flex items-center gap-1.5" value="requests">
             <ListChecks className="h-3.5 w-3.5" /> Request Queue
           </TabsTrigger>
@@ -616,11 +663,11 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                 <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                   <Send className="h-5 w-5 text-primary" /> Employee Requests
                 </h2>
-                <div className="flex flex-wrap gap-2">
-                  <div className="relative">
+                <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+                  <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      className="w-56 pl-9"
+                      className="pl-9"
                       placeholder="Search employee or request…"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -1207,7 +1254,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>SLA — first response (hrs)</Label>
                       <Input type="number" defaultValue={8} />
@@ -1247,11 +1294,11 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                   <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                     <Clock className="h-5 w-5 text-primary" /> ESS Activity Log
                   </h2>
-                  <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                    <div className="relative">
+                  <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+                    <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
-                        className="w-56 pl-9"
+                        className="pl-9"
                         placeholder="Search user, action, request…"
                         value={logSearch}
                         onChange={(e) => setLogSearch(e.target.value)}
@@ -1327,7 +1374,8 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {logPage.pageItems.map((a) => (
+                        {loading && <TableRowsSkeleton cols={7} rows={5} />}
+                        {!loading && logPage.pageItems.map((a) => (
                           <TableRow key={a.id}>
                             <TableCell className="text-xs">{a.timestamp}</TableCell>
                             <TableCell className="text-xs">{a.user}</TableCell>
@@ -1338,7 +1386,7 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                             <TableCell className="text-xs font-medium">{a.requestId}</TableCell>
                           </TableRow>
                         ))}
-                        {logPage.pageItems.length === 0 && (
+                        {!loading && logPage.pageItems.length === 0 && (
                           <TableRow>
                             <TableCell colSpan={7} className="py-8">
                               <ListEmptyState placeholder="Search user, action, request…" />
@@ -1487,43 +1535,6 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Generate Reports</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2">
-            {(role === "superadmin"
-              ? reportOptions
-              : reportOptions.filter(
-                (r) =>
-                  ![
-                    "Branch Performance",
-                    "Approval Performance",
-                    "ESS Usage Statistics",
-                  ].includes(r),
-              )
-            ).map((r) => (
-              <div
-                key={r}
-                className="flex items-center justify-between rounded-md border border-border p-3"
-              >
-                <span className="text-sm">{r}</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    toast.success(`${r} generated`);
-                    setReportsOpen(false);
-                  }}
-                >
-                  Generate
-                </Button>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

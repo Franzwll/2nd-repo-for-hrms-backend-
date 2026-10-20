@@ -89,6 +89,23 @@ export function getUser(): AuthUser | null {
   }
 }
 
+/** Normalize portal role names ("Super Admin" -> "superadmin"). Shared by
+ *  session-timeout + data-store staff gates so Super Admin never 403s. */
+export function roleKeyFor(role: string | null | undefined): string {
+  const k = String(role ?? "")
+    .toLowerCase()
+    .replace(/[_\-\s]/g, "");
+  if (k === "superadmin") return "superadmin";
+  if (k === "admin" || k === "administrator") return "admin";
+  return "employee";
+}
+
+/** True for Admin / Super Admin (any casing/spacing). */
+export function isStaffRole(role: string | null | undefined): boolean {
+  const k = roleKeyFor(role);
+  return k === "admin" || k === "superadmin";
+}
+
 export function setUser(user: AuthUser | null): void {
   try {
     if (user) {

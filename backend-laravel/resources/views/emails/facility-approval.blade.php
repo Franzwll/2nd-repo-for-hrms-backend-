@@ -27,7 +27,7 @@
                 <p style="margin:0 0 8px;font-size:13px;font-weight:bold;color:#166534;text-transform:uppercase;letter-spacing:0.05em;">Confirmed Interview Details</p>
                 <p style="margin:0 0 4px;font-size:13px;color:#14532d;line-height:1.5;"><strong>Facility:</strong> {{ $facilityName }}</p>
                 <p style="margin:0 0 4px;font-size:13px;color:#14532d;line-height:1.5;"><strong>Date:</strong> {{ $interviewDate }}</p>
-                <p style="margin:0 0 4px;font-size:13px;color:#14532d;line-height:1.5;"><strong>Time:</strong> {{ $interviewTime }}</p>
+                <p style="margin:0 0 4px;font-size:13px;color:#14532d;line-height:1.5;"><strong>Time:</strong> {{ \Illuminate\Support\Carbon::parse($interviewTime)->format('h:i A') }}{{ !empty($interviewEndTime) ? ' – ' . \Illuminate\Support\Carbon::parse($interviewEndTime)->format('h:i A') : '' }}</p>
                 @if(!empty($facilityLocation))
                 <p style="margin:8px 0 0;font-size:12px;color:#166534;line-height:1.5;">Location: {{ $facilityLocation }}</p>
                 @endif

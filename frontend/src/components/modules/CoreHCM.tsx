@@ -29,6 +29,8 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
+import { StatCard } from "@/components/portal/StatCard";
+import { StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 import { Logo } from "@/components/brand/Logo";
 import {
   AlertDialog,
@@ -152,7 +154,7 @@ const APPLICABLE_STATUSES = [
  */
 function EmployeeStatusTab({ employeeCode, employeeId }: { employeeCode: string; employeeId: number | null }) {
   const [detail, setDetail] = useState<ApiEmployee | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!employeeId) return;
@@ -579,12 +581,13 @@ export function OrgChartModule({ role = "admin" }: { role?: Role }) {
     <div className="space-y-6">
       <PageHeader
         title="Organizational Structure & Employee Roster"
+        description="Hierarchy chart, employee roster, lifecycle actions and status transition logs."
         actions={<div ref={setHeaderActionsEl} className="flex flex-wrap items-center gap-2" />}
       />
 
       <HeaderActionsContext.Provider value={headerActionsEl}>
       <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
-        <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
+        <TabsList>
           <TabsTrigger
             value="org"
             className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
@@ -1059,6 +1062,7 @@ function EmployeeListManager({
   const [acknowledgedIds, setAcknowledgedIds] = useState<Set<string>>(new Set());
   const [showViewAllRecs, setShowViewAllRecs] = useState(false);
   const [recommendations, setRecommendations] = useState<HR3Recommendation[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -1069,6 +1073,9 @@ function EmployeeListManager({
       })
       .catch(() => {
         if (!cancelled) setRecommendations([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
@@ -1645,7 +1652,9 @@ function EmployeeListManager({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recPage.pageItems.map((rec) => (
+                {loading && <TableRowsSkeleton cols={7} rows={6} />}
+                {!loading &&
+                  recPage.pageItems.map((rec) => (
                   <TableRow key={rec.id}>
                     <TableCell className="font-mono text-xs font-semibold text-muted-foreground">
                       {rec.id}
@@ -1740,8 +1749,8 @@ function EmployeeListManager({
                 <Users className="h-5 w-5 text-primary" /> Employee Roster
               </h2>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-[14rem]">
+            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   className="h-9 border-border bg-card pl-8 pr-8 text-xs shadow-2xs"
@@ -1998,7 +2007,7 @@ function EmployeeListManager({
                   </DialogHeader>
 
                   <Tabs defaultValue="profile" className="mt-2">
-                    <TabsList className="flex h-auto flex-wrap justify-start">
+                    <TabsList>
                       <TabsTrigger value="profile">Profile</TabsTrigger>
                       <TabsTrigger value="status">Status</TabsTrigger>
                     </TabsList>
@@ -2118,7 +2127,7 @@ function EmployeeListManager({
 
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Contact Information</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label className="text-xs">Company Email</Label>
                   <Input
@@ -2160,7 +2169,7 @@ function EmployeeListManager({
 
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Other Personal Information</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label className="text-xs">Birth Date</Label>
                   <Input
@@ -2218,7 +2227,7 @@ function EmployeeListManager({
 
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Employment Information</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label className="text-xs">Position</Label>
                   <Select
@@ -2351,7 +2360,7 @@ function EmployeeListManager({
 
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Government IDs</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label className="text-xs">SSS Number</Label>
                   <Input
@@ -2903,8 +2912,8 @@ function PromotionRequestsManager() {
                 )}
               </CardTitle>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-[12rem]">
+            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search employee, code, reason…"
@@ -3362,8 +3371,8 @@ function LifecycleLogsViewer() {
               and retirements.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[14rem]">
+          <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+            <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search employee, position, action details…"
@@ -3506,16 +3515,50 @@ export function DeptPosModule({ role = "admin" }: { role?: Role }) {
   /** Slot each tab portals its Generate Report control into (page header). */
   const [headerActionsEl, setHeaderActionsEl] = useState<HTMLDivElement | null>(null);
 
+  const hcm = useHcmData();
+  const hcmLoading = useHcmLoading();
+  const employees = useMemo(
+    () => hcm.employees.map((e) => toUiEmployee(e, hcm.employees, hcm.salaryGrades)),
+    [hcm],
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Department, Position & Salary Grade Management"
+        description="Departments, position master list, salary grade management and vacancy requisitions."
         actions={<div ref={setHeaderActionsEl} className="flex flex-wrap items-center gap-2" />}
       />
 
+      {hcmLoading && employees.length === 0 ? (
+        <StatCardsSkeleton count={4} />
+      ) : (
+        <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard label="Total Employees" value={employees.length} icon={Users} tone="primary" />
+          <StatCard
+            label="Regular"
+            value={employees.filter((e) => e.employmentType === "Regular").length}
+            icon={UserCheck}
+            tone="success"
+          />
+          <StatCard
+            label="Probationary"
+            value={employees.filter((e) => e.employmentType === "Probationary").length}
+            icon={ClipboardList}
+            tone="gold"
+          />
+          <StatCard
+            label="Inactive"
+            value={employees.filter((e) => e.status === "Inactive").length}
+            icon={UserX}
+            tone="caution"
+          />
+        </div>
+      )}
+
       <HeaderActionsContext.Provider value={headerActionsEl}>
       <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
-        <TabsList className="inline-flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm text-muted-foreground">
+        <TabsList>
           <TabsTrigger
             value="depts"
             className="rounded-lg px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
@@ -3953,8 +3996,8 @@ function DepartmentAndPositionManager({
                 <Building2 className="h-4 w-4 text-primary" /> Hotel & Restaurant Departments
               </CardTitle>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="relative min-w-[14rem]">
+            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search department, code, head…"
@@ -4119,8 +4162,8 @@ function DepartmentAndPositionManager({
                 <Briefcase className="h-4 w-4 text-primary" /> Job Positions & Salary Bands
               </CardTitle>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-[14rem]">
+            <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+              <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search title, ID, department…"
@@ -4313,7 +4356,7 @@ function DepartmentAndPositionManager({
           </DialogHeader>
 
           <div className="space-y-4 py-2 text-xs">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs">Department Code</Label>
                 <Input
@@ -4455,7 +4498,7 @@ function DepartmentAndPositionManager({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs">Department</Label>
                 <Select value={posDept} onValueChange={setPosDept}>
@@ -4487,7 +4530,7 @@ function DepartmentAndPositionManager({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs">Target Headcount</Label>
                 <Input
@@ -4681,7 +4724,7 @@ function DepartmentAndPositionManager({
           <div className="space-y-4 py-2 text-xs">
             <div className="space-y-1">
               <Label className="text-xs font-semibold">New Requisition</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label className="text-xs">Position</Label>
                   <Select value={reqPosition} onValueChange={onReqPositionChange}>
@@ -4939,8 +4982,8 @@ function SalaryGradeManager() {
               <DollarSign className="h-4 w-4 text-primary" /> Salary Grade & Compensation Management
             </CardTitle>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[14rem]">
+          <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+            <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search code, title, level…"
@@ -5054,7 +5097,7 @@ function SalaryGradeManager() {
             <DialogTitle>{editingSg ? `Edit Salary Grade — ${editingSg.code}` : "Add Salary Grade"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2 text-xs">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs">Grade Code</Label>
                 <Input value={sgCode} onChange={(e) => setSgCode(e.target.value)} className="text-xs font-mono" placeholder="e.g. SG-09" />
@@ -5223,8 +5266,8 @@ function RequisitionManager({ role = "admin" }: { role?: Role }) {
             </CardTitle>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[14rem]">
+          <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+            <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search requisitions, position, justification…"

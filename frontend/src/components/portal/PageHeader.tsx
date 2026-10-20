@@ -26,10 +26,10 @@ export function PageHeader({
 }: PageHeaderProps) {
   return (
     <div className={cn("mb-6", className)}>
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          {eyebrow && <div className="eyebrow mb-1">{eyebrow}</div>}
-          <h1 className="font-display text-3xl font-semibold md:text-4xl">{title}</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-4">
+          <div className="min-w-0 flex-1">
+            {eyebrow && <div className="eyebrow mb-1">{eyebrow}</div>}
+            <h1 className="font-display text-2xl font-semibold text-balance sm:text-3xl md:text-4xl">{title}</h1>
           {description && (
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>
           )}

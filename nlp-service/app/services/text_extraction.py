@@ -258,6 +258,20 @@ def _is_blurred_estimate(image) -> bool:
         return variance < 120  # blurred resumes ~ 20-80, sharp ~ 200-800
     except Exception:
         pass
+    # numpy fallback: same 3x3 Laplacian variance when cv2 is unavailable
+    # (Laplacian-variance keeps the scale comparable to the cv2 branch so a
+    # single threshold works for both; edges intact -> high variance).
+    try:
+        import numpy as np
+        gray = np.array(image.convert("L"), dtype=np.float64)
+        lap = (
+            -4.0 * gray[1:-1, 1:-1]
+            + gray[:-2, 1:-1] + gray[2:, 1:-1]
+            + gray[1:-1, :-2] + gray[1:-1, 2:]
+        )
+        return float(lap.var()) < 120
+    except Exception:
+        pass
     # PIL fallback: variance of FIND_EDGES response (no cv2)
     try:
         from PIL import ImageFilter
@@ -390,6 +404,11 @@ def _ocr_single_variant(variant, is_blurred: bool = False) -> str:
         if is_blurred:
             # also try PSM 3 as fallback
             add(pytesseract.image_to_string(variant, config="--oem 1 --psm 3"))
+        else:
+            # PSM 3 full-page pass: recovers structured sections and header names on
+            # image-based docs that the PSM 6 pass jumbles or drops. Dataset check:
+            # Carlo work_history/certs 4/0 -> 7/4, diplomas regain recipient name.
+            add(pytesseract.image_to_string(variant, config="--psm 3"))
     except Exception:
         pass
 

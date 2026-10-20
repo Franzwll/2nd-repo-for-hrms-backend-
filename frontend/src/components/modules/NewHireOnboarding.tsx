@@ -16,7 +16,6 @@ import {
   Lock,
   Pencil,
   Plus,
-  Printer,
   RefreshCw,
   RotateCcw,
   Save,
@@ -81,7 +80,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { usePagination } from "@/hooks/usePagination";
@@ -101,6 +99,7 @@ import {
   applicantsApi,
   checklistRequestsApi,
   coreHcmApi,
+  essApi,
   newHiresApi,
   onboardingItemsApi,
   resolveStorageUrl,
@@ -111,7 +110,6 @@ import {
 import {
   describeExport,
   exportReport,
-  printReport,
   type ReportData,
   type ReportFormat,
 } from "@/lib/report-export";
@@ -639,6 +637,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
   /** Default password for new portal accounts, read from the database
    *  (system_settings.default_password); falls back to the shipped default. */
   const [defaultPassword, setDefaultPassword] = useState(DEFAULT_ACCOUNT_PASSWORD);
+  /** True once the DB value loaded. When false we're showing the shipped
+   *  fallback, which may differ from the real default password. */
+  const [passwordFromDb, setPasswordFromDb] = useState(false);
 
   /** Departments & positions from the Core HCM database. */
   const [knownDepartments, setKnownDepartments] = useState<
@@ -664,9 +665,18 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       .get("default_password")
       .then((res) => {
         const pw = res?.setting_value?.password;
-        if (pw) setDefaultPassword(pw);
+        if (pw) {
+          setDefaultPassword(pw);
+          setPasswordFromDb(true);
+        }
       })
-      .catch((err) => console.warn("Could not fetch default password from database:", err));
+      .catch((err) => {
+        // 404 is expected for accounts without Settings:Full — the page keeps
+        // the shipped default, so only warn on real failures.
+        if ((err as { status?: number })?.status !== 404) {
+          console.warn("Could not fetch default password from database:", err);
+        }
+      });
     // Auto-regularization threshold (days worked, default 180 = 6 months) —
     // shared through system_settings so every admin session follows the
     // same DOLE cap. Readable by all roles with Settings:View.
@@ -1440,105 +1450,6 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
     }
   };
 
-  /** Password-protected export flow — same security logic as Applicant,
-   *  Recruitment and Core HCM: every file is sealed in an AES-256 ZIP. */
-  const [onbCsvOpen, setOnbCsvOpen] = useState(false);
-  const [onbCsvBusy, setOnbCsvBusy] = useState(false);
-  const [onbCsvPending, setOnbCsvPending] = useState<ReportFormat | null>(null);
-
-  // Whole-page report dataset (kept from aldrex alongside ferdy's per-hire builder).
-  const buildOnboardingReportData = (): ReportData => {
-    const deptOfHire = (h: NewHire) =>
-      knownPositions.find((p) => p.title === h.position)?.department ?? h.department;
-    const rowsData = [...filtered]
-      .map((h) => ({
-        name: h.name,
-        position: h.position,
-        department: deptOfHire(h),
-        stage: h.stage,
-        daysOfWork: daysOfWork(h.startDate),
-        progress: `${progress(h)}%`,
-        startDate: h.startDate,
-      }))
-      .sort(
-        (a, b) =>
-          a.department.localeCompare(b.department) ||
-          a.position.localeCompare(b.position) ||
-          a.name.localeCompare(b.name),
-      );
-    const scope = awaitingOnly
-      ? "Awaiting evaluation"
-      : showAllStages
-        ? "All stages"
-        : stage;
-    return {
-      title: "New Hire Onboarding Report",
-      subtitle: `Oxford Suites Makati HRMS • ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })} • Department: ${deptFilter} | Stage: ${scope}`,
-      columns: [
-        { header: "New Hire", key: "name", width: "17%" },
-        { header: "Position", key: "position", width: "17%" },
-        { header: "Department", key: "department", width: "15%" },
-        { header: "Stage", key: "stage", width: "13%" },
-        { header: "Days of Work", key: "daysOfWork", width: "11%" },
-        { header: "Progress", key: "progress", width: "11%" },
-        { header: "Start Date", key: "startDate", width: "16%" },
-      ],
-      rows: rowsData,
-      // Same security logic as every other module: hire rows carry PII.
-      sensitive: true,
-      summary: [
-        { label: "Total Hires", value: hires.length },
-        {
-          label: "Pre-onboarding",
-          value: hires.filter((h) => h.stage === "Pre-onboarding").length,
-        },
-        {
-          label: "Probationary",
-          value: hires.filter((h) => h.stage === "Probationary").length,
-        },
-        {
-          label: "Departments Covered",
-          value: new Set(rowsData.map((r) => r.department)).size,
-        },
-        { label: "Rows in Report", value: rowsData.length },
-      ],
-    };
-  };
-
-  const handleExportOnboardingReport = (format: ReportFormat) => {
-    if (buildOnboardingReportData().rows.length === 0) {
-      toast.error("No hires to export for the current filters.");
-      return;
-    }
-    setOnbCsvPending(format);
-    setOnbCsvOpen(true);
-  };
-
-  const confirmOnboardingExport = async (password: string) => {
-    if (!onbCsvPending) return;
-    const format = onbCsvPending;
-    const data = buildOnboardingReportData();
-    if (data.rows.length === 0) {
-      toast.error("No hires to export for the current filters.");
-      return;
-    }
-    setOnbCsvBusy(true);
-    try {
-      await exportReport(data, format, { password });
-      const { zipName } = describeExport(data, format);
-      toast.success(
-        `${data.title} exported as password-protected ${format.toUpperCase()} (${zipName}).`,
-      );
-      setOnbCsvOpen(false);
-      setOnbCsvPending(null);
-    } catch (e) {
-      console.error("Protected export failed:", e);
-      toast.error(e instanceof Error ? e.message : "Protected export failed.");
-    } finally {
-      setOnbCsvBusy(false);
-    }
-  };
-
   /**
    * Automatic regularization by operation of law (Art. 296, Labor Code; DOLE
    * 6-month rule). When a probationary hire is allowed to keep working past
@@ -1698,7 +1609,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       const targetEmail = form.email;
       resetHireForm();
       toast.success(
-        `${name} moved to Probationary — portal account created & login credentials sent to ${targetEmail} (default password: ${defaultPassword})`,
+        passwordFromDb
+          ? `${name} moved to Probationary — portal account created & login credentials sent to ${targetEmail} (default password: ${defaultPassword})`
+          : `${name} moved to Probationary — portal account created & login credentials sent to ${targetEmail}`,
       );
       hireStore.updateHire(id, {
         name: form.name,
@@ -1750,81 +1663,9 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       <PageHeader
         title="New Hire Onboarding"
         actions={
-          <>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <Download className="h-4 w-4" /> Generate Report
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
-                <DropdownMenuItem onClick={() => handleExportOnboardingReport("pdf")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as PDF <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportOnboardingReport("docx")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as DOCX <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportOnboardingReport("excel")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as Excel <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportOnboardingReport("csv")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span className="flex items-center gap-1.5">
-                    Export as CSV <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </span>
-                </DropdownMenuItem>
-                <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-                  Every file is sealed in a password-protected ZIP (AES-256). You will be asked for
-                  a file password.
-                </p>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => {
-                    const data = buildOnboardingReportData();
-                    printReport(data);
-                    toast.success(`${data.title} sent to printer.`);
-                  }}
-                >
-                  <Printer className="mr-2 h-4 w-4" /> Print…
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <SecureExportDialog
-              open={onbCsvOpen}
-              onOpenChange={(o) => {
-                if (!onbCsvBusy) {
-                  setOnbCsvOpen(o);
-                  if (!o) setOnbCsvPending(null);
-                }
-              }}
-              reportTitle="New Hire Onboarding Report"
-              formatLabel={
-                !onbCsvPending
-                  ? ""
-                  : onbCsvPending === "pdf"
-                    ? "PDF"
-                    : onbCsvPending === "docx"
-                      ? "DOCX"
-                      : onbCsvPending === "excel"
-                        ? "Excel"
-                        : "CSV"
-              }
-              busy={onbCsvBusy}
-              onConfirm={confirmOnboardingExport}
-            />
-            <Button variant="outline" className="gap-2" onClick={() => setReportsOpen(true)}>
-              <Download className="h-4 w-4" /> Hire Reports
-            </Button>
-          </>
+          <Button variant="outline" className="gap-2" onClick={() => setReportsOpen(true)}>
+            <Download className="h-4 w-4" /> Generate Report
+          </Button>
         }
       />
 
@@ -1960,7 +1801,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
-        <TabsList className="flex h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0 shadow-none">
+        <TabsList>
           <TabsTrigger className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm" value="pipeline">
             <ClipboardList className="h-3.5 w-3.5" /> Onboarding Pipeline
           </TabsTrigger>
@@ -2051,14 +1892,14 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <div className="relative">
+                  <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
+                    <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                       <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder="Search name, position..."
-                        className="w-56 pl-8"
+                        className="pl-8"
                       />
                     </div>
                     <Select value={deptFilter} onValueChange={setDeptFilter}>
@@ -2761,7 +2602,7 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
                                           className="h-2 [&>div]:bg-gold [&>div]:shadow-[0_0_10px_var(--gold)]"
                                         />
                                       </div>
-                                      <div className="grid grid-cols-2 gap-2 text-xs">
+                                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 text-xs">
                                         <div className="rounded-lg border border-gold/25 bg-gold/5 px-3 py-2">
                                           <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">
                                             Requirements
@@ -3683,9 +3524,19 @@ function AdminNewHireOnboarding({ role }: { role: "superadmin" | "admin" }) {
           </DialogHeader>
 
           <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
-            Account note: the employee portal account is created with the default password{" "}
-            <span className="font-medium text-foreground">{defaultPassword}</span> — the hire is
-            prompted to change it on first login.
+            {passwordFromDb ? (
+              <>
+                Account note: the employee portal account is created with the default password{" "}
+                <span className="font-medium text-foreground">{defaultPassword}</span> — the hire is
+                prompted to change it on first login.
+              </>
+            ) : (
+              <>
+                Account note: the employee portal account is created with the system default
+                password — login credentials are emailed to the hire, who is prompted to change the
+                password on first login.
+              </>
+            )}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -4073,39 +3924,62 @@ export function EmployeeOnboarding() {
 
   const loadOnboarding = useCallback(() => {
     setLoading(true);
-    // Resolve the signed-in portal user from the auth session (NOT the mock
-    // profile) so the checklist always reflects the logged-in employee's own
-    // new-hire record from the database.
-    const authUser = getUser();
-    const myName = authUser?.full_name?.trim().toLowerCase() ?? "";
-    const myEmployeeId = authUser?.employee_id ?? null;
-
-    newHiresApi
-      .list({ per_page: 100 })
+    // Employees use the ESS-safe endpoint (no New Hire Onboarding module
+    // permission needed): GET /ess/my-checklist returns { data, new_hire }
+    // where data is the same read-time union the admin pipeline sees —
+    // materialized rows + virtual items from Active templates matching the
+    // hire's stage + position. Falling back to the staff-only new-hires list
+    // keeps local/dev sessions working, but ESS is authoritative.
+    essApi
+      .myChecklist()
       .then((res) => {
-        const mine =
-          (myEmployeeId != null
-            ? res.data.find((h) => h.employee_id === myEmployeeId)
-            : undefined) ??
-          (myName ? res.data.find((h) => h.name.trim().toLowerCase() === myName) : undefined) ??
-          // Demo fallback: prefer a Probationary hire so the probationary
-          // checklist view stays populated straight from the database.
-          res.data.find((h) => h.stage === "Probationary") ??
-          res.data[0] ??
-          null;
-        setNewHire(mine);
-        return mine;
+        if (res.new_hire) {
+          const mine = {
+            new_hire_id: res.new_hire.new_hire_id,
+            new_hire_code: res.new_hire.new_hire_code,
+            name: res.new_hire.name,
+            stage: res.new_hire.stage,
+          } as ApiNewHire;
+          setNewHire(mine);
+          return { mine, apiItems: res.data as any[] };
+        }
+        // Fallback: resolve the signed-in portal user from the auth session
+        // (NOT the mock profile) so the checklist reflects the logged-in
+        // employee's own new-hire record from the database.
+        const authUser = getUser();
+        const myName = authUser?.full_name?.trim().toLowerCase() ?? "";
+        const myEmployeeId = authUser?.employee_id ?? null;
+
+        return newHiresApi.list({ per_page: 100 }).then((listRes) => {
+          const mine =
+            (myEmployeeId != null
+              ? listRes.data.find((h) => h.employee_id === myEmployeeId)
+              : undefined) ??
+            (myName ? listRes.data.find((h) => h.name.trim().toLowerCase() === myName) : undefined) ??
+            // Demo fallback: prefer a Probationary hire so the probationary
+            // checklist view stays populated straight from the database.
+            listRes.data.find((h) => h.stage === "Probationary") ??
+            listRes.data[0] ??
+            null;
+          setNewHire(mine);
+          if (!mine) return null;
+          return onboardingItemsApi
+            .listForNewHire(mine.new_hire_id)
+            .then((apiItems) => ({ mine, apiItems }));
+        });
       })
-      .then((mine) => {
-        if (!mine) return;
-        return onboardingItemsApi.listForNewHire(mine.new_hire_id).then((apiItems) => {
-          // Show ONLY the Probationary checklist — pre-onboarding / onboarding
-          // items are hidden from the employee portal entirely.
-          const probationaryOnly = apiItems.filter(
-            (i) => (i.phase ?? "Probationary") === "Probationary",
-          );
+      .then((result) => {
+        if (!result) return;
+        const { apiItems } = result;
+        {
+          // Show the hire's full visible checklist (pre-onboarding + probationary).
+          // The API (NewHire::visibleOnboardingItems) already returns only Active
+          // templates matching the hire's stage + position, so no phase filter
+          // here — filtering to Probationary only hid every active pre-onboarding
+          // template from employees.
+          const visibleItems = apiItems;
           setItems(
-            probationaryOnly.map((i) => ({
+            visibleItems.map((i) => ({
               id: i.employee_onboarding_item_id
                 ? `chk-${i.employee_onboarding_item_id}`
                 : `virt-${i.template_item_id}`,
@@ -4136,12 +4010,12 @@ export function EmployeeOnboarding() {
                   : (i.submitted_at?.slice(0, 10) ?? "2026-08-01"),
               done: Boolean(i.done),
               rank: i.done ? 0 : i.submitted_at ? 1 : 2,
-              phase: "Probationary" as Phase,
+              phase: (i.phase === "Pre-onboarding" ? "Pre-onboarding" : "Probationary") as Phase,
               reviewNote: (i.review_note ?? null) as string | null,
               returnedCount: (i.returned_count ?? 0) as number,
             })),
           );
-        });
+        }
       })
       .catch((err) => {
         console.warn("Could not load onboarding checklist from API:", err);
@@ -4506,17 +4380,6 @@ export function EmployeeOnboarding() {
                   Every file is sealed in a password-protected ZIP (AES-256). You will be asked for
                   a file password.
                 </p>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => {
-                    const data = buildEmployeeReportData();
-                    if (!data) return;
-                    printReport(data);
-                    toast.success(`${data.title} sent to printer.`);
-                  }}
-                >
-                  <Printer className="mr-2 h-4 w-4" /> Print…
-                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <SecureExportDialog

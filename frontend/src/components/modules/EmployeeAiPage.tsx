@@ -123,8 +123,11 @@ export function EmployeeAiPage() {
           const activeSess = parsed.find((s) => s.id === savedActiveId);
           if (activeSess) setMessages(activeSess.messages);
         } else if (parsed.length > 0) {
-          setActiveSessionId(parsed[0].id);
-          setMessages(parsed[0].messages);
+          const first = parsed[0];
+          if (first) {
+            setActiveSessionId(first.id);
+            setMessages(first.messages);
+          }
         }
       } else {
         // Fallback migration for legacy single-thread history
@@ -349,8 +352,9 @@ export function EmployeeAiPage() {
     } catch {}
 
     if (activeSessionId === sessionId) {
-      if (updated.length > 0) {
-        handleSelectSession(updated[0]);
+      const next = updated[0];
+      if (next) {
+        handleSelectSession(next);
       } else {
         handleNewConversation();
       }

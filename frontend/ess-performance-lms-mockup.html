@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESS Performance — LMS Materials & Assessments (Mock-up)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          border: "hsl(var(--border))",
+          input: "hsl(var(--input))",
+          ring: "hsl(var(--ring))",
+          background: "hsl(var(--background))",
+          foreground: "hsl(var(--foreground))",
+          primary: {
+            DEFAULT: "hsl(var(--primary))",
+            foreground: "hsl(var(--primary-foreground))"
+          },
+          secondary: {
+            DEFAULT: "hsl(var(--secondary))",
+            foreground: "hsl(var(--secondary-foreground))"
+          },
+          destructive: {
+            DEFAULT: "hsl(var(--destructive))",
+            foreground: "hsl(var(--destructive-foreground))"
+          },
+          muted: {
+            DEFAULT: "hsl(var(--muted))",
+            foreground: "hsl(var(--muted-foreground))"
+          },
+          accent: {
+            DEFAULT: "hsl(var(--accent))",
+            foreground: "hsl(var(--accent-foreground))"
+          },
+          popover: {
+            DEFAULT: "hsl(var(--popover))",
+            foreground: "hsl(var(--popover-foreground))"
+          },
+          card: {
+            DEFAULT: "hsl(var(--card))",
+            foreground: "hsl(var(--card-foreground))"
+          },
+          sage: "#047857",
+          amber50: "#fef3c7",
+          sage10: "#ecfdf5",
+          violet10: "#f5f3ff",
+          blue10: "#eff6ff",
+          emerald10: "#d1fae5",
+          red10: "#fee2e2"
+        },
+        fontFamily: {
+          sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+          display: ["ui-sans-serif", "system-ui", "sans-serif"],
+          mono: ["ui-monospace", "SFMono-Regular", "monospace"]
+        }
+      }
+    }
+  }
+</script>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Syne:wght@400;700;800&display=swap");
+  body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  }
+  .bg-brand-canvas { background: hsl(var(--muted)) / 50; }
+  .border-brand-border { border-color: hsl(var(--border)) / 70; }
+  .text-primary-dark { color: hsl(var(--primary)); }
+  .bg-gold { background: #fef3c7; }
+  .text-gold-dark { color: #92400e; }
+  .bg-sage { background: #ecfdf5; }
+  .text-sage-dark { color: #047857; }
+  .bg-violet { background: #f5f3ff; }
+  .text-violet-dark { color: #5b21b6; }
+  .bg-emerald { background: #d1fae5; }
+  .text-emerald-dark { color: #065f46; }
+  .bg-crimson { background: #fecaca; }
+  .text-crimson-dark { color: #991b1b; }
+  .glass-card { background: hsl(var(--card)); border: 1px solid hsl(var(--border)) / 70; border-radius: 1rem; box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05); }
+  .tile-badge { position: absolute; inset-inline-start: 0; inset-block-start: 0; width: 1rem; height: 1rem; border-start-end-radius: 0.5rem; border-end-end-radius: 0.5rem; border-left-width: 1px; border-bottom-width: 1px; }
+  .animate-pulse-soft { animation: pulse-soft 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+  .lucide { stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+</style>
+</head>
+<body class="antialiased p-4 sm:p-6 md:p-8">
+  <!-- Header -->
+  <div class="mb-8">
+    <div class="flex items-center gap-3 mb-2">
+      <div class="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+        <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3a4 4 0 0 1-4 4H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"></path><circle cx="12" cy="8" r="6"></circle></svg>
+      </div>
+      <div>
+        <h1 class="text-xl font-display font-bold tracking-tight">Performance Development</h1>
+        <p class="text-xs text-muted-foreground">LMS Materials · Assigned Modules · Urgent badge dots</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stat cards row -->
+  <div id="stats-row" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+    <div class="glass-card p-4">
+      <p class="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Enrolled Handbooks</p>
+      <div class="mt-2 flex items-baseline gap-2">
+        <span class="text-3xl font-display font-bold text-primary">8</span>
+        <span class="text-[11px] text-muted-foreground font-medium">modules</span>
+      </div>
+    </div>
+    <div class="glass-card p-4">
+      <p class="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Passed & Certified</p>
+      <div class="mt-2 flex items-baseline gap-2">
+        <span class="text-3xl font-display font-bold text-emerald-600">5</span>
+        <span class="text-[11px] text-muted-foreground font-medium">of 8 (62.5%)</span>
+      </div>
+    </div>
+    <div class="glass-card p-4">
+      <p class="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Study Completion</p>
+      <div class="mt-2 flex items-baseline gap-2">
+        <span class="text-3xl font-display font-bold text-primary">63%</span>
+        <span class="text-[11px] text-muted-foreground font-medium">avg read</span>
+      </div>
+      <div class="w-full bg-muted/50 h-1.5 rounded-full overflow-hidden mt-2 border border-border/50">
+        <div class="bg-primary h-1.5 rounded-full transition-all duration-500" style="width: 63%"></div>
+      </div>
+    </div>
+    <div class="glass-card p-4">
+      <p class="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Average Quiz Score</p>
+      <div class="mt-2 flex items-baseline gap-2">
+        <span class="text-3xl font-display font-bold text-dusty">84%</span>
+        <span class="text-[11px] text-muted-foreground font-medium">tier: Proficient</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sub-tabs -->
+  <div id="sub-tabs" class="flex items-center justify-between gap-2 mb-6 border-b border-border/60 pb-2">
+    <div class="flex items-center rounded-lg border border-border/70 bg-card p-0.5">
+      <button id="tab-materials" onclick="switchTab('materials')" class="flex items-center gap-1.5 rounded-lg border-transparent bg-primary text-primary-foreground px-4 py-2 text-xs font-bold shadow-sm data-[state=active]:bg-primary">
+        <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 7v14"></path><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"></path></svg>
+        <span>Materials</span>
+        <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold bg-primary-foreground/10 text-primary-foreground">8</span>
+      </button>
+      <button id="tab-assessments" onclick="switchTab('assessments')" class="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition">
+        <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15.477 12.89 1.515 8.526a.5.5 0 0 1-.81.47l-3.58-2.687a1 1 0 0 0-1.197 0l-3.586 2.686a.5.5 0 0 1-.81-.469l1.514-8.526"></path><circle cx="12" cy="8" r="6"></circle></svg>
+        <span>Assessments</span>
+        <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold bg-muted text-muted-foreground">5</span>
+      </button>
+    </div>
+    <div class="flex items-center gap-2">
+      <div class="relative w-48">
+        <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+        <input id="search-input" type="text" placeholder="Search handbooks…" class="w-full pl-9 pr-3 py-2 bg-card border border-input rounded-xl text-sm font-medium placeholder:text-muted-foreground focus:ring-2 focus:ring-primary focus:outline-none transition sm:w-64">
+      </div>
+      <div class="flex items-center gap-2 text-[10px] text-muted-foreground">
+        <span class="flex items-center gap-1"><svg class="h-2 w-2 rounded-full bg-emerald-500"></svg> Passed</span>
+        <span class="flex items-center gap-1"><svg class="h-2 w-2 rounded-full bg-amber-500"></svg> In Progress</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Materials tab content -->
+  <div id="tab-materials-content" class="space-y-6">
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" id="materials-grid"></div>
+  </div>
+
+  <!-- Assessments tab content -->
+  <div id="tab-assessments-content" class="hidden space-y-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-display text-lg font-bold tracking-tight">My Assigned Modules</h2>
+      <button class="w-full sm:w-auto inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-white p-2 text-xs font-bold shadow-sm hover:bg-muted transition">
+        <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15.477 12.89 1.515 8.526a.5.5 0 0 1-.81.47l-3.58-2.687a1 1 0 0 0-1.197 0l-3.586 2.686a.5.5 0 0 1-.81-.469l1.514-8.526"></path><circle cx="12" cy="8" r="6"></circle></svg>
+        Mark all reviewed
+      </button>
+    </div>
+    <div class="glass-card overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left">
+          <thead class="border-b border-border/60">
+            <tr class="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+              <th class="py-3 px-4 font-semibold text-foreground w-24">Handbook Title</th>
+              <th class="py-3 px-4 font-semibold text-muted-foreground w-40">Department</th>
+              <th class="py-3 px-4 font-semibold text-muted-foreground w-32 text-right">Quiz Points</th>
+              <th class="py-3 px-4 font-semibold text-muted-foreground w-28 text-right">Progress</th>
+              <th class="py-3 px-4 font-semibold text-muted-foreground w-32">Status</th>
+              <th class="py-3 px-4 font-semibold text-muted-foreground text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody id="assessments-table" class="divide-y divide-border/60"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="flex items-center justify-between pt-4 border-t border-border/60">
+      <p class="text-xs text-muted-foreground">Status colors: green = passed, amber = in progress, gray = not started.</p>
+      <div class="flex gap-2">
+        <button class="px-3 py-1 text-xs font-medium text-muted-foreground bg-muted hover:bg-muted/80 rounded-md transition">Filter: All</button>
+        <button class="px-3 py-1 text-xs font-medium text-emerald-600 bg-emerald-50 border-emerald-500/30 hover:bg-emerald-100 rounded-md transition">Passed</button>
+        <button class="px-3 py-1 text-xs font-medium text-amber-600 bg-amber-50 border-amber-500/30 hover:bg-amber-100 rounded-md transition">In Progress</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activity player (Option C: full in-tab activity view) -->
+  <div id="player-view" class="hidden"></div>
+
+  <!-- Connection chain diagram -->
+  <div class="mt-10 pt-8 border-t border-border/60">
+    <h2 class="font-display text-lg font-bold tracking-tight mb-4">How one quiz pass flows through the system</h2>
+    <div class="glass-card p-4 sm:p-6">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center gap-6 text-xs font-mono">
+        <!-- Step 1 -->
+        <div class="flex-1 flex flex-col items-center gap-2 relative">
+          <div class="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500 flex items-center justify-center">
+            <svg class="w-5 h-5 text-emerald-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"></path><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"></path></svg>
+          </div>
+          <p class="font-bold text-foreground">Pass quiz ≥ 80%</p>
+          <p class="text-[10px] text-muted-foreground text-center">lms_prescribed.status → passed</p>
+        </div>
+        <div class="w-4 h-4 border-t border-border/60 self-center"></div>
+        <!-- Step 2 -->
+        <div class="flex-1 flex flex-col items-center gap-2 relative">
+          <div class="w-10 h-10 rounded-full bg-blue-500/20 border border-blue-500 flex items-center justify-center">
+            <svg class="w-5 h-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+          </div>
+          <p class="font-bold text-foreground">Task marked complete</p>
+          <p class="text-[10px] text-muted-foreground text-center">performance_tasks.status → completed</p>
+        </div>
+        <div class="w-4 h-4 border-t border-border/60 self-center"></div>
+        <!-- Step 3 -->
+        <div class="flex-1 flex flex-col items-center gap-2 relative">
+          <div class="w-10 h-10 rounded-full bg-primary/20 border border-primary flex items-center justify-center">
+            <svg class="w-5 h-5 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
+          </div>
+          <p class="font-bold text-foreground">XP granted</p>
+          <p class="text-[10px] text-muted-foreground text-center">xp_transactions.source_type = lms_quiz</p>
+        </div>
+        <div class="w-4 h-4 border-t border-border/60 self-center"></div>
+        <!-- Step 4 -->
+        <div class="flex-1 flex flex-col items-center gap-2 relative">
+          <div class="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500 flex items-center justify-center">
+            <svg class="w-5 h-5 text-amber-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 15L12 19L20 9"></path></svg>
+          </div>
+          <p class="font-bold text-foreground">Competency updated</p>
+          <p class="text-[10px] text-muted-foreground text-center">CompetencyService.updateSkillLevel()</p>
+        </div>
+        <div class="w-4 h-4 border-t border-border/60 self-center"></div>
+        <!-- Step 5 -->
+        <div class="flex-1 flex flex-col items-center gap-2">
+          <div class="w-10 h-10 rounded-full bg-sage bg-sage/20 border border-sage flex items-center justify-center">
+            <svg class="w-5 h-5 text-emerald-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+          </div>
+          <p class="font-bold text-foreground">Succession recalc</p>
+          <p class="text-[10px] text-muted-foreground text-center">readiness_index = 40% performance + 60% competency</p>
+        </div>
+      </div>
+      <div class="mt-4 p-3 rounded-md bg-amber-50 border border-amber-100 flex items-start gap-3">
+        <svg class="w-4 h-4 text-amber-600 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v2m0 4v.01m-6.3 13h11.6M14 14v4m-7 0h12m-3-4L9 16m0 0l4 4m-4-4L5 8"></path></svg>
+        <p class="text-xs text-amber-800">Ready in 1–2 Years flag is HR-only — the system recalculates the index but never auto-assigns the HR flag.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ---------- Mock data mirroring the repo schemas ---------- */
+    const departments = [
+      { id: "front_office", name: "Front Office" },
+      { id: "culinary", name: "Culinary / Kitchen" },
+      { id: "fb_service", name: "F&B Service" },
+      { id: "housekeeping", name: "Housekeeping" },
+      { id: "compliance", name: "Compliance" }
+    ];
+
+    const documents = [
+      { id: "LMS-101", title: "Food Safety & Sanitation Level 2", category: "Compliance", department_id: "culinary", status: "Published", estimated_reading_minutes: 20, estimated_pages: 18, exp_reward: 100, file_path: "/storage/documents/food-safety.pdf" },
+      { id: "LMS-102", title: "Customer Excellence in Hospitality", category: "Service Quality", department_id: "fb_service", status: "Published", estimated_reading_minutes: 15, estimated_pages: 12, exp_reward: 80, file_path: "/storage/documents/customer-excellence.pdf" },
+      { id: "LMS-103", title: "Fire Safety & Emergency Response", category: "Compliance", department_id: "compliance", status: "Published", estimated_reading_minutes: 25, estimated_pages: 22, exp_reward: 120, file_path: "/storage/documents/fire-safety.pdf" },
+      { id: "LMS-104", title: "Front Desk Check-In Standards", category: "SOP Manual", department_id: "front_office", status: "Published", estimated_reading_minutes: 12, estimated_pages: 10, exp_reward: 60, file_path: "/storage/documents/front-desk.pdf" },
+      { id: "LMS-105", title: "Housekeeping Turn-Down Protocol", category: "SOP Manual", department_id: "housekeeping", status: "Published", estimated_reading_minutes: 10, estimated_pages: 8, exp_reward: 50, file_path: "/storage/documents/turn-down.pdf" },
+      { id: "LMS-106", title: "Wine & Beverage Pairing Masterclass", category: "Masterclass Guide", department_id: "fb_service", status: "Draft", estimated_reading_minutes: 30, estimated_pages: 25, exp_reward: 150, file_path: "/storage/documents/wine-pairing.pdf" }
+    ];
+
+    const prescribed = [
+      { id: "P-001", lms_id: "LMS-101", employee: "EMP-001", scores: 95, ratings: 0, progress: 100, status: "Completed", created_date: "Jul 10, 2026" },
+      { id: "P-002", lms_id: "LMS-102", employee: "EMP-001", scores: 88, ratings: 0, progress: 100, status: "Completed", created_date: "Jun 24, 2026" },
+      { id: "P-003", lms_id: "LMS-103", employee: "EMP-001", scores: 50, ratings: 0, progress: 50, status: "In Progress", created_date: null },
+      { id: "P-004", lms_id: "LMS-104", employee: "EMP-001", scores: 0, ratings: 0, progress: 0, status: "Not Started", created_date: null },
+      { id: "P-005", lms_id: "LMS-105", employee: "EMP-001", scores: 0, ratings: 0, progress: 0, status: "Not Started", created_date: null },
+      { id: "P-006", lms_id: "LMS-106", employee: "EMP-001", scores: 0, ratings: 0, progress: 0, status: "Not Started", created_date: null }
+    ];
+
+    const DEFAULT_QUIZ = {
+      reading: [
+        "This handbook outlines the standard operating procedures your department follows. Read each section carefully before answering the assessment questions.",
+        "Key policies are reviewed periodically and may be updated. Always check the latest revision in the HR portal before applying a procedure on the floor.",
+        "If anything is unclear, raise it with your supervisor or the HR team. Understanding the material is part of your role readiness."
+      ],
+      questions: [
+        { q: "Where can you always find the latest revision of this handbook?", options: ["From a coworker", "In the HR portal", "Posted in the break room", "It is not tracked"], answer: 1 },
+        { q: "Who should you approach if a procedure is unclear?", options: ["No one", "Only the guests", "Your supervisor or HR", "Another new hire"], answer: 2 },
+        { q: "When should you review updated policies?", options: ["Never", "Only when reminded", "Whenever a new revision is released", "Once a year"], answer: 2 }
+      ]
+    };
+
+    const QUIZZES = {
+      "LMS-101": {
+        reading: [
+          "Food safety begins with clean hands and clean surfaces. Wash hands for at least 20 seconds with soap and warm water before handling any food.",
+          "Keep hot food at or above 135\u00b0F (57\u00b0C) and cold food at or below 41\u00b0F (5\u00b0C). The danger zone between 41\u00b0F and 135\u00b0F allows rapid bacterial growth.",
+          "Poultry, stuffed items, and reheated leftovers must reach a minimum internal temperature of 165\u00b0F (74\u00b0C)."
+        ],
+        questions: [
+          { q: "What is the minimum internal temperature for reheated leftovers?", options: ["135\u00b0F", "145\u00b0F", "165\u00b0F", "180\u00b0F"], answer: 2 },
+          { q: "Hot food must be held at or above which temperature?", options: ["41\u00b0F", "100\u00b0F", "135\u00b0F", "165\u00b0F"], answer: 2 },
+          { q: "How long should you wash your hands?", options: ["5 seconds", "10 seconds", "20 seconds", "60 seconds"], answer: 2 },
+          { q: "The temperature \u2018danger zone\u2019 is\u2026", options: ["41\u00b0F\u2013135\u00b0F", "0\u00b0F\u201340\u00b0F", "135\u00b0F\u2013165\u00b0F", "165\u00b0F\u2013212\u00b0F"], answer: 0 }
+        ]
+      },
+      "LMS-102": {
+        reading: [
+          "Every guest interaction is a chance to build loyalty. Greet guests within 30 seconds of arrival and use their name whenever it is known.",
+          "Listen fully before responding. Acknowledge concerns, apologise sincerely, and state the action you will take to resolve them.",
+          "Escalate to a supervisor if a guest remains unsatisfied or if a complaint involves safety, health, or billing accuracy."
+        ],
+        questions: [
+          { q: "Within how many seconds should a guest be greeted?", options: ["10", "30", "60", "120"], answer: 1 },
+          { q: "What should you do first when a guest raises a concern?", options: ["Offer a discount", "Listen fully", "Call security", "Walk away"], answer: 1 },
+          { q: "When should you escalate to a supervisor?", options: ["Never", "Only if the guest shouts", "If the guest remains unsatisfied or it involves safety/billing", "Only at closing time"], answer: 2 },
+          { q: "Using a guest\u2019s name\u2026", options: ["Is discouraged", "Builds loyalty and personalisation", "Slows service down", "Is only for VIPs"], answer: 1 }
+        ]
+      },
+      "LMS-103": {
+        reading: [
+          "Know your evacuation routes and the location of the two nearest fire exits. Never block exits or fire equipment.",
+          "On discovering a fire: raise the alarm, evacuate guests calmly, and only attempt to fight a small fire if trained and it is safe to do so.",
+          "Use the PASS technique on extinguishers \u2014 Pull the pin, Aim at the base, Squeeze the handle, Sweep side to side."
+        ],
+        questions: [
+          { q: "What does the \u2018A\u2019 in the PASS technique mean?", options: ["Alert", "Aim at the base", "Assemble", "Assess"], answer: 1 },
+          { q: "What is the first thing to do on discovering a fire?", options: ["Take a photo", "Raise the alarm", "Find a bucket", "Turn off the lights"], answer: 1 },
+          { q: "Fire exits should be\u2026", options: ["Used for storage", "Locked at night", "Always clear and unobstructed", "Decorated"], answer: 2 },
+          { q: "You should attempt to fight a fire only when\u2026", options: ["Always", "Never", "Trained and it is safe to do so", "Guests are watching"], answer: 2 }
+        ]
+      }
+    };
+
+    const CATEGORY_TINTS = {
+      culinary: { tile: "from-emerald-500/20 to-emerald-500/5 border-emerald-500/25", icon: "text-emerald-500", border: "border-emerald-500/30", text: "text-emerald-600" },
+      tax: { tile: "from-blue-500/20 to-blue-500/5 border-blue-500/25", icon: "text-blue-500", border: "border-blue-500/30", text: "text-blue-600" },
+      clearance: { tile: "from-amber-500/20 to-amber-500/5 border-amber-500/25", icon: "text-amber-500", border: "border-amber-500/30", text: "text-amber-600" },
+      statutory: { tile: "from-violet-500/20 to-violet-500/5 border-violet-500/25", icon: "text-violet-500", border: "border-violet-500/30", text: "text-violet-600" },
+      default: { tile: "from-red-500/15 to-red-500/5 border-red-500/20", icon: "text-red-500", border: "border-red-500/30", text: "text-red-600" }
+    };
+
+    function tintFor(category) {
+      const c = category.toLowerCase();
+      if (c.includes("safety") || c.includes("compliance") || c.includes("fire")) return CATEGORY_TINTS.clearance;
+      if (c.includes("medical") || c.includes("health") || c.includes("haccp")) return CATEGORY_TINTS.medical || CATEGORY_TINTS.clearance;
+      if (c.includes("clearance") || c.includes("nbi")) return CATEGORY_TINTS.clearance;
+      if (c.includes("sss") || c.includes("philhealth") || c.includes("hdmf") || c.includes("statutory")) return CATEGORY_TINTS.statutory;
+      if (c.includes("tax") || c.includes("bir")) return CATEGORY_TINTS.tax;
+      return CATEGORY_TINTS.default;
+    }
+
+    function statusForProgress(pct) {
+      if (pct >= 100) return { label: "Completed", variant: "text-emerald-600 bg-emerald-50 border-emerald-500/30" };
+      if (pct > 0) return { label: "In Progress", variant: "text-amber-600 bg-amber-50 border-amber-500/30" };
+      return { label: "Not Started", variant: "text-slate-500 bg-slate-50 border-slate-500/30" };
+    }
+
+    /* ---------- Option A mirror: action label + action button + clickable flow ---------- */
+    function materialActionLabel(pct) {
+      if (pct >= 100) return null;
+      return pct > 0 ? "Action: continue course" : "Action: start course";
+    }
+
+    function materialActionText(pct) {
+      if (pct >= 100) return "View Certificate";
+      return pct > 0 ? "Continue →" : "Start Course →";
+    }
+
+    function assessmentActionLabel(pct) {
+      if (pct >= 100) return null;
+      return pct > 0 ? "Action: take assessment" : "Action: start assessment";
+    }
+
+    function assessmentActionText(pct) {
+      return pct >= 100 ? "View Result" : "Take Assessment →";
+    }
+
+    /* ---------- Option C: full activity player (front-end only) ---------- */
+    function openActivity(lmsId) {
+      const doc = documents.find(d => d.id === lmsId);
+      if (!doc) return;
+      const quiz = QUIZZES[lmsId] || DEFAULT_QUIZ;
+      const p = prescribed.find(x => x.lms_id === lmsId);
+      const done = !!p && p.progress >= 100;
+      activity = {
+        doc: doc,
+        quiz: quiz,
+        index: 0,
+        answers: new Array(quiz.questions.length).fill(null),
+        submitted: done,
+        score: done ? p.scores : null,
+        correct: null
+      };
+      statsRow.classList.add("hidden");
+      subTabs.classList.add("hidden");
+      contentMaterials.classList.add("hidden");
+      contentAssessments.classList.add("hidden");
+      playerView.classList.remove("hidden");
+      renderPlayerShell();
+      renderQuestion();
+      window.scrollTo(0, 0);
+    }
+
+    function closeActivity() {
+      activity = null;
+      playerView.classList.add("hidden");
+      playerView.innerHTML = "";
+      statsRow.classList.remove("hidden");
+      subTabs.classList.remove("hidden");
+      switchTab(currentTab);
+      window.scrollTo(0, 0);
+    }
+
+    function renderPlayerShell() {
+      const a = activity;
+      const total = a.quiz.questions.length;
+      playerView.innerHTML = `
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <button type="button" onclick="closeActivity()" class="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-card px-3 py-1.5 text-xs font-bold shadow-sm transition hover:bg-muted cursor-pointer">
+            <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
+            Back to list
+          </button>
+          <span class="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">${a.doc.category}</span>
+        </div>
+        <div class="glass-card p-4 sm:p-6">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 class="font-display text-xl font-bold tracking-tight">${a.doc.title}</h2>
+              <p class="mt-1 text-xs text-muted-foreground">${a.doc.estimated_reading_minutes} min read &middot; ${a.doc.estimated_pages} pages &middot; ${a.doc.exp_reward} XP</p>
+            </div>
+            <span id="player-status" class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold"></span>
+          </div>
+          <div class="mt-4">
+            <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span id="player-progress-label">Question 1 of ${total}</span>
+              <span id="player-progress-pct">0%</span>
+            </div>
+            <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-black/5">
+              <div id="player-progress-bar" class="h-2 rounded-full bg-primary transition-all duration-500" style="width: 0%"></div>
+            </div>
+          </div>
+          <div class="mt-5 grid gap-5 lg:grid-cols-2">
+            <div class="overflow-hidden rounded-xl border border-border/70 bg-card">
+              <div class="flex items-center gap-2 border-b border-border/60 px-4 py-2.5">
+                <svg class="h-3.5 w-3.5 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"></path><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"></path></svg>
+                <span class="text-xs font-bold">Reading Material</span>
+              </div>
+              <div class="max-h-[460px] space-y-3 overflow-y-auto px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+                ${a.quiz.reading.map(para => `<p>${para}</p>`).join("")}
+              </div>
+            </div>
+            <div id="quiz-pane"></div>
+          </div>
+        </div>
+      `;
+      updateProgress();
+    }
+
+    function updateProgress() {
+      if (!activity) return;
+      const a = activity;
+      const total = a.quiz.questions.length;
+      const answered = a.answers.filter(x => x !== null).length;
+      const pct = a.submitted ? 100 : Math.round((answered / total) * 100);
+      const status = statusForProgress(pct);
+      const bar = document.getElementById("player-progress-bar");
+      const label = document.getElementById("player-progress-label");
+      const pctEl = document.getElementById("player-progress-pct");
+      const statusEl = document.getElementById("player-status");
+      if (bar) bar.style.width = pct + "%";
+      if (label) label.textContent = a.submitted ? "Assessment submitted" : "Question " + (a.index + 1) + " of " + total;
+      if (pctEl) pctEl.textContent = pct + "%";
+      if (statusEl) {
+        statusEl.className = "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold " + status.variant;
+        statusEl.textContent = status.label;
+      }
+    }
+
+    function renderQuestion() {
+      if (!activity) return;
+      const a = activity;
+      const pane = document.getElementById("quiz-pane");
+      if (!pane) return;
+      updateProgress();
+      if (a.submitted) {
+        pane.innerHTML = resultPanelHTML();
+        return;
+      }
+      const total = a.quiz.questions.length;
+      const q = a.quiz.questions[a.index];
+      const selected = a.answers[a.index];
+      const answered = a.answers.filter(x => x !== null).length;
+      const allAnswered = answered === total;
+      pane.innerHTML = `
+        <div class="flex h-full flex-col overflow-hidden rounded-xl border border-border/70 bg-card">
+          <div class="flex items-center gap-2 border-b border-border/60 px-4 py-2.5">
+            <svg class="h-3.5 w-3.5 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15.477 12.89 1.515 8.526a.5.5 0 0 1-.81.47l-3.58-2.687a1 1 0 0 0-1.197 0l-3.586 2.686a.5.5 0 0 1-.81-.469l1.514-8.526"></path><circle cx="12" cy="8" r="6"></circle></svg>
+            <span class="text-xs font-bold">Question ${a.index + 1} of ${total}</span>
+            <span class="ml-auto font-mono text-[10px] text-muted-foreground">${answered}/${total} answered</span>
+          </div>
+          <div class="flex-1 space-y-3 px-4 py-4">
+            <p class="text-sm font-semibold leading-snug">${q.q}</p>
+            <div class="space-y-2">
+              ${q.options.map((opt, i) => {
+                const isSel = selected === i;
+                return `
+                  <button type="button" onclick="selectAnswer(${i})" class="flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-xs font-medium transition cursor-pointer ${isSel ? "border-primary bg-primary/5" : "border-border/70 hover:bg-muted"}">
+                    <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${isSel ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground"}">${String.fromCharCode(65 + i)}</span>
+                    <span>${opt}</span>
+                  </button>
+                `;
+              }).join("")}
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-2 border-t border-border/60 px-4 py-3">
+            <button type="button" onclick="prevQuestion()" ${a.index === 0 ? "disabled" : ""} class="inline-flex items-center gap-1 rounded-lg border border-border/70 px-3 py-1.5 text-xs font-bold transition cursor-pointer hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40">&larr; Previous</button>
+            ${a.index < total - 1
+              ? `<button type="button" onclick="nextQuestion()" class="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition hover:bg-primary/90 cursor-pointer">Next &rarr;</button>`
+              : `<button type="button" onclick="submitQuiz()" ${allAnswered ? "" : "disabled title='Answer all questions first'"} class="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground transition hover:bg-primary/90 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40">Submit Assessment</button>`}
+          </div>
+        </div>
+      `;
+    }
+
+    function resultPanelHTML() {
+      const a = activity;
+      const total = a.quiz.questions.length;
+      const score = a.score == null ? 0 : a.score;
+      const passed = score >= 80;
+      const p = prescribed.find(x => x.lms_id === a.doc.id);
+      const review = a.correct == null ? "" : `
+        <div class="space-y-2">
+          ${a.quiz.questions.map((q, i) => {
+            const ok = a.answers[i] === q.answer;
+            return `
+              <div class="flex items-start gap-2 rounded-lg border px-3 py-2 text-[11px] ${ok ? "border-emerald-500/30 bg-emerald-50" : "border-red-500/30 bg-red-50"}">
+                <span class="font-bold ${ok ? "text-emerald-600" : "text-red-600"}">${ok ? "&#10003;" : "&#10005;"}</span>
+                <div>
+                  <p class="font-semibold text-foreground">${q.q}</p>
+                  <p class="text-muted-foreground">Your answer: ${a.answers[i] == null ? "\u2014" : q.options[a.answers[i]]} &middot; Correct: ${q.options[q.answer]}</p>
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `;
+      return `
+        <div class="overflow-hidden rounded-xl border border-border/70 bg-card">
+          <div class="px-5 py-6 text-center">
+            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full ${passed ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"}">
+              ${passed
+                ? `<svg class="h-7 w-7" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>`
+                : `<svg class="h-7 w-7" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>`}
+            </div>
+            <h3 class="mt-3 font-display text-lg font-bold">${passed ? "Assessment Passed" : "Not Passed"}</h3>
+            <p class="mt-1 text-xs text-muted-foreground">
+              ${a.correct == null ? "Recorded score: " + score + "%" : "You scored " + score + "% (" + a.correct + "/" + total + " correct)."}
+              Pass mark: 80%.
+            </p>
+            <div class="mt-4 grid grid-cols-3 gap-2">
+              <div class="rounded-lg border border-border/60 bg-muted/40 px-2 py-2">
+                <p class="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Score</p>
+                <p class="mt-0.5 text-sm font-bold">${score}%</p>
+              </div>
+              <div class="rounded-lg border border-border/60 bg-muted/40 px-2 py-2">
+                <p class="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">XP</p>
+                <p class="mt-0.5 text-sm font-bold">${passed ? "+" + a.doc.exp_reward : "0"}</p>
+              </div>
+              <div class="rounded-lg border border-border/60 bg-muted/40 px-2 py-2">
+                <p class="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Status</p>
+                <p class="mt-0.5 text-sm font-bold">${p ? p.status : "\u2014"}</p>
+              </div>
+            </div>
+            <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
+              <button type="button" onclick="closeActivity()" class="rounded-lg border border-border/70 px-3 py-2 text-xs font-bold transition hover:bg-muted cursor-pointer">Back to list</button>
+              ${passed
+                ? `<button type="button" onclick="viewCertificate()" class="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground transition hover:bg-primary/90 cursor-pointer">View Certificate</button>`
+                : `<button type="button" onclick="retakeQuiz()" class="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground transition hover:bg-primary/90 cursor-pointer">Retake Assessment</button>`}
+            </div>
+          </div>
+          ${review ? `<div class="border-t border-border/60 px-5 pb-5 pt-4">${review}</div>` : ""}
+        </div>
+      `;
+    }
+
+    function selectAnswer(i) {
+      if (!activity || activity.submitted) return;
+      activity.answers[activity.index] = i;
+      renderQuestion();
+    }
+
+    function prevQuestion() {
+      if (activity && activity.index > 0) {
+        activity.index--;
+        renderQuestion();
+      }
+    }
+
+    function nextQuestion() {
+      if (activity && activity.index < activity.quiz.questions.length - 1) {
+        activity.index++;
+        renderQuestion();
+      }
+    }
+
+    function submitQuiz() {
+      const a = activity;
+      if (!a || a.submitted) return;
+      const total = a.quiz.questions.length;
+      if (a.answers.some(x => x === null)) { alert("Please answer all questions before submitting."); return; }
+      let correct = 0;
+      a.quiz.questions.forEach((q, i) => { if (a.answers[i] === q.answer) correct++; });
+      const score = Math.round((correct / total) * 100);
+      a.correct = correct;
+      a.score = score;
+      a.submitted = true;
+      const p = prescribed.find(x => x.lms_id === a.doc.id);
+      if (p) {
+        if (score >= 80) {
+          p.progress = 100;
+          p.status = "Completed";
+          p.scores = score;
+          p.created_date = "Today";
+        } else if (p.progress < 100) {
+          p.progress = 50;
+          p.status = "In Progress";
+          p.scores = Math.max(p.scores, score);
+        } else {
+          p.scores = Math.max(p.scores, score);
+        }
+      }
+      renderQuestion();
+      renderMaterials();
+      renderAssessments();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function retakeQuiz() {
+      const a = activity;
+      if (!a) return;
+      a.answers = new Array(a.quiz.questions.length).fill(null);
+      a.index = 0;
+      a.submitted = false;
+      a.score = null;
+      a.correct = null;
+      renderQuestion();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function viewCertificate() {
+      if (activity) alert("Certificate: " + activity.doc.title + " \u2014 score " + activity.score + "%");
+    }
+
+    const materialsGrid = document.getElementById("materials-grid");
+    const assessmentsTable = document.getElementById("assessments-table");
+    const tabMaterials = document.getElementById("tab-materials");
+    const tabAssessments = document.getElementById("tab-assessments");
+    const contentMaterials = document.getElementById("tab-materials-content");
+    const contentAssessments = document.getElementById("tab-assessments-content");
+    const searchInput = document.getElementById("search-input");
+    const playerView = document.getElementById("player-view");
+    const statsRow = document.getElementById("stats-row");
+    const subTabs = document.getElementById("sub-tabs");
+
+    let materialsFilter = "all";
+    let currentTab = "materials";
+    let activity = null;
+
+    function renderMaterials() {
+      const q = searchInput.value.toLowerCase().trim();
+      const filtered = documents.filter(d => {
+        const matchDept = materialsFilter === "all" || d.department_id === materialsFilter;
+        const matchText = d.title.toLowerCase().includes(q) || d.category.toLowerCase().includes(q);
+        return matchDept && matchText;
+      });
+
+      materialsGrid.innerHTML = filtered.map(doc => {
+        const tint = tintFor(doc.category);
+        const deptName = departments.find(d => d.id === doc.department_id)?.name || "Property-Wide";
+        const p = prescribed.find(x => x.lms_id === doc.id);
+        const pct = p ? p.progress : 0;
+        const status = statusForProgress(pct);
+        const actionLabel = materialActionLabel(pct);
+        return `
+          <div class="glass-card p-4 group relative flex flex-col hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md transition-all">
+            <div class="flex items-start justify-between gap-2">
+              <div class="relative shrink-0">
+                <div class="flex h-14 w-14 items-center justify-center rounded-xl border shadow-sm ${tint.tile}">
+                  <span class="absolute right-0 top-0 h-3 w-3 rounded-bl-md rounded-tr-xl border-l border-b border-black/10 bg-muted"></span>
+                  <svg class="h-6 w-6 ${tint.icon}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 7v14"></path><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"></path></svg>
+                </div>
+                <span class="text-[10px] px-2 py-0.5 rounded-full font-bold text-white/90 bg-black/30 backdrop-blur-sm absolute bottom-1 right-1">${doc.exp_reward} XP</span>
+              </div>
+              <span class="inline-flex items-center rounded-full border border-border/60 px-2 py-0.5 text-[10px] font-semibold ${status.variant}">${status.label}</span>
+            </div>
+            <div class="mt-3">
+              <p class="text-xs font-bold text-foreground leading-snug line-clamp-2 min-h-[2rem]">${doc.title}</p>
+              <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <span class="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">${deptName}</span>
+                <span class="rounded-full ${tint.border} px-2 py-0.5 font-mono text-[10px] font-medium ${tint.text}">${doc.category}</span>
+              </div>
+            </div>
+            <div class="mt-2 flex items-center justify-between border-t border-border/50 pt-2 text-[11px] text-muted-foreground">
+              <span class="truncate">${doc.estimated_reading_minutes} min read</span>
+              <span class="font-mono shrink-0 ml-2">${doc.exp_reward} XP</span>
+            </div>
+            <div class="mt-auto pt-3">
+              <div class="flex items-center gap-1.5 text-[11px] font-semibold text-foreground/80">
+                <span>${pct}% complete</span>
+                <span class="ml-auto font-mono opacity-70">${p ? p.scores : 0}</span>
+              </div>
+              <div class="mt-1 w-full bg-black/5 h-1.5 rounded-full overflow-hidden">
+                <div class="h-1.5 rounded-full ${pct >= 100 ? "bg-emerald-500" : "bg-primary"} transition-all duration-500" style="width: ${pct}%"></div>
+              </div>
+              ${actionLabel ? `<p class="mt-2 text-[10px] uppercase font-bold tracking-wider text-muted-foreground">${actionLabel}</p>` : ""}
+              <button type="button" class="mt-1 w-full rounded-lg py-2 text-xs font-bold transition-all cursor-pointer ${pct >= 100 ? "bg-emerald-50 text-emerald-700 border border-emerald-500/30 hover:bg-emerald-100" : "bg-primary text-primary-foreground hover:bg-primary/90"}" onclick="openActivity('${doc.id}')">
+                ${materialActionText(pct)}
+              </button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderAssessments() {
+      const rows = prescribed.map(p => {
+        const doc = documents.find(d => d.id === p.lms_id);
+        const deptName = departments.find(d => d.id === doc?.department_id)?.name || "Property-Wide";
+        const status = statusForProgress(p.progress);
+        const pct = p.progress;
+        const actionLabel = assessmentActionLabel(pct);
+        return `
+          <tr class="border-b border-border/60 hover:bg-muted transition">
+            <td class="py-3 px-4">
+              <div class="flex flex-col">
+                <span class="text-xs font-semibold text-foreground line-clamp-1">${doc?.title || "Unknown Handbook"}</span>
+                <span class="text-[10px] text-muted-foreground">${doc?.category || "—"}</span>
+              </div>
+            </td>
+            <td class="py-3 px-4 text-xs text-muted-foreground font-medium">${deptName}</td>
+            <td class="py-3 px-4 text-right">
+              <div class="flex items-end gap-1">
+                <span class="text-xs font-bold text-foreground">${p.scores}</span>
+                <span class="text-[10px] text-muted-foreground font-mono">/ 100</span>
+              </div>
+            </td>
+            <td class="py-3 px-4 text-right">
+              <div class="w-24 bg-black/5 h-1.5 rounded-full overflow-hidden">
+                <div class="h-1.5 rounded-full ${pct >= 100 ? "bg-emerald-500" : pct > 0 ? "bg-amber-500" : "bg-slate-400"} transition-all duration-500" style="width: ${pct}%"></div>
+              </div>
+              <span class="text-[10px] font-mono text-muted-foreground block mt-0.5">${pct}%</span>
+            </td>
+            <td class="py-3 px-4">
+              <span class="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px] font-semibold ${status.variant}">
+                ${status.label}
+              </span>
+            </td>
+            <td class="py-3 px-4 text-right">
+              <div class="flex flex-col items-end gap-1">
+                ${actionLabel ? `<p class="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">${actionLabel}</p>` : ""}
+                <button class="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-accent hover:text-accent-foreground cursor-pointer" onclick="openActivity('${p.lms_id}')">
+                  <span class="text-primary">${assessmentActionText(pct)}</span>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+      assessmentsTable.innerHTML = rows;
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      tabMaterials.className = tab === "materials" ? "flex items-center gap-1.5 rounded-lg border-transparent bg-primary text-primary-foreground px-4 py-2 text-xs font-bold shadow-sm" : "flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition";
+      tabAssessments.className = tab === "assessments" ? "flex items-center gap-1.5 rounded-lg border-transparent bg-primary text-primary-foreground px-4 py-2 text-xs font-bold shadow-sm" : "flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition";
+      contentMaterials.classList.toggle("hidden", tab !== "materials");
+      contentAssessments.classList.toggle("hidden", tab !== "assessments");
+      if (tab === "materials") renderMaterials();
+      else renderAssessments();
+    }
+
+    searchInput.addEventListener("input", () => {
+      if (contentMaterials.classList.contains("hidden")) renderAssessments();
+      else renderMaterials();
+    });
+
+    window.addEventListener("DOMContentLoaded", () => {
+      renderMaterials();
+      renderAssessments();
+    });
+  </script>
+</body>
+</html>

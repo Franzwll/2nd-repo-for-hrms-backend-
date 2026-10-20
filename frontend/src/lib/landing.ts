@@ -18,6 +18,9 @@ export interface LandingJob {
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
+  additional: string[];
+  instructions: string;
+  about: string;
   benefits: string[];
   picture?: string | null;
 }
@@ -40,6 +43,9 @@ export function mapJob(j: ApiLandingJob): LandingJob {
     responsibilities: (j.responsibilities as any) ?? [],
     qualifications: (j.qualifications as any) ?? [],
     skills: (j.skills as any) ?? [],
+    additional: (j.additional as any) ?? [],
+    instructions: j.instructions ?? "",
+    about: j.about ?? "",
     benefits: (j.benefits as any) ?? [],
     picture: j.picture_url ?? j.picture ?? null,
   };

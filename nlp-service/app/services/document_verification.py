@@ -66,12 +66,13 @@ METHOD_UNABLE = "unable"
 _FUZZY_THRESHOLD = 0.80
 _TOKEN_DICE_THRESHOLD = 0.80
 
-# Resumes round employment dates to the month while COEs / contracts state the
-# exact day the employee signed (and often a probationary start). A difference
-# within this window is the same employment period, not a discrepancy:
-#   resume "April 2018 - December 2021" vs COE "August 1, 2018 - December 20, 2021"
-# is a MATCH. Anything wider than the window is still reported as a MISMATCH.
-_DATE_TOLERANCE_MONTHS = 6
+# Resumes round employment dates to the month while COEs / contracts may state
+# the exact day ("August 1, 2018" vs "August 2018" — same month, MATCH via the
+# delta==0 path). Any difference of one or more full months between the two
+# named months is a MATERIAL date shift and is reported as a DISCREPANCY: a
+# resume claiming "January 2019" against a COE stating "March 1, 2019" is a
+# mismatched employment period, not month rounding.
+_DATE_TOLERANCE_MONTHS = 0
 
 # Legal-entity suffixes ignored when comparing company names, so
 # "ABC Hotel Inc." matches "ABC Hotel" while "ABC Hotel" still differs

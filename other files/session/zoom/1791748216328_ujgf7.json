@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "session_id": "1791748216328_ujgf7",
+  "source": "vscode",
+  "pid": 7120,
+  "started_at": "2026-10-11T19:50:16.328Z",
+  "ended_at": "2026-10-12T01:56:05.742Z",
+  "exit_code": 0,
+  "status": "completed",
+  "interactive": true,
+  "provider": "cline",
+  "model": "cline-free/muse-spark-1.3-contributor",
+  "cwd": "c:\\Users\\Windows 10 Lite\\Downloads\\MUNJOR\\4TH YR\\DEV\\LATEST CLONE\\v15.4\\2nd-repo-for-hrms-backend-",
+  "workspace_root": "c:\\Users\\Windows 10 Lite\\Downloads\\MUNJOR\\4TH YR\\DEV\\LATEST CLONE\\v15.4\\2nd-repo-for-hrms-backend-",
+  "enable_tools": true,
+  "enable_spawn": false,
+  "enable_teams": false,
+  "prompt": "zoom",
+  "metadata": {
+    "title": "zoom",
+    "modelId": "cline-free/muse-spark-1.3-contributor",
+    "checkpoint": {
+      "latest": {
+        "ref": "5288190ebb144623bc56f78742ceab6ddc3c061c",
+        "createdAt": 1791752915789,
+        "runCount": 13,
+        "kind": "stash"
+      },
+      "history": [
+        {
+          "ref": "7c1726c1a28023bb7d53be1b68dbe7b56b30b828",
+          "createdAt": 1791745188095,
+          "runCount": 1,
+          "kind": "commit"
+        },
+        {
+          "ref": "3d782f1fc5e5b35f9c4cc973094d3098578de35f",
+          "createdAt": 1791745387944,
+          "runCount": 2,
+          "kind": "stash"
+        },
+        {
+          "ref": "7d0077fcb66d2855806789f34ff7d9f64bb5960f",
+          "createdAt": 1791747393326,
+          "runCount": 3,
+          "kind": "stash"
+        },
+        {
+          "ref": "12dad44d395357ac2a6e900a2cc514d9da9336d8",
+          "createdAt": 1791747580643,
+          "runCount": 4,
+          "kind": "stash"
+        },
+        {
+          "ref": "4f1d1728949605ac0b8271fc86faa7484c2d1468",
+          "createdAt": 1791748738960,
+          "runCount": 5,
+          "kind": "stash"
+        },
+        {
+          "ref": "e81107e2dac03e4d192f19ae6c655365b22e7c38",
+          "createdAt": 1791749123033,
+          "runCount": 6,
+          "kind": "stash"
+        },
+        {
+          "ref": "f9057e575d710cafe0282177d1ba70b8d5be96a6",
+          "createdAt": 1791751124899,
+          "runCount": 7,
+          "kind": "stash"
+        },
+        {
+          "ref": "9d4092816a769a63853e40431836d3bc1f51a526",
+          "createdAt": 1791751440544,
+          "runCount": 8,
+          "kind": "stash"
+        },
+        {
+          "ref": "a56e36cc477c3e589a88e9d2a42d35d1f9d56d73",
+          "createdAt": 1791751618259,
+          "runCount": 9,
+          "kind": "stash"
+        },
+        {
+          "ref": "098768aab25297a2b49a01d7d2eab3ec22ae0a4c",
+          "createdAt": 1791751922096,
+          "runCount": 10,
+          "kind": "stash"
+        },
+        {
+          "ref": "37a69ccb1f308d533f107eb84702b672fed6ea66",
+          "createdAt": 1791751991129,
+          "runCount": 11,
+          "kind": "stash"
+        },
+        {
+          "ref": "cf8f59ed116814da3bd37a65bab9a5eca4d8d099",
+          "createdAt": 1791752415181,
+          "runCount": 12,
+          "kind": "stash"
+        },
+        {
+          "ref": "5288190ebb144623bc56f78742ceab6ddc3c061c",
+          "createdAt": 1791752915789,
+          "runCount": 13,
+          "kind": "stash"
+        }
+      ]
+    },
+    "sessionHistoryOrigin": {
+      "mode": "user",
+      "version": "4.1.23"
+    },
+    "git": {
+      "url": "https://github.com/Franzwll/2nd-repo-for-hrms-backend-.git",
+      "branch": "merging-ground"
+    },
+    "isFavorited": false,
+    "totalCost": 0,
+    "tokensIn": 2326613,
+    "tokensOut": 32001,
+    "cacheWrites": 0,
+    "cacheReads": 9401425,
+    "legacyTask": false,
+    "size": 490089,
+    "aggregatedAgentsCost": 0,
+    "usage": {
+      "inputTokens": 12074969,
+      "outputTokens": 34605,
+      "cacheReadTokens": 9502734,
+      "cacheWriteTokens": 0,
+      "totalCost": 0
+    },
+    "aggregateUsage": {
+      "inputTokens": 12074969,
+      "outputTokens": 34605,
+      "cacheReadTokens": 9502734,
+      "cacheWriteTokens": 0,
+      "totalCost": 0
+    }
+  },
+  "messages_path": "C:\\Users\\Windows 10 Lite\\.cline\\data\\sessions\\1791748216328_ujgf7\\1791748216328_ujgf7.messages.json"
+}

@@ -185,6 +185,7 @@ export function LmsActivityPlayer({
     setShowFile(false);
     setBusy(true);
     const res = await loadMaterial();
+    setShowFile(Boolean(res?.file_url));
     setBusy(false);
     setStage(res ? "reading" : "error");
   }, [loadMaterial]);
@@ -382,13 +383,23 @@ export function LmsActivityPlayer({
                   </Badge>
                 )}
                 {material.file_url && (
-                  <button
-                    type="button"
-                    onClick={() => setShowFile((v) => !v)}
-                    className="ml-auto font-semibold text-primary hover:underline"
-                  >
-                    {showFile ? "Show text version" : "Open original file"}
-                  </button>
+                  <div className="ml-auto flex items-center gap-3">
+                    <a
+                      href={materialsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-primary hover:underline"
+                    >
+                      Open in new tab
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setShowFile((v) => !v)}
+                      className="font-semibold text-primary hover:underline"
+                    >
+                      {showFile ? "Show text version" : "Open original file"}
+                    </button>
+                  </div>
                 )}
               </div>
 

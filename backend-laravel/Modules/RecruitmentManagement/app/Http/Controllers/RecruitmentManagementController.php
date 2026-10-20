@@ -171,6 +171,57 @@ class RecruitmentManagementController extends Controller
     /* POST /api/v1/job-posts */
     /* ------------------------------------------------------------------ */
 
+    /**
+     * Keeps the accepted level lists and the legacy scalar levels in step.
+     *
+     * The Screening Requirements panel offers education / experience levels as
+     * chips fed by Reference Data, so a post can accept several — "any of
+     * these". The screening columns stay scalar and hold the WEAKEST accepted
+     * level, which is precisely what the screener compares against
+     * (`applicant_rank >= required_rank`, `years >= min_years`), so ScreeningService,
+     * the chatbot and the careers page keep working untouched.
+     *
+     * Both shapes are accepted: a client may send only the list, only the
+     * scalar (older clients), or neither (leave what is stored alone).
+     */
+    private function normalizeLevelLists(array $data): array
+    {
+        // Weakest first — the order the screener's own ranking uses.
+        $orders = [
+            'education' => ['High School Graduate', 'Vocational / TESDA', 'College Level', "Bachelor's Degree"],
+            'experience' => ['No Experience', '1-2 Years', '3-5 Years', '5+ Years'],
+        ];
+
+        foreach ($orders as $group => $order) {
+            $listKey = $group . '_levels';
+            $scalarKey = $group . '_level';
+
+            if (array_key_exists($listKey, $data)) {
+                $levels = array_values(array_unique(array_filter(array_map(
+                    static fn ($level) => trim((string) $level),
+                    (array) $data[$listKey],
+                ))));
+                $data[$listKey] = $levels;
+                // Weakest accepted level = the one an applicant actually needs.
+                $weakest = null;
+                $weakestRank = null;
+                foreach ($levels as $level) {
+                    $rank = array_search($level, $order, true);
+                    if ($rank !== false && ($weakestRank === null || $rank < $weakestRank)) {
+                        $weakest = $level;
+                        $weakestRank = $rank;
+                    }
+                }
+                $data[$scalarKey] = $weakest;
+            } elseif (array_key_exists($scalarKey, $data)) {
+                // Older client that only knows the scalar: the list is just it.
+                $data[$listKey] = $data[$scalarKey] ? [$data[$scalarKey]] : [];
+            }
+        }
+
+        return $data;
+    }
+
     public function store(StoreJobPostRequest $request): JsonResponse
     {
         $data = $request->validated();
@@ -197,14 +248,21 @@ class RecruitmentManagementController extends Controller
         // columns (no extra column on job_posts).
         $data = $this->applyPositionSalaryDefaults($data);
 
+        // Accepted level chips ("any of these") — keeps education_level /
+        // experience_level pointing at the weakest accepted level.
+        $data = $this->normalizeLevelLists($data);
+
         // title and slug are derived from the linked position by the JobPost model
         $data['responsibilities_json'] = $data['responsibilities'] ?? [];
         $data['qualifications_json'] = $data['qualifications'] ?? [];
         $data['skills_json'] = $data['skills'] ?? [];
+        $data['additional_json'] = $data['additional'] ?? [];
+        // Builder canvas arrangement — the drag-and-drop order the recruiter set.
+        $data['blocks_json'] = $data['blocks'] ?? null;
         $data['posted_date'] = $data['posted_date'] ?? now()->toDateString();
 
         $platforms = $data['platforms'] ?? [];
-        unset($data['responsibilities'], $data['qualifications'], $data['skills'], $data['platforms']);
+        unset($data['responsibilities'], $data['qualifications'], $data['skills'], $data['additional'], $data['blocks'], $data['platforms']);
 
         // Handle poster picture upload
         if ($request->hasFile('picture')) {
@@ -321,6 +379,16 @@ class RecruitmentManagementController extends Controller
             $data['skills_json'] = $data['skills'];
             unset($data['skills']);
         }
+        if (isset($data['additional'])) {
+            $data['additional_json'] = $data['additional'];
+            unset($data['additional']);
+        }
+        // Only overwrite a stored arrangement when the builder sends one, so a
+        // client that doesn't know about ordering never resets a saved one.
+        if (isset($data['blocks'])) {
+            $data['blocks_json'] = $data['blocks'];
+            unset($data['blocks']);
+        }
         $platforms = $data['platforms'] ?? null;
         unset($data['platforms']);
 
@@ -328,6 +396,10 @@ class RecruitmentManagementController extends Controller
         // salary (or omits it) still inherits the position's grade band rather
         // than persisting an empty range on the post.
         $data = $this->applyPositionSalaryDefaults($data);
+
+        // Same level normalization as create(), so an edit can never leave the
+        // chips and the screening columns disagreeing.
+        $data = $this->normalizeLevelLists($data);
 
         // Handle poster picture replacement
         if ($request->hasFile('picture')) {
@@ -410,7 +482,9 @@ class RecruitmentManagementController extends Controller
 
         $data = $request->validate([
             'platforms' => ['required', 'array', 'min:1'],
-            'platforms.*' => ['string', 'in:Website,Facebook,Instagram,Indeed'],
+            // Social media (Facebook / Instagram) and job-board (Indeed)
+            // targets were removed — the careers website is the only channel.
+            'platforms.*' => ['string', 'in:Website'],
         ]);
 
         $model->update([
@@ -441,6 +515,25 @@ class RecruitmentManagementController extends Controller
             'vacancies' => ['nullable', 'integer', 'min:1', 'max:500'],
             'experience_level' => ['nullable', 'string', 'max:60'],
             'education_level' => ['nullable', 'string', 'max:60'],
+            /* Level chips ("any of these") — the copy should mention the
+               accepted levels the recruiter picked, not only the weakest. */
+            'experience_levels' => ['nullable', 'array', 'max:12'],
+            'experience_levels.*' => ['string', 'max:60'],
+            'education_levels' => ['nullable', 'array', 'max:12'],
+            'education_levels.*' => ['string', 'max:60'],
+            'blocks' => ['nullable', 'array'],
+            'blocks.*' => ['string', 'in:description,responsibilities,qualifications,additional,instructions,about'],
+            'notes' => ['nullable', 'array'],
+            /* The post's own screening requirements — the AI reuses these
+               verbatim instead of picking freely from the whole vocabulary. */
+            'skills' => ['nullable', 'array', 'max:60'],
+            'skills.*' => ['string', 'max:150'],
+            /* Reference Data fallback (canonical skill terms) sent when the post
+               has no screening requirements yet, so the prose is still grounded. */
+            'screening_terms' => ['nullable', 'array', 'max:120'],
+            'screening_terms.*' => ['string', 'max:150'],
+            /* The sourcing requisition's justification ("requested note"). */
+            'requested_note' => ['nullable', 'string', 'max:1500'],
         ]);
 
         if (! $generator->isConfigured()) {
@@ -463,8 +556,15 @@ class RecruitmentManagementController extends Controller
             $certsMap = [];
         }
 
+        // Reference Data fallback terms go first so the prompt's 150-skill cap
+        // can never trim the very terms this draft was grounded on.
+        $screeningTerms = array_values(array_unique(array_filter(array_map(
+            fn ($t) => trim((string) $t),
+            (array) ($validated['screening_terms'] ?? []),
+        ))));
+
         $vocabulary = [
-            'skills' => array_keys($skillsMap),
+            'skills' => array_values(array_unique(array_merge($screeningTerms, array_keys($skillsMap)))),
             'certifications' => array_keys($certsMap),
         ];
 
@@ -476,6 +576,14 @@ class RecruitmentManagementController extends Controller
             'vacancies' => $validated['vacancies'] ?? 1,
             'experience_level' => $validated['experience_level'] ?? null,
             'education_level' => $validated['education_level'] ?? null,
+            /* Every accepted level ("any of these") — the prompt writes them as
+               alternatives so the copy matches the chips the recruiter picked. */
+            'experience_levels' => $validated['experience_levels'] ?? [],
+            'education_levels' => $validated['education_levels'] ?? [],
+            'blocks' => $validated['blocks'] ?? ['description', 'responsibilities', 'qualifications', 'additional', 'instructions', 'about'],
+            'notes' => $validated['notes'] ?? [],
+            'skills' => $validated['skills'] ?? [],
+            'requested_note' => $validated['requested_note'] ?? null,
         ], $vocabulary);
 
         if (! $result['ok']) {
@@ -515,22 +623,54 @@ class RecruitmentManagementController extends Controller
             $data['about'] = 'Oxford Suites Makati is a premier all-suite hotel in the heart of Makati\'s business district, known for warm Filipino hospitality and dependable service.';
         }
 
-        // Vocab grounding report: which generated skills already exist in the
-        // screening vocabulary vs. which are new (one-click-add candidates).
+        // Vocab grounding report: which vocabulary terms the generated prose
+        // reuses (so HR sees what will actually match resumes). Skills are no
+        // longer generated — they come from the requirement template — so the
+        // report scans the generated responsibility / qualification /
+        // additional lines for known terms. Shape kept for compatibility.
         $known = [];
         foreach ($skillsMap as $canonical => $aliases) {
-            $known[mb_strtolower(trim((string) $canonical))] = true;
+            $known[mb_strtolower(trim((string) $canonical))] = $canonical;
             foreach ((array) $aliases as $alias) {
-                $known[mb_strtolower(trim((string) $alias))] = true;
+                $k = mb_strtolower(trim((string) $alias));
+                if ($k !== '' && ! isset($known[$k])) {
+                    $known[$k] = $canonical;
+                }
             }
         }
         $matched = [];
+        $seenMatched = [];
+        foreach (['responsibilities', 'qualifications', 'additional'] as $field) {
+            $lines = $data[$field] ?? [];
+            if (is_string($lines)) {
+                $lines = preg_split('/\r?\n/', $lines) ?: [];
+            }
+            foreach ((array) $lines as $line) {
+                $norm = mb_strtolower(trim((string) $line));
+                if ($norm === '') {
+                    continue;
+                }
+                if (isset($known[$norm]) && ! isset($seenMatched[$known[$norm]])) {
+                    $matched[] = $known[$norm];
+                    $seenMatched[$known[$norm]] = true;
+                    continue;
+                }
+                $padded = ' ' . preg_replace('/\s+/', ' ', $norm) . ' ';
+                foreach ($known as $key => $canonical) {
+                    if (strlen($key) >= 4 && str_contains($padded, ' ' . $key . ' ')) {
+                        if (! isset($seenMatched[$canonical])) {
+                            $matched[] = $canonical;
+                            $seenMatched[$canonical] = true;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
         $fresh = [];
         foreach ((array) ($data['skills'] ?? []) as $skill) {
             $key = mb_strtolower(trim((string) $skill));
-            if ($key !== '' && isset($known[$key])) {
-                $matched[] = $skill;
-            } elseif ($key !== '') {
+            if ($key !== '' && ! isset($known[$key])) {
                 $fresh[] = $skill;
             }
         }

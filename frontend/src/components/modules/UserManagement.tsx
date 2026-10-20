@@ -609,7 +609,7 @@ export function UserManagement() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
-        <TabsList className="flex h-auto flex-wrap justify-start rounded-xl border border-border/70 bg-muted/70 p-1 shadow-sm">
+        <TabsList>
           <TabsTrigger
             className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
             value="users"
@@ -637,10 +637,10 @@ export function UserManagement() {
                 <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
                   <Users className="h-5 w-5 text-primary" /> User Roster
                 </h2>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
                   <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                     <DialogTrigger asChild>
-                      <Button size="sm" className="cursor-pointer">
+                      <Button size="sm" className="order-last col-span-2 cursor-pointer md:order-none">
                         <UserPlus className="mr-2 h-4 w-4" /> Create User
                       </Button>
                     </DialogTrigger>
@@ -755,7 +755,7 @@ export function UserManagement() {
                     </DialogContent>
                   </Dialog>
 
-                  <div className="relative w-full sm:w-64">
+                  <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
                     <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       className="pl-8"
@@ -1015,7 +1015,8 @@ export function UserManagement() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(["Super Admin", "Admin", "Employee"] as const).map((role) => {
+                    {loadingUsers && <TableRowsSkeleton cols={permissionGroups.length + 1} rows={5} />}
+                    {!loadingUsers && (["Super Admin", "Admin", "Employee"] as const).map((role) => {
                       const isProtected = roleProtectedByName[role] ?? false;
                       return (
                         <TableRow key={role}>

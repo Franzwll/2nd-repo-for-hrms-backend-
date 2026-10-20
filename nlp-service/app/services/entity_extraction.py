@@ -1506,7 +1506,7 @@ class EntityExtractor:
         results: List[str] = []
 
         _CERT_KEEP_RE = re.compile(
-            r"\b(certificat|licen[cs]e|training|nc\s*(?:i{1,3}|iv|1-4)|tesda|"
+            r"\b(certificat|certif(?:ied|ies|ying|y)|licen[cs]e|training|nc\s*(?:i{1,3}|iv|1-4)|tesda|"
             r"specialist|course|diploma|competency|workshop|seminar|accredited)\b",
             re.I,
         )
@@ -1532,10 +1532,14 @@ class EntityExtractor:
             # sections ("Oversee nightly bar operations ...", "Developed 8
             # signature cocktails, increasing revenue ...") are never
             # credential names — unless they carry credential vocabulary.
+            # The sentence-shape cap applies even to credential-sounding
+            # lines: "Certified Hospitality Purchasing Executive manage a
+            # monthly purchasing expenditure budget ..." is still a duty
+            # sentence, not a credential title.
+            words = clean.split()
+            if len(clean) > 70 or len(words) > 8:
+                return
             if not _CERT_KEEP_RE.search(clean):
-                words = clean.split()
-                if len(clean) > 70 or len(words) > 8:
-                    return
                 if canonical.strip().endswith((".", ";")):
                     return
                 if words and _is_duty_verb(words[0], _SENTENCE_VERBS):

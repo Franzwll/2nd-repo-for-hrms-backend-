@@ -3,6 +3,13 @@ export type JobStatus = "Open" | "Closed" | "Draft";
 export type Job = {
   id: string;
   dbId?: number;
+  /**
+   * Core HCM `positions.position_id` this post belongs to. Two positions can
+   * share a title in one department (e.g. a front-line and a supervisory
+   * "Front Desk Receptionist" on different salary bands), so the title alone
+   * cannot identify which role a post was built for.
+   */
+  positionId?: number | null;
   title: string;
   department: string;
   employmentType: "Full-time" | "Part-time" | "Contract" | "Seasonal";
@@ -16,14 +23,29 @@ export type Job = {
   active: boolean;
   experience: "No Experience" | "1-2 Years" | "3-5 Years" | "5+ Years";
   education: "High School Graduate" | "Vocational / TESDA" | "College Level" | "Bachelor's Degree";
+  /**
+   * Levels the post accepts ("any of these"), from the Screening Requirements
+   * chips. The scalars above stay the weakest accepted level, so every reader
+   * that only knows one value keeps working.
+   */
+  experienceLevels?: string[];
+  educationLevels?: string[];
   summary: string;
   description: string;
   responsibilities: string[];
   qualifications: string[];
   skills: string[];
+  additional?: string[];
+  instructions?: string;
+  about?: string;
   benefits: string[];
   applicants: number;
   platforms: string[];
+  /**
+   * Builder canvas arrangement — the ordered block ids the recruiter dragged
+   * into place. Absent on mock/seed data, in which case the default order wins.
+   */
+  blocks?: string[] | null;
   /** Uploaded hiring-poster picture (API url) */
   picture?: string;
   /** Assessment / practical test requirement flags (API-owned, optional on mocks). */

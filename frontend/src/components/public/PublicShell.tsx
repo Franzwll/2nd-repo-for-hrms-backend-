@@ -52,7 +52,7 @@ export function PublicShell({ children, bare = false }: { children: ReactNode; b
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen w-full min-w-0 flex-col overflow-x-clip bg-background">
       <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
         <div className="mx-auto flex h-18 max-w-7xl items-center justify-between gap-4 px-4 py-3 md:px-8">
           <Link to="/" className="shrink-0" onClick={() => setMenuOpen(false)}>

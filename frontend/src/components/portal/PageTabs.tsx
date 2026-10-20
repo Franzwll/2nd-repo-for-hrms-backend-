@@ -54,14 +54,16 @@ export function PageTabs({
   };
 
   return (
-    <Tabs value={active} onValueChange={handle}>
-      <TabsList className={cn("bg-muted p-1 rounded-lg", listClassName)}>
+    <Tabs value={active} onValueChange={handle} className="w-full min-w-0">
+      <div className="overflow-x-auto pb-1 -mx-1 px-1">
+        <TabsList className={cn("bg-muted p-1 rounded-lg w-max max-w-none sm:w-auto sm:max-w-full sm:flex-wrap", listClassName)}>
         {items.map((t) => (
-          <TabsTrigger key={t.value} value={t.value}>
+          <TabsTrigger key={t.value} value={t.value} className="shrink-0">
             {t.label}
           </TabsTrigger>
         ))}
-      </TabsList>
+        </TabsList>
+      </div>
       {items.map((t) => (
         <TabsContent
           key={t.value}

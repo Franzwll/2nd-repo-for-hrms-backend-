@@ -15,6 +15,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -138,15 +141,27 @@ export function usePasswordGate() {
  *
  *   <PageHeader … actions={<ReportMenu report={myReport} recordCount={rows.length} />} />
  */
+export type ReportMenuOption = {
+  id: string;
+  title: string;
+  description?: string | undefined;
+  recordCount?: number | undefined;
+  build: () => ReportData;
+};
+
 export function ReportMenu({
   report,
+  reports,
   recordCount,
   label = "Generate Report",
   buttonClassName,
   size = "default",
   showPrint = true,
 }: {
-  report: ReportData | (() => ReportData);
+  /** Single live report (most callers). */
+  report?: ReportData | (() => ReportData);
+  /** Predefined report list - renders one submenu per report (Recruitment, ESS). */
+  reports?: ReportMenuOption[];
   recordCount?: number;
   label?: string;
   buttonClassName?: string;
@@ -156,16 +171,31 @@ export function ReportMenu({
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState<{ data: ReportData; format: ReportFormat } | null>(null);
+  const [pending, setPending] = useState<{
+    data: ReportData;
+    format: ReportFormat;
+    count?: number | undefined;
+  } | null>(null);
 
-  const requestExport = (format: ReportFormat) => {
-    const data = typeof report === "function" ? report() : report;
+  const isMulti = report === undefined && !!reports && reports.length > 0;
+
+  const requestExport = (
+    data: ReportData,
+    format: ReportFormat,
+    count?: number,
+    emptyMessage = `No records to export for ${data.title}.`,
+  ) => {
     if (data.rows.length === 0) {
-      toast.error("No records to export for the current filters.");
+      toast.error(emptyMessage);
       return;
     }
-    setPending({ data, format });
+    setPending({ data, format, count });
     setDialogOpen(true);
+  };
+
+  const requestPrint = (data: ReportData) => {
+    printReport(data);
+    toast.success(`${data.title} sent to printer.`);
   };
 
   const confirmExport = async (password: string) => {
@@ -176,7 +206,7 @@ export function ReportMenu({
       const { zipName } = describeExport(pending.data, pending.format);
       toast.success(
         `${pending.data.title} exported as password-protected ${pending.format.toUpperCase()} (${zipName})` +
-          (recordCount !== undefined ? ` (${recordCount} records).` : "."),
+          (pending.count !== undefined ? ` (${pending.count} records).` : "."),
       );
       setDialogOpen(false);
       setPending(null);
@@ -200,26 +230,77 @@ export function ReportMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64">
-          {FORMATS.map((format) => (
-            <DropdownMenuItem key={format.id} onClick={() => requestExport(format.id)}>
-              <FileText className="mr-2 h-4 w-4" />
-              <span className="flex items-center gap-1.5">
-                Export as {format.label} <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-              </span>
-            </DropdownMenuItem>
-          ))}
+          {isMulti
+            ? reports!.map((option) => (
+                <DropdownMenuSub key={option.id}>
+                  <DropdownMenuSubTrigger>
+                    <FileText className="mr-2 h-4 w-4" />
+                    <span className="flex flex-col">
+                      <span>{option.title}</span>
+                      {option.description && (
+                        <span className="text-[11px] text-muted-foreground">
+                          {option.description}
+                        </span>
+                      )}
+                    </span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-56">
+                    {FORMATS.map((format) => (
+                      <DropdownMenuItem
+                        key={format.id}
+                        onClick={() =>
+                          requestExport(option.build(), format.id, option.recordCount)
+                        }
+                      >
+                        <FileText className="mr-2 h-4 w-4" />
+                        <span className="flex items-center gap-1.5">
+                          Export as {format.label}{" "}
+                          <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                        </span>
+                      </DropdownMenuItem>
+                    ))}
+                    {showPrint && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => requestPrint(option.build())}>
+                          <Printer className="mr-2 h-4 w-4" /> Print…
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              ))
+            : FORMATS.map((format) => (
+                <DropdownMenuItem
+                  key={format.id}
+                  onClick={() =>
+                    report &&
+                    requestExport(
+                      typeof report === "function" ? report() : report,
+                      format.id,
+                      recordCount,
+                      "No records to export for the current filters.",
+                    )
+                  }
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-1.5">
+                    Export as {format.label}{" "}
+                    <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                </DropdownMenuItem>
+              ))}
           <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
             Every file is sealed in a password-protected ZIP (AES-256). You will be asked for a file
             password.
           </p>
-          {showPrint && (
+          {showPrint && !isMulti && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={() => {
-                  const data = typeof report === "function" ? report() : report;
-                  printReport(data);
-                  toast.success(`${data.title} sent to printer.`);
+                  if (!report) return;
+                  requestPrint(typeof report === "function" ? report() : report);
                 }}
               >
                 <Printer className="mr-2 h-4 w-4" /> Print…
