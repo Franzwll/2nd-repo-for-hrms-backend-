@@ -47,19 +47,11 @@ function toDocRequestItem(raw: any) {
   const status = String(raw?.status ?? "Pending");
   return {
     id: raw?.request_code ?? raw?.id ?? `REQ-${Date.now()}`,
-    dbId: raw?.db_id ?? raw?.dbId,
     date: dateLabel,
     isoDate: raw?.date_from ?? (typeof filed === "string" ? filed : String(filed ?? "")),
     type: raw?.request_type ?? raw?.type ?? "HR Document",
-    category: raw?.category ?? "HR Document",
     status,
     statusRank: status === "Approved" || status === "Completed" ? 1 : 2,
-    assignedTo: raw?.assigned_to ?? raw?.assignedTo,
-    details: raw?.details ?? raw?.purpose ?? "",
-    note: raw?.review_note ?? null,
-    attachments: raw?.attachments ?? [],
-    has_fulfillment: raw?.has_fulfillment ?? false,
-    timeline: raw?.timeline ?? [],
     purpose: raw?.details ?? raw?.purpose ?? "",
   };
 }
@@ -68,7 +60,6 @@ export function EssDocumentsTab() {
   const [documents, setDocuments] = useState(myEmployeeDocuments);
   const [docRequests, setDocRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshKey, setRefreshKey] = useState(0);
 
   // Live Database Fetch
   useEffect(() => {
@@ -101,19 +92,11 @@ export function EssDocumentsTab() {
             .filter((r) => r.category.toLowerCase().includes("doc") || r.type.toLowerCase().includes("coe") || r.type.toLowerCase().includes("cert"))
             .map((r) => ({
               id: r.id,
-              dbId: r.db_id,
               date: r.filed,
               isoDate: r.date_from || r.filed,
               type: r.type,
-              category: r.category,
               status: r.status,
               statusRank: r.status === "Approved" || r.status === "Completed" ? 1 : 2,
-              assignedTo: r.assigned_to ?? r.assignedTo,
-              details: r.details,
-              note: r.review_note ?? null,
-              attachments: r.attachments ?? [],
-              has_fulfillment: r.has_fulfillment ?? false,
-              timeline: r.timeline ?? [],
               purpose: r.details,
             }));
           if (docItems.length > 0) {
@@ -124,7 +107,7 @@ export function EssDocumentsTab() {
       .catch(() => {});
 
     Promise.allSettled([docsPromise, reqPromise]).finally(() => setLoading(false));
-  }, [refreshKey]);
+  }, []);
 
   const [activeTab, setActiveTab] = useState<"documents" | "requests">("documents");
   const [docSearch, setDocSearch] = useState("");
@@ -207,19 +190,13 @@ export function EssDocumentsTab() {
 
   const handleRowClick = (req: any) => {
     setSelectedRequest({
-      ...req,
       id: req.id,
-      dbId: req.dbId ?? req.db_id,
       type: req.type,
-      category: req.category || "HR Document",
+      category: "HR Document",
       date: req.date,
       status: req.status,
-      assignedTo: req.assignedTo || "HR Administration",
-      details:
-        req.details || (req.purpose ? `Purpose: ${req.purpose}` : "Official employment record request."),
-      note: req.note ?? null,
-      attachments: req.attachments ?? [],
-      timeline: req.timeline ?? [],
+      assignedTo: "Maria Lim (HR Records)",
+      details: req.purpose ? `Purpose: ${req.purpose}` : "Official employment record request.",
     });
     setTimelineOpen(true);
   };
@@ -625,7 +602,6 @@ export function EssDocumentsTab() {
         open={timelineOpen}
         onOpenChange={setTimelineOpen}
         request={selectedRequest}
-        onUpdated={() => setRefreshKey((key) => key + 1)}
       />
       {/* TRY: viewer modal — remove to revert */}
       <DocumentViewerModal
