@@ -1,17 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Archive,
-  CheckCircle2,
-  Clock,
-  Download,
-  FileText,
-  Inbox,
-  Paperclip,
-  RefreshCw,
-  Search,
-  Send,
-  Upload,
-} from "lucide-react";
+import { Archive, Download, FileText, Paperclip, Search, Send, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -34,9 +22,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { StatCard } from "@/components/portal/StatCard";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
+import { SortHead, useSort } from "@/components/portal/sortable";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import {
   Table,
   TableBody,
@@ -77,12 +66,18 @@ function formatSize(bytes: number | null | undefined) {
  * attach the file (fresh upload or an existing archived document) and the
  * request is Completed — closing the ESS <-> ERM loop.
  */
-export function DocumentRequestInbox() {
+export function DocumentRequestInbox({
+  statusFilter = "all",
+  onStatusFilterChange,
+  onCountsChange,
+}: {
+  statusFilter?: string;
+  onStatusFilterChange?: (status: string) => void;
+  onCountsChange?: () => void;
+}) {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<ApiDocumentRequest[]>([]);
-  const [counts, setCounts] = useState({ total: 0, pending: 0, fulfilled: 0 });
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
 
   const [fulfilRow, setFulfilRow] = useState<ApiDocumentRequest | null>(null);
   const [archiveOptions, setArchiveOptions] = useState<
@@ -99,7 +94,6 @@ export function DocumentRequestInbox() {
     try {
       const res = await ermApi.documentRequests();
       setRows(res.requests ?? []);
-      setCounts(res.counts ?? { total: 0, pending: 0, fulfilled: 0 });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load document requests.");
     } finally {
@@ -114,13 +108,32 @@ export function DocumentRequestInbox() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
-      if (status !== "all" && r.status !== status) return false;
+      if (statusFilter === "pending") {
+        if (!["For Fulfillment", "Approved"].includes(r.status)) return false;
+      } else if (statusFilter !== "all" && r.status !== statusFilter) {
+        return false;
+      }
       if (!q) return true;
       return [r.employee, r.employeeId, r.type, r.details, r.category]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q));
     });
-  }, [rows, search, status]);
+  }, [rows, search, statusFilter]);
+
+  const requestSort = useSort<
+    ApiDocumentRequest,
+    "request" | "employee" | "document" | "filed" | "status" | "attachment"
+  >(filtered, {
+    request: (r) => r.id,
+    employee: (r) => r.employee,
+    document: (r) => r.type,
+    filed: (r) => r.filed,
+    status: (r) => r.status,
+    attachment: (r) => {
+      if (r.attachments?.some((a) => a.direction === "hr")) return 2;
+      return r.attachments?.length ? 1 : 0;
+    },
+  });
 
   const openFulfil = async (row: ApiDocumentRequest) => {
     setFulfilRow(row);
@@ -157,6 +170,7 @@ export function DocumentRequestInbox() {
       toast.success("Request fulfilled — the employee has been notified.");
       setFulfilRow(null);
       await load();
+      onCountsChange?.();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to fulfil request.");
     } finally {
@@ -167,18 +181,7 @@ export function DocumentRequestInbox() {
   return (
     <Card className="border-border/70">
       <CardContent className="p-6">
-        <div className="grid items-stretch gap-4 sm:grid-cols-3">
-          <StatCard label="Total requests" value={counts.total} icon={Inbox} tone="primary" />
-          <StatCard
-            label="Awaiting fulfilment"
-            value={counts.pending}
-            icon={Clock}
-            tone="caution"
-          />
-          <StatCard label="Fulfilled" value={counts.fulfilled} icon={CheckCircle2} tone="success" />
-        </div>
-
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
             <Send className="h-5 w-5 text-primary" /> Document Requests
           </h2>
@@ -192,20 +195,18 @@ export function DocumentRequestInbox() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <Select value={status} onValueChange={setStatus}>
+            <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange?.(v)}>
               <SelectTrigger className="w-44">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="pending">Awaiting fulfilment</SelectItem>
                 <SelectItem value="Pending">Pending</SelectItem>
                 <SelectItem value="For Fulfillment">For Fulfillment</SelectItem>
                 <SelectItem value="Completed">Completed</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
-              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
-            </Button>
           </div>
         </div>
 
@@ -219,28 +220,35 @@ export function DocumentRequestInbox() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Request</TableHead>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Document</TableHead>
-                  <TableHead>Filed</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Attachment</TableHead>
+                  <SortHead sortKey="request" sort={requestSort.sort} onSort={requestSort.toggle}>
+                    Request
+                  </SortHead>
+                  <SortHead sortKey="employee" sort={requestSort.sort} onSort={requestSort.toggle}>
+                    Employee
+                  </SortHead>
+                  <SortHead sortKey="document" sort={requestSort.sort} onSort={requestSort.toggle}>
+                    Document
+                  </SortHead>
+                  <SortHead sortKey="filed" sort={requestSort.sort} onSort={requestSort.toggle}>
+                    Filed
+                  </SortHead>
+                  <SortHead sortKey="status" sort={requestSort.sort} onSort={requestSort.toggle}>
+                    Status
+                  </SortHead>
+                  <SortHead
+                    sortKey="attachment"
+                    sort={requestSort.sort}
+                    onSort={requestSort.toggle}
+                  >
+                    Attachment
+                  </SortHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loading && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={7}
-                      className="py-8 text-center text-sm text-muted-foreground"
-                    >
-                      Loading…
-                    </TableCell>
-                  </TableRow>
-                )}
+                {loading && <TableRowsSkeleton cols={7} rows={5} />}
                 {!loading &&
-                  filtered.map((r) => {
+                  requestSort.sorted.map((r) => {
                     const hr = r.attachments?.find((a) => a.direction === "hr");
                     const empFiles = r.attachments?.filter((a) => a.direction === "employee") ?? [];
                     return (
