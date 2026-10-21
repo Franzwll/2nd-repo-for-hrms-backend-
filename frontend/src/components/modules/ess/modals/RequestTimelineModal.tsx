@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -7,21 +8,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   CheckCircle2,
   Clock,
-  User,
-  Building,
   Download,
   FileText,
-  AlertCircle,
   Paperclip,
+  Upload,
   XCircle,
-  ArrowRight,
-  ShieldCheck,
-  Send,
 } from "lucide-react";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { essApi, type ApiEssRequestAttachment } from "@/lib/api";
@@ -38,6 +35,7 @@ export interface RequestItem {
   assignedTo?: string;
   details?: string;
   filedBy?: string;
+  note?: string | null;
   attachments?: ApiEssRequestAttachment[];
   has_fulfillment?: boolean;
   timeline?: { status: string; note: string | null; at: string | null }[];
@@ -55,42 +53,118 @@ function formatBytes(bytes: number | null | undefined) {
   return `${value.toFixed(value < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
+function formatTimelineDate(value: string | null | undefined) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function statusIcon(status: string) {
+  if (["Completed", "Approved", "For Fulfillment"].includes(status)) {
+    return <CheckCircle2 className="h-3.5 w-3.5" />;
+  }
+  if (["Rejected", "Cancelled"].includes(status)) {
+    return <XCircle className="h-3.5 w-3.5" />;
+  }
+  return <Clock className="h-3 w-3" />;
+}
+
 interface RequestTimelineModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   request: RequestItem | null;
-  onCancelRequest?: (id: string) => void;
+  /** Called after a cancel/clarification so the parent can refresh its list. */
+  onUpdated?: () => void;
 }
 
 export function RequestTimelineModal({
   open,
   onOpenChange,
   request,
-  onCancelRequest,
+  onUpdated,
 }: RequestTimelineModalProps) {
+  const [responseNote, setResponseNote] = useState("");
+  const [responseFiles, setResponseFiles] = useState<File[]>([]);
+  const [sending, setSending] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
+  // Never carry a draft clarification from one request to another.
+  useEffect(() => {
+    setResponseNote("");
+    setResponseFiles([]);
+  }, [request?.id, request?.status]);
+
   if (!request) return null;
 
-  const isPending = request.status === "Pending" || request.status === "Under Review";
+  const isOpenStatus = ["Pending", "Under Review", "Returned for Clarification"].includes(
+    request.status,
+  );
+  const isReturned = request.status === "Returned for Clarification";
+  const requestId = request.dbId ?? request.id;
+  const timeline = request.timeline?.length
+    ? request.timeline
+    : [{ status: "Pending", note: "Request filed by employee.", at: null }];
 
-  const handleCancel = () => {
-    if (request.id) {
-      onCancelRequest?.(request.id);
+  const handleCancel = async () => {
+    if (!requestId) return;
+
+    setCancelling(true);
+    try {
+      await essApi.cancelRequest(requestId);
+      toast.success(`Request ${request.id ?? request.type} cancelled.`);
+      onUpdated?.();
+      onOpenChange(false);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to cancel the request.");
+    } finally {
+      setCancelling(false);
     }
-    toast.info(`Request ${request.id || request.type} has been cancelled.`);
-    onOpenChange(false);
+  };
+
+  const handleRespond = async () => {
+    if (!requestId) return;
+    if (!responseNote.trim() && responseFiles.length === 0) {
+      toast.error("Add a note or attach a file so HR knows what changed.");
+      return;
+    }
+
+    setSending(true);
+    try {
+      const form = new FormData();
+      if (responseNote.trim()) form.append("note", responseNote.trim());
+      responseFiles.forEach((file) => form.append("attachments[]", file));
+
+      await essApi.respondToRequest(requestId, form);
+      toast.success("Clarification submitted — your request is back with HR.");
+      setResponseNote("");
+      setResponseFiles([]);
+      onUpdated?.();
+      onOpenChange(false);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to submit your clarification.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-[560px]">
         <DialogHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <div className="rounded-md bg-primary/10 p-2 text-primary">
                 <FileText className="h-5 w-5" />
               </div>
               <div>
-                <DialogTitle className="text-xl font-display">{request.type}</DialogTitle>
+                <DialogTitle className="font-display text-xl">{request.type}</DialogTitle>
                 <DialogDescription>Request ID: {request.id || "REQ-ESS-AUTO"}</DialogDescription>
               </div>
             </div>
@@ -98,8 +172,52 @@ export function RequestTimelineModal({
           </div>
         </DialogHeader>
 
-        {/* Request Details Card */}
-        <div className="rounded-lg border border-border bg-muted/20 p-3.5 space-y-2 text-xs">
+        {isReturned && (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3.5 text-sm">
+            <p className="flex items-center gap-1.5 font-semibold text-amber-700 dark:text-amber-300">
+              <Clock className="h-4 w-4" /> Action needed
+            </p>
+            <p className="mt-1 text-xs text-amber-800/90 dark:text-amber-200/90">
+              {request.note || "HR needs more information before this request can continue."}
+            </p>
+          </div>
+        )}
+
+        {request.status === "Rejected" && (
+          <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3.5 text-sm">
+            <p className="flex items-center gap-1.5 font-semibold text-rose-700 dark:text-rose-300">
+              <XCircle className="h-4 w-4" /> Request rejected
+            </p>
+            <p className="mt-1 text-xs text-rose-800/90 dark:text-rose-200/90">
+              {request.note || "Contact HR for more details."}
+            </p>
+          </div>
+        )}
+
+        {request.status === "For Fulfillment" && (
+          <div className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 p-3.5 text-sm">
+            <p className="font-semibold text-indigo-700 dark:text-indigo-300">
+              Approved — your document is being prepared
+            </p>
+            <p className="mt-1 text-xs text-indigo-800/90 dark:text-indigo-200/90">
+              You will be notified here once the file is ready to download.
+            </p>
+          </div>
+        )}
+
+        {request.status === "Completed" && (
+          <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3.5 text-sm">
+            <p className="flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-300">
+              <CheckCircle2 className="h-4 w-4" /> Ready
+            </p>
+            <p className="mt-1 text-xs text-emerald-800/90 dark:text-emerald-200/90">
+              Your request is complete. Download the file from the Documents section below.
+            </p>
+          </div>
+        )}
+
+        {/* Request Details */}
+        <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3.5 text-xs">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div>
               <p className="text-muted-foreground">Category</p>
@@ -114,7 +232,7 @@ export function RequestTimelineModal({
             <div>
               <p className="text-muted-foreground">Assigned Officer</p>
               <p className="font-semibold text-foreground">
-                {request.assignedTo || "Juan Dela Cruz (HR Admin)"}
+                {request.assignedTo || "HR Administration"}
               </p>
             </div>
             <div>
@@ -125,23 +243,27 @@ export function RequestTimelineModal({
             </div>
           </div>
           {request.details && (
-            <div className="pt-2 border-t border-border/60">
+            <div className="border-t border-border/60 pt-2">
               <p className="text-muted-foreground">Details / Justification:</p>
-              <p className="mt-0.5 text-foreground italic">"{request.details}"</p>
+              <p className="mt-0.5 italic text-foreground">"{request.details}"</p>
             </div>
           )}
         </div>
 
         {/* Attached / fulfilled documents */}
-        {(request.attachments && request.attachments.length > 0) || request.has_fulfillment ? (
-          <div className="rounded-lg border border-border bg-muted/20 p-3.5 space-y-2 text-xs">
+        {(request.attachments?.length ?? 0) > 0 && (
+          <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3.5 text-xs">
             <p className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-muted-foreground">
               <Paperclip className="h-3.5 w-3.5 text-primary" /> Documents
             </p>
             {(request.attachments ?? []).map((a) => {
               const isHr = a.direction === "hr";
+              const attachmentRequestId = request.dbId ?? request.id;
               const href =
-                request.dbId != null ? essApi.requestAttachmentUrl(request.dbId, a.id) : undefined;
+                attachmentRequestId != null
+                  ? essApi.requestAttachmentUrl(attachmentRequestId, a.id)
+                  : undefined;
+
               return (
                 <div
                   key={a.id}
@@ -174,95 +296,69 @@ export function RequestTimelineModal({
               );
             })}
           </div>
-        ) : null}
+        )}
 
-        {/* Multi-Step Approval Timeline */}
+        {/* Clarification response */}
+        {isReturned && (
+          <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3.5">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Your response to HR</Label>
+              <Textarea
+                rows={3}
+                value={responseNote}
+                onChange={(e) => setResponseNote(e.target.value)}
+                placeholder="Explain what you changed or provide the missing information…"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Attach files (optional)</Label>
+              <Input
+                type="file"
+                multiple
+                accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                onChange={(e) => setResponseFiles(Array.from(e.target.files ?? []))}
+              />
+            </div>
+            <Button size="sm" onClick={() => void handleRespond()} disabled={sending}>
+              <Upload className="mr-1.5 h-3.5 w-3.5" />
+              {sending ? "Submitting…" : "Submit clarification"}
+            </Button>
+          </div>
+        )}
+
+        {/* Real status timeline */}
         <div className="space-y-3 py-1">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5 text-primary" /> Approval Audit Trail
+          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            <Clock className="h-3.5 w-3.5 text-primary" /> Request Timeline
           </h4>
 
-          <div className="relative pl-6 space-y-5 border-l-2 border-primary/20 ml-2">
-            {/* Step 1: Filed */}
-            <div className="relative">
-              <div className="absolute -left-[31px] top-0.5 h-5 w-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-              </div>
-              <p className="text-xs font-semibold text-foreground">
-                1. Request Submitted by Employee
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                Filed on {request.date} · Logged into ESS Central Queue
-              </p>
-            </div>
-
-            {/* Step 2: Department Endorsement */}
-            <div className="relative">
-              <div
-                className={`absolute -left-[31px] top-0.5 h-5 w-5 rounded-full flex items-center justify-center text-xs ${
-                  request.status !== "Pending"
-                    ? "bg-emerald-500 text-white"
-                    : "bg-amber-500 text-white animate-pulse"
-                }`}
-              >
-                {request.status !== "Pending" ? (
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                ) : (
-                  <Clock className="h-3 w-3" />
+          <div className="ml-2 space-y-4 border-l-2 border-primary/20 pl-6">
+            {timeline.map((entry, index) => (
+              <div key={`${entry.status}-${index}`} className="relative">
+                <div className="absolute -left-[31px] top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                  {statusIcon(entry.status)}
+                </div>
+                <p className="text-xs font-semibold text-foreground">{entry.status}</p>
+                <p className="text-[11px] text-muted-foreground">{entry.note || "—"}</p>
+                {entry.at && (
+                  <p className="text-[11px] text-muted-foreground">{formatTimelineDate(entry.at)}</p>
                 )}
               </div>
-              <p className="text-xs font-semibold text-foreground">
-                2. Department Supervisor Review
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                {request.status === "Pending"
-                  ? "Awaiting endorsement from Executive Chef Marco"
-                  : `Endorsed by Department Head · Verified shift requirement`}
-              </p>
-            </div>
-
-            {/* Step 3: HR Action */}
-            <div className="relative">
-              <div
-                className={`absolute -left-[31px] top-0.5 h-5 w-5 rounded-full flex items-center justify-center text-xs ${
-                  ["Approved", "Completed", "Released"].includes(request.status)
-                    ? "bg-emerald-500 text-white"
-                    : request.status === "Rejected"
-                      ? "bg-rose-500 text-white"
-                      : "bg-muted-foreground/30 text-muted-foreground"
-                }`}
-              >
-                {["Approved", "Completed", "Released"].includes(request.status) ? (
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                ) : request.status === "Rejected" ? (
-                  <XCircle className="h-3.5 w-3.5" />
-                ) : (
-                  <div className="h-2 w-2 rounded-full bg-current" />
-                )}
-              </div>
-              <p className="text-xs font-semibold text-foreground">
-                3. HR Service Action &amp; Resolution
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                {["Approved", "Completed", "Released"].includes(request.status)
-                  ? `Approved & processed by ${request.assignedTo || "HR Office"}`
-                  : request.status === "Rejected"
-                    ? "Request rejected by HR. Check notes for details."
-                    : "Assigned to HR Administrator for final processing"}
-              </p>
-            </div>
+            ))}
           </div>
         </div>
 
-        <DialogFooter className="flex-col sm:flex-row gap-2 sm:justify-between items-center border-t border-border pt-3">
-          {isPending ? (
+        <DialogFooter className="flex-col items-center gap-2 border-t border-border pt-3 sm:flex-row sm:justify-between">
+          {isOpenStatus ? (
             <Button
               variant="outline"
               size="sm"
-              className="text-xs text-rose-600 border-rose-500/30 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-              onClick={handleCancel}
+              className="border-rose-500/30 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+              onClick={() => void handleCancel()}
+              disabled={cancelling}
             >
-              <XCircle className="mr-1 h-3.5 w-3.5" /> Cancel Request
+              <XCircle className="mr-1 h-3.5 w-3.5" />
+              {cancelling ? "Cancelling…" : "Cancel Request"}
             </Button>
           ) : (
             <div />

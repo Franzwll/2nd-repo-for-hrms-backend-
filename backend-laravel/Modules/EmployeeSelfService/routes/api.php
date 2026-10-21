@@ -12,6 +12,9 @@ use Modules\EmployeeSelfService\Http\Controllers\EssPortalController;
 Route::prefix('v1/ess')->middleware('api')->group(function () {
     Route::get('my-documents/{id}/file', [EssPortalController::class, 'documentFile']);
     Route::get('requests/{id}/attachments/{attachmentId}/file', [EssPortalController::class, 'requestAttachmentFile']);
+    // HR review/preview of the same attachments (ESS Management permission
+    // is enforced inside the controller).
+    Route::get('admin/requests/{id}/attachments/{attachmentId}/file', [EssPortalController::class, 'adminRequestAttachmentFile']);
     // File-based handbooks are streamed inline into the player's reading stage.
     if (config('services.ess_lms.enabled')) {
         Route::get('my-learning/{courseCode}/file', [EssPortalController::class, 'learningMaterialFile']);
@@ -48,6 +51,8 @@ Route::middleware(['auth:sanctum', 'permission:ESS Management'])->prefix('v1/ess
         Route::post('my-learning/{courseCode}/reading-complete', [EssPortalController::class, 'completeLearningReading']);
     }
     Route::post('requests', [EssPortalController::class, 'createRequest']);
+    Route::post('requests/{id}/respond', [EssPortalController::class, 'respondToRequest']);
+    Route::post('requests/{id}/cancel', [EssPortalController::class, 'cancelRequest']);
     Route::post('clock', [EssPortalController::class, 'clock']);
     Route::get('my-promotion-requests', [EssPortalController::class, 'myPromotionRequests']);
     Route::post('my-promotion-requests', [EssPortalController::class, 'createPromotionRequest']);
@@ -65,6 +70,8 @@ Route::middleware(['auth:sanctum', 'permission:ESS Management'])->prefix('v1/ess
     // Admin & Super Admin Action Endpoints (requires edit-level access)
     Route::middleware('permission:ESS Management:Edit')->group(function () {
         Route::patch('admin/requests/{id}/status', [EssAdminController::class, 'updateStatus']);
+        Route::post('admin/requests/{id}/review', [EssAdminController::class, 'review']);
+        Route::post('admin/requests/{id}/fulfill', [EssAdminController::class, 'fulfill']);
         Route::post('admin/requests/behalf', [EssAdminController::class, 'fileOnBehalf']);
         Route::put('admin/categories/{id}/toggle', [EssAdminController::class, 'toggleCategory']);
         Route::patch('admin/learning/{id}/status', [EssAdminController::class, 'verifyLearning']);

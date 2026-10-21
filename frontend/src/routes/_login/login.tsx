@@ -320,36 +320,22 @@ function LoginPage() {
 
         <div className="relative z-20 max-w-lg">
           <p className="eyebrow text-gold drop-shadow-md">
-            Hotel &amp; Restaurant Human Resource System
+            Staff Portal
           </p>
           <div className="mt-4 h-px w-16 bg-gold/70" />
           <h1 className="mt-6 font-display text-5xl font-semibold leading-[1.08] drop-shadow-lg">
-            The house is ready.
-            <br />
-            Welcome back to duty.
+            Welcome back.
           </h1>
           <p className="mt-5 text-sm leading-relaxed text-primary-foreground/90 drop-shadow">
-            One portal for the entire property — from the front desk and housekeeping floors to the
-            kitchen brigade and banquet service. Hiring, 201 files, schedules and employee
-            self-service, kept in a single register.
+            Schedules, payroll, and requests — all in one place.
           </p>
-
-          <div className="mt-8 grid grid-cols-2 gap-x-6 gap-y-2 text-xs text-primary-foreground/90">
-            {brigades.map((b) => (
-              <span key={b} className="flex items-center gap-2 drop-shadow-sm">
-                <span className="h-1.5 w-1.5 rounded-full bg-gold shadow-[0_0_6px_rgba(212,175,55,0.8)]" />
-                {b}
-              </span>
-            ))}
-          </div>
         </div>
 
         <div className="relative z-20 flex items-center justify-between border-t border-primary-foreground/20 pt-5 text-xs text-primary-foreground/80">
           <span className="flex items-center gap-2">
             <ShieldCheck className="h-3.5 w-3.5 text-gold" />
-            Role-based access · Audited sessions
+            Authorized staff only
           </span>
-          <span>24-hour front desk · +63 2 8888 8888</span>
         </div>
       </div>
 

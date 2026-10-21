@@ -22,6 +22,16 @@ class Applicant extends Model
         'fit_score',
         'status',
         'stage',
+        'rejected_at',
+        'cooldown_lifted_at',
+        'offer_status',
+        'offer_sent_at',
+        'offer_expires_at',
+        'offer_start_date',
+        'offer_response_channel',
+        'offer_response_note',
+        'offer_responded_at',
+        'offer_response_recorded_by',
         'source',
         'resume_file_path',
         'resume_original_name',
@@ -34,6 +44,12 @@ class Applicant extends Model
         'flags_json'              => 'array',
         'applied_at'              => 'datetime',
         'fit_score'               => 'decimal:2',
+        'rejected_at'             => 'datetime',
+        'cooldown_lifted_at'      => 'datetime',
+        'offer_sent_at'           => 'datetime',
+        'offer_expires_at'        => 'datetime',
+        'offer_start_date'        => 'date',
+        'offer_responded_at'      => 'datetime',
     ];
 
     /* ------------------------------------------------------------------ */
@@ -42,11 +58,13 @@ class Applicant extends Model
 
     public function jobPost(): BelongsTo
     {
+        /* Archived job posts stay visible on existing applicant records so
+           their position title and department never disappear. */
         return $this->belongsTo(
             \Modules\RecruitmentManagement\Models\JobPost::class,
             'job_post_id',
             'job_post_id'
-        );
+        )->withTrashed();
     }
 
     public function screeningEntities(): HasMany
@@ -142,5 +160,30 @@ class Applicant extends Model
         }
 
         return 'APL-' . str_pad($next, 5, '0', STR_PAD_LEFT);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Offer workflow helpers                                                */
+    /* ------------------------------------------------------------------ */
+
+    /** Whole days remaining in the 7-day offer response window (0 when the
+     *  window has already lapsed). Null when no offer was sent. */
+    public function offerDaysLeft(): ?int
+    {
+        if ($this->offer_expires_at === null) {
+            return null;
+        }
+
+        $seconds = now()->diffInSeconds($this->offer_expires_at, false);
+
+        return $seconds >= 0 ? (int) ceil($seconds / 86400) : 0;
+    }
+
+    /** True when a pending offer passed its 7-day response window. */
+    public function offerResponseExpired(): bool
+    {
+        return $this->offer_status === 'Pending'
+            && $this->offer_expires_at !== null
+            && $this->offer_expires_at->isPast();
     }
 }

@@ -168,7 +168,7 @@ def _merge_unique_lines(base: str, other: str, max_len: int = 90) -> str:
     return base + "\n" + "\n".join(additions)
 
 
-def extract_pdf(path: Path) -> Dict:
+def extract_pdf(path: Path, fast: bool = False) -> Dict:
     plumber_text, page_count = _pdf_text_pdfplumber(path)
 
     pdfium_text = _pdf_text_pdfium(path)
@@ -192,7 +192,7 @@ def extract_pdf(path: Path) -> Dict:
 
     # Scanned/image-based PDF: no text layer. Rasterize every page and
     # recover the text with OCR instead of failing.
-    ocr_pages, warnings, renderer = _pdf_ocr_fallback(path)
+    ocr_pages, warnings, renderer = _pdf_ocr_fallback(path, fast=fast)
     if any(p.strip() for p in ocr_pages):
         return {
             "text": "\n".join(ocr_pages).strip(),
@@ -415,13 +415,56 @@ def _ocr_single_variant(variant, is_blurred: bool = False) -> str:
     return "\n".join(collected)
 
 
-def _ocr_with_regions(image, force_blurred: bool | None = None) -> str:
+_REAL_WORD_RE = re.compile(r"[A-Za-z]{3,}")
+
+
+def _ocr_fast_text(image) -> str:
+    """One full-page PSM 3 pass on the original image.
+
+    Used only by the document *classifier*, which needs section/keyword
+    evidence rather than a faithful transcript. Never used for screening,
+    resume extraction or document verification.
+    """
+    try:
+        import pytesseract
+        from PIL import ImageOps
+
+        try:
+            image = ImageOps.exif_transpose(image)
+        except Exception:
+            pass
+        return pytesseract.image_to_string(image.convert("L"), config="--psm 3")
+    except Exception:
+        return ""
+
+
+def _ocr_fast_usable(text: str) -> bool:
+    """Rejects short/garbled fast passes so they fall back to the full path."""
+    if not text or len(text.strip()) < 80:
+        return False
+    if _structure_score(text) < 10:
+        return False
+    if len(_REAL_WORD_RE.findall(text)) < 25:
+        return False
+    alnum = sum(ch.isalnum() for ch in text)
+    return alnum / max(1, len(text)) >= 0.55
+
+
+def _ocr_with_regions(image, force_blurred: bool | None = None, fast: bool = False) -> str:
     """Adaptive multi-variant OCR. Fast path for clear images, heavy for blurred."""
     # Detect blur once; allow caller to force blurred mode via filename
     if force_blurred is None:
         is_blurred = _is_blurred_estimate(image)
     else:
         is_blurred = force_blurred
+
+    # Classifier-only shortcut: one PSM 3 pass. Blurred/low-evidence images
+    # keep the full multi-pass path, so screening accuracy is untouched.
+    if fast and not is_blurred:
+        candidate = _ocr_fast_text(image)
+        if _ocr_fast_usable(candidate):
+            return candidate
+
     variants = _prepare_ocr_variants(image, is_blurred=is_blurred)
 
     # For blurred: merge all variants to maximize recall (different variants recover different words)
@@ -484,7 +527,7 @@ def _ocr_with_regions(image, force_blurred: bool | None = None) -> str:
     return best_text
 
 
-def _pdf_ocr_fallback(path: Path) -> tuple[List[str], List[str], str]:
+def _pdf_ocr_fallback(path: Path, fast: bool = False) -> tuple[List[str], List[str], str]:
     """Rasterizes PDF pages and OCRs each with Tesseract.
 
     Raises ExtractionError when a dependency is unavailable so the failure
@@ -511,7 +554,7 @@ def _pdf_ocr_fallback(path: Path) -> tuple[List[str], List[str], str]:
     try:
         images, renderer = _rasterize_pdf(path, zoom)
         for page_number, image in enumerate(images, start=1):
-            page_text = _ocr_with_regions(image)
+            page_text = _ocr_with_regions(image, fast=fast)
             if not page_text.strip():
                 warnings.append(f"Page {page_number}: OCR produced no readable text.")
             texts.append(page_text)
@@ -532,11 +575,20 @@ def extract_docx(path: Path) -> Dict:
     parts: List[str] = []
     seen: set = set()
 
-    def add_text(text: str) -> None:
+    def add_text(text: str, *, global_dedupe: bool = False) -> None:
         text = (text or "").strip()
-        if text and text not in seen:
-            seen.add(text)
-            parts.append(text)
+        if not text:
+            return
+        if global_dedupe and text in seen:
+            return
+        # Body text may legitimately repeat (the same title used by two jobs,
+        # or a headline repeated as the first job title), so only collapse
+        # adjacent duplicates there. Headers/footers/textbox sweeps still use
+        # a document-wide set to avoid re-adding the same block.
+        if parts and parts[-1] == text:
+            return
+        seen.add(text)
+        parts.append(text)
 
     for element in document.element.body:
         if element.tag.endswith("p"):
@@ -577,7 +629,7 @@ def extract_docx(path: Path) -> Dict:
                 if t_elem.tag.endswith("}t") and t_elem.text and t_elem.text.strip():
                     runs.append(t_elem.text.strip())
             if runs:
-                add_text(" ".join(runs))
+                add_text(" ".join(runs), global_dedupe=True)
 
     # Headers / footers (contact blocks often live here).
     try:
@@ -586,11 +638,11 @@ def extract_docx(path: Path) -> Dict:
                 if container.is_linked_to_previous:
                     continue
                 for p in container.paragraphs:
-                    add_text(p.text)
+                    add_text(p.text, global_dedupe=True)
                 for tbl in container.tables:
                     for row in tbl.rows:
                         for cell in row.cells:
-                            add_text(cell.text)
+                            add_text(cell.text, global_dedupe=True)
     except Exception:
         pass
 
@@ -607,7 +659,7 @@ def extract_docx(path: Path) -> Dict:
                         if t_elem.tag.endswith("}t") and t_elem.text and t_elem.text.strip():
                             runs.append(t_elem.text.strip())
                     if runs:
-                        add_text(" ".join(runs))
+                        add_text(" ".join(runs), global_dedupe=True)
     except Exception:
         pass
 
@@ -686,7 +738,7 @@ def describe_docx(path: Path) -> Dict:
     return stats
 
 
-def extract_image(path: Path) -> Dict:
+def extract_image(path: Path, fast: bool = False) -> Dict:
     try:
         import pytesseract
         from PIL import Image
@@ -704,12 +756,12 @@ def extract_image(path: Path) -> Dict:
     # Force heavy variant when filename indicates blurred (dataset-specific hint for evaluation;
     # in production _is_blurred_estimate will trigger it automatically)
     force_blurred = "blurred" in path.name.lower() or "blurred" in str(path).lower()
-    text = _ocr_with_regions(image, force_blurred=force_blurred if force_blurred else None)
+    text = _ocr_with_regions(image, force_blurred=force_blurred if force_blurred else None, fast=fast)
     method = "tesseract-ocr (blur-enhanced)" if force_blurred else "tesseract-ocr"
     if force_blurred and not text.strip():
         # Fallback try without force
         try:
-            text2 = _ocr_with_regions(image, force_blurred=False)
+            text2 = _ocr_with_regions(image, force_blurred=False, fast=fast)
             if len(text2.strip()) > len(text.strip()):
                 text = text2
                 method = "tesseract-ocr"
@@ -745,8 +797,12 @@ def is_supported(filename: str) -> bool:
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff", ".webp"}
 
 
-def extract_text(path: Path, filename: str) -> Dict:
+def extract_text(path: Path, filename: str, fast: bool = False) -> Dict:
     """Dispatches to the right extractor. Raises ExtractionError on failure.
+
+    `fast=True` is a classifier-only hint: image/scanned-PDF OCR may take a
+    single-pass shortcut when the page is clear. Screening and document
+    verification must leave it False so their text stays fully multi-pass.
 
     Returns dict: text, method, pages, extension, warnings.
     """
@@ -760,13 +816,13 @@ def extract_text(path: Path, filename: str) -> Dict:
 
     try:
         if ext == ".pdf":
-            result = extract_pdf(path)
+            result = extract_pdf(path, fast=fast)
         elif ext == ".docx":
             result = extract_docx(path)
         elif ext == ".txt":
             result = extract_txt(path)
         elif ext in IMAGE_EXTENSIONS:
-            result = extract_image(path)
+            result = extract_image(path, fast=fast)
             warnings.append("Text extracted from image using OCR; accuracy may be lower.")
         else:
             raise ExtractionError(

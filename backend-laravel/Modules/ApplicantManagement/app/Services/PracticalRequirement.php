@@ -2,18 +2,21 @@
 
 namespace Modules\ApplicantManagement\Services;
 
+use App\Models\Position as CorePosition;
 use Modules\RecruitmentManagement\Models\JobPost;
 
 /**
  * Single source of truth for "does this position require a practical exam?".
  *
- * The per-job-post flag (`job_posts.requires_practical`, toggleable from
- * Recruitment Management) is authoritative whenever it is set. The designated
- * positions below keep the behaviour for job posts that were never configured —
- * it mirrors `PRACTICAL_POSITIONS` in
+ * Core HCM OWNS this flag: positions.requires_practical (toggled in the
+ * Department & Position module) is authoritative — every applicant for a
+ * flagged position (e.g. Front Desk) must undergo the practical exam. The
+ * legacy per-job-post column (job_posts.requires_practical, formerly toggled
+ * in Recruitment Management) is kept only as a read-only fallback for old
+ * rows. The designated positions below are the last resort for posts whose
+ * position carries no flag — it mirrors `PRACTICAL_POSITIONS` in
  * `frontend/src/data/applicants.ts`, so the UI and this API gate always agree
- * about whether the practical stage applies. (A mismatch here is what made the
- * practical dialog open for positions the API then refused to save.)
+ * about whether the practical stage applies.
  */
 class PracticalRequirement
 {
@@ -39,19 +42,28 @@ class PracticalRequirement
 
     /**
      * True when the practical assessment applies to this applicant's post:
-     * the global Core HCM switch must be ON, then the explicit job-post
-     * flag wins, otherwise the position is checked against the designated list.
+     * the global Core HCM switch must be ON, then the Core HCM position flag
+     * wins, otherwise the legacy job-post flag, otherwise the designated list.
+     * Every applicant for a flagged position must undergo the practical exam.
      */
-    public static function required(?JobPost $jobPost, ?string $position = null): bool
+    public static function required(?JobPost $jobPost, ?string $position = null, ?CorePosition $corePosition = null): bool
     {
         if (! AssessmentConfig::practicalTestEnabled()) {
             return false;
         }
 
+        // 1. Core HCM Position flag (Department & Position module) — OWNER.
+        $pos = $corePosition ?? ($jobPost ? $jobPost->position : null);
+        if ($pos && (bool) $pos->requires_practical) {
+            return true;
+        }
+
+        // 2. Legacy job post flag (Recruitment Management toggle, removed).
+        //    Read-only fallback for old rows — new posts never write it.
         if ($jobPost && (bool) $jobPost->requires_practical) {
             return true;
         }
 
-        return self::forPosition($position ?? $jobPost?->title);
+        return self::forPosition($position ?? $jobPost?->title ?? $pos?->title);
     }
 }

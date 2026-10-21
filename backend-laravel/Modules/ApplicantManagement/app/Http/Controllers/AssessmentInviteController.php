@@ -46,13 +46,13 @@ class AssessmentInviteController extends Controller
             ], 422);
         }
 
-        $model = Applicant::with('jobPost')->findOrFail($applicant);
+        $model = Applicant::with('jobPost.position')->findOrFail($applicant);
 
         // Position gate: only candidates for positions requiring assessment test
-        // may take the assessment test.
+        // may take the assessment test. Core HCM position flag (owner) first.
         if (! \Modules\ApplicantManagement\Services\AssessmentRequirement::required($model->jobPost, null, $model->jobPost?->position)) {
             return response()->json([
-                'message' => 'This position does not require an assessment test. Enable "Requires Assessment" in the job post, position, or configure the position in AssessmentRequirement.',
+                'message' => 'This position does not require an assessment test. Enable "Requires Assessment" on the position in Core HCM.',
             ], 422);
         }
 

@@ -336,24 +336,24 @@ The pipeline assigns candidates into one of **four official, mutually exclusive 
 
 Resume screening alone only validates the resume *against the job post*. Supporting-document verification (`document_verification.py`) validates the resume *against its own paper proof* — each uploaded COE, Certificate or Credential is compared field-by-field (employer, job title, employment dates, degree, institution, certification, issuer) with the resume claims. Those two signals are combined so the single percentage HR ranks by — and the official status — express **resume screening + verification of the resume**:
 
-$$\text{Ranking Score} = \underbrace{\text{Resume Match Score}}_{4.7} \times (1 - w) + \text{Documents Score} \times w, \qquad w = 0.15$$
+$$\text{Ranking Score} = \max\Big(\text{Resume Match Score},\ \text{Resume Match Score} \times (1 - w) + \text{Documents Score} \times w\Big), \qquad w = 0.15$$
 
 $$\text{Documents Score} = 100 \times \text{mean(credit of decisive documents)}$$
 
 | Document Verdict | Credit | Meaning |
 | --- | --- | --- |
 | `VERIFIED` | 1.00 | The document corroborates the resume claims. |
-| `UNABLE_TO_VERIFY` | 0.50 | The document could not be compared (partial credit, never rejected). |
+| `UNABLE_TO_VERIFY` | 0.50 | The document could not be compared — never lowers the ranking (partial credit only). |
 | `DISCREPANCY_FOUND` | 0.00 | The document contradicts a resume claim. |
 | `PENDING` / `PROCESSING` | *excluded* | Verification still running — not counted either way. |
 | `Others` (unmappable) | *excluded* | Stored for manual HR review, never scored. |
 
 **Guarantees**
 
-- **No silent penalty**: with no decisive document the blend is a no-op, so an applicant who uploaded nothing keeps exactly the resume-only score.
+- **Evidence only rewards**: the blend is floored at the resume score, so a verified document raises the ranking, an unverifiable document is a no-op (never a silent penalty), and an applicant who uploaded nothing keeps exactly the resume-only score. Evidence can never quietly subtract points.
 - **Discrepancy escalation**: any document contradicting a resume claim (`DISCREPANCY_FOUND`) forces the official classification to `INVALID_CREDENTIAL` for manual review, with the mismatched field names (`Employer`, `Job title`, `Start date`, `Degree`, `Certification`, …) quoted in the reasons.
 - **Rank consistency**: alternative-job referrals (`FIT_FOR_OTHER_JOB`) are scored with the same blended score, so a recommendation never points at a role the documents contradict.
-- **Auditable evidence block**: every screening result carries `resume_match_score` (resume-only) and `document_verification` (`status`, `documents_score`, verified / discrepancy / unable counts, applied `score_penalty`, per-document breakdown and human-readable flags). The UI shows this as *Resume score → Documents score → Ranking score*.
+- **Auditable evidence block**: every screening result carries `resume_match_score` (resume-only) and `document_verification` (`status`, `documents_score`, verified / discrepancy / unable counts, applied `score_bonus` and `score_penalty` — the latter always 0 — per-document breakdown and human-readable flags). The UI shows this as *Resume score → Documents score → Ranking score*.
 - **Recompute without re-OCR**: the `POST /screening/reclassify` endpoint (section 7.4) replays the stored profile + validation through this classification stage, so uploading, re-verifying or deleting a document refreshes the candidate's percentage, rank order and status instantly.
 
 **Evidence statuses** (reported alongside the score)
@@ -478,7 +478,7 @@ Content-Type: multipart/form-data
   "success": true,
   "processing_status": "PROCESSED",
   "screening_status": "PERFECT_FOR_THE_JOB",
-  "match_score": 84.78,
+  "match_score": 86.5,
   "resume_match_score": 86.5,
   "document_verification": {
     "status": "PARTIAL",
@@ -491,7 +491,8 @@ Content-Type: multipart/form-data
     "pending_count": 0,
     "ignored_count": 0,
     "documents_score": 75.0,
-    "score_penalty": 1.72,
+    "score_penalty": 0.0,
+    "score_bonus": 0.0,
     "escalate_invalid": false,
     "mismatched_fields": [],
     "flags": [
@@ -538,7 +539,7 @@ Content-Type: multipart/form-data
     "Overall match score 84.78% reached the required threshold of 75.0% for Front Desk Receptionist.",
     "Matched required skills: Customer Service, Front Office Operations, Opera PMS.",
     "Education requirement met: True; experience requirement met: True (2.5 yrs vs 1.0 yrs minimum).",
-    "Supporting-document verification (1 verified, 1 unverifiable) reduced the score from 86.5% to 84.78% (documents score 75.0% at a 15% weighting)."
+    "Supporting-document verification (1 verified, 1 unverifiable) kept the score at 86.5% (documents score 75.0% at a 15% weighting)."
   ],
   "validation": {
     "missing_information": [],

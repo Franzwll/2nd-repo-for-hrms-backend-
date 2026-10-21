@@ -51,9 +51,13 @@ _EMAIL_JOIN_LINEBREAK_1 = re.compile(r"([A-Za-z0-9._%+-]+)\s*\n\s*@")
 _EMAIL_JOIN_LINEBREAK_2 = re.compile(r"@\s*\n\s*([A-Za-z0-9.-]+)")
 _EMAIL_JOIN_TLD_SPLIT = re.compile(r"([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+)\s*\n\s*\.([A-Za-z]{2,})")
 # Column-boundary splits inside the local part: "dan\niel.cruz@gmail.com".
-# The leading fragment is capped at 4 chars and common labels are excluded.
+# The leading fragment is capped at 4 chars, common labels are excluded, and
+# it must contain at least one letter. A pure-digit fragment is a phone tail
+# from the previous row ("+63 920 418 7329\njoshua...@gmail.com"), never the
+# start of an e-mail address.
 _EMAIL_JOIN_LOCAL_SPLIT = re.compile(
-    r"\b([A-Za-z0-9._%+-]{1,4})\n(?!(?:email|mail|info|name|tel|web|phone)\b)"
+    r"\b((?=[A-Za-z0-9._%+-]*[A-Za-z])[A-Za-z0-9._%+-]{1,4})\n"
+    r"(?!(?:email|mail|info|name|tel|web|phone)\b)"
     r"([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})",
     re.I,
 )
@@ -1768,7 +1772,7 @@ class EntityExtractor:
                 return False
             low = cleaned.lower()
             # Reject obvious non-titles: sentences starting with and/or, containing review channels, key achievements, or ending with period
-            if low.startswith(("and ", "or ", "the ", "a ", "an ")) or low.startswith("and through") or "online review" in low or "key achievements" in low or "professional summary" in low:
+            if low.startswith(("and ", "or ", "the ", "a ", "an ", "contact channels")) or low.startswith("and through") or "online review" in low or "key achievements" in low or "professional summary" in low:
                 return False
             if cleaned.endswith(".") and len(cleaned.split()) > 6:
                 return False
@@ -1777,7 +1781,10 @@ class EntityExtractor:
             if len(words) == 1:
                 return bool(refdata.canonicalize(cleaned, roles_ref))
             if not cleaned[0].isupper():
-                return False
+                # Digit-led names ("7-Eleven Convenience Store", "24/7
+                # Cafe") are valid titles when a later word is capitalized.
+                if not (cleaned[0].isdigit() and any(w[:1].isupper() for w in words[1:])):
+                    return False
             if refdata.canonicalize(cleaned, roles_ref):
                 return True
             low_word_set = set(re.findall(r"\w+", low))
@@ -1799,6 +1806,9 @@ class EntityExtractor:
                     "captain", "sommelier", "butler", "porter", "bellhop",
                     "doorman", "technician", "engineer", "accountant",
                     "auditor", "controller", "analyst",
+                    # Retail / service crew titles ("Sales Associate &
+                    # Grocery Crew") carry a role noun on one side of the &.
+                    "associate", "crew",
                 }
                 if not (low_word_set & _ROLE_NOUNS):
                     return False
@@ -1828,7 +1838,22 @@ class EntityExtractor:
             }
             if low_word_set & _DUTY_FRAGMENT_WORDS and not refdata.canonicalize(cleaned, roles_ref):
                 return False
-            if any(bad in low for bad in ["increasing", "variances", "supporting", "chain", "restaurant —", "hotel —", "resort —", "deliver", "coordinate", "manage", "assist", "through online", "review channels", "guest relations across", "key achievements", "replenishment", "techniques", "patrons", "beverage service", "food safety", "glass sterilization", "tripadvisor"]):
+            # Verbs are matched as whole words: "Assistant", "Manager", and
+            # "Coordinator" are legitimate titles even though they contain
+            # "assist" / "manage" / "coordinate".
+            _DUTY_VERBS = (
+                "increasing", "variances", "supporting", "deliver",
+                "coordinate", "manage", "assist",
+            )
+            _DUTY_PHRASES = (
+                "restaurant —", "hotel —", "resort —", "through online",
+                "review channels", "guest relations across", "key achievements",
+                "replenishment", "techniques", "patrons", "beverage service",
+                "food safety", "glass sterilization", "tripadvisor",
+            )
+            if any(re.search(rf"\b{re.escape(bad)}\b", low) for bad in _DUTY_VERBS):
+                return False
+            if any(bad in low for bad in _DUTY_PHRASES):
                 return False
             return True
 
@@ -1843,7 +1868,10 @@ class EntityExtractor:
             if not seg or len(seg) > 50:
                 return False
             words = seg.split()
-            if not (1 <= len(words) <= 6):
+            # Real titles can run long ("Front Desk Receptionist & Guest
+            # Relations Officer" is 7 tokens once "&" is counted); the 50-char
+            # guard in is_clean_title still rejects duty sentences.
+            if not (1 <= len(words) <= 8):
                 return False
             if seg.endswith((".", ";", ",")):
                 return False
@@ -1857,7 +1885,10 @@ class EntityExtractor:
             if not seg or len(seg) > 60 or ("," in seg and len(seg.split(",")) > 2):
                 return False
             if not seg[0].isupper():
-                return False
+                # "7-Eleven Convenience Store" / "24/7 Cafe" are employers,
+                # not OCR debris, when a later word is capitalized.
+                if not (seg[0].isdigit() and any(w[:1].isupper() for w in seg.split()[1:])):
+                    return False
             # Reject known headers that look like capitalized companies
             if seg.upper() in [h.upper() for h in ["PROFESSIONAL SUMMARY","WORK EXPERIENCE","CORE SKILLS","EDUCATION","CERTIFICATIONS","KEY ACHIEVEMENTS","PROFESSIONAL EXPERIENCE"]] or seg.lower() in ["key achievements","professional summary","work experience"]:
                 return False
@@ -1865,6 +1896,18 @@ class EntityExtractor:
             if not (1 <= len(words) <= 7):
                 return False
             low_words = {w.lower() for w in words}
+            # A row that ends in a role noun ("Kitchen Prep Assistant",
+            # "Facilities Maintenance Supervisor", "Electro-Mechanical
+            # Technician") is a title, not an employer, even when an earlier
+            # word looks like an org suffix ("kitchen"). Words that are both a
+            # role and an org suffix ("services", "store") are exempt so
+            # "Carrier Concepcion Facility Services" can stay a company.
+            last_word = re.sub(r"[^A-Za-z]", "", seg.split()[-1]).lower()
+            if (
+                last_word in _NAME_ROLE_WORDS
+                and last_word not in _ORG_SUFFIX_WORDS
+            ):
+                return False
             if low_words & set(_NAME_ROLE_WORDS) and not (low_words & _ORG_SUFFIX_WORDS):
                 return False
             if low_words & (city_or_place_words | date_words) and len(low_words) <= 2:
@@ -1887,7 +1930,12 @@ class EntityExtractor:
             }
             if low_words & _ORG_SUFFIX_WORDS:
                 if (low_words & _GENERIC_COMPANY_WORDS) and not (low_words & _STRONG_ORG_ANCHORS):
-                    return False
+                    # Multi-word brands ("Carrier Concepcion Facility
+                    # Services") are real employers even when one word is
+                    # generic; short fragments ("Beverage Service") are not.
+                    cap_words = [w for w in seg.split() if w[:1].isalpha()]
+                    if len(cap_words) < 3:
+                        return False
                 return True
             if low_words & _GENERIC_COMPANY_WORDS:
                 return False
@@ -1925,7 +1973,14 @@ class EntityExtractor:
         raw_exp_lines = [l.strip() for l in exp_section.split("\n") if l.strip()]
         exp_lines: List[str] = []
         for line in raw_exp_lines:
-            if exp_lines and (line[0].islower() or (line[0].isdigit() and not re.match(r"^\d+\.", line))):
+            is_wrapped = line[0].islower()
+            if not is_wrapped and line[0].isdigit() and not re.match(r"^\d+\.", line):
+                # Bare numeric fragments ("2019", "3.5") continue the row
+                # above, but digit-led names ("7-Eleven Convenience Store",
+                # "24/7 Cafe") start their own entry. Without this split the
+                # employer is glued onto the previous duty sentence and lost.
+                is_wrapped = bool(re.match(r"^\d+(?:[.,]\d+)?(?:\s|$)", line))
+            if exp_lines and is_wrapped:
                 exp_lines[-1] += " " + line
             else:
                 exp_lines.append(line)
@@ -2099,6 +2154,19 @@ class EntityExtractor:
                 pending_date = range_match.group(0)
                 continue
 
+            # Stacked Company -> Date -> Title rows: once the title is known
+            # the next employer row starts a new entry. Flush the complete
+            # pending entry first instead of consuming the new company as if
+            # it belonged to the previous job.
+            if (
+                not range_match
+                and pending_title
+                and pending_company
+                and segs
+                and looks_like_company(segs[0])
+            ):
+                _flush_pending(line_clean)
+
             if range_match or pending_date:
                 effective_date = range_match.group(0) if range_match else pending_date
                 title_segs = [s for s in segs if looks_like_title(s)]
@@ -2118,19 +2186,38 @@ class EntityExtractor:
                 if next_l and not pending_title and not pending_company:
                     next_clean = re.sub(r"^[\u2022\u25cf\u25aa\u2023\u2043\u25b8\u25b9\u25ba\u25c6\u25c7\u25a0\u25a1\u25cb\u25b6o\-–—*●•✓▸◆►▹\s]+", "", next_l).strip()
                     if not _starts_with_bullet_verb(next_clean):
+                        # Take the earliest city mention. Iterating the city
+                        # list and breaking on the first hit would split
+                        # "Mandaluyong City, Metro Manila" at "Manila",
+                        # leaving a 7-word pseudo-title that fails validation.
                         city_m = None
                         for c in _PH_CITIES:
                             m = re.search(rf"\b{re.escape(c)}\b.*$", next_clean, re.I)
-                            if m:
+                            if m and (city_m is None or m.start() < city_m.start()):
                                 city_m = m
-                                break
                         if city_m:
                             cand_title = next_clean[:city_m.start()].strip(" ,-–—|•·")
                             cand_loc = next_clean[city_m.start():].strip(" ,-–—|•·")
                         else:
                             cand_title = next_clean
                             cand_loc = None
-                        if cand_title and refdata.canonicalize(cand_title, roles_ref):
+                        # The next row is a title only when it still looks
+                        # like a title. canonicalize() alone is too permissive
+                        # (a duty sentence containing "cashier" resolves to
+                        # "Restaurant Cashier"), which shifted the whole
+                        # history by one row.
+                        if (
+                            cand_title
+                            and looks_like_title(cand_title)
+                            and (
+                                refdata.canonicalize(cand_title, roles_ref)
+                                or (
+                                    segs
+                                    and looks_like_company(segs[0])
+                                    and not looks_like_company(cand_title)
+                                )
+                            )
+                        ):
                             next_has_role = True
 
                 if next_has_role and cand_title:
@@ -2185,6 +2272,14 @@ class EntityExtractor:
                     if company is None and pending_company:
                         # Stacked rows: company stashed on an earlier line.
                         company, location = pending_company, pending_location or location
+                    if location is None and company is not None and not skip_next and i + 1 < len(exp_lines):
+                        # Stacked rows put the city on its own line after the
+                        # title. Attach it to this entry instead of letting it
+                        # leak into the next one.
+                        peeked_loc = exp_lines[i + 1].strip()
+                        if _is_location_only(peeked_loc):
+                            location = peeked_loc
+                            skip_next = True
                     if company is None and i + 1 < len(exp_lines) and not skip_next:
                         next_l = exp_lines[i + 1]
                         if " — " in next_l or " - " in next_l:
@@ -2272,7 +2367,10 @@ class EntityExtractor:
                     pending_location = location
                     continue
                 canonical = refdata.canonicalize(first, roles_ref)
-                if canonical:
+                # canonicalize() matches any role noun inside free text, so a
+                # duty sentence can resolve to a role ("Restaurant Cashier").
+                # Only a value that still looks like a title may become one.
+                if canonical and looks_like_title(first):
                     if pending_title and pending_company:
                         key = (pending_title.lower(), (pending_company or "").lower(), pending_date or "")
                         if key not in history_keys:

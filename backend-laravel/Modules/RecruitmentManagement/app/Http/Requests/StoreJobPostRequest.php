@@ -26,20 +26,22 @@ class StoreJobPostRequest extends FormRequest
             'vacancies' => ['required', 'integer', 'min:1'],
             'status' => ['required', 'string', 'in:Open,Closed,Draft'],
             'active' => ['boolean'],
-            /* Designated hands-on positions take a practical exam after the
-               assessment test (Applicant Management). */
-            'requires_practical' => ['boolean'],
-            /* Assessment test requirement for this position. */
-            'requires_assessment' => ['boolean'],
-            'experience_level' => ['nullable', 'string', 'in:No Experience,1-2 Years,3-5 Years,5+ Years'],
-            'education_level' => ['nullable', 'string', 'in:High School Graduate,Vocational / TESDA,College Level,Bachelor\'s Degree'],
+            /* Test requirements are owned by Core HCM (positions table) — the
+               Recruitment toggles were removed. These keys are no longer
+               accepted here; legacy rows keep their stored values as fallback. */
+            /* Levels come from the Screening Requirements chips, which are fed
+               by Reference Data — not a fixed list, so HR can require any
+               level the screening vocabulary knows (degree specialisations,
+               Master's, Doctorate, …). Length matches the columns. */
+            'experience_level' => ['nullable', 'string', 'max:50'],
+            'education_level' => ['nullable', 'string', 'max:100'],
             /* Accepted level lists from the Screening Requirements chips. The
                scalar columns above are kept in step by the controller (the
                weakest accepted level), so either shape can be sent. */
             'experience_levels' => ['nullable', 'array'],
-            'experience_levels.*' => ['string', 'in:No Experience,1-2 Years,3-5 Years,5+ Years'],
+            'experience_levels.*' => ['string', 'max:50'],
             'education_levels' => ['nullable', 'array'],
-            'education_levels.*' => ['string', 'in:High School Graduate,Vocational / TESDA,College Level,Bachelor\'s Degree'],
+            'education_levels.*' => ['string', 'max:100'],
             'summary' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
             'responsibilities' => ['nullable', 'array'],

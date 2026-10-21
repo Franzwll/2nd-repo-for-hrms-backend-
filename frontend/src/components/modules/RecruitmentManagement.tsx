@@ -210,6 +210,10 @@ function transformApiJob(j: ApiJobPost): Job {
     applicants: Number(j.applicants_count) || 0,
     platforms: normalizePlatforms(j.platforms),
     blocks: j.blocks ?? null,
+    /* Test requirements resolved by the backend (Core HCM position flags,
+       owner). Read-only in Recruitment — shown as badges in Job Info. */
+    requires_assessment: j.requires_assessment ?? false,
+    requires_practical: j.requires_practical ?? false,
   };
   if (j.picture_url) job.picture = resolveStorageUrl(j.picture_url) ?? "";
   return job;
@@ -1847,7 +1851,7 @@ const blockLibrary: { id: BlockId; label: string; hint: string }[] = [
   { id: "description", label: "Job Description", hint: "Short role pitch" },
   { id: "responsibilities", label: "Key Responsibilities", hint: "Bulleted duties" },
   { id: "qualifications", label: "Qualifications", hint: "Bulleted requirements" },
-  { id: "additional", label: "Additional Info", hint: "Perks, shift details, dress code" },
+  { id: "additional", label: "Additional Info", hint: "Perks, shift details, dress code (optional)" },
   { id: "instructions", label: "Application Instruction", hint: "How to apply" },
   { id: "about", label: "About Company", hint: "Company blurb" },
   { id: "picture", label: "Picture of Hiring", hint: "Template or uploaded image" },
@@ -1877,6 +1881,17 @@ const AI_CONTENT_BLOCKS: BlockId[] = [
   "responsibilities",
   "qualifications",
   "additional",
+  "instructions",
+  "about",
+];
+
+/** Blocks that must hold text before publishing / updating a template.
+ *  Additional Info stays AI-fillable above but is optional — an empty
+ *  Additional Info never blocks Publish job post or Update template. */
+const REQUIRED_PUBLISH_BLOCKS: BlockId[] = [
+  "description",
+  "responsibilities",
+  "qualifications",
   "instructions",
   "about",
 ];
@@ -2024,10 +2039,11 @@ type Draft = {
    */
   educationLevels: string[];
   experienceLevels: string[];
-  /** Assessment test requirement for this position. */
-  requiresAssessment: boolean;
-  /** Practical assessment requirement for this position. */
-  requiresPractical: boolean;
+  /* Test requirements are owned by Core HCM (positions.requires_assessment /
+     requires_practical) — the Recruitment toggles were removed. The draft no
+     longer stores these; the linked position's flags (draftPosition) decide
+     the applicant pipeline. Legacy Job rows still carry the resolved values
+     for display. */
 };
 
 const blankDraft: Draft = {
@@ -2049,8 +2065,6 @@ const blankDraft: Draft = {
   about: "",
   educationLevels: [],
   experienceLevels: [],
-  requiresAssessment: false,
-  requiresPractical: false,
 };
 
 const defaultAbout =
@@ -2081,8 +2095,6 @@ function jobToDraft(j: Job): Draft {
     about: j.about?.trim() ? j.about : defaultAbout,
     educationLevels: acceptedLevels(j.educationLevels, j.education),
     experienceLevels: acceptedLevels(j.experienceLevels, j.experience),
-    requiresAssessment: j.requires_assessment ?? false,
-    requiresPractical: j.requires_practical ?? false,
   };
 }
 
@@ -3142,6 +3154,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                   p.salary_grade_max !== undefined && p.salary_grade_max !== null
                     ? Number(p.salary_grade_max)
                     : (grade?.max_salary ?? null),
+                /* Test requirements owned by Core HCM — the builder shows them
+                   read-only; the applicant pipeline gates on these flags. */
+                requires_assessment: p.requires_assessment ?? false,
+                requires_practical: p.requires_practical ?? false,
               };
             }),
           );
@@ -4376,7 +4392,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         tone: "off" as const,
         label: "AI not configured",
         title:
-          "No GEMINI_API_KEY / OPENROUTER_API_KEY is set on the API server — ask an admin to configure one.",
+          "No GEMINI_API_KEY / JOB_GROQ_API_KEY / JOB_OPENROUTER_API_KEY is set on the API server — ask an admin to configure one.",
         percent: null as number | null,
         limited: false,
       };
@@ -4580,10 +4596,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         instructions: payload.instructions,
         about: payload.about,
         platforms: livePlatforms,
-        /* Canvas arrangement, so the recruiter's drag order survives the save. */
+        /* Canvas arrangement, so the recruiter's drag order survives the save.
+           Test requirements are owned by Core HCM (positions table) — never
+           sent from Recruitment; the linked position's flags decide the
+           applicant pipeline. */
         blocks: payload.blocks ?? [],
-        requires_assessment: draft.requiresAssessment,
-        requires_practical: draft.requiresPractical,
       };
 
       if (existing?.dbId) {
@@ -4623,14 +4640,29 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   };
 
   const deleteJob = async (job: Job) => {
-    if (!job.dbId || !window.confirm(`Delete the “${job.title}” job posting?`)) return;
+    if (!job.dbId) return;
+    const applicantCount = Number(job.applicants) || 0;
+    const prompt =
+      applicantCount > 0
+        ? `Archive the “${job.title}” job posting?\n\nIt has ${applicantCount} applicant${
+            applicantCount === 1 ? "" : "s"
+          }. The posting will be removed from the list, but candidate, interview and offer records will be kept.`
+        : `Delete the “${job.title}” job posting?\n\nJob posts with linked hiring records are archived instead of being permanently deleted.`;
+    if (!window.confirm(prompt)) return;
     try {
-      await jobPostsApi.delete(job.dbId);
+      const result = await jobPostsApi.delete(job.dbId);
       setJobList((prev) => prev.filter((item) => item.id !== job.id));
-      toast.success(`“${job.title}” deleted`);
+      if (result?.archived) {
+        toast.success(`“${job.title}” archived`, {
+          description: result.message,
+        });
+      } else {
+        toast.success(`“${job.title}” deleted`);
+      }
     } catch (e) {
+      const err = e as { message?: string };
       console.warn("Could not delete job on API:", e);
-      toast.error("The job posting could not be deleted.");
+      toast.error(err?.message || "The job posting could not be deleted.");
     }
   };
 
@@ -5096,10 +5128,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       toast.error("Minimum salary cannot be greater than maximum salary.");
       return;
     }
-    // Publishing requires a complete post — every content block must hold
-    // real text (drafts may stay partial via "Save draft"). Missing blocks
+    // Publishing requires a complete post — every required content block must hold
+    // real text (drafts may stay partial via "Save draft"). Additional Info is
+    // optional and never blocks publishing / updating. Missing blocks
     // are added to the canvas and focused so HR can fill them immediately.
-    const missingIds = AI_CONTENT_BLOCKS.filter((id) => lines(blockText(draft, id)).length === 0);
+    const missingIds = REQUIRED_PUBLISH_BLOCKS.filter((id) => lines(blockText(draft, id)).length === 0);
     const missingLabels = missingIds.map(
       (id) => blockLibrary.find((b) => b.id === id)?.label ?? id,
     );
@@ -5194,9 +5227,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         ? prev.map((j) => (j.id === editingJobId ? jobPayload : j))
         : [jobPayload, ...prev],
     );
-    if (sourceReqId) {
-      requisitionStore.update(sourceReqId, { status: "Converted" });
-    }
+    /* The requisition is converted only after the job post is actually
+       persisted (see markConverted below). Converting it optimistically here
+       stranded it as "Converted" with no linked job post whenever the save
+       failed, hiding it from the pending requisitions list. */
     setTab("postings");
     setEditingJobId(null);
     setSourceReqId(null);
@@ -5305,10 +5339,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         instructions: jobPayload.instructions,
         about: jobPayload.about,
         platforms: chosen,
-        /* Builder canvas arrangement, so the recruiter's drag order survives. */
+        /* Builder canvas arrangement, so the recruiter's drag order survives.
+           Test requirements are owned by Core HCM (positions table) — never
+           sent from Recruitment; the linked position's flags decide the
+           applicant pipeline. */
         blocks: jobPayload.blocks ?? [],
-        requires_assessment: draft.requiresAssessment,
-        requires_practical: draft.requiresPractical,
       };
       // Uploaded poster picture rides along as multipart/form-data
       payload = basePayload;
@@ -5541,9 +5576,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
     setBuilderStarted(true);
     setSavedSnapshot(snapshotOf(seeded, fullBlocks));
     setTab("builder");
-    toast.message(
-      `Building a job post from requisition ${req.id} — it stays pending until you publish`,
-    );
   };
 
   const addBlock = (id: BlockId) => {
@@ -7513,7 +7545,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                       + Gemini 3.5 Flash-Lite
                                     </span>{" "}
                                     — server default model; writes the 6 components from the job +
-                                    vocabulary.
+                                    vocabulary. If it is slow or unavailable, the server falls over to
+                                    Groq, then OpenRouter.
                                   </li>
                                 </ol>
                               </div>
@@ -7858,27 +7891,42 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                         </div>
                                       </div>
 
-                                      {/* Assessment / Practical toggles */}
+                                      {/* Test requirements — owned by Core HCM. Read-only here:
+                                          the linked position's flags decide the applicant
+                                          pipeline (edit them in Core HCM → Departments &
+                                          Positions). */}
                                       <div className="space-y-2 pt-2 border-t border-border/50">
-                                        <div className="flex items-center gap-2">
-                                          <label className="flex items-center gap-2 text-xs cursor-pointer">
-                                            <Switch
-                                              checked={draft.requiresAssessment}
-                                              onCheckedChange={(v) => setDraft({ ...draft, requiresAssessment: v })}
-                                            />
-                                            <span className="font-medium">Requires Assessment Test</span>
-                                          </label>
-                                          <span className="text-[0.65rem] text-muted-foreground">Enables the post-interview assessment test for this position</span>
+                                        <div className="flex items-center gap-2 text-xs">
+                                          <span
+                                            className={
+                                              draftPosition?.requires_assessment
+                                                ? "inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-medium text-primary"
+                                                : "inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 font-medium text-muted-foreground"
+                                            }
+                                          >
+                                            {draftPosition?.requires_assessment ? "●" : "○"} Assessment Test{" "}
+                                            {draftPosition?.requires_assessment ? "required" : "not required"}
+                                          </span>
+                                          <span className="text-[0.65rem] text-muted-foreground">
+                                            {draftPosition
+                                              ? `From position “${draftPosition.title}” in Core HCM`
+                                              : "Select a position to see its Core HCM test requirements"}
+                                          </span>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                          <label className="flex items-center gap-2 text-xs cursor-pointer">
-                                            <Switch
-                                              checked={draft.requiresPractical}
-                                              onCheckedChange={(v) => setDraft({ ...draft, requiresPractical: v })}
-                                            />
-                                            <span className="font-medium">Requires Practical Test</span>
-                                          </label>
-                                          <span className="text-[0.65rem] text-muted-foreground">Enables the hands-on practical assessment for designated positions</span>
+                                        <div className="flex items-center gap-2 text-xs">
+                                          <span
+                                            className={
+                                              draftPosition?.requires_practical
+                                                ? "inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-medium text-primary"
+                                                : "inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 font-medium text-muted-foreground"
+                                            }
+                                          >
+                                            {draftPosition?.requires_practical ? "●" : "○"} Practical Test{" "}
+                                            {draftPosition?.requires_practical ? "required" : "not required"}
+                                          </span>
+                                          <span className="text-[0.65rem] text-muted-foreground">
+                                            Every applicant for this position must undergo the required stages
+                                          </span>
                                         </div>
                                       </div>
                                     </div>
@@ -8048,10 +8096,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                           disabled={!canSaveDraft}
                           onClick={saveDraftAction}
                         >
-                          {/* Naming it "Save draft" on a post that is already
-                              live would promise an unpublish that no longer
-                              happens. */}
-                          {editingJobId ? "Save changes" : "Save draft"}
+                          {/* Save never unpublishes: new posts save as Draft,
+                              edits keep their live status — only Publish /
+                              Update template changes what is live. */}
+                          {editingJobId ? "Save changes as draft" : "Save draft"}
                         </Button>
                         <Button size="sm" onClick={publish}>
                           <Send className="mr-2 h-4 w-4" />

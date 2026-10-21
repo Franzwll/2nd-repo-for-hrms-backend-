@@ -4,22 +4,104 @@ namespace Modules\EmployeeRecords\Services;
 
 use App\Models\Employee;
 use App\Models\EmployeeDocument;
+use Illuminate\Support\Facades\Storage;
 use Modules\ApplicantManagement\Models\Applicant;
+use Modules\NewHireOnboarding\Models\NewHire;
 
 /**
- * Promotes an applicant's recruitment documents into the Employee Records
- * Management (ERM) file set once they become an employee.
+ * Promotes recruitment and onboarding documents into the Employee Records
+ * Management (ERM) file set once an applicant becomes an employee.
  *
- * The applicant's resume and supporting documents (COE, certificates,
- * credentials) are recorded as employee_documents so the employee's 201 file
- * is complete from day one. Only pointers are copied — the file bytes stay on
- * disk and are never duplicated. Provenance is stored (source_type/source_id)
- * so each ERM document can be traced back to the applicant upload.
+ * Two sources are covered:
+ *  - the applicant's resume and supporting documents (COE, certificates,
+ *    credentials) uploaded during recruitment;
+ *  - the documents a new hire uploads against their onboarding checklist.
  *
- * Idempotent: re-running for the same applicant never creates duplicates.
+ * Only pointers are copied — the file bytes stay on disk and are never
+ * duplicated. Provenance is stored (source_type/source_id) so each ERM
+ * document can be traced back to its applicant upload / onboarding item.
+ *
+ * Idempotent: re-running never creates duplicates.
  */
 class EmployeeRecordProvisioner
 {
+    /**
+     * Copies everything a new hire carries (their applicant documents plus any
+     * onboarding-checklist uploads) into ERM. Idempotent.
+     *
+     * @return int number of employee documents created (0 when nothing new)
+     */
+    public function fromNewHire(NewHire $newHire, Employee $employee, ?Applicant $applicant = null): int
+    {
+        $created = 0;
+
+        if ($newHire->applicant_id) {
+            $applicant ??= Applicant::find($newHire->applicant_id);
+        }
+        if ($applicant) {
+            $created += $this->fromApplicant($applicant, $employee);
+        }
+
+        $created += $this->fromOnboardingItems($newHire, $employee);
+
+        return $created;
+    }
+
+    /**
+     * Copies the documents a hire uploaded against their onboarding checklist
+     * (employee_onboarding_items with a stored file) into ERM.
+     *
+     * @return int number of employee documents created (0 when nothing new)
+     */
+    public function fromOnboardingItems(NewHire $newHire, Employee $employee): int
+    {
+        // Query fresh (not loadMissing) so a just-uploaded file is always seen
+        // even when the caller already holds a stale relation.
+        $items = $newHire->onboardingItems()->get();
+
+        $created = 0;
+
+        foreach ($items as $item) {
+            if (empty($item->file_path)) {
+                continue;
+            }
+
+            $attributes = [
+                'title' => $item->item_text ?: 'Onboarding requirement',
+                'original_name' => $item->file_name ?: basename((string) $item->file_path),
+                'file_path' => $this->normalizePath($item->file_path),
+                'mime_type' => $this->guessMime($item->file_name ?: $item->file_path),
+                'file_size_bytes' => $this->fileSize($item->file_path),
+                'document_status' => $item->done ? 'Verified' : 'Pending Verification',
+                'document_date' => optional($item->submitted_at ?? $item->completed_at)->toDateString()
+                    ?? now()->toDateString(),
+            ];
+
+            // Re-uploads replace the file in place so ERM always mirrors the
+            // latest submission instead of keeping the stale first copy.
+            $existing = EmployeeDocument::where('employee_id', $employee->employee_id)
+                ->where('source_type', 'onboarding_item')
+                ->where('source_id', $item->employee_onboarding_item_id)
+                ->first();
+
+            if ($existing) {
+                $existing->update($attributes);
+                continue;
+            }
+
+            EmployeeDocument::create($attributes + [
+                'employee_id' => $employee->employee_id,
+                'document_code' => 'ONB-' . $item->employee_onboarding_item_id,
+                'category' => 'Onboarding',
+                'source_type' => 'onboarding_item',
+                'source_id' => $item->employee_onboarding_item_id,
+                'source_hash' => null,
+            ]);
+            $created++;
+        }
+
+        return $created;
+    }
     /**
      * @return int number of employee documents created (0 when nothing new)
      */
@@ -102,6 +184,24 @@ class EmployeeRecordProvisioner
         }
 
         return $relative;
+    }
+
+    private function fileSize(?string $path): ?int
+    {
+        $relative = $this->normalizePath($path);
+        if ($relative === null) {
+            return null;
+        }
+
+        try {
+            if (Storage::disk('public')->exists($relative)) {
+                return (int) Storage::disk('public')->size($relative);
+            }
+        } catch (\Throwable) {
+            // Size is best-effort metadata.
+        }
+
+        return null;
     }
 
     private function guessMime(?string $path): ?string

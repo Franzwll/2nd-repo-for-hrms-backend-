@@ -16,6 +16,7 @@ use Modules\RecruitmentManagement\Http\Requests\UpdateJobPostRequest;
 use Modules\RecruitmentManagement\Http\Resources\JobPostResource;
 use Modules\RecruitmentManagement\Models\JobPost;
 use Modules\RecruitmentManagement\Models\JobPostPlatform;
+use Modules\RecruitmentManagement\Models\Requisition;
 
 class RecruitmentManagementController extends Controller
 {
@@ -124,7 +125,9 @@ class RecruitmentManagementController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = JobPost::with(['department', 'platforms', 'applicants'])
+        // `position` is eager-loaded so the resource can resolve the Core HCM
+        // test-requirement flags (owner) without N+1 queries.
+        $query = JobPost::with(['department', 'position', 'platforms', 'applicants'])
             ->orderByDesc('created_at');
 
         if ($search = $request->query('search')) {
@@ -212,7 +215,12 @@ class RecruitmentManagementController extends Controller
                         $weakestRank = $rank;
                     }
                 }
-                $data[$scalarKey] = $weakest;
+                /* Reference Data can offer levels outside the base ranking
+                   (degree specialisations, Master's, Doctorate). None of those
+                   match the order, so fall back to the first accepted level —
+                   the same choice the builder makes, keeping a non-null scalar
+                   for the parking and NLP education/experience scoring. */
+                $data[$scalarKey] = $weakest ?? ($levels[0] ?? null);
             } elseif (array_key_exists($scalarKey, $data)) {
                 // Older client that only knows the scalar: the list is just it.
                 $data[$listKey] = $data[$scalarKey] ? [$data[$scalarKey]] : [];
@@ -284,7 +292,7 @@ class RecruitmentManagementController extends Controller
         $this->syncPlatforms($jobPost, $platforms);
 
         return response()->json(
-            new JobPostResource($jobPost->load(['department', 'platforms'])),
+            new JobPostResource($jobPost->load(['department', 'position', 'platforms'])),
             201
         );
     }
@@ -295,7 +303,7 @@ class RecruitmentManagementController extends Controller
 
     public function show(int $job_post): JsonResponse
     {
-        $model = JobPost::with(['department', 'platforms', 'applicants'])->findOrFail($job_post);
+        $model = JobPost::with(['department', 'position', 'platforms', 'applicants'])->findOrFail($job_post);
 
         return response()->json(new JobPostResource($model));
     }
@@ -424,7 +432,7 @@ class RecruitmentManagementController extends Controller
             details: "Updated job post '{$model->title}' (status: {$model->status}).",
         );
 
-        return response()->json(new JobPostResource($model->load(['department', 'platforms'])));
+        return response()->json(new JobPostResource($model->load(['department', 'position', 'platforms'])));
     }
 
     /* ------------------------------------------------------------------ */
@@ -433,14 +441,45 @@ class RecruitmentManagementController extends Controller
 
     public function destroy(int $job_post): JsonResponse
     {
-        $model = JobPost::findOrFail($job_post);
+        $model = JobPost::withCount('applicants')->findOrFail($job_post);
 
-        // Clean up poster picture
-        if ($model->picture && Storage::disk('public')->exists($model->picture)) {
-            Storage::disk('public')->delete($model->picture);
+        $applicantCount = (int) $model->applicants_count;
+        $requisitionCount = Requisition::where('converted_job_post_id', $job_post)->count();
+
+        /* Job posts with hiring history cannot be hard-deleted: applicants
+           reference the post with a RESTRICT foreign key, and their
+           interviews, screenings and offers must be preserved. Archive those
+           posts instead — every Eloquent query hides them, while the linked
+           candidate records keep showing the position title. */
+        if ($applicantCount > 0 || $requisitionCount > 0) {
+            $model->delete();
+
+            AuditLogger::log(
+                action: 'Job Post Archived',
+                module: 'Recruitment Management',
+                severity: 'Warning',
+                targetType: 'Job Post',
+                targetId: (string) $job_post,
+                details: "Archived job post '{$model->title}' ({$applicantCount} applicant(s), {$requisitionCount} linked requisition(s)).",
+            );
+
+            return response()->json([
+                'message' => $applicantCount > 0
+                    ? "Job post archived. {$applicantCount} applicant(s) and their pipeline records were kept."
+                    : "Job post archived. {$requisitionCount} linked requisition(s) were kept.",
+                'archived' => true,
+                'applicants' => $applicantCount,
+                'requisitions' => $requisitionCount,
+            ]);
         }
 
-        $model->delete();
+        $picture = $model->picture;
+        $model->forceDelete();
+
+        // Only remove the poster once the row is really gone.
+        if ($picture && Storage::disk('public')->exists($picture)) {
+            Storage::disk('public')->delete($picture);
+        }
 
         AuditLogger::log(
             action: 'Job Post Deleted',
@@ -451,7 +490,12 @@ class RecruitmentManagementController extends Controller
             details: "Deleted job post '{$model->title}'.",
         );
 
-        return response()->json(['message' => 'Job post deleted.']);
+        return response()->json([
+            'message' => 'Job post deleted.',
+            'archived' => false,
+            'applicants' => 0,
+            'requisitions' => 0,
+        ]);
     }
 
     /* ------------------------------------------------------------------ */
@@ -468,7 +512,7 @@ class RecruitmentManagementController extends Controller
             'status' => $newActive ? 'Open' : 'Closed',
         ]);
 
-        return response()->json(new JobPostResource($model->load(['department', 'platforms'])));
+        return response()->json(new JobPostResource($model->load(['department', 'position', 'platforms'])));
     }
 
     /* ------------------------------------------------------------------ */
@@ -495,7 +539,7 @@ class RecruitmentManagementController extends Controller
 
         $this->syncPlatforms($model, $data['platforms']);
 
-        return response()->json(new JobPostResource($model->load(['department', 'platforms'])));
+        return response()->json(new JobPostResource($model->load(['department', 'position', 'platforms'])));
     }
 
     /* ------------------------------------------------------------------ */
@@ -538,7 +582,7 @@ class RecruitmentManagementController extends Controller
 
         if (! $generator->isConfigured()) {
             return response()->json([
-                'message' => 'The AI generator is not configured. Set JOB_GROQ_API_KEY (or a fallback key) on the API server.',
+                'message' => 'The AI generator is not configured. Set GEMINI_API_KEY (or JOB_GROQ_API_KEY / JOB_OPENROUTER_API_KEY) on the API server.',
             ], 422);
         }
 

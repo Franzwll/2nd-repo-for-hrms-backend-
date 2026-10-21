@@ -12,12 +12,41 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EssStatusBadge, docCategoryTint, ON_FILE_STATUSES } from "@/components/modules/ess/shared/EssStatusBadge";
-import { ReportMenu } from "@/components/ui/report-menu";
 import { myEmployeeDocuments } from "@/data/ess";
 import { DocumentUploadModal } from "@/components/modules/ess/modals/DocumentUploadModal";
 import { DocumentViewerModal } from "@/components/modules/ess/modals/DocumentViewerModal";
 import { essApi } from "@/lib/api";
 import { toast } from "sonner";
+
+/** Map a raw EssRequest (create-request response) to the flat shape this tab renders. */
+function toDocRequestItem(raw: any) {
+  const filed =
+    raw?.filed_at ?? raw?.filed ?? raw?.created_at ?? raw?.isoDate ?? new Date().toISOString();
+  const dateLabel =
+    raw?.filed ??
+    raw?.date ??
+    (() => {
+      try {
+        return new Date(filed).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+      } catch {
+        return String(filed ?? "");
+      }
+    })();
+  const status = String(raw?.status ?? "Pending");
+  return {
+    id: raw?.request_code ?? raw?.id ?? `REQ-${Date.now()}`,
+    date: dateLabel,
+    isoDate: raw?.date_from ?? (typeof filed === "string" ? filed : String(filed ?? "")),
+    type: raw?.request_type ?? raw?.type ?? "HR Document",
+    status,
+    statusRank: status === "Approved" || status === "Completed" ? 1 : 2,
+    purpose: raw?.details ?? raw?.purpose ?? "",
+  };
+}
 
 export function EssDocumentsTab() {
   const [documents, setDocuments] = useState(myEmployeeDocuments);
@@ -347,6 +376,9 @@ export function EssDocumentsTab() {
               )}
             </CardContent>
           </Card>
+
+        </TabsContent>
+      </Tabs>
 
       {/* Modals */}
       <DocumentUploadModal

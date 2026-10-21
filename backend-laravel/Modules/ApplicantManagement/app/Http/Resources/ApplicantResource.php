@@ -20,6 +20,24 @@ class ApplicantResource extends JsonResource
             'fit_score'       => $this->fit_score !== null ? (float) $this->fit_score : null,
             'status'          => $this->status,
             'stage'           => $this->stage,
+            /* Re-apply cooldown anchors — rejected_at starts the waiting
+               period, cooldown_lifted_at records an HR early override. */
+            'rejected_at'      => $this->rejected_at?->toISOString(),
+            'cooldown_lifted_at' => $this->cooldown_lifted_at?->toISOString(),
+            /* Offer workflow — set when the final evaluation decision emails
+               the applicant an offer (7-day response window) and the reply is
+               recorded by HR. */
+            'offer_status'     => $this->offer_status,
+            'offer_sent_at'    => $this->offer_sent_at?->toISOString(),
+            'offer_expires_at' => $this->offer_expires_at?->toISOString(),
+            'offer_start_date' => $this->offer_start_date?->toDateString(),
+            /* How the reply came in (Email / SMS / Call / In person) and who
+               recorded it — there is no applicant portal, so HR logs it. */
+            'offer_response_channel'     => $this->offer_response_channel,
+            'offer_response_note'        => $this->offer_response_note,
+            'offer_responded_at'         => $this->offer_responded_at?->toISOString(),
+            'offer_response_recorded_by' => $this->offer_response_recorded_by,
+            'offer_days_left'  => $this->offerDaysLeft(),
             'source'          => $this->source,
             'summary'         => $this->summary,
             'flags_json'      => $this->flags_json ?? [],
@@ -38,12 +56,20 @@ class ApplicantResource extends JsonResource
                 'job_post_id' => $this->jobPost->job_post_id,
                 'title'       => $this->jobPost->title,
                 'department'  => optional($this->jobPost->department)->name,
-                /* Whether this position takes a practical assessment — the UI
-                   uses it so the practical stage is only offered when the API
-                   will accept the record. */
+                /* Whether this position takes a practical assessment — Core HCM
+                   position flag (owner); the UI uses it so the practical stage
+                   is only offered when the API will accept the record. */
                 'requires_practical' => \Modules\ApplicantManagement\Services\PracticalRequirement::required(
                     $this->jobPost,
                     $this->jobPost->title,
+                    $this->jobPost->position,
+                ),
+                /* Whether this position takes an assessment test — Core HCM
+                   position flag (owner); legacy job-post flag is fallback. */
+                'requires_assessment' => \Modules\ApplicantManagement\Services\AssessmentRequirement::required(
+                    $this->jobPost,
+                    null,
+                    $this->jobPost->position,
                 ),
             ]),
             'screening_entities'  => ScreeningEntityResource::collection($this->whenLoaded('screeningEntities')),

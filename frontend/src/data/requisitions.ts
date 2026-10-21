@@ -202,9 +202,17 @@ export const requisitionStore = {
   markConverted: async (id: string, jobPostId: number) => {
     const target = requisitions.find((r) => r.id === id);
     if (!target) return;
+    const prev = requisitions;
+    requisitions = requisitions.map((r) => (r.id === id ? { ...r, status: "Converted" } : r));
+    emit();
     try {
       await requisitionsApi.convert(target.dbId ?? id, jobPostId);
     } catch (e) {
+      // Conversion did not persist — keep the requisition pending so it stays
+      // visible in Recruitment Management instead of being stranded as a
+      // Converted row with no linked job post.
+      requisitions = prev;
+      emit();
       console.warn("API requisition convert error:", e);
     }
   },

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, FileText, Lock, Printer } from "lucide-react";
+import { Download, Eye, EyeOff, FileText, Lock, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,6 +54,7 @@ export function usePasswordGate() {
   const [password, setPassword] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
   const [pwError, setPwError] = useState("");
+  const [showPw, setShowPw] = useState(false);
 
   const gateSensitive = (report: { sensitive?: boolean }, run: () => void) => {
     if (!report.sensitive) {
@@ -63,6 +64,7 @@ export function usePasswordGate() {
     setAction(() => run);
     setPassword("");
     setPwError("");
+    setShowPw(false);
     setPwOpen(true);
   };
 
@@ -88,7 +90,15 @@ export function usePasswordGate() {
   };
 
   const gateDialog = (
-    <Dialog open={pwOpen} onOpenChange={(o) => !o && setPwOpen(false)}>
+    <Dialog
+      open={pwOpen}
+      onOpenChange={(o) => {
+        if (!o) {
+          setPwOpen(false);
+          setShowPw(false);
+        }
+      }}
+    >
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -101,17 +111,31 @@ export function usePasswordGate() {
         </DialogHeader>
         <div className="space-y-1.5">
           <Label htmlFor="report-pw">Password</Label>
-          <Input
-            id="report-pw"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") confirmPassword();
-            }}
-            placeholder="••••••••"
-            autoComplete="current-password"
-          />
+          <div className="relative">
+            <Input
+              id="report-pw"
+              type={showPw ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmPassword();
+              }}
+              placeholder="••••••••"
+              autoComplete="current-password"
+              className="pr-10"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
+              onClick={() => setShowPw((v) => !v)}
+              aria-label={showPw ? "Hide password" : "Show password"}
+              title={showPw ? "Hide password" : "Show password"}
+            >
+              {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </Button>
+          </div>
           {pwError && <p className="text-xs text-destructive">{pwError}</p>}
         </div>
         <DialogFooter>

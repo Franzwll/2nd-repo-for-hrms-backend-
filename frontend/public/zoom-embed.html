@@ -61,6 +61,42 @@
             return;
           }
           var client = NS.createClient();
+
+          /* -------- toolbar helpers (the SDK's own buttons are the only
+             public way to toggle the camera / open audio settings) -------- */
+          function findToolbarButton(re) {
+            var btns = document.querySelectorAll("button[title]");
+            for (var i = 0; i < btns.length; i++) {
+              var t = btns[i].getAttribute("title") || "";
+              if (re.test(t)) return btns[i];
+            }
+            return null;
+          }
+          function clickToolbarButton(re) {
+            var btn = findToolbarButton(re);
+            if (!btn) return false;
+            btn.click();
+            return true;
+          }
+
+          /* -------- state reporting -------- */
+          function postSelfState() {
+            var out = {};
+            try {
+              var u = client.getCurrentUser && client.getCurrentUser();
+              if (u) {
+                if (typeof u.muted === "boolean") out.muted = u.muted;
+                if (typeof u.video === "boolean") out.videoOn = u.video;
+                else if (typeof u.bVideoOn === "boolean") out.videoOn = u.bVideoOn;
+              }
+            } catch (e) {
+              /* state not ready yet */
+            }
+            if (out.muted !== undefined || out.videoOn !== undefined) {
+              parent.postMessage({ zoomSelfState: out }, "*");
+            }
+          }
+
           // Report camera state so the parent popup can nudge HR when all
           // video is off (an all-black stage means no feeds, not a bug).
           function reportVideo(users) {
@@ -83,17 +119,169 @@
               /* ignore */
             }
           }
+
+          /* -------- meeting chat bridge -------- */
+          // Rolling transcript so a late-opening chat drawer can ask for the
+          // backlog (the SDK only emits messages live, no history API).
+          var chatHistory = [];
+          function normalizeChat(payload) {
+            if (!payload || typeof payload !== "object") return null;
+            var raw = payload.message;
+            var text = Array.isArray(raw) ? raw.join(" ") : typeof raw === "string" ? raw : "";
+            text = text.trim();
+            if (!text) return null;
+            var senderObj = payload.sender || {};
+            var sender = senderObj.name || senderObj.displayName || "Participant";
+            var userId = typeof senderObj.userId === "number" ? senderObj.userId : null;
+            var time = typeof payload.timestamp === "number" ? payload.timestamp : Date.now();
+            var id = payload.id
+              ? String(payload.id)
+              : (userId == null ? "p" : userId) + ":" + time + ":" + text.slice(0, 32);
+            return { id: id, sender: sender, userId: userId, text: text, time: time };
+          }
+          function pushChat(entry) {
+            if (!entry) return;
+            for (var i = 0; i < chatHistory.length; i++) {
+              if (chatHistory[i].id === entry.id) return; // duplicate echo
+            }
+            chatHistory.push(entry);
+            if (chatHistory.length > 300) chatHistory.shift();
+            parent.postMessage({ zoomChatMessage: entry }, "*");
+          }
+
           try {
             if (typeof client.on === "function") {
-              client.on("user-added", reportVideo);
-              client.on("user-updated", reportVideo);
+              client.on("user-added", function (p) {
+                reportVideo(p);
+                postSelfState();
+              });
+              client.on("user-updated", function (p) {
+                reportVideo(p);
+                postSelfState();
+              });
+              client.on("chat-on-message", function (p) {
+                pushChat(normalizeChat(p));
+              });
             }
           } catch (e) {
-            /* older SDK without events — parent simply never gets the hint */
+            /* older SDK without events — parent simply never gets the hints */
           }
+
+          /* -------- join + control command handling -------- */
+          function handleCommand(d) {
+            var cmd = d.command;
+            if (cmd === "request-state") {
+              postSelfState();
+              parent.postMessage({ zoomChatHistory: chatHistory }, "*");
+              return;
+            }
+            if (cmd === "mute") {
+              try {
+                client.mute(!!d.value);
+                setTimeout(postSelfState, 500);
+                setTimeout(postSelfState, 2000);
+              } catch (e) {
+                parent.postMessage(
+                  {
+                    zoomNotice:
+                      "Could not change the microphone — try the mic button in the meeting toolbar.",
+                  },
+                  "*",
+                );
+              }
+              return;
+            }
+            if (cmd === "video") {
+              var wantOn = !!d.value;
+              var clicked = clickToolbarButton(wantOn ? /^start video$/i : /^stop video$/i);
+              if (clicked) {
+                setTimeout(postSelfState, 900);
+                setTimeout(postSelfState, 3500);
+              } else {
+                parent.postMessage(
+                  {
+                    zoomNotice:
+                      "The meeting's video button isn't available yet — give the meeting a moment, then try again.",
+                  },
+                  "*",
+                );
+              }
+              return;
+            }
+            if (cmd === "open-audio") {
+              var opened =
+                clickToolbarButton(/^audio$/i) ||
+                clickToolbarButton(/^join audio$/i) ||
+                clickToolbarButton(/^settings$/i);
+              if (!opened) {
+                parent.postMessage(
+                  {
+                    zoomNotice:
+                      "Zoom's audio menu isn't available right now — try again once the meeting is fully loaded.",
+                  },
+                  "*",
+                );
+              }
+              return;
+            }
+            if (cmd === "chat-send") {
+              var text = String((d.text || "")).trim();
+              if (!text) return;
+              try {
+                var res = client.sendChat(text);
+                if (res && typeof res.then === "function") {
+                  res
+                    .then(function (msg) {
+                      var entry = normalizeChat(msg);
+                      if (!entry) {
+                        entry = {
+                          id: "self-" + Date.now(),
+                          sender: "You",
+                          userId: null,
+                          text: text,
+                          time: Date.now(),
+                        };
+                      }
+                      entry.self = true;
+                      pushChat(entry);
+                    })
+                    .catch(function (err) {
+                      parent.postMessage(
+                        {
+                          zoomChatError:
+                            "Could not send the message — in-meeting chat may be disabled (" +
+                            String((err && (err.reason || err.message)) || err) +
+                            ").",
+                        },
+                        "*",
+                      );
+                    });
+                }
+              } catch (e) {
+                parent.postMessage(
+                  {
+                    zoomChatError:
+                      "Could not send the message — in-meeting chat may be disabled.",
+                  },
+                  "*",
+                );
+              }
+              return;
+            }
+            if (cmd === "chat-history") {
+              parent.postMessage({ zoomChatHistory: chatHistory }, "*");
+              return;
+            }
+          }
+
           window.addEventListener("message", function (ev) {
             var d = ev.data || {};
-            if (!d || d.type !== "zoom-join") return;
+            if (!d || typeof d !== "object") return;
+            if (d.type === "zoom-command") {
+              handleCommand(d);
+              return;
+            }
+            if (d.type !== "zoom-join") return;
             var root = document.getElementById("zoom-root");
             if (!root) {
               report("Zoom embed page missing #zoom-root.");
@@ -159,34 +347,31 @@
                 // a black name tile until HR finds Start Video themselves.
                 // Skipped only when the parent explicitly opts out.
                 if (d.startVideo !== false) {
-                  try {
-                    var stream =
-                      (client.getMediaStream && client.getMediaStream()) ||
-                      client.stream;
-                    if (stream && typeof stream.startVideo === "function") {
-                      stream
-                        .startVideo()
-                        .then(function () {
-                          parent.postMessage({ zoomVideoOn: true }, "*");
-                        })
-                        .catch(function (err) {
-                          parent.postMessage(
-                            {
-                              zoomVideoHint:
-                                "Camera is allowed but Zoom could not start video (" +
-                                String(
-                                  (err && (err.reason || err.message)) || err,
-                                ) +
-                                ") — click Start Video in the meeting toolbar.",
-                            },
-                            "*",
-                          );
-                        });
+                  var tries = 0;
+                  var tryStartVideo = function () {
+                    tries++;
+                    if (clickToolbarButton(/^start video$/i)) {
+                      parent.postMessage({ zoomVideoOn: true }, "*");
+                      setTimeout(postSelfState, 1500);
+                      setTimeout(postSelfState, 4500);
+                      return;
                     }
-                  } catch (e) {
-                    /* older SDK — toolbar Start Video still works */
-                  }
+                    if (tries < 15) {
+                      setTimeout(tryStartVideo, 400);
+                      return;
+                    }
+                    parent.postMessage(
+                      {
+                        zoomVideoHint:
+                          "Camera is allowed but the meeting's Start Video button never appeared — click Start Video in the toolbar.",
+                      },
+                      "*",
+                    );
+                  };
+                  setTimeout(tryStartVideo, 300);
                 }
+                setTimeout(postSelfState, 800);
+                setTimeout(postSelfState, 3000);
                 parent.postMessage({ zoomEmbedJoined: true }, "*");
               })
               .catch(function (e) {

@@ -68,6 +68,14 @@ Route::prefix('v1')
            Route::get('applicants/{applicant}/screening', [ApplicantManagementController::class, 'screeningDetail'])
                 ->name('applicants.screening');
 
+           // Previous applications + cooldown countdown (HR profile strip)
+           Route::get('applicants/{applicant}/history', [ApplicantManagementController::class, 'history'])
+                ->name('applicants.history');
+
+           // HR allows early re-application (lifts cooldown, audited)
+           Route::post('applicants/{applicant}/cooldown/override', [ApplicantManagementController::class, 'overrideCooldown'])
+                ->name('applicants.cooldown.override');
+
            // Recompute the ranking score/status with the current supporting-
            // document evidence (after uploading / re-verifying documents).
            Route::post('applicants/{applicant}/screening/recompute', [ApplicantManagementController::class, 'recomputeScreening'])
@@ -223,6 +231,16 @@ Route::prefix('v1')
 
           Route::put('final-evaluations/{finalEvaluation}', [FinalEvaluationController::class, 'update'])
                ->name('final-evaluations.update');
+
+          /* ------------------------------------------------------------------ */
+          /* Offer workflow — email the offer after the final evaluation and     */
+          /* record the applicant's reply (7-day response window).               */
+          /* ------------------------------------------------------------------ */
+          Route::post('applicants/{applicant}/offer', [FinalEvaluationController::class, 'offer'])
+               ->name('applicants.offer.send');
+
+          Route::post('applicants/{applicant}/offer/response', [FinalEvaluationController::class, 'respondToOffer'])
+               ->name('applicants.offer.respond');
 
           /* ------------------------------------------------------------------ */
           /* Verification documents (COE / Certificate / Credential / Others)     */

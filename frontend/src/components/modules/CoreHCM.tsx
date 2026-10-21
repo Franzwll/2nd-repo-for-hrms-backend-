@@ -198,7 +198,14 @@ function EmployeeStatusTab({ employeeCode, employeeId }: { employeeCode: string;
 
       <Section title={`Available leaves${balances.length ? ` · ${totalAvailable} day(s) left` : ""}`}>
         {loading ? (
-          <p className="text-xs text-muted-foreground">Loading leave balances…</p>
+          <div
+            className="space-y-2 sm:col-span-2 lg:col-span-3"
+            aria-busy="true"
+            aria-label="Loading leave balances"
+          >
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-4 w-1/2" />
+          </div>
         ) : balances.length === 0 ? (
           <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-3">
             No leave balances on file for this employee for the current period.
@@ -222,7 +229,14 @@ function EmployeeStatusTab({ employeeCode, employeeId }: { employeeCode: string;
 
       <Section title="Recent leave requests">
         {loading ? (
-          <p className="text-xs text-muted-foreground">Loading leave requests…</p>
+          <div
+            className="space-y-2 sm:col-span-2 lg:col-span-3"
+            aria-busy="true"
+            aria-label="Loading leave requests"
+          >
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-4 w-1/2" />
+          </div>
         ) : leaveRequests.length === 0 ? (
           <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-3">
             No leave requests filed by this employee.

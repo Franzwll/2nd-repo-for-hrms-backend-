@@ -6,16 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\EmployeeDocument;
 use App\Models\EssRequest;
 use App\Models\EssRequestAttachment;
-use App\Models\EssRequestStatusHistory;
 use App\Models\SystemUser;
-use App\Services\AuditLogger;
 use App\Services\Integration\Contracts\DocumentArchiveProvider;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\PersonalAccessToken;
-use Modules\EmployeeSelfService\Events\EssRequestFulfilled;
+use Modules\EmployeeSelfService\Services\EssRequestWorkflow;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
@@ -55,7 +52,9 @@ class DocumentRequestController extends Controller
 
         $counts = [
             'total' => $this->documentRequests()->count(),
-            'pending' => $this->documentRequests()->where('status', 'Pending')->count(),
+            'pending' => $this->documentRequests()
+                ->whereIn('status', ['For Fulfillment', 'Approved'])
+                ->count(),
             'fulfilled' => $this->documentRequests()->where('status', 'Completed')->count(),
         ];
 
@@ -98,17 +97,22 @@ class DocumentRequestController extends Controller
         ]);
 
         $user = $request->user();
+        $workflow = app(EssRequestWorkflow::class);
+
+        if (! $workflow->requiresFulfillment($essRequest)) {
+            return response()->json(['message' => 'This request does not require a document.'], 422);
+        }
+
+        if (! in_array($essRequest->status, ['For Fulfillment', 'Approved', 'Completed'], true)) {
+            return response()->json([
+                'message' => 'Approve the request before attaching the document.',
+            ], 422);
+        }
 
         // Resolve the file payload: either a fresh upload or a document pulled
         // from the employee's archive (Team 8 seam).
         if ($request->hasFile('file')) {
-            $file = $request->file('file');
-            $payload = [
-                'file_path' => $file->store('ess-request-fulfillments', 'public'),
-                'original_name' => $file->getClientOriginalName(),
-                'mime_type' => $file->getClientMimeType() ?: 'application/octet-stream',
-                'file_size_bytes' => $file->getSize() ?: 0,
-            ];
+            $payload = $workflow->storeUpload($request->file('file'), 'ess-request-fulfillments');
         } else {
             $source = EmployeeDocument::where('document_id', $validated['document_id'])
                 ->where('employee_id', $essRequest->employee_id)
@@ -126,46 +130,11 @@ class DocumentRequestController extends Controller
             ];
         }
 
-        $result = DB::transaction(function () use ($essRequest, $payload, $validated, $user) {
-            $attachment = EssRequestAttachment::create([
-                'ess_request_id' => $essRequest->ess_request_id,
-                'direction' => 'hr',
-                'file_path' => $payload['file_path'],
-                'original_name' => $payload['original_name'],
-                'mime_type' => $payload['mime_type'],
-                'file_size_bytes' => $payload['file_size_bytes'],
-                'uploaded_by_user_id' => $user?->system_user_id,
-            ]);
-
-            $essRequest->status = 'Completed';
-            $essRequest->assigned_to_user_id = $user?->system_user_id;
-            if (! empty($validated['note'])) {
-                $essRequest->review_note = $validated['note'];
-            }
-            $essRequest->save();
-
-            EssRequestStatusHistory::create([
-                'ess_request_id' => $essRequest->ess_request_id,
-                'status' => 'Completed',
-                'actor_user_id' => $user?->system_user_id,
-                'note' => $validated['note'] ?? 'Document fulfilled and sent to employee.',
-            ]);
-
-            return $attachment;
-        });
-
-        AuditLogger::log(
-            action: 'ESS Document Request Fulfilled',
-            module: 'Employee Records',
-            severity: 'Info',
-            targetType: 'EssRequest',
-            targetId: (string) $essRequest->ess_request_id,
-            details: "Fulfilled {$essRequest->request_code} with {$payload['original_name']} by " . ($user?->full_name ?? 'HR'),
-            request: $request
-        );
-
-        // "Return" half of the loop: notify the employee their file is ready.
-        event(new EssRequestFulfilled($essRequest, $result));
+        try {
+            $workflow->fulfill($essRequest, $user, $payload, $validated['note'] ?? null);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
 
         return response()->json([
             'message' => "Request {$essRequest->request_code} fulfilled.",

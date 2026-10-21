@@ -377,6 +377,21 @@ class EmployeeOnboardingItemController extends Controller
         $fileName = null;
         $filePath = $model->file_path;
 
+        // HR attach vs employee submit: the uploader holds Edit-level
+        // "New Hire Onboarding" permission AND is not the hire themself.
+        // HR uploads are stamped distinctly in audit + notifications so the
+        // file is never mistaken for the employee's own submission.
+        $actor = $request->user();
+        $actorName = $actor?->full_name ?? null;
+        $isHrAttach = false;
+        if ($actor instanceof SystemUser) {
+            $ranks = ['Full' => 3, 'Edit' => 2, 'Write' => 2, 'Approve / Reject Only' => 2, 'View' => 1, 'Read' => 1, 'None' => 0];
+            $level = $actor->permissions->firstWhere('module_name', 'New Hire Onboarding')?->permission_level ?? 'None';
+            $hireEmployeeId = $model->newHire?->employee_id;
+            $isHrAttach = ($ranks[$level] ?? 0) >= 2
+                && ($hireEmployeeId === null || $actor->employee_id !== $hireEmployeeId);
+        }
+
         if ($file) {
             $fileName = $file->getClientOriginalName();
             $filePath = $file->store('onboarding_documents', 'public');
@@ -398,6 +413,25 @@ class EmployeeOnboardingItemController extends Controller
             ]);
         });
 
+        // Once the hire is an employee, route the uploaded document into ERM
+        // immediately. Pre-onboarding uploads are picked up when the employee
+        // record is created (NewHireIntakeService::ensureEmployeeRecord).
+        $hire = $model->newHire;
+        if ($file && $hire?->employee_id) {
+            try {
+                $employee = \App\Models\Employee::find($hire->employee_id);
+                if ($employee) {
+                    app(\Modules\EmployeeRecords\Services\EmployeeRecordProvisioner::class)
+                        ->fromOnboardingItems($hire, $employee);
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Could not route onboarding document to Employee Records', [
+                    'onboarding_item_id' => $model->employee_onboarding_item_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         AuditLogger::log(
             action: 'Onboarding Item Document Submitted',
             module: 'New Hire Onboarding',
@@ -405,14 +439,17 @@ class EmployeeOnboardingItemController extends Controller
             targetId: (string) $model->getKey(),
             details: ($fileName ? "Submitted document '{$fileName}'" : 'Submitted notes')
                 . " for onboarding item '{$model->item_text}'"
-                . ($model->new_hire_id ? " (new hire #{$model->new_hire_id})" : '') . '.',
+                . ($model->new_hire_id ? " (new hire #{$model->new_hire_id})" : '')
+                . ($isHrAttach && $actorName ? " — attached by HR {$actorName} on behalf of the employee." : '.'),
         );
 
         // A submission needs HR action — tell HR admins and super admins.
         $hireName = $model->newHire?->name ?? 'A new hire';
         $this->notifyHrAdmins(
-            'Onboarding document submitted',
-            "{$hireName} submitted '{$model->item_text}' — awaiting verification.",
+            $isHrAttach ? 'Onboarding document attached by HR' : 'Onboarding document submitted',
+            $isHrAttach && $actorName
+                ? "{$actorName} (HR) attached '{$model->item_text}' for {$hireName} — awaiting verification."
+                : "{$hireName} submitted '{$model->item_text}' — awaiting verification.",
             $model,
             $request->user()?->system_user_id
         );
@@ -424,10 +461,13 @@ class EmployeeOnboardingItemController extends Controller
             'file_url'                     => $model->file_url,
             'notes'                        => $model->notes,
             'submitted_at'                 => $model->submitted_at?->toISOString(),
+            'submitted_by_hr'              => $isHrAttach,
             'done'                         => (bool) $model->done,
             'completed_at'                 => $model->completed_at?->toISOString(),
             'message'                      => $fileName
-                ? "Document '{$fileName}' submitted — awaiting HR verification."
+                ? ($isHrAttach
+                    ? "Document '{$fileName}' attached by HR — awaiting verification."
+                    : "Document '{$fileName}' submitted — awaiting HR verification.")
                 : 'Submission sent — awaiting HR verification.',
         ]);
     }

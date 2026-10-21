@@ -11,11 +11,20 @@ use Illuminate\Support\Str;
  * Generates job-post draft content grounded in the HR screening vocabulary.
  *
  * Resilience chain (first success wins):
- *   1. Groq with JOB_GROQ_API_KEY / JOB_GROQ_MODEL (openai/gpt-oss-20b)
- *   2. OpenRouter with JOB_OPENROUTER_API_KEY / JOB_OPENROUTER_MODEL
- *      (nvidia/nemotron-3-super-120b-a12b:free) — survives a Groq-side outage
- *   3. Shared Google Gemini with GEMINI_API_KEY (+ optional
- *      GEMINI_FALLBACK_API_KEY / GEMINI_FALLBACK_MODEL)
+ *   1. Shared Google Gemini with GEMINI_API_KEY / GEMINI_MODEL
+ *      (gemini-3.5-flash-lite) — short timeout (JOB_GEMINI_TIMEOUT, 10s)
+ *      and a single attempt, so a slow Gemini fails over in seconds
+ *   2. Optional second Gemini key (GEMINI_FALLBACK_API_KEY /
+ *      GEMINI_FALLBACK_MODEL) — the same model behind a different key, so a
+ *      used-up free tier is recovered from without changing the output
+ *   3. Groq with JOB_GROQ_API_KEY / JOB_GROQ_MODEL (openai/gpt-oss-20b)
+ *   4. OpenRouter with JOB_OPENROUTER_API_KEY / JOB_OPENROUTER_MODEL
+ *      (nvidia/nemotron-3-super-120b-a12b:free) — survives a Gemini/Groq
+ *      outage
+ *
+ * Every provider has its own timeout + attempt budget (services.job_ai), so
+ * the first (primary) provider can never stall the request: it gets one
+ * short attempt and the chain moves on to the next provider.
  *
  * The vocabulary (skills / certifications from screening_reference_data) is
  * injected into the prompt so generated "skills" and "qualifications" reuse
@@ -55,6 +64,27 @@ class JobContentGenerator
 
     protected int $maxAttempts = 3;
 
+    /**
+     * Per-provider HTTP timeout (seconds) and attempt budget.
+     *
+     * The primary provider is deliberately given a short timeout and a single
+     * attempt: when it is slow the chain must move on to the next provider
+     * within seconds, not spend the whole request on slow retries.
+     *
+     * @var array<string,int>
+     */
+    protected array $providerTimeouts = [];
+
+    /** @var array<string,int> */
+    protected array $providerAttempts = [];
+
+    /**
+     * Hard ceiling (seconds) for one generation, across all providers.
+     * When it is reached no further provider is started, so a fully degraded
+     * chain answers with a clean error instead of a hanging request.
+     */
+    protected int $totalBudget;
+
     /** Optional app-level cap on successful drafts per day (0 = unlimited). */
     protected int $dailyLimit;
 
@@ -91,13 +121,32 @@ class JobContentGenerator
         $this->fallbackApiKey = config('services.gemini.fallback_key') ?: env('GEMINI_FALLBACK_API_KEY') ?: null;
         $this->timeout = (int) (config('services.gemini.timeout') ?: env('GEMINI_TIMEOUT', 30));
         $this->dailyLimit = max(0, (int) (config('services.job_ai.daily_limit') ?? env('JOB_AI_DAILY_LIMIT', 0)));
+
+        // Per-provider budget: a slow provider must not eat the whole request.
+        $this->providerTimeouts = [
+            'gemini' => (int) (config('services.job_ai.timeouts.gemini') ?: env('JOB_GEMINI_TIMEOUT', 10)),
+            'groq' => (int) (config('services.job_ai.timeouts.groq') ?: env('JOB_GROQ_TIMEOUT', 20)),
+            'openrouter' => (int) (config('services.job_ai.timeouts.openrouter') ?: env('JOB_OPENROUTER_TIMEOUT', 20)),
+        ];
+        $this->providerAttempts = [
+            'gemini' => (int) (config('services.job_ai.attempts.gemini') ?: env('JOB_GEMINI_ATTEMPTS', 1)),
+            'groq' => (int) (config('services.job_ai.attempts.groq') ?: env('JOB_GROQ_ATTEMPTS', 2)),
+            'openrouter' => (int) (config('services.job_ai.attempts.openrouter') ?: env('JOB_OPENROUTER_ATTEMPTS', 2)),
+        ];
+        $this->totalBudget = max(5, (int) (config('services.job_ai.total_budget') ?: env('JOB_AI_TOTAL_BUDGET', 25)));
     }
 
     /**
      * Ordered provider attempts — duplicates (same service + model + key)
      * are collapsed so a half-configured server never calls twice.
      *
-     * @return list<array{kind:string,model:string,key:string,label:string}>
+     * Order: shared Gemini -> optional second Gemini key -> Groq -> OpenRouter.
+     * The second key is the same model behind a different credential, so a
+     * used-up free tier is recovered from before the chain changes model.
+     * The first provider carries a short timeout and one attempt, so a
+     * slow answer fails over to the next provider within seconds.
+     *
+     * @return list<array{kind:string,model:string,key:string,label:string,timeout:int,attempts:int}>
      */
     protected function providers(): array
     {
@@ -107,20 +156,62 @@ class JobContentGenerator
             if (! is_string($key) || trim($key) === '' || ! is_string($model) || trim($model) === '') {
                 return;
             }
-            $sig = $kind . '|' . trim($model) . '|' . substr(trim($key), -6);
+            // The signature must be exact: hashing the full key (like
+            // providerTag()) keeps two *different* keys apart, while an
+            // unconfigured fallback key still collapses into the primary.
+            $sig = md5($kind . '|' . trim($model) . '|' . trim($key));
             if (isset($seen[$sig])) {
                 return;
             }
             $seen[$sig] = true;
-            $chain[] = ['kind' => $kind, 'model' => trim($model), 'key' => trim($key), 'label' => $label];
+            $chain[] = [
+                'kind' => $kind,
+                'model' => trim($model),
+                'key' => trim($key),
+                'label' => $label,
+                'timeout' => $this->timeoutFor($kind),
+                'attempts' => $this->attemptsFor($kind),
+            ];
         };
 
-        $add('groq', $this->groqModel, $this->groqKey, 'Groq');
-        $add('openrouter', $this->openrouterModel, $this->openrouterKey, 'OpenRouter');
         $add('gemini', $this->model, $this->apiKey, 'Google Gemini');
         $add('gemini', $this->fallbackModel ?: $this->model, $this->fallbackApiKey ?: $this->apiKey, 'Google Gemini (second key)');
+        $add('groq', $this->groqModel, $this->groqKey, 'Groq');
+        $add('openrouter', $this->openrouterModel, $this->openrouterKey, 'OpenRouter');
 
         return $chain;
+    }
+
+    /** HTTP timeout (seconds) for one provider kind. */
+    protected function timeoutFor(string $kind): int
+    {
+        $seconds = (int) ($this->providerTimeouts[$kind] ?? $this->timeout);
+
+        return $seconds > 0 ? $seconds : $this->timeout;
+    }
+
+    /** Attempt budget for one provider kind. */
+    protected function attemptsFor(string $kind): int
+    {
+        $attempts = (int) ($this->providerAttempts[$kind] ?? $this->maxAttempts);
+
+        return $attempts > 0 ? $attempts : 1;
+    }
+
+    /**
+     * How long a provider is skipped after a connection error. A timeout is
+     * skipped longer than an instant connection refusal, so the next click
+     * does not pay the same slow wait again.
+     */
+    protected function skipAfterConnectionError(\Throwable $e): int
+    {
+        $default = (int) ($this->cooldowns['network'] ?? 20);
+
+        if ($e instanceof \Illuminate\Http\Client\ConnectionException) {
+            return max(60, $default);
+        }
+
+        return $default;
     }
 
     /** True when at least one provider key is configured (Groq, OpenRouter or Gemini). */
@@ -130,17 +221,17 @@ class JobContentGenerator
     }
 
     /**
-     * Primary model configured for this server — Groq's when a Groq key
-     * exists, otherwise OpenRouter's, otherwise Gemini's. Shown in the API
+     * Primary model configured for this server — Gemini's when a Gemini key
+     * exists, otherwise Groq's, otherwise OpenRouter's. Shown in the API
      * meta and in the builder's AI usage indicator.
      */
     public function modelName(): string
     {
-        if ($this->groqKey) {
-            return $this->groqModel;
+        if ($this->apiKey) {
+            return $this->model;
         }
 
-        return $this->openrouterKey ? $this->openrouterModel : $this->model;
+        return $this->groqKey ? $this->groqModel : $this->openrouterModel;
     }
 
     /**
@@ -169,18 +260,25 @@ class JobContentGenerator
 
         $prompt = $this->buildPrompt($job, $vocabulary);
 
-        // Walk the provider chain (Groq -> OpenRouter -> Gemini);
-        // first success wins. Each provider gets several attempts because
-        // providers often answer 503/overloaded on the first try.
+        // Walk the provider chain (Gemini -> Groq -> OpenRouter);
+        // first success wins. Each provider gets its own attempt budget
+        // because providers often answer 503/overloaded on the first try,
+        // but the primary provider gets a short timeout and a single attempt
+        // so a slow answer fails over to the next provider in seconds.
         $providers = $this->providers();
         if ($providers === []) {
             return $this->failure(
-                'The AI generator is not configured. Set JOB_GROQ_API_KEY (or a fallback key) on the API server.',
+                'The AI generator is not configured. Set GEMINI_API_KEY (or JOB_GROQ_API_KEY / JOB_OPENROUTER_API_KEY) on the API server.',
                 'not_configured',
             );
         }
 
         $this->bump('attempt');
+
+        // Hard ceiling for this generation: no further provider is started
+        // once it is reached, so a fully degraded chain answers with a clean
+        // error instead of a hanging request.
+        $deadline = microtime(true) + $this->totalBudget;
 
         $last = [
             'message' => 'Generation failed.',
@@ -190,6 +288,10 @@ class JobContentGenerator
         ];
 
         foreach ($providers as $provider) {
+            if (microtime(true) >= $deadline) {
+                break;
+            }
+
             // A provider that just reported a usage limit / dead key is skipped
             // instead of burning 3 slow retries on it.
             $block = $this->providerBlock($provider);
@@ -203,7 +305,13 @@ class JobContentGenerator
                 continue;
             }
 
-            for ($attempt = 1; $attempt <= $this->maxAttempts; $attempt++) {
+            $attempts = (int) ($provider['attempts'] ?? $this->maxAttempts);
+
+            for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+                if (microtime(true) >= $deadline) {
+                    break;
+                }
+
                 try {
                     $response = match ($provider['kind']) {
                         'groq' => $this->postGroq($provider, $prompt),
@@ -224,7 +332,17 @@ class JobContentGenerator
                         'retry_after_seconds' => null,
                         'resets_at' => null,
                     ]);
-                    $this->backoff($attempt);
+                    // A provider that timed out is skipped for a while, so the
+                    // next click goes straight to a healthy provider.
+                    $this->blockProvider($provider, [
+                        'message' => $provider['label'] . ' did not answer in time (timeout or connection error).',
+                        'code' => 'network',
+                        'retry_after_seconds' => $this->skipAfterConnectionError($e),
+                        'resets_at' => null,
+                    ]);
+                    if ($attempt < $attempts) {
+                        $this->backoff($attempt);
+                    }
                     continue;
                 }
 
@@ -239,7 +357,9 @@ class JobContentGenerator
                             'retry_after_seconds' => null,
                             'resets_at' => null,
                         ]);
-                        $this->backoff($attempt);
+                        if ($attempt < $attempts) {
+                            $this->backoff($attempt);
+                        }
                         continue;
                     }
 
@@ -294,11 +414,27 @@ class JobContentGenerator
                     break;
                 }
 
-                $this->backoff($attempt);
+                if ($attempt < $attempts) {
+                    $this->backoff($attempt);
+                }
             }
         }
 
         return $this->failure($last['message'], $last['code'], $last['retry_after_seconds'], $last['resets_at']);
+    }
+
+    /**
+     * A request pre-set with the provider's own timeout budget, so a slow
+     * provider is dropped quickly instead of stalling the whole chain.
+     */
+    protected function requestFor(array $provider): \Illuminate\Http\Client\PendingRequest
+    {
+        $timeout = (int) ($provider['timeout'] ?? $this->timeout);
+        $timeout = $timeout > 0 ? $timeout : $this->timeout;
+
+        return Http::timeout($timeout)
+            ->connectTimeout(max(1, min(5, $timeout)))
+            ->acceptJson();
     }
 
     /** Single generateContent call against Google's API. */
@@ -307,27 +443,24 @@ class JobContentGenerator
         $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
             . $provider['model'] . ':generateContent?key=' . urlencode($provider['key']);
 
-        return Http::timeout($this->timeout)
-            ->acceptJson()
-            ->post($url, [
-                'contents' => [
-                    ['parts' => [['text' => $prompt]]],
-                ],
-                // NOTE: temperature/top_p/top_k are deprecated and rejected
-                // by gemini-3.5-flash-lite and newer, so only send the
-                // output controls those models still accept.
-                'generationConfig' => [
-                    'maxOutputTokens' => 2048,
-                    'responseMimeType' => 'application/json',
-                ],
-            ]);
+        return $this->requestFor($provider)->post($url, [
+            'contents' => [
+                ['parts' => [['text' => $prompt]]],
+            ],
+            // NOTE: temperature/top_p/top_k are deprecated and rejected
+            // by gemini-3.5-flash-lite and newer, so only send the
+            // output controls those models still accept.
+            'generationConfig' => [
+                'maxOutputTokens' => 2048,
+                'responseMimeType' => 'application/json',
+            ],
+        ]);
     }
 
     /** Single chat-completions call routed through Groq. */
     protected function postGroq(array $provider, string $prompt): \Illuminate\Http\Client\Response
     {
-        return Http::timeout($this->timeout)
-            ->acceptJson()
+        return $this->requestFor($provider)
             ->withHeaders([
                 'Authorization' => 'Bearer ' . $provider['key'],
             ])
@@ -344,8 +477,7 @@ class JobContentGenerator
     /** Single chat-completions call routed through OpenRouter. */
     protected function postOpenRouter(array $provider, string $prompt): \Illuminate\Http\Client\Response
     {
-        return Http::timeout($this->timeout)
-            ->acceptJson()
+        return $this->requestFor($provider)
             ->withHeaders([
                 'Authorization' => 'Bearer ' . $provider['key'],
                 'HTTP-Referer' => (string) (config('app.url') ?: 'http://localhost'),

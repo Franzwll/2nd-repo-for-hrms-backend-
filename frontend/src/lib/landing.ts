@@ -26,6 +26,23 @@ export interface LandingJob {
 }
 
 export function mapJob(j: ApiLandingJob): LandingJob {
+  // Backend may leak a JSON-encoded string (or null) for list fields when a
+  // row was written without the model's array cast. Coerce everything to a
+  // real string[] so the detail/list .map() renders never throw
+  // "j.additional.map is not a function" and trip the root error boundary.
+  const asList = (v: unknown): string[] => {
+    if (Array.isArray(v)) return v.map((x) => String(x));
+    if (typeof v === "string") {
+      try {
+        const decoded: unknown = JSON.parse(v);
+        if (Array.isArray(decoded)) return decoded.map((x) => String(x));
+      } catch {
+        // not JSON — fall through
+      }
+      return v ? [v] : [];
+    }
+    return [];
+  };
   return {
     id: String(j.job_post_id),
     title: j.title,
@@ -40,13 +57,13 @@ export function mapJob(j: ApiLandingJob): LandingJob {
     education: j.education_level ?? "",
     summary: j.summary ?? "",
     description: j.description ?? "",
-    responsibilities: (j.responsibilities as any) ?? [],
-    qualifications: (j.qualifications as any) ?? [],
-    skills: (j.skills as any) ?? [],
-    additional: (j.additional as any) ?? [],
+    responsibilities: asList(j.responsibilities),
+    qualifications: asList(j.qualifications),
+    skills: asList(j.skills),
+    additional: asList(j.additional),
     instructions: j.instructions ?? "",
     about: j.about ?? "",
-    benefits: (j.benefits as any) ?? [],
+    benefits: asList(j.benefits),
     picture: j.picture_url ?? j.picture ?? null,
   };
 }

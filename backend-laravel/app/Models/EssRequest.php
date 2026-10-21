@@ -27,6 +27,7 @@ class EssRequest extends Model
         'review_note',
         'returned_count',
         'attachment_path',
+        'completed_at',
     ];
 
     protected $casts = [
@@ -34,6 +35,7 @@ class EssRequest extends Model
         'date_from' => 'date',
         'date_to' => 'date',
         'returned_count' => 'integer',
+        'completed_at' => 'datetime',
     ];
 
     public function employee(): BelongsTo

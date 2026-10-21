@@ -11,6 +11,17 @@ class JobPostResource extends JsonResource
     {
         $this->loadMissing('department', 'position');
 
+        // Builder posts may persist JSON lists as encoded strings when the
+        // model cast is bypassed (e.g. raw query / stale model). Normalize
+        // every list here so the public careers page always gets arrays —
+        // a raw string crashes the detail page's .map() render and trips the
+        // root "This page didn't load" error boundary on new posts only.
+        $asList = fn ($value): array => is_array($value)
+            ? array_values($value)
+            : (is_string($value) && ($decoded = json_decode($value, true)) !== null && is_array($decoded)
+                ? array_values($decoded)
+                : []);
+
         return [
             'job_post_id' => $this->job_post_id,
             'slug' => $this->slug,
@@ -29,13 +40,13 @@ class JobPostResource extends JsonResource
             'education_level' => $this->education_level,
             'summary' => $this->summary,
             'description' => $this->description,
-            'responsibilities' => $this->responsibilities_json,
-            'qualifications' => $this->qualifications_json,
-            'skills' => $this->skills_json,
-            'additional' => $this->additional_json ?? [],
+            'responsibilities' => $asList($this->responsibilities_json),
+            'qualifications' => $asList($this->qualifications_json),
+            'skills' => $asList($this->skills_json),
+            'additional' => $asList($this->additional_json ?? []),
             'instructions' => $this->instructions,
             'about' => $this->about,
-            'benefits' => $this->benefits_json,
+            'benefits' => $asList($this->benefits_json),
             'picture' => $this->picture,
             'picture_url' => $this->picture
                 ? $request->getSchemeAndHttpHost() . '/api/v1/job-posts/' . $this->job_post_id . '/picture'

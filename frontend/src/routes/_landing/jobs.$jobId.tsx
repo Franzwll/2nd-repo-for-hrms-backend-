@@ -84,6 +84,11 @@ function JobDetail() {
   );
   const resumePick = pickResumeDoc(unifiedDocs);
   const resumeFile = resumePick?.file ?? null;
+  /** Backend accepts max 20 supporting files (PHP max_file_uploads=20) — the
+   *  uploader auto-splits resume vs supporting, so bigger bundles used to 422
+   *  with "must not have more than 10 items". Only the first 20 ride along;
+   *  the count note below tells HR how many were left behind. */
+  const MAX_VERIFY_DOCS = 20;
   const verifyDocs = unifiedDocs
     .filter((d) => resumePick?.id !== d.id)
     .map((d) => {
@@ -94,6 +99,8 @@ function JobDetail() {
         raw === "COE" || raw === "Certificate" || raw === "Credential" ? raw : "Others";
       return { type, file: d.file };
     });
+  const verifyDocsCapped = verifyDocs.slice(0, MAX_VERIFY_DOCS);
+  const verifyDocsDropped = verifyDocs.length - verifyDocsCapped.length;
 
   // Normalize PH phone (+63 → 0) for auto-fill
   const normalizePHPhone = (raw?: string | null) => {
@@ -325,39 +332,61 @@ function JobDetail() {
                         toast.error("Enter a valid location (≥2 chars).");
                         return;
                       }
+                      // Resume/CV is mandatory — it is the reference NLP screening scores against.
+                      if (!resumeFile) {
+                        toast.error("Please attach your resume/CV to apply.");
+                        return;
+                      }
                       setApplying(true);
                       try {
-                        let res;
-                        if (resumeFile) {
-                          const fd = new FormData();
-                          fd.append("job_post_id", String(job.id));
-                          fd.append("name", n);
-                          fd.append("email", em);
-                          fd.append("phone", ph);
-                          fd.append("source", "Landing Page");
-                          fd.append("resume", resumeFile);
-                          // Verification documents (COE / Certificate /
-                          // Credential / Others) proving the resume content.
-                          verifyDocs.forEach((d, i) => {
-                            fd.append(`verification_doc_types[${i}]`, d.type);
-                            fd.append(`verification_docs[${i}]`, d.file);
-                          });
-                          res = await landingApi.apply(fd);
-                        } else {
-                          res = await landingApi.apply({
-                            job_post_id: Number(job.id),
-                            name: n,
-                            email: em,
-                            phone: ph,
-                            source: "Landing Page",
-                          });
-                        }
+                        const fd = new FormData();
+                        fd.append("job_post_id", String(job.id));
+                        fd.append("name", n);
+                        fd.append("email", em);
+                        fd.append("phone", ph);
+                        fd.append("source", "Landing Page");
+                        fd.append("resume", resumeFile);
+                        // Verification documents (COE / Certificate /
+                        // Credential / Others) proving the resume content.
+                        // Capped at MAX_VERIFY_DOCS (backend max) — extras are
+                        // left behind and reported in the success note below.
+                        verifyDocsCapped.forEach((d, i) => {
+                          fd.append(`verification_doc_types[${i}]`, d.type);
+                          fd.append(`verification_docs[${i}]`, d.file);
+                        });
+                        const res = await landingApi.apply(fd);
                         setSubmitted(true);
                         toast.success("Application submitted", {
-                          description: `Application ${res.data.applicant_code} for ${job.title} was received.`,
+                          description:
+                            `Application ${res.data.applicant_code} for ${job.title} was received.` +
+                            (verifyDocsDropped > 0
+                              ? ` Note: only the first ${MAX_VERIFY_DOCS} supporting files were attached (${verifyDocsDropped} extra file${verifyDocsDropped === 1 ? "" : "s"} left behind — backend limit).`
+                              : ""),
                         });
                       } catch (err: any) {
-                        if (err?.status === 409 || err?.code === "DUPLICATE_APPLICATION") {
+                        if (
+                          err?.status === 409 &&
+                          err?.code === "REAPPLY_COOLDOWN"
+                        ) {
+                          // Failed-applicant cooldown — backend carries the
+                          // eligible date + days left in the 409 payload.
+                          const p = err?.payload ?? {};
+                          const applied = p.applied_at
+                            ? new Date(p.applied_at).toLocaleDateString()
+                            : "";
+                          const eligible = p.eligible_after
+                            ? new Date(p.eligible_after + "T00:00:00").toLocaleDateString()
+                            : "";
+                          const left =
+                            typeof p.days_left === "number"
+                              ? ` — ${p.days_left} day(s) left`
+                              : "";
+                          toast.warning("Please wait before re-applying", {
+                            description:
+                              `You applied${applied ? ` on ${applied}` : ""}. ` +
+                              `You may re-apply for any open position${eligible ? ` after ${eligible}` : ""}${left}.`,
+                          });
+                        } else if (err?.status === 409 || err?.code === "DUPLICATE_APPLICATION") {
                           const existing = err?.payload?.existing_applicant_code
                             ? ` (${err.payload.existing_applicant_code})`
                             : "";
@@ -366,6 +395,23 @@ function JobDetail() {
                             : "";
                           toast.warning("Duplicate application blocked", {
                             description: `You already applied for ${job.title}${existing}${applied}. Same resume can still be used for other jobs.`,
+                          });
+                        } else if (err?.status === 422) {
+                          // Surface WHICH field failed (e.g. verification_docs count)
+                          // instead of the raw Laravel message dump.
+                          const fieldErrors: string[] = [];
+                          const errors = err?.errors ?? err?.payload?.errors;
+                          if (errors && typeof errors === "object") {
+                            for (const [field, msgs] of Object.entries(errors)) {
+                              const first = Array.isArray(msgs) ? msgs[0] : String(msgs ?? "");
+                              if (first) fieldErrors.push(`${field}: ${first}`);
+                            }
+                          }
+                          toast.error("Application needs attention", {
+                            description:
+                              fieldErrors.length > 0
+                                ? fieldErrors.join(" · ")
+                                : err?.message || "Unable to submit your application. Please try again.",
                           });
                         } else {
                           toast.error(
@@ -435,7 +481,7 @@ function JobDetail() {
                       </div>
                       <div className="space-y-1.5">
                         <Label>
-                          Resume + Supporting Documents (optional){" "}
+                          Resume/CV * + Supporting Documents{" "}
                           {extracting && <span className="text-xs text-gold">Extracting…</span>}
                         </Label>
                         <UnifiedDocumentsUploader
@@ -445,6 +491,24 @@ function JobDetail() {
                           title="Drop resume + COE + certificates here"
                           hint="Any order — every file is auto-recognized. Your name, email, phone and address are filled from the first recognized resume."
                         />
+                        <p className="text-[11px] text-muted-foreground">
+                          A resume/CV is required. Supporting documents (COE, certificates,
+                          credentials) are optional.
+                        </p>
+                        {verifyDocs.length > 0 && (
+                          <p
+                            className={
+                              verifyDocsDropped > 0
+                                ? "text-[11px] font-medium text-amber-600"
+                                : "text-[11px] text-muted-foreground"
+                            }
+                          >
+                            {verifyDocsCapped.length} supporting file{verifyDocsCapped.length === 1 ? "" : "s"} will be attached
+                            {verifyDocsDropped > 0
+                              ? ` — ${verifyDocsDropped} extra will be left behind (max ${MAX_VERIFY_DOCS}). Remove files or keep the most important ${MAX_VERIFY_DOCS}.`
+                              : ` (max ${MAX_VERIFY_DOCS}).`}
+                          </p>
+                        )}
                       </div>
 
                       {/* Recognized supporting docs ride along automatically —

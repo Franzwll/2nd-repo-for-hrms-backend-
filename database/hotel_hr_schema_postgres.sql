@@ -208,9 +208,7 @@ CREATE TABLE "job_posts" (
   "updated_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY ("job_post_id"),
   CONSTRAINT chk_job_posts_status CHECK ("status" IN ('Open', 'Closed', 'Draft')),
-  CONSTRAINT chk_job_posts_employment_type CHECK ("employment_type" IN ('Full-time', 'Part-time', 'Contract', 'Seasonal')),
-  CONSTRAINT chk_job_posts_experience_level CHECK ("experience_level" IS NULL OR "experience_level" IN ('No Experience', '1-2 Years', '3-5 Years', '5+ Years')),
-  CONSTRAINT chk_job_posts_education_level CHECK ("education_level" IS NULL OR "education_level" IN ('High School Graduate', 'Vocational / TESDA', 'College Level', 'Bachelor''s Degree'))
+  CONSTRAINT chk_job_posts_employment_type CHECK ("employment_type" IN ('Full-time', 'Part-time', 'Contract', 'Seasonal'))
 );
 
 CREATE TABLE "job_post_platforms" (

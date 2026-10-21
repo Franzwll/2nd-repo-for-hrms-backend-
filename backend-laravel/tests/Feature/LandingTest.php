@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\JobPost;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\RefreshesSeededDatabase;
 use Tests\TestCase;
 
@@ -33,13 +36,18 @@ class LandingTest extends TestCase
 
     public function test_apply_creates_applicant(): void
     {
+        Storage::fake('public');
+        // NLP screening is external; stub it out so the applicant still saves.
+        Http::fake(['*' => Http::response(['detail' => 'unavailable'], 503)]);
+
         $job = JobPost::where('active', 1)->firstOrFail();
 
-        $this->postJson('/api/v1/landing/apply', [
+        $this->post('/api/v1/landing/apply', [
             'job_post_id' => $job->job_post_id,
             'name' => 'Maria Santos',
             'email' => 'maria.santos@example.com',
             'phone' => '0917-555-6789',
+            'resume' => UploadedFile::fake()->create('maria-santos.pdf', 100, 'application/pdf'),
         ])->assertCreated()
             ->assertJsonPath('data.job_title', $job->title);
 
@@ -49,14 +57,31 @@ class LandingTest extends TestCase
         ]);
     }
 
-    public function test_apply_rejects_inactive_job(): void
+    public function test_apply_requires_a_resume(): void
     {
-        $job = JobPost::where('active', 0)->firstOrFail();
+        $job = JobPost::where('active', 1)->firstOrFail();
 
         $this->postJson('/api/v1/landing/apply', [
             'job_post_id' => $job->job_post_id,
+            'name' => 'No Resume',
+            'email' => 'no.resume@example.com',
+            'phone' => '0917-555-0000',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('resume');
+    }
+
+    public function test_apply_rejects_inactive_job(): void
+    {
+        Storage::fake('public');
+        Http::fake(['*' => Http::response(['detail' => 'unavailable'], 503)]);
+
+        $job = JobPost::where('active', 0)->firstOrFail();
+
+        $this->post('/api/v1/landing/apply', [
+            'job_post_id' => $job->job_post_id,
             'name' => 'Maria Santos',
             'email' => 'maria.santos@example.com',
+            'resume' => UploadedFile::fake()->create('maria-santos.pdf', 100, 'application/pdf'),
         ])->assertStatus(422);
     }
 }

@@ -183,10 +183,17 @@ def classify_applied_job(
     if not match["mandatory_detail"]["education_requirement_met"]:
         reasons.append("Education does not meet the requirement of the applied job.")
     if not match["mandatory_detail"]["experience_requirement_met"]:
-        reasons.append(
-            f"Estimated experience {profile.get('estimated_years_experience', 0)} yrs is below the "
-            f"{requirements['min_years_experience']} yrs minimum."
-        )
+        years = profile.get('estimated_years_experience', 0)
+        min_yrs = requirements['min_years_experience']
+        if years < min_yrs:
+            reasons.append(
+                f"Estimated experience {years} yrs is below the {min_yrs} yrs minimum."
+            )
+        else:
+            reasons.append(
+                f"Experience ({years} yrs) is in an unrelated field; does not meet the "
+                f"{min_yrs} yrs requirement for {requirements.get('title', 'this role')}."
+            )
     if match["mandatory_detail"]["required_skills_coverage"] < coverage_min:
         missing = match["missing_requirements"]["skills"]
         reasons.append(

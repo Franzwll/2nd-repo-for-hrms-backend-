@@ -28,7 +28,7 @@ class NotifyRecordsInboxOfNewRequest
 
         Notifier::to($recipients, [
             'title' => 'New document request',
-            'body' => "{$employeeName} requested \"{$request->request_type}\" ({$request->request_code}). Fulfil it from Employee Records → Document Requests.",
+            'body' => "{$employeeName} requested \"{$request->request_type}\" ({$request->request_code}). Review it in ESS Management; once approved, upload the file from Employee Records → Document Requests.",
             'type' => 'info',
             'module_name' => 'Employee Records',
             'target_type' => 'ess_request',

@@ -146,6 +146,48 @@ def _validated_weights(override: Optional[Dict]) -> Dict[str, float]:
     return cleaned
 
 
+def is_role_relevant(target_title: str, profile: Dict) -> bool:
+    """Checks whether the applicant has experience or roles relevant to the target job."""
+    if not target_title or target_title == "Unspecified Position":
+        return True
+
+    rec_roles = profile.get("job_roles", {}).get("recognized", [])
+    work_exp = profile.get("work_experience", [])
+    # If no structured role or work experience was provided (e.g. test fixtures), assume relevant
+    if not rec_roles and not work_exp:
+        return True
+
+    target_low = target_title.lower().strip()
+    substantive_tokens = {t for t in re.findall(r"\w+", target_low) if len(t) > 3}
+    if "cook" in target_low:
+        substantive_tokens.update(["cook", "chef", "culinary", "kitchen", "commis"])
+    elif "bartender" in target_low or "bar" in target_low:
+        substantive_tokens.update(["bartender", "barista", "mixologist", "bar"])
+    elif "front desk" in target_low or "reception" in target_low:
+        substantive_tokens.update(["front desk", "reception", "front office", "concierge"])
+    elif "server" in target_low or "waiter" in target_low:
+        substantive_tokens.update(["server", "waiter", "waitress", "dining", "banquet"])
+
+    rec_roles = profile.get("job_roles", {}).get("recognized", [])
+    for role in rec_roles:
+        r_low = role.lower().strip()
+        if target_low in r_low or r_low in target_low:
+            return True
+        if any(token in r_low for token in substantive_tokens):
+            return True
+
+    for exp in profile.get("work_experience", []):
+        jt = (exp.get("job_title") or "").lower().strip()
+        if not jt:
+            continue
+        if target_low in jt or jt in target_low:
+            return True
+        if any(token in jt for token in substantive_tokens):
+            return True
+
+    return False
+
+
 def match_profile_to_requirements(
     profile: Dict,
     validation: Dict,
@@ -177,8 +219,12 @@ def match_profile_to_requirements(
         (len(matched_required) + len(fuzzy_required)) / len(required_skills)
         if required_skills else 1.0
     )
-    preferred_coverage = len(matched_preferred) / len(preferred_skills) if preferred_skills else 1.0
-    skills_ratio = 0.7 * required_coverage + 0.3 * preferred_coverage
+    if preferred_skills:
+        preferred_coverage = len(matched_preferred) / len(preferred_skills)
+        skills_ratio = 0.7 * required_coverage + 0.3 * preferred_coverage
+    else:
+        preferred_coverage = 1.0
+        skills_ratio = required_coverage
 
     applicant_rank = max(
         (refdata.education_rank(level) for level in profile.get("education", [])),
@@ -190,8 +236,13 @@ def match_profile_to_requirements(
 
     years = float(profile.get("estimated_years_experience") or 0)
     min_years = requirements["min_years_experience"]
-    experience_met = years >= min_years
-    experience_ratio = 1.0 if min_years <= 0 else min(1.0, years / min_years)
+    role_rel = is_role_relevant(requirements.get("title", ""), profile)
+    if not role_rel and min_years > 0:
+        experience_met = False
+        experience_ratio = (min(1.0, years / min_years) if min_years > 0 else 1.0) * 0.70
+    else:
+        experience_met = years >= min_years
+        experience_ratio = 1.0 if min_years <= 0 else min(1.0, years / min_years)
 
     certs_matched = []
     for row in validation.get("credential_analysis", []):

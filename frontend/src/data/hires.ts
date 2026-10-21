@@ -19,6 +19,10 @@ export type PendingHire = {
   phone: string;
   /** Database applicant id — lets the backend derive position/department. */
   applicantId?: number;
+  /** Start-of-work date chosen when the applicant accepted the offer — the
+   *  onboarding start date the "Days of Work" counter runs from. Falls back
+   *  to today for handovers without a chosen date. */
+  startDate?: string;
 };
 
 /** Hand-off for the "View Checklist" action on the New Hire Onboarding

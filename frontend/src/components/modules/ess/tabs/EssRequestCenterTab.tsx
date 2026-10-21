@@ -7,6 +7,7 @@ import {
   Filter,
   Clock,
   FileText,
+  Paperclip,
   CheckCircle2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,6 +51,7 @@ export function EssRequestCenterTab() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [reason, setReason] = useState("");
+  const [attachments, setAttachments] = useState<File[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -120,19 +122,22 @@ export function EssRequestCenterTab() {
     try {
       setSubmitting(true);
       const catCode = category.toLowerCase().replace(/[^a-z0-9]/g, "_");
-      await essApi.createRequest({
-        category_code: catCode,
-        category_name: category,
-        request_type: requestType || `${category} Request`,
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
-        details: reason || "General request submitted via ESS.",
-      });
+      const form = new FormData();
+      form.append("category_code", catCode);
+      form.append("category_name", category);
+      form.append("request_type", requestType || `${category} Request`);
+      if (dateFrom) form.append("date_from", dateFrom);
+      if (dateTo) form.append("date_to", dateTo);
+      form.append("details", reason || "General request submitted via ESS.");
+      attachments.forEach((file) => form.append("attachments[]", file));
+
+      await essApi.createRequest(form);
 
       toast.success(`Request submitted to HR Administration.`);
       setReason("");
       setDateFrom("");
       setDateTo("");
+      setAttachments([]);
       loadRequests();
     } catch (err: any) {
       toast.error(err.message || "Failed to submit request.");
@@ -150,6 +155,7 @@ export function EssRequestCenterTab() {
       status: r.status,
       assignedTo: r.assignedTo || r.assigned_to || "HR Administration",
       details: r.details,
+      note: r.review_note ?? r.note ?? null,
       ...(r.db_id != null ? { dbId: r.db_id } : {}),
       ...(r.attachments ? { attachments: r.attachments } : {}),
       ...(r.has_fulfillment != null ? { has_fulfillment: r.has_fulfillment } : {}),
@@ -190,9 +196,12 @@ export function EssRequestCenterTab() {
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="Pending">Pending</SelectItem>
                 <SelectItem value="Under Review">Under Review</SelectItem>
+                <SelectItem value="For Fulfillment">For Fulfillment</SelectItem>
                 <SelectItem value="Approved">Approved</SelectItem>
                 <SelectItem value="Completed">Completed</SelectItem>
                 <SelectItem value="Rejected">Rejected</SelectItem>
+                <SelectItem value="Returned for Clarification">Returned</SelectItem>
+                <SelectItem value="Cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -341,6 +350,21 @@ export function EssRequestCenterTab() {
               />
             </div>
 
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5 text-xs font-semibold">
+                <Paperclip className="h-3.5 w-3.5" /> Supporting documents (optional)
+              </Label>
+              <Input
+                type="file"
+                multiple
+                accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                onChange={(e) => setAttachments(Array.from(e.target.files ?? []))}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Up to 5 files, 10 MB each (PDF, image, DOC/DOCX).
+              </p>
+            </div>
+
             <Button type="submit" disabled={submitting} className="gap-1.5">
               <Send className="h-4 w-4" /> {submitting ? "Submitting..." : "Submit Request to HR"}
             </Button>
@@ -353,6 +377,7 @@ export function EssRequestCenterTab() {
         open={timelineOpen}
         onOpenChange={setTimelineOpen}
         request={selectedRequest}
+        onUpdated={loadRequests}
       />
     </div>
   );

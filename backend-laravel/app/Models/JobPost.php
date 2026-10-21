@@ -5,9 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class JobPost extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'job_posts';
     protected $primaryKey = 'job_post_id';
 
@@ -43,6 +46,11 @@ class JobPost extends Model
         'responsibilities_json' => 'array',
         'qualifications_json' => 'array',
         'skills_json' => 'array',
+        // Older rows leave additional_json NULL (treated as []); newer builder
+        // posts persist a JSON-encoded list which must decode to an array —
+        // without this cast the Landing resource leaks a raw string that
+        // crashes the public job-detail page's .map() render.
+        'additional_json' => 'array',
         'benefits_json' => 'array',
     ];
 

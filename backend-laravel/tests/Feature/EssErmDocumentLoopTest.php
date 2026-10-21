@@ -70,7 +70,21 @@ class EssErmDocumentLoopTest extends TestCase
         $this->assertContains($code, $codes);
         $this->assertGreaterThanOrEqual(1, $inbox['counts']['total']);
 
-        // 3. Records staff fulfil it with a fresh upload.
+        // 3. Records cannot bypass approval: a Pending request has no file yet.
+        $blockedFile = UploadedFile::fake()->create('coe.pdf', 12, 'application/pdf');
+        $this->post('/api/v1/erm/document-requests/' . $code . '/fulfill', [
+            'file' => $blockedFile,
+        ], $this->authHeaders($this->recordsToken()))
+            ->assertStatus(422);
+
+        // 4. ESS HR approves; the document request moves to For Fulfillment.
+        $this->postJson('/api/v1/ess/admin/requests/' . $code . '/review', [
+            'decision' => 'approve',
+        ], $this->authHeaders($this->superAdminToken()))
+            ->assertOk()
+            ->assertJsonPath('request.status', 'For Fulfillment');
+
+        // 5. Records staff fulfil it with a fresh upload.
         $file = UploadedFile::fake()->create('coe.pdf', 12, 'application/pdf');
         $this->post('/api/v1/erm/document-requests/' . $code . '/fulfill', [
             'file' => $file,
@@ -125,7 +139,7 @@ class EssErmDocumentLoopTest extends TestCase
             'employee_id' => $employeeId,
             'request_type' => 'Certificate of Employment',
             'filed_at' => now(),
-            'status' => 'Pending',
+            'status' => 'For Fulfillment',
             'details' => 'Archived document fulfilment test.',
         ]);
 

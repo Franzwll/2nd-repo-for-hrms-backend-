@@ -52,6 +52,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -322,7 +323,13 @@ function ChatbotFaqSettingsCard() {
         </div>
 
         <div className="mt-3 max-h-[190px] min-h-0 flex-1 divide-y divide-border/60 overflow-y-auto pr-1">
-          {loading && <p className="py-4 text-center text-xs text-muted-foreground">Loading FAQs…</p>}
+          {loading && (
+            <div className="space-y-2 py-2" aria-busy="true" aria-label="Loading FAQs">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+              <Skeleton className="h-4 w-2/3" />
+            </div>
+          )}
           {!loading && faqs.length === 0 && (
             <p className="py-4 text-center text-xs text-muted-foreground">
               No FAQs yet. Click Add to create one.
@@ -754,7 +761,7 @@ export function SettingsPage({ role }: { role: "superadmin" | "admin" | "employe
         }
       />
 
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid items-start gap-5 lg:grid-cols-2">
         {/* Chatbot FAQ — compact manager in the former Notifications slot (admins only) */}
         {(isSuperAdmin || role === "admin") && (
           <ChatbotFaqSettingsCard />

@@ -159,6 +159,23 @@ export interface ApiApplicant {
     | "Hired"
     | "Rejected"
     | "Accepted";
+  /** Offer workflow — set when the final evaluation decision emails the
+   *  applicant an offer (7-day response window) and HR records their reply. */
+  offer_status?: "Pending" | "Accepted" | "Declined" | null;
+  offer_sent_at?: string | null;
+  offer_expires_at?: string | null;
+  offer_start_date?: string | null;
+  offer_days_left?: number | null;
+  /** How the applicant replied (Email / SMS / Call / In person) — HR records
+   *  it since replies arrive outside the app. */
+  offer_response_channel?: "Email" | "SMS" | "Call" | "In person" | null;
+  offer_response_note?: string | null;
+  offer_responded_at?: string | null;
+  offer_response_recorded_by?: string | null;
+  /** Re-apply cooldown anchors — rejected_at starts the waiting period,
+   *  cooldown_lifted_at records an HR early override. */
+  rejected_at?: string | null;
+  cooldown_lifted_at?: string | null;
   source: string | null;
   summary: string | null;
   flags_json: string[];
@@ -169,8 +186,11 @@ export interface ApiApplicant {
     job_post_id: number;
     title: string;
     department?: string;
-    /** Whether this position takes a practical assessment (job_posts
-     *  .requires_practical, or a designated hands-on position). */
+    /** Whether this position takes an assessment test — Core HCM position
+     *  flag (owner); legacy job-post flag is the fallback. */
+    requires_assessment?: boolean;
+    /** Whether this position takes a practical assessment — Core HCM position
+     *  flag (owner); legacy job-post flag is the fallback. */
     requires_practical?: boolean;
   };
   screening_entities?: { entity_id: number; label: string; value: string }[];
@@ -198,7 +218,9 @@ export interface ApiDocumentEvidence {
   credit_ratio?: number | null;
   /** Mean document credit as a percentage (VERIFIED 100, UNABLE 50, DISCREPANCY 0). */
   documents_score?: number | null;
-  /** Points the evidence moved the resume score (positive = reduction). */
+  /** Points the evidence added to the resume score (non-negative; evidence can only reward). */
+  score_bonus?: number;
+  /** Always 0 — kept for backward compatibility; documents never lower the score. */
   score_penalty?: number;
   escalate_invalid?: boolean;
   mismatched_fields?: string[];
@@ -564,6 +586,28 @@ export const applicantsApi = {
     request<{ message: string }>(`/applicants/${id}`, { method: "DELETE" }),
   hire: (id: number | string) =>
     request<ApiApplicant>(`/applicants/${id}/hire`, { method: "POST" }),
+  /** Emails the offer (after a Final Evaluation recommended the candidate)
+   *  and starts the applicant's 7-day response window. */
+  sendOffer: (id: number | string, details?: string) =>
+    request<ApiApplicant>(`/applicants/${id}/offer`, {
+      method: "POST",
+      body: JSON.stringify(details ? { details } : {}),
+    }),
+  /** Records the applicant's reply to the offer (HR reads the email/SMS/call).
+   *  `channel` is how it arrived; accepting requires the start-of-work date. */
+  respondToOffer: (
+    id: number | string,
+    body: {
+      response: "accepted" | "declined";
+      start_date?: string;
+      channel: "Email" | "SMS" | "Call" | "In person";
+      note?: string | undefined;
+    },
+  ) =>
+    request<ApiApplicant>(`/applicants/${id}/offer/response`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   stats: () => request<any>("/applicants/stats"),
   extractResume: (formData: FormData) =>
     request<{
@@ -612,7 +656,46 @@ export const applicantsApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  /** Same-email past applications + cooldown countdown for the HR profile strip. */
+  history: (id: number | string) =>
+    request<ApiApplicantHistory>(`/applicants/${id}/history`),
+  /** HR allows early re-application (lifts the waiting period, audited). */
+  overrideCooldown: (id: number | string) =>
+    request<{ message: string; data: ApiApplicant }>(
+      `/applicants/${id}/cooldown/override`,
+      { method: "POST" },
+    ),
 };
+
+export interface ApiApplicantHistoryRow {
+  applicant_id: number;
+  applicant_code: string;
+  job_post_id: number;
+  position: string;
+  applied_at: string | null;
+  stage: string;
+  status: string;
+  offer_status?: string | null;
+  rejected_at?: string | null;
+  cooldown_lifted_at?: string | null;
+  is_current: boolean;
+}
+
+export interface ApiApplicantHistory {
+  data: ApiApplicantHistoryRow[];
+  cooldown: {
+    applicant_code: string;
+    applied_at: string | null;
+    rejected_at: string | null;
+    eligible_after: string;
+    eligible_after_label: string;
+    applied_label: string;
+    days_left: number;
+    job_post_id: number;
+  } | null;
+  cooldown_days: number;
+  attempt_count: number;
+}
 
 export const assessmentsApi = {
   /** Global Assessment Test / Practical Test switches owned by Core HCM. */
@@ -930,6 +1013,8 @@ export interface ApiFinalEvaluationPreview {
   applicant_id: number;
   position: string | null;
   practical_required: boolean;
+  /** False when the applicant was never screened (no resume) — Screening is then excluded from the overall. */
+  screening_applicable: boolean;
   scores: {
     screening_score: number | null;
     screening_status: string | null;
@@ -1052,6 +1137,10 @@ export interface ApiJobPost {
   picture: string | null;
   picture_url: string | null;
   applicants_count?: number;
+  /** Test requirements resolved by the backend (Core HCM position flags,
+   *  owner; legacy job-post columns are fallback). Read-only in Recruitment. */
+  requires_assessment?: boolean;
+  requires_practical?: boolean;
 }
 
 export interface ApiRequisition {
@@ -1191,7 +1280,12 @@ export const jobPostsApi = {
     });
   },
   delete: (id: number | string) =>
-    request<{ message: string }>(`/job-posts/${id}`, { method: "DELETE" }),
+    request<{
+      message: string;
+      archived?: boolean;
+      applicants?: number;
+      requisitions?: number;
+    }>(`/job-posts/${id}`, { method: "DELETE" }),
   toggle: (id: number | string) =>
     request<ApiJobPost>(`/job-posts/${id}/toggle`, { method: "PATCH" }),
   publish: (id: number | string, platforms: string[]) =>
@@ -2548,14 +2642,20 @@ export interface ApiEssRequestItem {
     | "Pending"
     | "Under Review"
     | "Approved"
+    | "For Fulfillment"
     | "Rejected"
     | "Completed"
+    | "Cancelled"
     | "Returned for Clarification";
   assignedTo?: string;
   assigned_to?: string;
   details: string;
   note?: string;
+  review_note?: string | null;
   returnedCount?: number;
+  returned_count?: number;
+  completed_at?: string | null;
+  employeeDbId?: number;
   attachment_path?: string | null;
   /** Files attached to the request — employee uploads and HR fulfilment. */
   attachments?: ApiEssRequestAttachment[];
@@ -2831,25 +2931,76 @@ export const essApi = {
     const qs = params ? new URLSearchParams(params).toString() : "";
     return request<{ requests: ApiEssRequestItem[] }>(`/ess/my-requests${qs ? `?${qs}` : ""}`);
   },
-  createRequest: (data: {
-    category_code?: string | undefined;
-    category_name?: string | undefined;
-    request_type: string;
-    date_from?: string | undefined;
-    date_to?: string | undefined;
-    details: string;
-    attachment_path?: string | null | undefined;
-  }) =>
-    request<{ message: string; request: any }>("/ess/requests", {
+  createRequest: (data: Record<string, any> | FormData) => {
+    const isForm = data instanceof FormData;
+    return request<{ message: string; request: any }>("/ess/requests", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: isForm ? data : JSON.stringify(data),
+    });
+  },
+  /** Employee answers a "Returned for Clarification" request. */
+  respondToRequest: (id: string | number, data: FormData) =>
+    request<{ message: string; request: any }>(`/ess/requests/${id}/respond`, {
+      method: "POST",
+      body: data,
     }),
+  /** Employee withdraws an open request. */
+  cancelRequest: (id: string | number) =>
+    request<{ message: string; request: any }>(`/ess/requests/${id}/cancel`, {
+      method: "POST",
+    }),
+  /** HR review action: start | approve | reject | return. */
+  reviewRequest: (
+    id: string | number,
+    decision: "start" | "approve" | "reject" | "return",
+    note?: string,
+    file?: File | null,
+  ) => {
+    if (file) {
+      const form = new FormData();
+      form.append("decision", decision);
+      if (note) form.append("note", note);
+      form.append("file", file);
+      return request<{ message: string; request: any }>(`/ess/admin/requests/${id}/review`, {
+        method: "POST",
+        body: form,
+      });
+    }
+
+    return request<{ message: string; request: any }>(`/ess/admin/requests/${id}/review`, {
+      method: "POST",
+      body: JSON.stringify({ decision, ...(note ? { note } : {}) }),
+    });
+  },
+  /** Attach the requested document and complete the request. */
+  fulfillRequest: (
+    id: string | number,
+    data: { file?: File | null; document_id?: number | null; note?: string },
+  ) => {
+    const form = new FormData();
+    if (data.file) form.append("file", data.file);
+    if (data.document_id) form.append("document_id", String(data.document_id));
+    if (data.note) form.append("note", data.note);
+    return request<{ message: string; request: any }>(`/ess/admin/requests/${id}/fulfill`, {
+      method: "POST",
+      body: form,
+    });
+  },
   /** Same-origin URL to stream a file attached to the employee's own request
    *  (their upload or HR's fulfilment) with ?token= auth for browser opens. */
   requestAttachmentUrl: (requestId: string | number, attachmentId: string | number) => {
     const token = getToken();
     const qs = token ? `?token=${encodeURIComponent(token)}` : "";
     return `/api/v1/ess/requests/${requestId}/attachments/${attachmentId}/file${qs}`;
+  },
+  /** HR view of an attachment on any employee request (ESS Management access). */
+  adminRequestAttachmentUrl: (
+    requestId: string | number,
+    attachmentId: string | number,
+  ) => {
+    const token = getToken();
+    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `/api/v1/ess/admin/requests/${requestId}/attachments/${attachmentId}/file${qs}`;
   },
   /** Same-origin URL to stream the employee's own document file with ?token= auth. */
   documentFileUrl: (documentId: string | number) => {
@@ -2893,9 +3044,11 @@ export const essApi = {
         pending: number;
         under_review: number;
         approved: number;
+        for_fulfillment: number;
         completed: number;
         rejected: number;
         returned: number;
+        cancelled: number;
       };
       requests: ApiEssRequestItem[];
     }>(`/ess/admin/requests${qs ? `?${qs}` : ""}`);
