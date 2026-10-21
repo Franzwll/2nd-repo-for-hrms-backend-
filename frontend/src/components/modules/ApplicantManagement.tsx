@@ -230,6 +230,7 @@ import {
   type ZoomEmbeddedMeetingHandle,
   type ZoomEmbedState,
 } from "@/components/applicants/ZoomEmbeddedMeeting";
+import { InterviewEvaluationForm } from "@/components/applicants/InterviewEvaluationForm";
 import {
   isValidEmail,
   isValidName,
@@ -6307,6 +6308,16 @@ function ApplicantViewScreen({
                                 </p>
                               </div>
                             )}
+                          {interview.interview_notes && interview.interview_notes.trim() !== "" && (
+                            <div className="mt-3 rounded-md border border-border bg-muted/30 p-3">
+                              <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                                <FileText className="h-3.5 w-3.5 text-primary" /> Interviewer notes
+                              </p>
+                              <p className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+                                {interview.interview_notes}
+                              </p>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="mt-4">
@@ -6949,6 +6960,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   const [zoomInviteOpen, setZoomInviteOpen] = useState(false);
   // Interview notes — loaded from the interview record, saved to backend.
   const [zoomNotes, setZoomNotes] = useState("");
+  // Last text confirmed by the server; drives the "Saved" indicator so the
+  // interviewer can see that the notes they typed are actually persisted.
+  const [zoomNotesSaved, setZoomNotesSaved] = useState("");
   const [zoomNotesSaving, setZoomNotesSaving] = useState(false);
   const zoomVideoRef = useRef<HTMLVideoElement | null>(null);
   const zoomStreamRef = useRef<MediaStream | null>(null);
@@ -7132,20 +7146,26 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
   /** Interview pending cancellation confirmation. */
   const [cancelInterview, setCancelInterview] = useState<Interview | null>(null);
-  const [schedule, setSchedule] = useState({
-    applicant: "",
-    date: TODAY_ISO,
-    time: buildTimeSlots(
+  const [schedule, setSchedule] = useState(() => {
+    const startLabel = buildTimeSlots(
       DEFAULT_SLOT_SETTINGS.startTime,
       DEFAULT_SLOT_SETTINGS.intervalMinutes,
       DEFAULT_SLOT_SETTINGS.slotCount,
-    )[0]!,
-    endTime: "",
-    mode: DEFAULT_SLOT_SETTINGS.defaultMode as string,
-    /** Required — must be chosen in the Book an Interview card. */
-    interviewer: "",
-    /** Required facility reservation for the schedule (request facility feature). */
-    facilityId: "",
+    )[0]!;
+    const startMins = parseTimeToMinutes(DEFAULT_SLOT_SETTINGS.startTime);
+    const endMins =
+      (startMins + Math.max(5, DEFAULT_SLOT_SETTINGS.intervalMinutes)) % (24 * 60);
+    return {
+      applicant: "",
+      date: TODAY_ISO,
+      time: startLabel,
+      endTime: formatMinutesAsTime(endMins),
+      mode: DEFAULT_SLOT_SETTINGS.defaultMode as string,
+      /** Required — must be chosen in the Book an Interview card. */
+      interviewer: "",
+      /** Required facility reservation for the schedule (request facility feature). */
+      facilityId: "",
+    };
   });
   /** Facility request tracker: schedule id -> facility approval status. */
   const [facilityStatuses, setFacilityStatuses] = useState<Record<string, FacilityStatus>>({});
@@ -7193,13 +7213,21 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
   /** Interview start time ("HH:MM", 24h) from the time inputs — any clock
    *  time works. Empty = nothing picked yet (the form gates on it). */
   const [customTime, setCustomTime] = useState<string>(DEFAULT_SLOT_SETTINGS.startTime);
-  /** Optional explicit end time ("HH:MM", 24h). Blank = interval duration. */
-  const [customEnd, setCustomEnd] = useState<string>("");
+  /** End time ("HH:MM", 24h) — auto-filled to start + interval (30 min by
+   *  default) whenever the start changes, but stays editable afterwards. */
+  const [customEnd, setCustomEnd] = useState<string>(() =>
+    minutesToInputTime(
+      (parseTimeToMinutes(DEFAULT_SLOT_SETTINGS.startTime) +
+        Math.max(5, DEFAULT_SLOT_SETTINGS.intervalMinutes)) %
+        (24 * 60),
+    ),
+  );
 
   /** Applies a manually entered start/end time (24h "HH:MM") to the schedule.
-   *  The end defaults to start + interval. An earlier end is honoured too — it
-   *  means the interview runs past midnight (an end equal to the start is
-   *  treated as blank so the interval duration applies). */
+   *  Typing a start always auto-sets the end to start + interval (30 min by
+   *  default) — the end input stays editable afterwards. An earlier end is
+   *  honoured too — it means the interview runs past midnight (an end equal
+   *  to the start is treated as blank so the interval duration applies). */
   const applyCustomRange = (which: "start" | "end", v: string) => {
     const step = Math.max(5, slotSettings.intervalMinutes);
     const DAY = 24 * 60;
@@ -7213,11 +7241,9 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       }
       const startMins = parseTimeToMinutes(v);
       setCustomTime(v);
-      const keptEnd = customEnd ? parseTimeToMinutes(customEnd) : null;
-      // Keep an explicit end that still differs from the new start; otherwise
-      // default to one interval later (wrapping past midnight when needed).
-      const endMins =
-        keptEnd !== null && keptEnd !== startMins ? keptEnd : (startMins + step) % DAY;
+      // Typing a start always re-syncs the end to start + interval (30 min by
+      // default, wrapping past midnight) — the end input stays editable after.
+      const endMins = (startMins + step) % DAY;
       setCustomEnd(minutesToInputTime(endMins));
       setSchedule((p) => ({
         ...p,
@@ -8273,11 +8299,18 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         jobs.find((j) => j.id === src.jobId)?.department)
       : undefined;
     const known = dept && displayDepartments.some((d) => d.name === dept) ? dept : "all";
-    // The time inputs carry the booked start (and the explicit end when the
-    // interview has one) so rescheduling starts from the stored values.
+    // The time inputs carry the booked start — the end auto-fills to start +
+    // interval when the interview has none, and stays editable after.
     const slotTime = i.time || slotsForSelected[0]!;
     const startMins = parseInterviewTimeToMinutes(i.time);
-    const endMins = i.endTime ? parseInterviewTimeToMinutes(i.endTime) : null;
+    const step = Math.max(5, slotSettings.intervalMinutes);
+    const endMins =
+      i.endTime && startMins !== null
+        ? parseInterviewTimeToMinutes(i.endTime)
+        : startMins !== null
+          ? (startMins + step) % (24 * 60)
+          : null;
+    const endLabel = endMins !== null ? formatMinutesAsTime(endMins) : "";
     setCustomTime(
       startMins !== null ? minutesToInputTime(startMins) : DEFAULT_SLOT_SETTINGS.startTime,
     );
@@ -8287,7 +8320,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       applicant: i.applicant,
       date: i.date,
       time: slotTime,
-      endTime: i.endTime ?? "",
+      endTime: endLabel,
       mode: i.mode,
       interviewer: scheduleInterviewers.some((s) => s.name === i.interviewer)
         ? i.interviewer
@@ -8418,6 +8451,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
     setZoomChatDraft("");
     setZoomChatError(null);
     setZoomNotes(iv.interview_notes ?? "");
+    setZoomNotesSaved(iv.interview_notes ?? "");
     setZoomRoom({ applicant: a, interview: iv });
   };
 
@@ -8446,6 +8480,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       const res = await interviewsApi.saveNotes(zoomRoom.interview.dbId, zoomNotes);
       const saved = res.interview_notes ?? zoomNotes;
       setZoomNotes(saved);
+      setZoomNotesSaved(saved);
       // Keep the room + pipeline list in sync so re-opening the room reloads the saved notes.
       setZoomRoom((prev) =>
         prev ? { ...prev, interview: { ...prev.interview, interview_notes: saved } } : prev,
@@ -8658,11 +8693,18 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
         jobs.find((j) => j.id === src.jobId)?.department)
       : undefined;
     const known = dept && displayDepartments.some((d) => d.name === dept) ? dept : "all";
-    // The time inputs carry the booked start (and the explicit end when the
-    // interview has one) so rescheduling starts from the stored values.
+    // The time inputs carry the booked start — the end auto-fills to start +
+    // interval when the interview has none, and stays editable after.
     const slotTime = i.time || slotsForSelected[0]!;
     const startMins = parseInterviewTimeToMinutes(i.time);
-    const endMins = i.endTime ? parseInterviewTimeToMinutes(i.endTime) : null;
+    const step = Math.max(5, slotSettings.intervalMinutes);
+    const endMins =
+      i.endTime && startMins !== null
+        ? parseInterviewTimeToMinutes(i.endTime)
+        : startMins !== null
+          ? (startMins + step) % (24 * 60)
+          : null;
+    const endLabel = endMins !== null ? formatMinutesAsTime(endMins) : "";
     setCustomTime(
       startMins !== null ? minutesToInputTime(startMins) : DEFAULT_SLOT_SETTINGS.startTime,
     );
@@ -8672,7 +8714,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
       applicant: i.applicant,
       date: i.date,
       time: slotTime,
-      endTime: i.endTime ?? "",
+      endTime: endLabel,
       mode: i.mode,
       interviewer: scheduleInterviewers.some((s) => s.name === i.interviewer)
         ? i.interviewer
@@ -13086,38 +13128,40 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                               {slotSettings.slotCount} slots — {capacityPerSlot} applicants each
                             </span>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="grid items-center gap-3 sm:grid-cols-[1fr_auto_1fr]">
                             <Input
                               type="time"
                               aria-label="Custom start time"
-                              className="h-9 w-[9.75rem]"
+                              className="h-9 w-full"
                               value={customTime}
                               onChange={(e) => applyCustomRange("start", e.target.value)}
                             />
-                            <span className="text-xs text-muted-foreground">to</span>
+                            <span className="text-center text-xs text-muted-foreground">to</span>
                             <Input
                               type="time"
                               aria-label="Custom end time"
-                              className="h-9 w-[9.75rem]"
+                              className="h-9 w-full"
                               value={customEnd}
                               onChange={(e) => applyCustomRange("end", e.target.value)}
                             />
-                            <span className="text-[0.7rem] text-muted-foreground">
+                          </div>
+                          {((customEnd && !schedule.endTime) ||
+                            (customTime && schedule.endTime) ||
+                            !customTime) && (
+                            <p className="text-[0.7rem] text-muted-foreground">
                               {customEnd && !schedule.endTime ? (
                                 <span className="text-destructive">
                                   {customTime
                                     ? "End time can't equal the start time."
                                     : "Enter a start time first."}
                                 </span>
-                              ) : customTime ? (
-                                schedule.endTime
-                                  ? `Using ${schedule.time} – ${schedule.endTime}.`
-                                  : `End time optional — ${slotSettings.intervalMinutes} min by default.`
+                              ) : customTime && schedule.endTime ? (
+                                `Using ${schedule.time} – ${schedule.endTime}.`
                               ) : (
                                 "Pick a start time — e.g. 10:00."
                               )}
-                            </span>
-                          </div>
+                            </p>
+                          )}
                         </div>
 
                         <div className="space-y-3">
@@ -13874,38 +13918,40 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                         applicants each
                                       </span>
                                     </div>
-                                    <div className="flex flex-wrap items-center gap-2">
+                                    <div className="grid items-center gap-3 sm:grid-cols-[1fr_auto_1fr]">
                                       <Input
                                         type="time"
                                         aria-label="Custom start time"
-                                        className="h-9 w-[9.75rem]"
+                                        className="h-9 w-full"
                                         value={customTime}
                                         onChange={(e) => applyCustomRange("start", e.target.value)}
                                       />
-                                      <span className="text-xs text-muted-foreground">to</span>
+                                      <span className="text-center text-xs text-muted-foreground">to</span>
                                       <Input
                                         type="time"
                                         aria-label="Custom end time"
-                                        className="h-9 w-[9.75rem]"
+                                        className="h-9 w-full"
                                         value={customEnd}
                                         onChange={(e) => applyCustomRange("end", e.target.value)}
                                       />
-                                      <span className="text-[0.7rem] text-muted-foreground">
+                                    </div>
+                                    {((customEnd && !schedule.endTime) ||
+                                      (customTime && schedule.endTime) ||
+                                      !customTime) && (
+                                      <p className="text-[0.7rem] text-muted-foreground">
                                         {customEnd && !schedule.endTime ? (
                                           <span className="text-destructive">
                                             {customTime
                                               ? "End time can't equal the start time."
                                               : "Enter a start time first."}
                                           </span>
-                                        ) : customTime ? (
-                                          schedule.endTime
-                                            ? `Using ${schedule.time} – ${schedule.endTime}.`
-                                            : `End time optional — ${slotSettings.intervalMinutes} min by default.`
+                                        ) : customTime && schedule.endTime ? (
+                                          `Using ${schedule.time} – ${schedule.endTime}.`
                                         ) : (
                                           "Pick a start time — e.g. 10:00."
                                         )}
-                                      </span>
-                                    </div>
+                                      </p>
+                                    )}
                                   </div>
 
                                   <div className="space-y-3">
@@ -14584,6 +14630,15 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                                         <p className="truncate text-muted-foreground">
                                           {interview.mode} · {interview.interviewer}
                                         </p>
+                                        {interview.interview_notes &&
+                                          interview.interview_notes.trim() !== "" && (
+                                            <p
+                                              className="mt-0.5 flex items-center gap-1 truncate text-[0.7rem] font-medium text-primary"
+                                              title={`Interview notes: ${interview.interview_notes}`}
+                                            >
+                                              <FileText className="h-3 w-3 shrink-0" /> Notes saved
+                                            </p>
+                                          )}
                                         {(() => {
                                           // An interview only counts as done when its
                                           // assessment record exists. A stale
@@ -15784,10 +15839,10 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
       {/* REFER DIALOG */}
       <Dialog open={!!referring} onOpenChange={(o) => !o && setReferring(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-lg">
           {referring && (
             <>
-              <DialogHeader>
+              <DialogHeader className="shrink-0">
                 <DialogTitle className="font-display text-2xl">Refer to Other Position</DialogTitle>
                 <DialogDescription>
                   Ranked by how well {referring.name}&apos;s resume screening entities (skills,
@@ -15796,7 +15851,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                 </DialogDescription>
               </DialogHeader>
 
-              <RadioGroup value={referTarget} onValueChange={setReferTarget} className="space-y-2">
+              <RadioGroup
+                value={referTarget}
+                onValueChange={setReferTarget}
+                className="min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden py-1 pr-1"
+              >
                 {positions
                   .filter(
                     (p) =>
@@ -15857,7 +15916,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   ))}
               </RadioGroup>
 
-              <DialogFooter>
+              <DialogFooter className="shrink-0 border-t border-border pt-4">
                 <Button variant="outline" onClick={() => setReferring(null)}>
                   Cancel
                 </Button>
@@ -15885,155 +15944,45 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   {evaluating.name} — {evaluating.position}
                 </DialogDescription>
               </DialogHeader>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label>
-                    Interviewer <span className="text-destructive">*</span>
-                  </Label>
-                  <Select value={evalAssessor} onValueChange={setEvalAssessor}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select interviewer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {assessors.length === 0 && (
-                        <div className="px-2 py-3 text-xs text-muted-foreground">
-                          No system users found.
-                        </div>
-                      )}
-                      {assessors.map((u) => (
-                        <SelectItem key={u.system_user_id} value={String(u.system_user_id)}>
-                          {u.full_name}
-                          {u.department_name ? ` — ${u.department_name}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[0.7rem] text-muted-foreground">
-                    Defaults to you (the logged-in user) — change it if another interviewer
-                    conducted this interview. Required.
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Interview date</Label>
-                  <Input
-                    type="date"
-                    value={evalDateTime}
-                    onChange={(e) => setEvalDateTime(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div className="overflow-hidden rounded-md border border-border">
-                  <div className="grid grid-cols-1 gap-2 border-b border-border bg-muted/40 px-4 py-2 md:grid-cols-[1fr_130px_1fr] md:gap-4">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Category
-                    </span>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Rate
-                    </span>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Comments
-                    </span>
-                  </div>
-                  {assessmentCriteria.map((c, idx) => (
-                    <div
-                      key={c}
-                      className={
-                        "grid grid-cols-1 gap-3 px-4 py-3 md:grid-cols-[1fr_130px_1fr] md:items-stretch md:gap-4" +
-                        (idx > 0 ? " border-t border-border" : "")
-                      }
-                    >
-                      <span className="flex text-sm font-medium md:items-center">{c}</span>
-                      <Select
-                        value={String(evalScores[c] ?? 4)}
-                        onValueChange={(v) => setEvalScores((p) => ({ ...p, [c]: Number(v) }))}
-                      >
-                        <SelectTrigger className="h-full min-h-[60px] w-full md:w-[130px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[5, 4, 3, 2, 1].map((n) => (
-                            <SelectItem key={n} value={String(n)}>
-                              {n} / 5
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Textarea
-                        rows={2}
-                        className="min-h-[60px]"
-                        value={evalComments[c] ?? ""}
-                        onChange={(e) => setEvalComments((p) => ({ ...p, [c]: e.target.value }))}
-                        placeholder={`Remarks for ${c.toLowerCase()}—`}
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div className="space-y-2">
-                  <Label>Overall Evaluation</Label>
-                  <Textarea
-                    rows={3}
-                    value={evalRemarks}
-                    onChange={(e) => setEvalRemarks(e.target.value)}
-                    placeholder="Overall evaluation of the interview—"
-                  />
-                </div>
-                <div className="rounded-md border border-border p-3">
-                  <div>
-                    <p className="eyebrow">Computed score</p>
-                    <p className="font-display text-3xl font-semibold text-primary">
-                      {Math.round(
-                        (assessmentCriteria.reduce((t, c) => t + (evalScores[c] ?? 4), 0) /
-                          (assessmentCriteria.length * 5)) *
-                          100,
-                      )}
-                      %
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    Assessor Verdict:
-                  </span>
-                  <Button
-                    variant="outline"
-                    className="border-success/40 text-success hover:bg-success/10 hover:text-success"
-                    onClick={() =>
-                      askConfirm({
-                        title: "Mark this interview as Passed?",
-                        description: `${evaluating.name}'s interview will be saved with a Passed verdict and the candidate will advance to the assessment test stage.`,
-                        confirmLabel: "Yes, mark Passed",
-                        onConfirm: () => saveAssessment("Passed"),
-                      })
-                    }
-                  >
-                    <CheckCircle2 className="mr-1.5 h-4 w-4" /> Passed
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() =>
-                      askConfirm({
-                        title: "Mark this interview as Failed?",
-                        description: `${evaluating.name}'s interview will be saved with a Failed verdict. Reject now to start the ${cooldownDays}-day re-apply cooldown, or allow a retake to keep the pipeline open.`,
-                        confirmLabel: "Reject & start cooldown",
-                        destructive: true,
-                        onConfirm: async () => {
-                          await saveAssessment("Failed");
-                          await reject(evaluating);
-                          toast.warning(
-                            `Re-apply cooldown started — ${evaluating.name} may re-apply after ${cooldownDays} day(s).`,
-                          );
-                        },
-                      })
-                    }
-                  >
-                    <XCircle className="mr-1.5 h-4 w-4" /> Failed
-                  </Button>
-                </div>
-              </DialogFooter>
+              {/* The on-site interview form — identical markup to the Zoom
+                  room's scorecard (shared InterviewEvaluationForm). */}
+              <InterviewEvaluationForm
+                criteria={assessmentCriteria}
+                assessors={assessors}
+                assessor={evalAssessor}
+                onAssessorChange={setEvalAssessor}
+                date={evalDateTime}
+                onDateChange={setEvalDateTime}
+                scores={evalScores}
+                onScoreChange={(c, v) => setEvalScores((p) => ({ ...p, [c]: v }))}
+                comments={evalComments}
+                onCommentChange={(c, v) => setEvalComments((p) => ({ ...p, [c]: v }))}
+                remarks={evalRemarks}
+                onRemarksChange={setEvalRemarks}
+                onRequestPassed={() =>
+                  askConfirm({
+                    title: "Mark this interview as Passed?",
+                    description: `${evaluating.name}'s interview will be saved with a Passed verdict and the candidate will advance to the assessment test stage.`,
+                    confirmLabel: "Yes, mark Passed",
+                    onConfirm: () => saveAssessment("Passed"),
+                  })
+                }
+                onRequestFailed={() =>
+                  askConfirm({
+                    title: "Mark this interview as Failed?",
+                    description: `${evaluating.name}'s interview will be saved with a Failed verdict. Reject now to start the ${cooldownDays}-day re-apply cooldown, or allow a retake to keep the pipeline open.`,
+                    confirmLabel: "Reject & start cooldown",
+                    destructive: true,
+                    onConfirm: async () => {
+                      await saveAssessment("Failed");
+                      await reject(evaluating);
+                      toast.warning(
+                        `Re-apply cooldown started — ${evaluating.name} may re-apply after ${cooldownDays} day(s).`,
+                      );
+                    },
+                  })
+                }
+              />
             </>
           )}
         </DialogContent>
@@ -16052,9 +16001,11 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
               // Size the room so the video stage lands on a true 16:9 —
               // otherwise the tall pane letterboxes the meeting into a
               // small strip with dead black bands. 66px covers the header
-              // row; 362px is the scorecard column plus the dialog border.
+              // row; the scorecard column (clamped so it never starves
+              // the video) plus the dialog border is what the video pane
+              // has left over.
               "--zoom-room-h":
-                "calc(66px + min(calc((min(1600px, 92vw) - 362px) * 0.5625), calc(94vh - 66px)))",
+                "calc(66px + min(calc((min(1600px, 92vw) - clamp(400px, 36vw, 520px) - 2px) * 0.5625), calc(94vh - 66px)))",
             } as CSSProperties
           }
         >
@@ -16104,9 +16055,20 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                     aria-expanded={zoomNotesOpen}
                   >
                     <FileText className="mr-1.5 h-3.5 w-3.5" /> Notes
-                    {zoomNotes.trim().length > 0 && (
-                      <span className="ml-1.5 rounded-full bg-primary px-1.5 text-[0.65rem] font-bold text-primary-foreground">
+                    {zoomNotes.trim().length > 0 && zoomNotes === zoomNotesSaved && (
+                      <span
+                        className="ml-1.5 rounded-full bg-primary px-1.5 text-[0.65rem] font-bold text-primary-foreground"
+                        title="Notes saved"
+                      >
                         ✓
+                      </span>
+                    )}
+                    {zoomNotes.trim().length > 0 && zoomNotes !== zoomNotesSaved && (
+                      <span
+                        className="ml-1.5 rounded-full bg-gold px-1.5 text-[0.65rem] font-bold text-primary-foreground"
+                        title="Unsaved notes"
+                      >
+                        !
                       </span>
                     )}
                   </Button>
@@ -16118,7 +16080,7 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
 
               {/* Body — video stage + scorecard side by side, both panes
                   scroll independently so the dialog itself never scrolls. */}
-              <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_clamp(400px,36vw,520px)]">
                 {/* LEFT — the meeting fills the pane edge to edge. */}
                 <div className="order-1 flex min-h-0 flex-col bg-black">
                   <div className="relative flex min-h-[300px] flex-1 items-center justify-center">
@@ -16430,155 +16392,50 @@ export function ApplicantManagement({ role }: { role: "superadmin" | "admin" }) 
                   )}
                 </div>
 
-                {/* RIGHT — scorecard. Compact 1–5 taps instead of a dropdown
-                    per criterion so rating during a live call takes one click. */}
+                {/* RIGHT — the interview form. Same component, same layout
+                    and same controls as the on-site "Start Interview"
+                    dialog, so scoring a candidate feels identical whether
+                    they walked in or joined over Zoom. */}
                 <div className="order-2 flex min-h-0 flex-col border-l border-border bg-background">
-                  <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <Label className="text-[0.7rem] text-muted-foreground">Interviewer</Label>
-                        <Select value={evalAssessor} onValueChange={setEvalAssessor}>
-                          <SelectTrigger className="h-9 w-full text-sm">
-                            <SelectValue placeholder="Select interviewer" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {assessors.length === 0 && (
-                              <div className="px-2 py-3 text-xs text-muted-foreground">
-                                No system users found.
-                              </div>
-                            )}
-                            {assessors.map((u) => (
-                              <SelectItem key={u.system_user_id} value={String(u.system_user_id)}>
-                                {u.full_name}
-                                {u.department_name ? ` — ${u.department_name}` : ""}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-[0.7rem] text-muted-foreground">Date</Label>
-                        <Input
-                          type="date"
-                          className="h-9 text-sm"
-                          value={evalDateTime}
-                          onChange={(e) => setEvalDateTime(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="overflow-hidden rounded-md border border-border">
-                      <div className="flex items-center justify-between border-b border-border bg-muted/40 px-3 py-1.5">
-                        <span className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Score the applicant
-                        </span>
-                        <span className="text-[0.65rem] text-muted-foreground">Tap 1–5</span>
-                      </div>
-                      {assessmentCriteria.map((c, idx) => (
-                        <div
-                          key={c}
-                          className={
-                            "space-y-1.5 px-3 py-2" + (idx > 0 ? " border-t border-border" : "")
-                          }
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs font-medium leading-tight">{c}</span>
-                            <div className="flex shrink-0 gap-0.5" role="group" aria-label={`Rate ${c}`}>
-                              {[5, 4, 3, 2, 1].map((n) => {
-                                const active = (evalScores[c] ?? 4) === n;
-                                return (
-                                  <button
-                                    key={n}
-                                    type="button"
-                                    aria-pressed={active}
-                                    aria-label={`${c}: ${n} out of 5`}
-                                    onClick={() => setEvalScores((p) => ({ ...p, [c]: n }))}
-                                    className={
-                                      "h-7 w-7 rounded border text-[0.7rem] font-semibold transition-colors " +
-                                      (active
-                                        ? "border-primary bg-primary text-primary-foreground"
-                                        : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground")
-                                    }
-                                  >
-                                    {n}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                          <Textarea
-                            rows={1}
-                            className="min-h-[30px] resize-none px-2 py-1 text-[0.7rem]"
-                            value={evalComments[c] ?? ""}
-                            onChange={(e) => setEvalComments((p) => ({ ...p, [c]: e.target.value }))}
-                            placeholder="Optional note…"
-                          />
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label className="text-[0.7rem] text-muted-foreground">
-                        Overall evaluation
-                      </Label>
-                      <Textarea
-                        rows={2}
-                        className="resize-none text-xs"
-                        value={evalRemarks}
-                        onChange={(e) => setEvalRemarks(e.target.value)}
-                        placeholder="Overall evaluation of the interview…"
-                      />
-                    </div>
+                  <div className="shrink-0 border-b border-border px-4 py-3">
+                    <p className="font-display text-2xl">Interview</p>
+                    <p className="text-sm text-muted-foreground">
+                      {zoomRoom.applicant.name} — {zoomRoom.applicant.position}
+                    </p>
                   </div>
-
-                  {/* Score + verdict pinned to the bottom of the scorecard —
-always one tap away, no scrolling to finish the interview. */}
-                  <div className="shrink-0 space-y-2 border-t border-border bg-muted/30 px-3 py-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Computed score
-                      </span>
-                      <span className="font-display text-2xl font-semibold leading-none text-primary">
-                        {Math.round(
-                          (assessmentCriteria.reduce((t, c) => t + (evalScores[c] ?? 4), 0) /
-                            (assessmentCriteria.length * 5)) *
-                            100,
-                        )}
-                        %
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() =>
-                          askConfirm({
-                            title: "Mark this interview as Failed?",
-                            description: `${zoomRoom.applicant.name}'s interview will be saved with a Failed verdict.`,
-                            confirmLabel: "Yes, mark Failed",
-                            destructive: true,
-                            onConfirm: () => saveAssessment("Failed"),
-                          })
-                        }
-                      >
-                        <XCircle className="mr-1.5 h-4 w-4" /> Failed
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-success text-white hover:bg-success/90"
-                        onClick={() =>
-                          askConfirm({
-                            title: "Mark this interview as Passed?",
-                            description: `${zoomRoom.applicant.name}'s interview will be saved with a Passed verdict and the candidate will advance to the assessment test stage.`,
-                            confirmLabel: "Yes, mark Passed",
-                            onConfirm: () => saveAssessment("Passed"),
-                          })
-                        }
-                      >
-                        <CheckCircle2 className="mr-1.5 h-4 w-4" /> Passed
-                      </Button>
-                    </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+                    <InterviewEvaluationForm
+                      criteria={assessmentCriteria}
+                      assessors={assessors}
+                      assessor={evalAssessor}
+                      onAssessorChange={setEvalAssessor}
+                      date={evalDateTime}
+                      onDateChange={setEvalDateTime}
+                      scores={evalScores}
+                      onScoreChange={(c, v) => setEvalScores((p) => ({ ...p, [c]: v }))}
+                      comments={evalComments}
+                      onCommentChange={(c, v) => setEvalComments((p) => ({ ...p, [c]: v }))}
+                      remarks={evalRemarks}
+                      onRemarksChange={setEvalRemarks}
+                      onRequestPassed={() =>
+                        askConfirm({
+                          title: "Mark this interview as Passed?",
+                          description: `${zoomRoom.applicant.name}'s interview will be saved with a Passed verdict and the candidate will advance to the assessment test stage.`,
+                          confirmLabel: "Yes, mark Passed",
+                          onConfirm: () => saveAssessment("Passed"),
+                        })
+                      }
+                      onRequestFailed={() =>
+                        askConfirm({
+                          title: "Mark this interview as Failed?",
+                          description: `${zoomRoom.applicant.name}'s interview will be saved with a Failed verdict.`,
+                          confirmLabel: "Yes, mark Failed",
+                          destructive: true,
+                          onConfirm: () => saveAssessment("Failed"),
+                        })
+                      }
+                      stickyFooter
+                    />
                   </div>
                 </div>
               </div>
@@ -16594,6 +16451,23 @@ always one tap away, no scrolling to finish the interview. */}
                       {zoomNotes.trim().length > 0 && (
                         <span className="font-normal normal-case tracking-normal">
                           · {zoomNotes.trim().length.toLocaleString()} chars
+                        </span>
+                      )}
+                      {zoomNotes.trim().length > 0 && (
+                        <span
+                          className={cn(
+                            "rounded-full px-1.5 py-0.5 text-[0.6rem] font-semibold normal-case tracking-normal",
+                            zoomNotes === zoomNotesSaved
+                              ? "bg-success/15 text-success"
+                              : "bg-gold/20 text-gold-foreground",
+                          )}
+                          title={
+                            zoomNotes === zoomNotesSaved
+                              ? "These notes are saved to the interview record"
+                              : "These notes have unsaved changes — click Save"
+                          }
+                        >
+                          {zoomNotes === zoomNotesSaved ? "Saved" : "Unsaved"}
                         </span>
                       )}
                     </p>
