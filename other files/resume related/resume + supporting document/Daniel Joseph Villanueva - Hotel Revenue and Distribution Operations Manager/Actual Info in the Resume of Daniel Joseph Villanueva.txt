@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Daniel Joseph Villanueva.txt
+TARGET CANDIDATE: Daniel Joseph Villanueva
+TARGET ROLE: Hotel Revenue & Distribution Operations Manager
+EXTRACTION MODE: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-09-18
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Daniel Joseph Villanueva
+Target Position:       Hotel Revenue & Distribution Operations Manager
+Contact Phone Number:  +63 917 554 9281
+Email Address:         daniel.villanueva.revenue@outlook.ph
+Residential Address:   104 Legaspi Street, Legaspi Village, 1229 Makati City, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/daniel-villanueva-revenue
+
+[PROFESSIONAL SUMMARY]
+"Analytical, commercially driven Hotel Revenue & Distribution Operations Manager with over 8 years of luxury hotel yield management, automated pricing algorithmic modeling, and OTA channel optimization experience. Expert in IDeaS G3 RMS, Opera Cloud PMS, and multi-segment market demand forecasting. Successfully drove an average 14.8% RevPAR growth and 98.5% channel rate parity across five-star commercial lodging portfolios."
+
+[CORE COMPETENCIES & SKILLS]
+1. IDeaS G3 RMS Dynamic Pricing Optimization & Machine Learning Yielding
+2. RevPAR, ADR & TrevPAR Maximization & Strategic Room Inventory Allocation
+3. OTA Channel Distribution & Global Distribution System (GDS) Parity
+4. Group Displacement Analysis & Corporate RFP Pricing Evaluation
+5. Competitive Rate Intelligence, Fair Market Share & STR Benchmarking
+6. Multi-Segment Demand Forecasting (Transient, Group, Corporate & MICE)
+7. Opera Cloud PMS Rate Code Architecture & Restriction Mapping
+8. Cross-Departmental Revenue Strategy Briefings with Sales, F&B & Marketing
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     The Manila Hotel
+   Location:     One Rizal Park, Manila
+   Job Title:    Revenue Operations Manager
+   Duration:     November 2021 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Direct total hotel revenue strategy across 570 guestrooms, 8 restaurants, and historical convention facilities.
+   • Optimized dynamic pricing rules in IDeaS G3 RMS, increasing annual room revenue by PHP 38M in 2023.
+   • Maintained a STR RevPAR Yield Index of 114.2 against direct competitive set hotels in the Manila Bay area.
+   • Led weekly commercial revenue meetings with Executive Committee heads, presenting demand pacing dashboards.
+
+2. Employer:     Dusit Thani Manila
+   Location:     Makati City, Metro Manila
+   Job Title:    Revenue Analyst & Distribution Specialist
+   Duration:     January 2018 – October 2021
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Monitored daily pick-up patterns, competitor rate shopping feeds, and OTA booking pace across 538 rooms.
+   • Audited online distribution channels, eliminating rate parity discrepancies and saving PHP 1.2M in OTA penalties.
+   • Configured seasonal room packages and promotional rate codes in Opera PMS and SynXis CRS.
+
+3. Employer:     The Bellevue Manila
+   Location:     Alabang, Muntinlupa City
+   Job Title:    Reservations Supervisor
+   Duration:     June 2015 – December 2017
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Supervised daily operations of the central reservations office and monitored telephone conversion rates.
+   • Audited group booking rooming lists and resolved billing routing disputes with corporate travel agents.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Applied Economics and Hospitality Management
+Institution:    De La Salle University (DLSU) — Taft Avenue, Manila
+Graduation:     2015
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   Certified Revenue Management Executive (CRME)
+   Issuer:  Hospitality Sales and Marketing Association International (HSMAI)
+   Date:    October 2020
+
+2. Title:   IDeaS G3 RMS Advanced Pricing & Forecasting
+   Issuer:  IDeaS Revenue Solutions Academy
+   Date:    July 2022
+
+3. Title:   OTA Channel Management & Rate Parity Optimization
+   Issuer:  Asia Hospitality Distribution Council
+   Date:    March 2019
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Daniel_Joseph_Villanueva_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Daniel_Joseph_Villanueva_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Daniel_Joseph_Villanueva_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Daniel_Joseph_Villanueva_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Daniel_Joseph_Villanueva_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Daniel_Joseph_Villanueva_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Daniel_Joseph_Villanueva_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: The Manila Hotel
+   - Recipient / Employee: Daniel Joseph Villanueva
+   - Certified Position: Revenue Operations Manager
+   - Certified Period: November 2021 – Present
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+2. Daniel_Joseph_Villanueva_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: Dusit Thani Manila
+   - Recipient / Employee: Daniel Joseph Villanueva
+   - Certified Position: Revenue Analyst & Distribution Specialist
+   - Certified Period: April 1, 2018 – October 15, 2021 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+3. Daniel_Joseph_Villanueva_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: De La Salle University (DLSU) — Taft Avenue, Manila
+   - Conferred Graduate: Daniel Joseph Villanueva
+   - Degree Conferred: Bachelor of Science in Applied Economics and Hospitality Management
+   - Graduation Year: 2015
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+4. Daniel_Joseph_Villanueva_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: Hospitality Sales and Marketing Association International (HSMAI)
+   - Recipient Name: Daniel Joseph Villanueva
+   - Training Title: Certified Revenue Management Executive (CRME)
+   - Award Date: October 2020
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+5. Daniel_Joseph_Villanueva_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Asia Hospitality Distribution Council
+   - Recipient Name: Daniel Joseph Villanueva
+   - Certified Course: Foundations of Basic Hotel Reservations & Phone Bookings (CONTROLLED DISCREPANCY)
+   - Training Date: March 2019
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+6. Daniel_Joseph_Villanueva_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: IDeaS Revenue Solutions Academy
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Certified Revenue Management Executive (CRME)
+   - Issuance Date: July 2022
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: The Manila Hotel | Revenue Operations Manager | November 2021 – Present
+• Evidence: Daniel_Joseph_Villanueva_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: Dusit Thani Manila | Revenue Analyst & Distribution Specialist | January 2018 – October 2021
+• Evidence: Daniel_Joseph_Villanueva_COE_Previous_Employer.pdf (April 1, 2018 – October 15, 2021)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from April 2018 to October 2021, whereas resume claims start date of January 2018 (3-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Bachelor of Science in Applied Economics and Hospitality Management | De La Salle University (DLSU) — Taft Avenue, Manila | 2015
+• Evidence: Daniel_Joseph_Villanueva_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: Certified Revenue Management Executive (CRME) | Hospitality Sales and Marketing Association International (HSMAI) | October 2020
+• Evidence: Daniel_Joseph_Villanueva_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: OTA Channel Management & Rate Parity Optimization | Asia Hospitality Distribution Council | March 2019
+• Evidence: Daniel_Joseph_Villanueva_Training_Certificate_Service.pdf (Foundations of Basic Hotel Reservations & Phone Bookings)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'OTA Channel Management & Rate Parity Optimization', but certificate certifies 'Foundations of Basic Hotel Reservations & Phone Bookings'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: IDeaS G3 RMS Advanced Pricing & Forecasting | IDeaS Revenue Solutions Academy | July 2022
+• Evidence: Daniel_Joseph_Villanueva_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is severed/torn off in the uploaded scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: The Bellevue Manila | Reservations Supervisor | June 2015 – December 2017
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

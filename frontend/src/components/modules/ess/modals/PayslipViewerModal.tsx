@@ -8,11 +8,10 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, Printer, FileText, HelpCircle } from "lucide-react";
+import { Download, FileText, HelpCircle } from "lucide-react";
 import { toast } from "sonner";
 import { myProfile, myPayroll } from "@/data/ess";
 import { OfficialPayslipDocument } from "@/components/modules/ess/shared/OfficialPayslipDocument";
-import { printReceipt } from "@/lib/printReceipt";
 import { downloadPayslipPdf } from "@/lib/downloadPayslipPdf";
 
 interface PayslipViewerModalProps {
@@ -38,11 +37,6 @@ export function PayslipViewerModal({
   payslip,
   onInquiryClick,
 }: PayslipViewerModalProps) {
-  const handlePrint = () => {
-    printReceipt("official-payslip-receipt", `Oxford Suites Makati - Pay Advice (${period})`);
-    toast.success("Printing official pay advice...");
-  };
-
   const handleDownload = async () => {
     try {
       const safeFilename = `Oxford-Suites-Makati-Payslip-${period.replace(/[\s–—/]+/g, "-")}.pdf`;
@@ -149,9 +143,6 @@ export function PayslipViewerModal({
           </Button>
 
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handlePrint} className="gap-1.5 text-xs">
-              <Printer className="h-3.5 w-3.5" /> Print
-            </Button>
             <Button
               size="sm"
               onClick={handleDownload}

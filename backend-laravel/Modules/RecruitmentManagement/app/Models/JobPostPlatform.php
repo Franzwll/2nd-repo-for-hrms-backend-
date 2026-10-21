@@ -26,6 +26,7 @@ class JobPostPlatform extends Model
 
     public function jobPost(): BelongsTo
     {
-        return $this->belongsTo(JobPost::class, 'job_post_id', 'job_post_id');
+        return $this->belongsTo(JobPost::class, 'job_post_id', 'job_post_id')
+            ->withTrashed();
     }
 }

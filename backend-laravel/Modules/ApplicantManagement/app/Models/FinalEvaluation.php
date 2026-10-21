@@ -57,6 +57,6 @@ class FinalEvaluation extends Model
             \Modules\RecruitmentManagement\Models\JobPost::class,
             'recommended_job_post_id',
             'job_post_id'
-        );
+        )->withTrashed();
     }
 }

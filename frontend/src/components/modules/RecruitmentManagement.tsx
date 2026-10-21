@@ -1851,7 +1851,7 @@ const blockLibrary: { id: BlockId; label: string; hint: string }[] = [
   { id: "description", label: "Job Description", hint: "Short role pitch" },
   { id: "responsibilities", label: "Key Responsibilities", hint: "Bulleted duties" },
   { id: "qualifications", label: "Qualifications", hint: "Bulleted requirements" },
-  { id: "additional", label: "Additional Info", hint: "Perks, shift details, dress code" },
+  { id: "additional", label: "Additional Info", hint: "Perks, shift details, dress code (optional)" },
   { id: "instructions", label: "Application Instruction", hint: "How to apply" },
   { id: "about", label: "About Company", hint: "Company blurb" },
   { id: "picture", label: "Picture of Hiring", hint: "Template or uploaded image" },
@@ -1881,6 +1881,17 @@ const AI_CONTENT_BLOCKS: BlockId[] = [
   "responsibilities",
   "qualifications",
   "additional",
+  "instructions",
+  "about",
+];
+
+/** Blocks that must hold text before publishing / updating a template.
+ *  Additional Info stays AI-fillable above but is optional — an empty
+ *  Additional Info never blocks Publish job post or Update template. */
+const REQUIRED_PUBLISH_BLOCKS: BlockId[] = [
+  "description",
+  "responsibilities",
+  "qualifications",
   "instructions",
   "about",
 ];
@@ -4381,7 +4392,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
         tone: "off" as const,
         label: "AI not configured",
         title:
-          "No GEMINI_API_KEY / OPENROUTER_API_KEY is set on the API server — ask an admin to configure one.",
+          "No GEMINI_API_KEY / JOB_GROQ_API_KEY / JOB_OPENROUTER_API_KEY is set on the API server — ask an admin to configure one.",
         percent: null as number | null,
         limited: false,
       };
@@ -4629,14 +4640,29 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
   };
 
   const deleteJob = async (job: Job) => {
-    if (!job.dbId || !window.confirm(`Delete the “${job.title}” job posting?`)) return;
+    if (!job.dbId) return;
+    const applicantCount = Number(job.applicants) || 0;
+    const prompt =
+      applicantCount > 0
+        ? `Archive the “${job.title}” job posting?\n\nIt has ${applicantCount} applicant${
+            applicantCount === 1 ? "" : "s"
+          }. The posting will be removed from the list, but candidate, interview and offer records will be kept.`
+        : `Delete the “${job.title}” job posting?\n\nJob posts with linked hiring records are archived instead of being permanently deleted.`;
+    if (!window.confirm(prompt)) return;
     try {
-      await jobPostsApi.delete(job.dbId);
+      const result = await jobPostsApi.delete(job.dbId);
       setJobList((prev) => prev.filter((item) => item.id !== job.id));
-      toast.success(`“${job.title}” deleted`);
+      if (result?.archived) {
+        toast.success(`“${job.title}” archived`, {
+          description: result.message,
+        });
+      } else {
+        toast.success(`“${job.title}” deleted`);
+      }
     } catch (e) {
+      const err = e as { message?: string };
       console.warn("Could not delete job on API:", e);
-      toast.error("The job posting could not be deleted.");
+      toast.error(err?.message || "The job posting could not be deleted.");
     }
   };
 
@@ -5102,10 +5128,11 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
       toast.error("Minimum salary cannot be greater than maximum salary.");
       return;
     }
-    // Publishing requires a complete post — every content block must hold
-    // real text (drafts may stay partial via "Save draft"). Missing blocks
+    // Publishing requires a complete post — every required content block must hold
+    // real text (drafts may stay partial via "Save draft"). Additional Info is
+    // optional and never blocks publishing / updating. Missing blocks
     // are added to the canvas and focused so HR can fill them immediately.
-    const missingIds = AI_CONTENT_BLOCKS.filter((id) => lines(blockText(draft, id)).length === 0);
+    const missingIds = REQUIRED_PUBLISH_BLOCKS.filter((id) => lines(blockText(draft, id)).length === 0);
     const missingLabels = missingIds.map(
       (id) => blockLibrary.find((b) => b.id === id)?.label ?? id,
     );
@@ -7518,7 +7545,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                       + Gemini 3.5 Flash-Lite
                                     </span>{" "}
                                     — server default model; writes the 6 components from the job +
-                                    vocabulary.
+                                    vocabulary. If it is slow or unavailable, the server falls over to
+                                    Groq, then OpenRouter.
                                   </li>
                                 </ol>
                               </div>
@@ -8068,10 +8096,10 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                           disabled={!canSaveDraft}
                           onClick={saveDraftAction}
                         >
-                          {/* Naming it "Save draft" on a post that is already
-                              live would promise an unpublish that no longer
-                              happens. */}
-                          {editingJobId ? "Save changes" : "Save draft"}
+                          {/* Save never unpublishes: new posts save as Draft,
+                              edits keep their live status — only Publish /
+                              Update template changes what is live. */}
+                          {editingJobId ? "Save changes as draft" : "Save draft"}
                         </Button>
                         <Button size="sm" onClick={publish}>
                           <Send className="mr-2 h-4 w-4" />

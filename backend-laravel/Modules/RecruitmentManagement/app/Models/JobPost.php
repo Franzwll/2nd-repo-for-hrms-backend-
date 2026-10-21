@@ -7,11 +7,14 @@ use App\Models\Position;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 use Modules\ApplicantManagement\Models\Applicant;
 
 class JobPost extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'job_posts';
 
     protected $primaryKey = 'job_post_id';
@@ -152,7 +155,9 @@ class JobPost extends Model
         $base = Str::slug($title);
         $slug = $base;
         $i = 1;
-        while (static::where('slug', $slug)
+        /* Archived posts still own their unique slug, so include them here;
+           otherwise a replacement post would collide on the slug index. */
+        while (static::withTrashed()->where('slug', $slug)
             ->when($exceptId !== null, fn ($q) => $q->where('job_post_id', '!=', $exceptId))
             ->exists()) {
             $slug = "{$base}-{$i}";

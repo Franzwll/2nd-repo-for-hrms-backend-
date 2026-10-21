@@ -108,9 +108,9 @@ export function EssAiAssistantModal({
   const handleActionClick = (actionType?: string, linkTo?: string) => {
     onOpenChange(false);
     if (actionType) {
-      if (actionType === "leave") onNavigateCategory?.("Attendance");
+      if (actionType === "leave") onNavigateCategory?.("MyRequest:attendance");
       else if (actionType === "payslip") onNavigateCategory?.("Payroll");
-      else if (actionType === "coe") onNavigateCategory?.("Documents");
+      else if (actionType === "coe") onNavigateCategory?.("MyRequest:documents");
       else if (actionType === "attendance") onNavigateCategory?.("Attendance");
       else if (actionType === "recognition") onNavigateCategory?.("Recognition");
     } else if (linkTo) {
@@ -136,8 +136,7 @@ export function EssAiAssistantModal({
         actionCard: {
           title: "File a Leave Request",
           description: "Submit vacation, sick, or emergency leave for supervisor review.",
-          buttonText: "Open Leave Application →",
-          actionType: "leave",
+          buttonText: "Open Leave Application →",          actionType: "leave",
         },
       };
     }

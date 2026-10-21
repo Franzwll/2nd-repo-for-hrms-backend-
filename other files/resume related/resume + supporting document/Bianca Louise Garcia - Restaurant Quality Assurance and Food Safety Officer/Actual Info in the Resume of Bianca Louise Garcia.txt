@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Bianca Louise Garcia.txt
+TARGET CANDIDATE: Bianca Louise Garcia
+TARGET ROLE: Restaurant Quality Assurance & Food Safety Officer
+EXTRACTION MODE: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-09-18
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Bianca Louise Garcia
+Target Position:       Restaurant Quality Assurance & Food Safety Officer
+Contact Phone Number:  +63 918 554 3912
+Email Address:         bianca.garcia.qa@outlook.ph
+Residential Address:   16 Alabang-Zapote Road, 1780 Muntinlupa City, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/bianca-garcia-qa
+
+[PROFESSIONAL SUMMARY]
+"Meticulous, standards-driven Restaurant Quality Assurance & Food Safety Officer with over 6 years of comprehensive experience in luxury resort compliance, ISO 22000 hygiene auditing, and restaurant HACCP enforcement. Demonstrated success in conducting 200+ kitchen and vendor audits annually, reducing food safety non-conformances by 35%, and training over 300 hospitality team members on sanitation and cross-contamination prevention."
+
+[CORE COMPETENCIES & SKILLS]
+1. ISO 22000 & HACCP Food Safety Management System Auditing
+2. Microbiological Swab Testing, Water Testing & Laboratory Verification
+3. Cold Chain Temperature Verification & Critical Control Point (CCP) Audits
+4. Supplier Quality Audits, Receiving Inspection & Raw Material Compliance
+5. Corrective Action Plan (CAPA) Tracking & Defect Root-Cause Analysis
+6. Food Allergen Segregation & Chemical Storage Safety Protocols
+7. Culinary & Service Staff Sanitation Briefings & Regulatory Training
+8. Kitchen Pest Control Monitoring & Health Authority Audit Liaison
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Newport World Resorts
+   Location:     Pasay City, Metro Manila
+   Job Title:    Restaurant Quality Assurance & Food Safety Officer
+   Duration:     March 2022 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Direct food safety, hygiene, and QA compliance across 14 fine dining restaurants, bars, and staff dining facilities.
+   • Perform unannounced weekly hygiene inspections and monthly microbiological surface testing.
+   • Decreased restaurant hygiene audit defects by 35% through standardized daily kitchen sanitation logs.
+   • Liaise with local government health inspectors, achieving 100% sanitary permit compliance ratings.
+
+2. Employer:     Shangri-La Boracay Resort & Spa
+   Location:     Boracay Island, Aklan
+   Job Title:    Food Safety & Hygiene Supervisor
+   Duration:     July 2019 – February 2022
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Audited receiving bays, cold storage units, and beachside restaurants for compliance with luxury brand food safety standards.
+   • Led training workshops for 120 culinary and stewarding employees on personal hygiene and chemical handling.
+   • Managed food temperature monitoring and implemented rapid cooling logs in the central commissary.
+
+3. Employer:     Max's Group Inc.
+   Location:     Makati City, Metro Manila
+   Job Title:    Kitchen Quality Auditor
+   Duration:     May 2017 – June 2019
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Conducted operational quality checks on food preparation, cooking temperatures, and packaging standards.
+   • Logged customer feedback regarding product quality and prepared monthly QA summaries for management.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Hotel, Restaurant, and Institution Management
+Institution:    University of the Philippines Diliman (UPD) — Quezon City
+Graduation:     2017
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   ISO 22000 Lead Food Safety Auditor
+   Issuer:  International Register of Certificated Auditors (IRCA)
+   Date:    November 2021
+
+2. Title:   HACCP System Implementation & Verification
+   Issuer:  Hospitality Training Council of the Philippines
+   Date:    June 2022
+
+3. Title:   Environmental Sanitation & Pest Control in Food Service
+   Issuer:  Philippine Safety & Hygiene Council
+   Date:    October 2019
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Bianca_Louise_Garcia_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Bianca_Louise_Garcia_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Bianca_Louise_Garcia_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Bianca_Louise_Garcia_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Bianca_Louise_Garcia_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Bianca_Louise_Garcia_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Bianca_Louise_Garcia_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Newport World Resorts
+   - Recipient / Employee: Bianca Louise Garcia
+   - Certified Position: Restaurant Quality Assurance & Food Safety Officer
+   - Certified Period: March 2022 – Present
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+2. Bianca_Louise_Garcia_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: Shangri-La Boracay Resort & Spa
+   - Recipient / Employee: Bianca Louise Garcia
+   - Certified Position: Food Safety & Hygiene Supervisor
+   - Certified Period: October 1, 2019 – February 20, 2022 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+3. Bianca_Louise_Garcia_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: University of the Philippines Diliman (UPD) — Quezon City
+   - Conferred Graduate: Bianca Louise Garcia
+   - Degree Conferred: Bachelor of Science in Hotel, Restaurant, and Institution Management
+   - Graduation Year: 2017
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+4. Bianca_Louise_Garcia_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: International Register of Certificated Auditors (IRCA)
+   - Recipient Name: Bianca Louise Garcia
+   - Training Title: ISO 22000 Lead Food Safety Auditor
+   - Award Date: November 2021
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+5. Bianca_Louise_Garcia_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Philippine Safety & Hygiene Council
+   - Recipient Name: Bianca Louise Garcia
+   - Certified Course: Foundations of Basic Chemical Handling & Kitchen Warewashing (CONTROLLED DISCREPANCY)
+   - Training Date: October 2019
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+6. Bianca_Louise_Garcia_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Hospitality Training Council of the Philippines
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: ISO 22000 Lead Food Safety Auditor
+   - Issuance Date: June 2022
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Newport World Resorts | Restaurant Quality Assurance & Food Safety Officer | March 2022 – Present
+• Evidence: Bianca_Louise_Garcia_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: Shangri-La Boracay Resort & Spa | Food Safety & Hygiene Supervisor | July 2019 – February 2022
+• Evidence: Bianca_Louise_Garcia_COE_Previous_Employer.pdf (October 1, 2019 – February 20, 2022)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from October 2019 to February 2022, whereas resume claims start date of July 2019 (3-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Bachelor of Science in Hotel, Restaurant, and Institution Management | University of the Philippines Diliman (UPD) — Quezon City | 2017
+• Evidence: Bianca_Louise_Garcia_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: ISO 22000 Lead Food Safety Auditor | International Register of Certificated Auditors (IRCA) | November 2021
+• Evidence: Bianca_Louise_Garcia_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Environmental Sanitation & Pest Control in Food Service | Philippine Safety & Hygiene Council | October 2019
+• Evidence: Bianca_Louise_Garcia_Training_Certificate_Service.pdf (Foundations of Basic Chemical Handling & Kitchen Warewashing)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'Environmental Sanitation & Pest Control in Food Service', but certificate certifies 'Foundations of Basic Chemical Handling & Kitchen Warewashing'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: HACCP System Implementation & Verification | Hospitality Training Council of the Philippines | June 2022
+• Evidence: Bianca_Louise_Garcia_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is severed/torn off in the uploaded scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: Max's Group Inc. | Kitchen Quality Auditor | May 2017 – June 2019
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

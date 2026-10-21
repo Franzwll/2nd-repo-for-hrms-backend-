@@ -66,6 +66,91 @@ Prepared high-quality cocktails and wine services.
 """
 
 
+JOSHUA_STACKED_RESUME_TEXT = """JOSHUA DAVID RAMOS
+Mandaluyong City, Metro Manila
++63 920 418 7329
+joshua.ramos.culinary@gmail.com
+
+WORK EXPERIENCE
+
+SM Supermarket - Megamall
+
+September 2022 - Present
+
+Sales Associate & Grocery Crew
+
+Mandaluyong City, Metro Manila
+
+Assist supermarket customers with grocery inquiries and price verifications.
+
+Replenish grocery aisle shelves and arrange product facing.
+
+Jollibee Food Corp - Shaw Blvd
+
+January 2021 - August 2022
+
+Counter Crew & Dining Attendant
+
+Operated POS cash register and dispensed change accurately.
+
+Wiped dining tables and maintained clean condiment stations.
+
+7-Eleven Convenience Store
+
+May 2019 - December 2020
+
+Cashier & Store Clerk
+
+Processed fast-paced cashier transactions and cash deposits.
+
+Received delivery crates and organized stockroom storage.
+
+EDUCATION
+
+High School Diploma
+Jose Rizal University
+Year: 2019
+"""
+
+INLINE_DIGIT_AND_ROLE_TEXT = """ARVIN KEITH DEL ROSARIO
+
+WORK EXPERIENCE
+
+I'M Hotel Makati November 2022 - Present
+
+Line Cook / Station Chef Makati City, Metro Manila
+
+Prepare and execute station orders for a rooftop dining restaurant.
+
+Romulo Cafe Makati July 2019 - December 2020
+
+Kitchen Prep Assistant Makati City, Metro Manila
+
+Peeled, chopped, portioned, and weighed ingredients.
+
+7-Eleven Convenience Store May 2019 - December 2020
+
+Cashier & Store Clerk Makati City, Metro Manila
+
+Processed cashier transactions and handled cash deposits.
+"""
+
+INLINE_GENERIC_ORG_TEXT = """RONALD BRIAN TAN
+
+WORK EXPERIENCE
+
+Carrier Concepcion Facility Services June 2017 - February 2019
+
+Electro-Mechanical Technician Pasig City, Metro Manila
+
+Performed scheduled compressor overhauls and filter cleanings.
+
+EDUCATION
+
+Bachelor of Science in Mechanical Engineering
+"""
+
+
 def _extract(text):
     extractor = entity_extraction.get_extractor()
     return extractor.extract(text, None)
@@ -175,6 +260,51 @@ class TestWorkHistoryExtraction(unittest.TestCase):
         )
         for cert in out["certifications_raw"]:
             self.assertNotIn("marco antonio", cert.lower())
+
+    def test_phone_tail_is_not_joined_to_email(self):
+        extractor = entity_extraction.get_extractor()
+        emails = extractor._extract_emails(JOSHUA_STACKED_RESUME_TEXT)
+        self.assertEqual(emails, ["joshua.ramos.culinary@gmail.com"])
+
+    def test_stacked_company_first_titles_with_ampersand_and_digit_employer(self):
+        out = _extract(JOSHUA_STACKED_RESUME_TEXT)
+        history = out["work_history"]
+        self.assertEqual(len(history), 3)
+        self.assertEqual(history[0]["job_title"], "Sales Associate & Grocery Crew")
+        self.assertEqual(history[0]["company"], "SM Supermarket")
+        self.assertEqual(history[0]["period"], "September 2022 - Present")
+        self.assertEqual(history[1]["job_title"], "Counter Crew & Dining Attendant")
+        self.assertEqual(history[1]["company"], "Jollibee Food Corp")
+        self.assertEqual(history[1]["period"], "January 2021 - August 2022")
+        self.assertEqual(history[2]["job_title"], "Cashier & Store Clerk")
+        self.assertEqual(history[2]["company"], "7-Eleven Convenience Store")
+        self.assertEqual(history[2]["period"], "May 2019 - December 2020")
+        self.assertIn("Sales Associate & Grocery Crew", out["job_titles_raw"])
+        self.assertNotIn("Restaurant Cashier", out["job_titles_raw"])
+
+    def test_inline_digit_led_company_and_role_ending_title(self):
+        out = _extract(INLINE_DIGIT_AND_ROLE_TEXT)
+        history = out["work_history"]
+        titles = [h["job_title"] for h in history]
+        companies = [h["company"] for h in history]
+        self.assertEqual(
+            companies,
+            ["I'M Hotel Makati", "Romulo Cafe Makati", "7-Eleven Convenience Store"],
+        )
+        self.assertEqual(
+            titles,
+            ["Line Cook / Station Chef", "Kitchen Prep Assistant", "Cashier & Store Clerk"],
+        )
+        self.assertEqual(history[1]["period"], "July 2019 - December 2020")
+        self.assertEqual(history[2]["period"], "May 2019 - December 2020")
+
+    def test_role_ending_title_is_not_an_employer(self):
+        out = _extract(INLINE_GENERIC_ORG_TEXT)
+        history = out["work_history"]
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["job_title"], "Electro-Mechanical Technician")
+        self.assertEqual(history[0]["company"], "Carrier Concepcion Facility Services")
+        self.assertEqual(history[0]["period"], "June 2017 - February 2019")
 
 
 if __name__ == "__main__":

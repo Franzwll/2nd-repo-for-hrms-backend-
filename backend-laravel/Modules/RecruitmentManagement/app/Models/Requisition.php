@@ -44,7 +44,8 @@ class Requisition extends Model
 
     public function convertedJobPost(): BelongsTo
     {
-        return $this->belongsTo(JobPost::class, 'converted_job_post_id', 'job_post_id');
+        return $this->belongsTo(JobPost::class, 'converted_job_post_id', 'job_post_id')
+            ->withTrashed();
     }
 
     /* ------------------------------------------------------------------ */

@@ -38,16 +38,19 @@ export type Notification = {
   targetId: string | null;
 };
 
-type State = {
-  announcements: Announcement[];
-  notifications: Notification[];
-  loading: boolean;
-};
-
-const seed: State = {
-  announcements: [],
-  notifications: [],
-  loading: true,
+type State = {
+  announcements: Announcement[];
+  notifications: Notification[];
+  /** Announcement ids the current browser has already opened. */
+  readAnnouncementIds: Set<string>;
+  loading: boolean;
+};
+
+const seed: State = {
+  announcements: [],
+  notifications: [],
+  readAnnouncementIds: new Set(),
+  loading: true,
 };
 
 function mapNotification(n: ApiNotification): Notification {
@@ -63,10 +66,11 @@ function mapNotification(n: ApiNotification): Notification {
   };
 }
 
-let state: State = {
-  announcements: [],
-  notifications: [],
-  loading: true,
+let state: State = {
+  announcements: [],
+  notifications: [],
+  readAnnouncementIds: new Set(),
+  loading: true,
 };
 const listeners = new Set<() => void>();
 
@@ -78,17 +82,49 @@ function set(next: Partial<State>) {
 let loaded = false;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-const READ_STORAGE_KEY = "hrms-notifications-read";
-
-function loadReadFlags(): Set<string> {
-  try {
-    const raw = localStorage.getItem(READ_STORAGE_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw);
-    return new Set(Array.isArray(parsed) ? parsed : []);
-  } catch {
-    return new Set();
-  }
+const READ_STORAGE_KEY = "hrms-notifications-read";
+const ANNOUNCEMENT_READ_STORAGE_KEY = "hrms-announcements-read";
+
+function loadReadFlags(): Set<string> {
+  try {
+    const raw = localStorage.getItem(READ_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/** Remember notification ids read on this browser so a failed/absent API call
+ *  cannot bring the unread number back after the next poll. */
+function rememberReadFlags(ids: string[]) {
+  try {
+    const next = loadReadFlags();
+    ids.forEach((id) => next.add(String(id)));
+    localStorage.setItem(READ_STORAGE_KEY, JSON.stringify([...next]));
+  } catch {
+    // Storage unavailable — the server remains the source of truth.
+  }
+}
+
+function loadAnnouncementReadFlags(): Set<string> {
+  try {
+    const raw = localStorage.getItem(ANNOUNCEMENT_READ_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistAnnouncementReadFlags(ids: Set<string>) {
+  try {
+    localStorage.setItem(ANNOUNCEMENT_READ_STORAGE_KEY, JSON.stringify([...ids]));
+  } catch {
+    // Storage unavailable — read state only lives for this session.
+  }
 }
 
 async function loadData() {
@@ -125,23 +161,30 @@ async function loadData() {
         }))
         : [];
 
-    set({
-      announcements,
-      notifications,
-      loading: false,
+    set({
+      announcements,
+      notifications,
+      readAnnouncementIds: loadAnnouncementReadFlags(),
+      loading: false,
     });
   } catch {
     set({ loading: false });
   }
 }
 
-async function loadNotifications() {
-  try {
-    const res = await notificationsApi.list();
-    set({ notifications: (res.data ?? []).map(mapNotification) });
-  } catch {
-    // keep empty list on failure
-  }
+async function loadNotifications() {
+  try {
+    const res = await notificationsApi.list();
+    const readFlags = loadReadFlags();
+    set({
+      notifications: (res.data ?? []).map((n) => {
+        const mapped = mapNotification(n);
+        return { ...mapped, read: mapped.read || readFlags.has(String(n.id)) };
+      }),
+    });
+  } catch {
+    // keep empty list on failure
+  }
 }
 
 function ensureLoaded() {
@@ -171,28 +214,56 @@ export function usePortalState() {
     };
   }, []);
 
-  return {
-    announcements: snapshot.announcements,
-    notifications: snapshot.notifications,
-    loading: snapshot.loading,
-    unreadCount: snapshot.notifications.filter((n) => !n.read).length,
-    markAllRead: async () => {
-      const next = state.notifications.map((n) => ({ ...n, read: true }));
-      set({ notifications: next });
-      try {
-        await notificationsApi.markAllRead();
-      } catch {
-        // optimistic update already applied
-      }
-    },
-    markRead: async (id: string) => {
-      const next = state.notifications.map((n) => (n.id === id ? { ...n, read: true } : n));
-      set({ notifications: next });
-      try {
-        await notificationsApi.markRead(id);
-      } catch {
-        // optimistic update already applied
-      }
+  return {
+    announcements: snapshot.announcements,
+    notifications: snapshot.notifications,
+    readAnnouncementIds: snapshot.readAnnouncementIds,
+    loading: snapshot.loading,
+    unreadCount: snapshot.notifications.filter((n) => !n.read).length,
+    markAllRead: async () => {
+      const ids = state.notifications.map((n) => n.id);
+      const next = state.notifications.map((n) => ({ ...n, read: true }));
+      rememberReadFlags(ids);
+      set({ notifications: next });
+      try {
+        await notificationsApi.markAllRead();
+      } catch {
+        // optimistic update already applied
+      }
+    },
+    markRead: async (id: string) => {
+      const next = state.notifications.map((n) => (n.id === id ? { ...n, read: true } : n));
+      rememberReadFlags([id]);
+      set({ notifications: next });
+      try {
+        await notificationsApi.markRead(id);
+      } catch {
+        // optimistic update already applied
+      }
+    },
+    /** Marks one announcement as seen — the bell/card counts drop immediately. */
+    markAnnouncementRead: async (id: string) => {
+      const key = String(id);
+      if (state.readAnnouncementIds.has(key)) return;
+      const next = new Set(state.readAnnouncementIds);
+      next.add(key);
+      persistAnnouncementReadFlags(next);
+      set({ readAnnouncementIds: next });
+    },
+    /** Marks every id passed (already filtered to what this role can see). */
+    markAnnouncementsRead: async (ids: string[]) => {
+      const next = new Set(state.readAnnouncementIds);
+      let changed = false;
+      ids.forEach((id) => {
+        const key = String(id);
+        if (!next.has(key)) {
+          next.add(key);
+          changed = true;
+        }
+      });
+      if (!changed) return;
+      persistAnnouncementReadFlags(next);
+      set({ readAnnouncementIds: next });
     },
     addAnnouncement: async (input: {
       title: string;

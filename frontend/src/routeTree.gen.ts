@@ -58,6 +58,8 @@ import { Route as SuperadminProfilepageProfileRouteImport } from './routes/super
 import { Route as SuperadminRecruitmentmanagementRecruitmentRouteImport } from './routes/superadmin/_recruitmentmanagement/recruitment'
 import { Route as SuperadminSettingsSettingsRouteImport } from './routes/superadmin/_settings/settings'
 import { Route as SuperadminUsermanagementUsersRouteImport } from './routes/superadmin/_usermanagement/users'
+import { Route as EmployeeMyrequestMyRequestsIndexRouteImport } from './routes/employee/_myrequest/my-requests.index'
+import { Route as EmployeeMyrequestMyRequestsModuleRouteImport } from './routes/employee/_myrequest/my-requests.$module'
 
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
@@ -324,6 +326,18 @@ const SuperadminUsermanagementUsersRoute =
     path: '/users',
     getParentRoute: () => SuperadminRoute,
   } as any)
+const EmployeeMyrequestMyRequestsIndexRoute =
+  EmployeeMyrequestMyRequestsIndexRouteImport.update({
+    id: '/_myrequest/my-requests/',
+    path: '/my-requests/',
+    getParentRoute: () => EmployeeRoute,
+  } as any)
+const EmployeeMyrequestMyRequestsModuleRoute =
+  EmployeeMyrequestMyRequestsModuleRouteImport.update({
+    id: '/_myrequest/my-requests/$module',
+    path: '/my-requests/$module',
+    getParentRoute: () => EmployeeRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
@@ -375,6 +389,8 @@ export interface FileRoutesByFullPath {
   '/superadmin/settings': typeof SuperadminSettingsSettingsRoute
   '/superadmin/users': typeof SuperadminUsermanagementUsersRoute
   '/jobs/': typeof LandingJobsIndexRoute
+  '/employee/my-requests/$module': typeof EmployeeMyrequestMyRequestsModuleRoute
+  '/employee/my-requests/': typeof EmployeeMyrequestMyRequestsIndexRoute
 }
 export interface FileRoutesByTo {
   '/test-doc-recognition': typeof TestDocRecognitionRoute
@@ -423,6 +439,8 @@ export interface FileRoutesByTo {
   '/superadmin/settings': typeof SuperadminSettingsSettingsRoute
   '/superadmin/users': typeof SuperadminUsermanagementUsersRoute
   '/jobs': typeof LandingJobsIndexRoute
+  '/employee/my-requests/$module': typeof EmployeeMyrequestMyRequestsModuleRoute
+  '/employee/my-requests': typeof EmployeeMyrequestMyRequestsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -475,6 +493,8 @@ export interface FileRoutesById {
   '/superadmin/_settings/settings': typeof SuperadminSettingsSettingsRoute
   '/superadmin/_usermanagement/users': typeof SuperadminUsermanagementUsersRoute
   '/_landing/jobs/': typeof LandingJobsIndexRoute
+  '/employee/_myrequest/my-requests/$module': typeof EmployeeMyrequestMyRequestsModuleRoute
+  '/employee/_myrequest/my-requests/': typeof EmployeeMyrequestMyRequestsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -528,6 +548,8 @@ export interface FileRouteTypes {
     | '/superadmin/settings'
     | '/superadmin/users'
     | '/jobs/'
+    | '/employee/my-requests/$module'
+    | '/employee/my-requests/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/test-doc-recognition'
@@ -576,6 +598,8 @@ export interface FileRouteTypes {
     | '/superadmin/settings'
     | '/superadmin/users'
     | '/jobs'
+    | '/employee/my-requests/$module'
+    | '/employee/my-requests'
   id:
     | '__root__'
     | '/admin'
@@ -627,6 +651,8 @@ export interface FileRouteTypes {
     | '/superadmin/_settings/settings'
     | '/superadmin/_usermanagement/users'
     | '/_landing/jobs/'
+    | '/employee/_myrequest/my-requests/$module'
+    | '/employee/_myrequest/my-requests/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -996,6 +1022,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SuperadminUsermanagementUsersRouteImport
       parentRoute: typeof SuperadminRoute
     }
+    '/employee/_myrequest/my-requests/': {
+      id: '/employee/_myrequest/my-requests/'
+      path: '/my-requests'
+      fullPath: '/employee/my-requests/'
+      preLoaderRoute: typeof EmployeeMyrequestMyRequestsIndexRouteImport
+      parentRoute: typeof EmployeeRoute
+    }
+    '/employee/_myrequest/my-requests/$module': {
+      id: '/employee/_myrequest/my-requests/$module'
+      path: '/my-requests/$module'
+      fullPath: '/employee/my-requests/$module'
+      preLoaderRoute: typeof EmployeeMyrequestMyRequestsModuleRouteImport
+      parentRoute: typeof EmployeeRoute
+    }
   }
 }
 
@@ -1038,6 +1078,8 @@ interface EmployeeRouteChildren {
   EmployeeNewhireonboardingOnboardingRoute: typeof EmployeeNewhireonboardingOnboardingRoute
   EmployeeProfilepageProfileRoute: typeof EmployeeProfilepageProfileRoute
   EmployeeSettingsSettingsRoute: typeof EmployeeSettingsSettingsRoute
+  EmployeeMyrequestMyRequestsModuleRoute: typeof EmployeeMyrequestMyRequestsModuleRoute
+  EmployeeMyrequestMyRequestsIndexRoute: typeof EmployeeMyrequestMyRequestsIndexRoute
 }
 
 const EmployeeRouteChildren: EmployeeRouteChildren = {
@@ -1048,6 +1090,9 @@ const EmployeeRouteChildren: EmployeeRouteChildren = {
     EmployeeNewhireonboardingOnboardingRoute,
   EmployeeProfilepageProfileRoute: EmployeeProfilepageProfileRoute,
   EmployeeSettingsSettingsRoute: EmployeeSettingsSettingsRoute,
+  EmployeeMyrequestMyRequestsModuleRoute:
+    EmployeeMyrequestMyRequestsModuleRoute,
+  EmployeeMyrequestMyRequestsIndexRoute: EmployeeMyrequestMyRequestsIndexRoute,
 }
 
 const EmployeeRouteWithChildren = EmployeeRoute._addFileChildren(

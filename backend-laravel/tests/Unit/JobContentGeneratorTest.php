@@ -3,7 +3,10 @@
 namespace Tests\Unit;
 
 use App\Services\JobContentGenerator;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -15,7 +18,7 @@ use Tests\TestCase;
 class JobContentGeneratorTest extends TestCase
 {
     /** AI env vars read by env() in the service, saved so tearDown can restore them. */
-    private const AI_ENV_KEYS = ['JOB_GROQ_API_KEY', 'JOB_GROQ_MODEL', 'JOB_OPENROUTER_API_KEY', 'JOB_OPENROUTER_MODEL', 'GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_FALLBACK_API_KEY', 'GEMINI_FALLBACK_MODEL', 'OPENROUTER_API_KEY', 'OPENROUTER_MODEL'];
+    private const AI_ENV_KEYS = ['JOB_GROQ_API_KEY', 'JOB_GROQ_MODEL', 'JOB_OPENROUTER_API_KEY', 'JOB_OPENROUTER_MODEL', 'GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_FALLBACK_API_KEY', 'GEMINI_FALLBACK_MODEL', 'OPENROUTER_API_KEY', 'OPENROUTER_MODEL', 'JOB_GEMINI_TIMEOUT', 'JOB_GROQ_TIMEOUT', 'JOB_OPENROUTER_TIMEOUT', 'JOB_GEMINI_ATTEMPTS', 'JOB_GROQ_ATTEMPTS', 'JOB_OPENROUTER_ATTEMPTS'];
 
     /** @var array<string, array{0:?string,1:?string}> */
     private array $savedAiEnv = [];
@@ -74,7 +77,7 @@ class JobContentGeneratorTest extends TestCase
         $generator = new JobContentGenerator();
 
         $this->assertTrue($generator->isConfigured());
-        $this->assertSame('openai/gpt-oss-20b', $generator->modelName());
+        $this->assertSame('gemini-3.5-flash-lite', $generator->modelName());
         $this->assertTrue(method_exists($generator, 'usageSnapshot'));
     }
 
@@ -102,7 +105,7 @@ class JobContentGeneratorTest extends TestCase
         $this->assertFalse($generator->usageSnapshot()['configured']);
     }
 
-    public function test_it_orders_groq_before_openrouter_before_gemini(): void
+    public function test_it_orders_gemini_before_groq_before_openrouter(): void
     {
         config([
             'services.job_groq.key' => 'job-groq-key',
@@ -116,8 +119,146 @@ class JobContentGeneratorTest extends TestCase
         $generator = new JobContentGenerator();
         $kinds = array_column((new \ReflectionMethod($generator, 'providers'))->invoke($generator), 'kind');
 
-        $this->assertSame(['groq', 'openrouter', 'gemini'], array_slice($kinds, 0, 3));
-        $this->assertSame('openai/gpt-oss-20b', $generator->modelName());
+        // No second Gemini key configured -> the slot collapses into the
+        // primary and the chain stays at three providers.
+        $this->assertSame(['gemini', 'groq', 'openrouter'], $kinds);
+        $this->assertSame('gemini-3.5-flash-lite', $generator->modelName());
+    }
+
+    /**
+     * A second Gemini key is the same model behind a different credential, so
+     * it belongs right after the primary: a used-up free tier is recovered
+     * from before the chain changes model.
+     */
+    public function test_a_second_gemini_key_sits_right_after_the_primary(): void
+    {
+        config([
+            'services.job_groq.key' => 'job-groq-key',
+            'services.job_openrouter.key' => 'job-openrouter-key',
+            'services.gemini.key' => 'shared-gemini-key',
+            'services.gemini.model' => 'gemini-3.5-flash-lite',
+            'services.gemini.fallback_key' => 'second-gemini-key',
+            'services.gemini.fallback_model' => 'gemini-3.5-flash-lite',
+        ]);
+
+        $generator = new JobContentGenerator();
+        $providers = (new \ReflectionMethod($generator, 'providers'))->invoke($generator);
+
+        $this->assertSame(['gemini', 'gemini', 'groq', 'openrouter'], array_column($providers, 'kind'));
+        // The second key carries the same short budget as the primary.
+        $this->assertSame(10, $providers[1]['timeout']);
+        $this->assertSame(1, $providers[1]['attempts']);
+    }
+
+    /** A quota'd primary key must not block the second key. */
+    public function test_each_gemini_key_has_its_own_cool_down(): void
+    {
+        config([
+            'services.gemini.key' => 'shared-gemini-key',
+            'services.gemini.model' => 'gemini-3.5-flash-lite',
+            'services.gemini.fallback_key' => 'second-gemini-key',
+            'services.gemini.fallback_model' => 'gemini-3.5-flash-lite',
+        ]);
+
+        $generator = new JobContentGenerator();
+        $providers = (new \ReflectionMethod($generator, 'providers'))->invoke($generator);
+
+        (new \ReflectionMethod($generator, 'blockProvider'))->invoke($generator, $providers[0], [
+            'message' => 'Google Gemini free-tier usage is used up for today.',
+            'code' => 'quota_day',
+            'retry_after_seconds' => 600,
+            'resets_at' => null,
+        ]);
+
+        $providerBlock = new \ReflectionMethod($generator, 'providerBlock');
+
+        $this->assertNotNull($providerBlock->invoke($generator, $providers[0]));
+        $this->assertNull($providerBlock->invoke($generator, $providers[1]));
+    }
+
+    /**
+     * A slow primary provider must not stall the request: the chain moves on
+     * to the next provider within the primary's own short timeout.
+     */
+    public function test_the_primary_provider_gets_a_short_timeout_and_one_attempt(): void
+    {
+        config([
+            'services.job_groq.key' => 'job-groq-key',
+            'services.job_groq.model' => 'openai/gpt-oss-20b',
+            'services.job_openrouter.key' => 'job-openrouter-key',
+            'services.job_openrouter.model' => 'nvidia/nemotron-3-super-120b-a12b:free',
+            'services.gemini.key' => 'shared-gemini-key',
+            'services.gemini.model' => 'gemini-3.5-flash-lite',
+            'services.job_ai.timeouts.gemini' => 10,
+            'services.job_ai.timeouts.groq' => 20,
+            'services.job_ai.attempts.gemini' => 1,
+            'services.job_ai.attempts.groq' => 2,
+        ]);
+
+        $generator = new JobContentGenerator();
+        $providers = (new \ReflectionMethod($generator, 'providers'))->invoke($generator);
+
+        $this->assertSame('gemini', $providers[0]['kind']);
+        $this->assertSame(10, $providers[0]['timeout']);
+        $this->assertSame(1, $providers[0]['attempts']);
+        $this->assertSame('groq', $providers[1]['kind']);
+        $this->assertSame(20, $providers[1]['timeout']);
+        $this->assertSame(2, $providers[1]['attempts']);
+    }
+
+    /**
+     * The whole point of the reorder: a slow (timing out) Gemini must hand
+     * over to Groq instead of stalling the click.
+     */
+    public function test_a_timing_out_gemini_fails_over_to_groq(): void
+    {
+        config([
+            'services.job_groq.key' => 'job-groq-key',
+            'services.job_groq.model' => 'openai/gpt-oss-20b',
+            'services.job_openrouter.key' => null,
+            'services.gemini.key' => 'shared-gemini-key',
+            'services.gemini.model' => 'gemini-3.5-flash-lite',
+        ]);
+
+        $geminiCalls = 0;
+        $groqCalls = 0;
+
+        Http::fake(function (Request $request) use (&$geminiCalls, &$groqCalls) {
+            if (str_contains($request->url(), 'generativelanguage.googleapis.com')) {
+                $geminiCalls++;
+
+                throw new ConnectionException('cURL error 28: Operation timed out');
+            }
+
+            $groqCalls++;
+
+            return Http::response([
+                'choices' => [[
+                    'message' => ['content' => json_encode([
+                        'description' => 'Front desk role at Oxford Suites Makati.',
+                        'responsibilities' => ['Greet arriving guests'],
+                        'qualifications' => ['Hotel management diploma'],
+                        'skills' => ['Communication'],
+                        'additional' => ['HMO'],
+                        'instructions' => 'Apply at the HR Office.',
+                        'about' => 'Oxford Suites Makati is a premier all-suite hotel.',
+                    ])],
+                ]],
+            ], 200);
+        });
+
+        $generator = new JobContentGenerator();
+        $result = $generator->generate(
+            ['position_title' => 'Front Desk Associate'],
+            ['skills' => [], 'certifications' => []],
+        );
+
+        $this->assertTrue($result['ok'], (string) $result['error']);
+        $this->assertSame('Groq', $result['via']['service']);
+        $this->assertSame('Front desk role at Oxford Suites Makati.', $result['data']['description']);
+        // Gemini was tried exactly once (its own attempt budget) before Groq.
+        $this->assertSame(1, $geminiCalls);
+        $this->assertSame(1, $groqCalls);
     }
 
     public function test_it_classifies_a_free_tier_daily_quota_429(): void
@@ -155,8 +296,8 @@ class JobContentGeneratorTest extends TestCase
         $failure = $this->classify(401, '{"error":{"code":401,"message":"API key not valid. Please pass a valid API key."}}');
 
         $this->assertSame('auth', $failure['code']);
-        // First provider is Groq, so its key hint is reported.
-        $this->assertStringContainsString('JOB_GROQ_API_KEY', $failure['message']);
+        // First provider is Gemini, so its key hint is reported.
+        $this->assertStringContainsString('GEMINI_API_KEY', $failure['message']);
         $this->assertNotContains($failure['code'], JobContentGenerator::LIMIT_CODES);
     }
 

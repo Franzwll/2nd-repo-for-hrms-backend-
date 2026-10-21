@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { mfaApi, type MfaStatus } from "@/lib/api";
 
 /**
@@ -134,8 +135,13 @@ export function MfaSettings() {
 
   if (loading) {
     return (
-      <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
-        Loading sign-in security…
+      <div
+        className="space-y-2 rounded-md border border-border/70 bg-muted/30 px-3 py-2.5"
+        aria-busy="true"
+        aria-label="Loading sign-in security"
+      >
+        <Skeleton className="h-4 w-1/3" />
+        <Skeleton className="h-4 w-2/3" />
       </div>
     );
   }

@@ -93,10 +93,17 @@ interface LmsActivityPlayerProps {
   category?: string;
   /** Stage chosen by the card that opened the player. */
   initialStage?: "reading" | "quiz";
+  /**
+   * Single-stage mode. When set, the player shows only the handbook or only the
+   * quiz, without the handbook → assessment stepper or cross-stage CTA.
+   */
+  mode?: "handbook" | "quiz";
   /** Fired after a pass so the tab can refetch the course list. */
   onCompleted?: (courseId: string) => void;
   /** Fired by "View certificate" — the tab closes the player and opens the cert. */
   onViewCertificate?: (courseId: string) => void;
+  /** Used by the gated quiz state to switch the player back to the handbook. */
+  onOpenHandbook?: () => void;
 }
 
 function formatClock(totalSeconds: number): string {
@@ -155,8 +162,10 @@ export function LmsActivityPlayer({
   courseTitle,
   category,
   initialStage = "reading",
+  mode,
   onCompleted,
   onViewCertificate,
+  onOpenHandbook,
 }: LmsActivityPlayerProps) {
   const [stage, setStage] = useState<Stage>("loading");
   const [material, setMaterial] = useState<LmsMaterial | null>(null);
@@ -167,6 +176,8 @@ export function LmsActivityPlayer({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [showFile, setShowFile] = useState(false);
+
+  const singleStage = mode === "handbook" || mode === "quiz";
 
   const loadMaterial = useCallback(async (): Promise<LmsMaterial | null> => {
     try {
@@ -185,6 +196,7 @@ export function LmsActivityPlayer({
     setShowFile(false);
     setBusy(true);
     const res = await loadMaterial();
+    setShowFile(Boolean(res?.file_url));
     setBusy(false);
     setStage(res ? "reading" : "error");
   }, [loadMaterial]);
@@ -227,9 +239,11 @@ export function LmsActivityPlayer({
       setShowFile(false);
       return;
     }
-    if (initialStage === "quiz") void openQuiz();
+    if (mode === "handbook") void openReading();
+    else if (mode === "quiz") void openQuiz();
+    else if (initialStage === "quiz") void openQuiz();
     else void openReading();
-  }, [open, initialStage, openQuiz, openReading]);
+  }, [open, initialStage, mode, openQuiz, openReading]);
 
   const submit = useCallback(
     async (finalAnswers: Record<number, number>) => {
@@ -288,6 +302,26 @@ export function LmsActivityPlayer({
     }
   };
 
+  // Handbook-only mode: record completion but stay in the reader. The quiz is a
+  // separate destination, so there is deliberately no "Start Assessment" CTA.
+  const markReadingComplete = async () => {
+    setBusy(true);
+    try {
+      const res = await essApi.completeLearningReading(courseId);
+      setMaterial((prev) =>
+        prev
+          ? { ...prev, reading_completed_at: res.reading_completed_at, status: res.status }
+          : prev,
+      );
+      onCompleted?.(courseId);
+      toast.success("Handbook marked as read — the quiz is now unlocked.");
+    } catch (e) {
+      toast.error((e as Error)?.message || "Could not record the reading — please retry.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const answeredCount = Object.keys(answers).length;
   const allAnswered = quiz != null && answeredCount >= quiz.total_items;
   const readDone = material?.reading_completed_at != null;
@@ -317,41 +351,49 @@ export function LmsActivityPlayer({
                 <span>{category ?? material?.course.category ?? "Learning module"}</span>
                 <span aria-hidden>·</span>
                 <span className="font-semibold text-primary">
-                  {stage === "result"
-                    ? "Result"
-                    : stage === "quiz"
-                      ? "Step 2 of 2 · Assessment"
-                      : "Step 1 of 2 · Handbook"}
+                  {mode === "handbook"
+                    ? "Handbook"
+                    : mode === "quiz"
+                      ? stage === "result"
+                        ? "Result"
+                        : "Quiz"
+                      : stage === "result"
+                        ? "Result"
+                        : stage === "quiz"
+                          ? "Step 2 of 2 · Assessment"
+                          : "Step 1 of 2 · Handbook"}
                 </span>
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        {/* Stage stepper */}
-        <div className="flex items-center gap-2 text-[11px] font-semibold">
-          <span
-            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${
-              stage === "reading"
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-border/70 text-muted-foreground"
-            }`}
-          >
-            <BookOpen className="h-3 w-3" /> 1. Read handbook
-            {readDone && <CheckCircle2 className="h-3 w-3 text-emerald-600" />}
-          </span>
-          <span className="h-px w-6 bg-border" />
-          <span
-            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${
-              stage === "quiz" || stage === "result"
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-dashed border-border/70 text-muted-foreground"
-            }`}
-          >
-            <ShieldCheck className="h-3 w-3" /> 2. Assessment
-            {!readDone && <span className="font-normal opacity-70">(read first)</span>}
-          </span>
-        </div>
+        {/* Stage stepper — hidden when the player is opened for one stage only. */}
+        {!singleStage && (
+          <div className="flex items-center gap-2 text-[11px] font-semibold">
+            <span
+              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${
+                stage === "reading"
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border/70 text-muted-foreground"
+              }`}
+            >
+              <BookOpen className="h-3 w-3" /> 1. Read handbook
+              {readDone && <CheckCircle2 className="h-3 w-3 text-emerald-600" />}
+            </span>
+            <span className="h-px w-6 bg-border" />
+            <span
+              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${
+                stage === "quiz" || stage === "result"
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-dashed border-border/70 text-muted-foreground"
+              }`}
+            >
+              <ShieldCheck className="h-3 w-3" /> 2. Assessment
+              {!readDone && <span className="font-normal opacity-70">(read first)</span>}
+            </span>
+          </div>
+        )}
 
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
           {/* ---------------- loading ---------------- */}
@@ -382,13 +424,15 @@ export function LmsActivityPlayer({
                   </Badge>
                 )}
                 {material.file_url && (
-                  <button
-                    type="button"
-                    onClick={() => setShowFile((v) => !v)}
-                    className="ml-auto font-semibold text-primary hover:underline"
-                  >
-                    {showFile ? "Show text version" : "Open original file"}
-                  </button>
+                  <div className="ml-auto flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowFile((v) => !v)}
+                      className="font-semibold text-primary hover:underline"
+                    >
+                      {showFile ? "Show text version" : "Open original file"}
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -421,7 +465,14 @@ export function LmsActivityPlayer({
               <p className="max-w-sm text-xs text-muted-foreground">
                 The assessment unlocks once you have finished the reading stage.
               </p>
-              <Button size="sm" className="gap-1.5 text-xs" onClick={() => void openReading()}>
+              <Button
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={() => {
+                  if (mode === "quiz" && onOpenHandbook) onOpenHandbook();
+                  else void openReading();
+                }}
+              >
                 <BookOpen className="h-3.5 w-3.5" /> Go to handbook
               </Button>
             </div>
@@ -658,40 +709,76 @@ export function LmsActivityPlayer({
         {/* ---------------- footer actions ---------------- */}
         {stage === "reading" && (
           <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
-            <p className="text-[11px] text-muted-foreground">
-              {alreadyCompleted
-                ? "This module is already completed — the handbook is here for review."
-                : readDone
-                  ? "Reading already completed — you can review or continue."
-                  : "Finish the handbook to unlock the assessment."}
-            </p>
-            {alreadyCompleted ? (
-              onViewCertificate ? (
-                <Button
-                  size="sm"
-                  className="gap-1.5 text-xs"
-                  onClick={() => {
-                    onOpenChange(false);
-                    onViewCertificate(courseId);
-                  }}
-                >
-                  <ShieldCheck className="h-3.5 w-3.5" /> View certificate
-                </Button>
-              ) : null
-            ) : (
-              <Button
-                size="sm"
-                className="gap-1.5 text-xs"
-                disabled={busy}
-                onClick={() => void completeReading()}
-              >
-                {busy ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {mode === "handbook" ? (
+              <>
+                <p className="text-[11px] text-muted-foreground">
+                  {readDone || alreadyCompleted
+                    ? "Reading completed — the quiz is unlocked."
+                    : "Mark the handbook as read to unlock the quiz."}
+                </p>
+                {readDone || alreadyCompleted ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-xs"
+                    onClick={() => onOpenChange(false)}
+                  >
+                    Close
+                  </Button>
                 ) : (
-                  <ArrowRight className="h-3.5 w-3.5" />
+                  <Button
+                    size="sm"
+                    className="gap-1.5 text-xs"
+                    disabled={busy}
+                    onClick={() => void markReadingComplete()}
+                  >
+                    {busy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    )}
+                    Mark as read
+                  </Button>
                 )}
-                {readDone ? "Start Assessment" : "Finish reading → Start Assessment"}
-              </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-[11px] text-muted-foreground">
+                  {alreadyCompleted
+                    ? "This module is already completed — the handbook is here for review."
+                    : readDone
+                      ? "Reading already completed — you can review or continue."
+                      : "Finish the handbook to unlock the assessment."}
+                </p>
+                {alreadyCompleted ? (
+                  onViewCertificate ? (
+                    <Button
+                      size="sm"
+                      className="gap-1.5 text-xs"
+                      onClick={() => {
+                        onOpenChange(false);
+                        onViewCertificate(courseId);
+                      }}
+                    >
+                      <ShieldCheck className="h-3.5 w-3.5" /> View certificate
+                    </Button>
+                  ) : null
+                ) : (
+                  <Button
+                    size="sm"
+                    className="gap-1.5 text-xs"
+                    disabled={busy}
+                    onClick={() => void completeReading()}
+                  >
+                    {busy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    )}
+                    {readDone ? "Start Assessment" : "Finish reading → Start Assessment"}
+                  </Button>
+                )}
+              </>
             )}
           </div>
         )}
@@ -704,14 +791,16 @@ export function LmsActivityPlayer({
                 : `${quiz.total_items - answeredCount} question${quiz.total_items - answeredCount === 1 ? "" : "s"} left.`}
             </p>
             <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5 text-xs"
-                onClick={() => void openReading()}
-              >
-                <BookOpen className="h-3.5 w-3.5" /> Back to handbook
-              </Button>
+              {mode !== "quiz" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs"
+                  onClick={() => void openReading()}
+                >
+                  <BookOpen className="h-3.5 w-3.5" /> Back to handbook
+                </Button>
+              )}
               <Button
                 size="sm"
                 className="gap-1.5 text-xs"

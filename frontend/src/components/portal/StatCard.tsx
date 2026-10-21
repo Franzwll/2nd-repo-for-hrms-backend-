@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 export function StatCard({
@@ -14,6 +15,7 @@ export function StatCard({
   to,
   onClick,
   action,
+  loading = false,
 }: {
   label: string;
   value: string | number;
@@ -25,6 +27,8 @@ export function StatCard({
   onClick?: () => void;
   /** Optional element rendered at the bottom of the card (e.g. a button). */
   action?: React.ReactNode;
+  /** Render a pulsing placeholder instead of the value while data loads. */
+  loading?: boolean;
 }) {
   const toneClass = {
     default: "text-foreground",
@@ -47,7 +51,11 @@ export function StatCard({
           )}
         </span>
       </div>
-      <p className={cn("mt-2 font-display text-3xl font-semibold", toneClass)}>{value}</p>
+      {loading ? (
+        <Skeleton className="mt-2 h-9 w-20" aria-busy="true" aria-label="Loading value" />
+      ) : (
+        <p className={cn("mt-2 font-display text-3xl font-semibold", toneClass)}>{value}</p>
+      )}
       {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
       {action && <div className="mt-3">{action}</div>}
     </CardContent>

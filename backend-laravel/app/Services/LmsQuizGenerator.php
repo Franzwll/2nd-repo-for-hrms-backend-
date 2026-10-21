@@ -54,6 +54,20 @@ class LmsQuizGenerator
 
     protected int $maxAttempts = 3;
 
+    /**
+     * Hard wall-clock budget for one generate() call. The provider chain can
+     * otherwise run past PHP's max_execution_time (60s) and fatal the request
+     * mid-flight - which is exactly what happens when two providers time out in
+     * a row. When the budget is spent we stop and use the deterministic bank.
+     */
+    protected int $budgetSeconds;
+
+    /** Deadline (microtime) for the generate() call currently in flight. */
+    protected float $deadline = 0.0;
+
+    /** Per-attempt HTTP timeout, clamped to the remaining budget. */
+    protected ?int $attemptTimeout = null;
+
     /** HTTP statuses worth retrying (rate-limit / transient provider-side failures). */
     protected array $retryableStatuses = [429, 500, 502, 503, 504];
 
@@ -96,6 +110,7 @@ class LmsQuizGenerator
         $this->fallbackModel = config('services.gemini.fallback_model') ?: env('GEMINI_FALLBACK_MODEL') ?: null;
         $this->fallbackApiKey = config('services.gemini.fallback_key') ?: env('GEMINI_FALLBACK_API_KEY') ?: null;
         $this->timeout = (int) (config('services.gemini.timeout') ?: env('GEMINI_TIMEOUT', 45));
+        $this->budgetSeconds = max(5, (int) (config('services.ess_lms.quiz_budget_seconds') ?: env('ESS_LMS_QUIZ_BUDGET', 45)));
     }
 
     /**
@@ -154,6 +169,9 @@ class LmsQuizGenerator
         $count = max(1, min($count, 20));
         $sourceText = trim($sourceText);
 
+        $this->deadline = microtime(true) + $this->budgetSeconds;
+        $this->attemptTimeout = null;
+
         if ($this->isConfigured() && $sourceText !== '') {
             $prompt = $this->buildPrompt($title, $category, $sourceText, $count);
 
@@ -163,6 +181,12 @@ class LmsQuizGenerator
                 }
 
                 for ($attempt = 1; $attempt <= $this->maxAttempts; $attempt++) {
+                    $remaining = $this->deadline - microtime(true);
+                    if ($remaining < 3) {
+                        break 2; // budget spent - fall through to the deterministic bank
+                    }
+                    $this->attemptTimeout = (int) max(3, min($this->timeout, (int) floor($remaining)));
+
                     try {
                         $response = match ($provider['kind']) {
                             'groq' => $this->postGroq($provider, $prompt),
@@ -224,6 +248,8 @@ class LmsQuizGenerator
                 }
             }
         }
+
+        $this->attemptTimeout = null;
 
         // Deterministic fallback: a cloze bank built from the handbook text.
         $fallback = $this->fallbackQuestions($sourceText, $count);
@@ -308,9 +334,17 @@ class LmsQuizGenerator
             }
             foreach (preg_split('/(?<=[.!?])\s+/', $clean) ?: [] as $piece) {
                 $piece = trim($piece);
-                if (mb_strlen($piece) >= 40 && mb_strlen($piece) <= 320) {
-                    $sentences[] = $piece;
+                if (mb_strlen($piece) < 40 || mb_strlen($piece) > 320) {
+                    continue;
                 }
+                // Revision-history / table rows carry dates, not learning content.
+                if (preg_match('/\b(?:19|20)\d{2}\b/', $piece) === 1) {
+                    continue;
+                }
+                if (stripos($piece, 'summary of change') !== false) {
+                    continue;
+                }
+                $sentences[] = $piece;
             }
         }
 
@@ -507,8 +541,14 @@ class LmsQuizGenerator
     /** Grounded prompt: every item must come from the handbook text, no outside knowledge. */
     protected function buildPrompt(string $title, ?string $category, string $sourceText, int $count): string
     {
+        // Drop table-of-contents dot-leader lines so the model sees real prose
+        // rather than "Revision history . . . . . 5" (which it refuses to
+        // ground questions on). The cleaner normally removes these already.
+        $prose = (string) preg_replace('/^.*(?:\.\s){3,}.*$/m', '', $sourceText);
+        $prose = trim((string) preg_replace('/\n{3,}/', "\n\n", $prose));
+
         // Bound the prompt so long handbooks do not blow the token budget.
-        $excerpt = mb_substr($sourceText, 0, 12000);
+        $excerpt = mb_substr($prose !== '' ? $prose : $sourceText, 0, 12000);
 
         return implode("\n", [
             'You are an instructional designer for Oxford Suites Makati, a premier all-suite hotel in Makati.',
@@ -540,7 +580,7 @@ class LmsQuizGenerator
         $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
             . $provider['model'] . ':generateContent?key=' . urlencode($provider['key']);
 
-        return Http::timeout($this->timeout)
+        return Http::timeout($this->attemptTimeout ?? $this->timeout)
             ->acceptJson()
             ->post($url, [
                 'contents' => [
@@ -556,7 +596,7 @@ class LmsQuizGenerator
     /** Single chat-completions call routed through Groq. */
     protected function postGroq(array $provider, string $prompt): \Illuminate\Http\Client\Response
     {
-        return Http::timeout($this->timeout)
+        return Http::timeout($this->attemptTimeout ?? $this->timeout)
             ->acceptJson()
             ->withHeaders([
                 'Authorization' => 'Bearer ' . $provider['key'],
@@ -574,7 +614,7 @@ class LmsQuizGenerator
     /** Single chat-completions call routed through OpenRouter. */
     protected function postOpenRouter(array $provider, string $prompt): \Illuminate\Http\Client\Response
     {
-        return Http::timeout($this->timeout)
+        return Http::timeout($this->attemptTimeout ?? $this->timeout)
             ->acceptJson()
             ->withHeaders([
                 'Authorization' => 'Bearer ' . $provider['key'],
