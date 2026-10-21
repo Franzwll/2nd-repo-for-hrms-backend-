@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
-  BadgeCheck,
   CheckCircle2,
   Clock,
   Download,
@@ -66,12 +65,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Employee } from "@/data/hr";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
+import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 
 import {
   auditLogApi,
   ermApi,
-  hcmApi,
   type ApiAuditLog,
   type ApiDocument,
   type ApiEmployee,
@@ -122,7 +120,9 @@ const initials = (name: string) =>
 
 type GeneratedDoc = {
   id: string;
+  employeeCode: string;
   employeeName: string;
+  department: string;
   docType: string;
   generatedAt: string;
 };
@@ -192,18 +192,20 @@ type Profile = {
 type ProfileDoc = {
   id?: number;
   name: string;
-  status: "Submitted" | "Pending" | "Missing";
+  status: "Verified" | "Submitted" | "Pending" | "Missing";
   file?: string | undefined;
 };
 
 /** Map an ERM document row to the compact 201-file row the UI renders. */
 function toProfileDoc(d: ApiDocument): ProfileDoc {
   const status: ProfileDoc["status"] =
-    d.document_status === "Verified" || d.document_status === "Submitted"
-      ? "Submitted"
-      : d.document_status === "Rejected"
-        ? "Missing"
-        : "Pending";
+    d.document_status === "Verified"
+      ? "Verified"
+      : d.document_status === "Submitted"
+        ? "Submitted"
+        : d.document_status === "Rejected"
+          ? "Missing"
+          : "Pending";
   return {
     id: d.document_id,
     name: d.title,
@@ -231,7 +233,7 @@ function classifyDocuments(api: ApiEmployee | undefined) {
   const missing: string[] = [];
   for (const d of api?.documents ?? []) {
     const cat = d.category.toLowerCase();
-    if (d.document_status !== "Submitted") {
+    if (!["Verified", "Submitted"].includes(d.document_status)) {
       missing.push(d.title);
     } else if (cat.includes("medical") || cat.includes("onboard") || cat.includes("exam")) {
       medical.push(d.title);
@@ -390,6 +392,9 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
   const [logAction, setLogAction] = useState("all");
   const [bulkPickOpen, setBulkPickOpen] = useState(false);
   const [bulkTypes, setBulkTypes] = useState<string[]>([documentTypes[0]!]);
+  /** True once the bulk batch has been password-unlocked at generation time. */
+  const [bulkUnlocked, setBulkUnlocked] = useState(false);
+  const [requestStatusFilter, setRequestStatusFilter] = useState("all");
   /** Auto-archive threshold in years — configurable by the HR admin. */
   const [archiveYears, setArchiveYears] = useState("10");
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -679,11 +684,13 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     if (!profile) return;
     const doc = docsFor(profile)[index];
     const employeeId = employeeIdFor(profile.id);
-    const next = doc?.status === "Submitted" ? "Pending Verification" : "Verified";
+    const next = doc?.status === "Verified" ? "Pending Verification" : "Verified";
     if (employeeId && doc?.id) {
       try {
         await ermApi.employees.verifyDocument(employeeId, doc.id, next);
-        toast.success("Document status updated");
+        toast.success(
+          `${doc?.name ?? "Document"} marked ${next === "Verified" ? "verified" : "pending"}.`,
+        );
         await reloadDocs(profile);
       } catch (e: any) {
         toast.error(e?.message ?? "Could not update document");
@@ -694,7 +701,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
       profile.id,
       docsFor(profile).map((d, i) =>
         i === index
-          ? { ...d, status: next === "Verified" ? ("Submitted" as const) : ("Pending" as const) }
+          ? { ...d, status: next === "Verified" ? ("Verified" as const) : ("Pending" as const) }
           : d,
       ),
     );
@@ -805,16 +812,84 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
     });
   };
 
+  /** Export one generated document. The batch is unlocked once at generate time. */
+  const downloadGenerated = (g: GeneratedDoc) => {
+    const run = () => {
+      const emp =
+        list.find((e) => e.id === g.employeeCode) ??
+        list.find((e) => e.name === g.employeeName);
+      exportReport(
+        {
+          title: `${g.docType} - ${g.employeeName}`,
+          ...(emp
+            ? {
+                subtitle: `${emp.id} · ${emp.position} · ${emp.department}`,
+              }
+            : {}),
+          columns: [
+            { header: "Field", key: "field" },
+            { header: "Detail", key: "detail" },
+          ],
+          rows: emp
+            ? [
+                { field: "Employee", detail: emp.name },
+                { field: "Employee No.", detail: emp.id },
+                { field: "Position", detail: emp.position },
+                { field: "Department", detail: emp.department },
+                { field: "Document", detail: g.docType },
+                { field: "Generated", detail: g.generatedAt },
+              ]
+            : [{ field: "Document", detail: g.docType }],
+          sensitive: true,
+        },
+        "pdf",
+      );
+      toast.success(`${g.docType} for ${g.employeeName} downloaded`);
+    };
+
+    if (bulkUnlocked) {
+      run();
+    } else {
+      gateSensitive({ sensitive: true }, run);
+    }
+  };
+
+  /** Selected employees shown in the picker, clearly separated. */
+  const bulkRecipients = list.filter((e) => selected.includes(e.id));
+
+  /** Generated documents grouped per employee for segregated display. */
+  const generatedGroups = generatedDocs
+    .reduce<
+      {
+        employeeCode: string;
+        employeeName: string;
+        department: string;
+        items: GeneratedDoc[];
+      }[]
+    >((groups, doc) => {
+      const existing = groups.find((g) => g.employeeCode === doc.employeeCode);
+      if (existing) {
+        existing.items.push(doc);
+      } else {
+        groups.push({
+          employeeCode: doc.employeeCode,
+          employeeName: doc.employeeName,
+          department: doc.department,
+          items: [doc],
+        });
+      }
+      return groups;
+    }, [])
+    .sort((a, b) => a.employeeName.localeCompare(b.employeeName));
+
   return (
     <div>
       {gateDialog}
       <PageHeader
         title="Employee Records"
+        description="201 files, employment details, records analytics and document generation."
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <span className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-[0.7rem] text-muted-foreground">
-              <ShieldCheck className="h-3.5 w-3.5" /> Password-protected records
-            </span>
             <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>
               <FileText className="mr-2 h-4 w-4" /> Generate reports
             </Button>
@@ -828,44 +903,48 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
           value={list.length}
           icon={Users}
           tone="primary"
+          loading={!roster.loaded}
           onClick={() => {
             setTypeFilter("all");
             setStatusFilter("all");
           }}
         />
         <StatCard
-          label="Regular"
-          value={list.filter((e) => e.employmentType === "Regular").length}
-          icon={BadgeCheck}
-          tone="success"
+          label="Total requests"
+          value={requestCounts.total}
+          icon={Inbox}
+          tone="primary"
+          loading={requestCountsLoading}
           onClick={() => {
-            setTypeFilter("Regular");
-            setStatusFilter("all");
+            setRequestStatusFilter("all");
+            setMainTab("requests");
           }}
         />
         <StatCard
-          label="Probationary"
-          value={list.filter((e) => e.employmentType === "Probationary").length}
+          label="Awaiting fulfilment"
+          value={requestCounts.pending}
           icon={Clock}
-          tone="gold"
+          tone="caution"
+          loading={requestCountsLoading}
           onClick={() => {
-            setTypeFilter("Probationary");
-            setStatusFilter("all");
+            setRequestStatusFilter("pending");
+            setMainTab("requests");
           }}
         />
         <StatCard
-          label="Inactive"
-          value={list.filter((e) => e.status === "Inactive").length}
-          icon={Users}
-          tone="caution"
+          label="Fulfilled"
+          value={requestCounts.fulfilled}
+          icon={CheckCircle2}
+          tone="success"
+          loading={requestCountsLoading}
           onClick={() => {
-            setStatusFilter("Inactive");
-            setTypeFilter("all");
+            setRequestStatusFilter("Completed");
+            setMainTab("requests");
           }}
         />
       </div>
 
-      <Tabs defaultValue="list" className="mt-6">
+      <Tabs value={mainTab} onValueChange={setMainTab} className="mt-6">
         <TabsList>
           <TabsTrigger className="flex items-center gap-1.5" value="list">
             <Users className="h-3.5 w-3.5" /> Employee List
@@ -952,6 +1031,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                       disabled={selected.length === 0}
                       onClick={() => {
                         setBulkTypes([documentTypes[0]!]);
+                        setBulkUnlocked(false);
                         setBulkPickOpen(true);
                       }}
                     >
@@ -1245,7 +1325,11 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
         </TabsContent>
 
         <TabsContent value="requests" className="mt-4">
-          <DocumentRequestInbox />
+          <DocumentRequestInbox
+            statusFilter={requestStatusFilter}
+            onStatusFilterChange={setRequestStatusFilter}
+            onCountsChange={loadRequestCounts}
+          />
         </TabsContent>
       </Tabs>
 
@@ -1332,7 +1416,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     <p className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-2.5 text-xs text-muted-foreground">
                       <ShieldCheck className="h-3.5 w-3.5" />
                       Admin access: records are read-only and statutory government IDs are hidden.
-                      You may create history entries.
+                      You may verify documents and create history entries.
                     </p>
                   )}
                   {isSuper && (
@@ -1348,36 +1432,40 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                     onValueChange={setProfileTab}
                     className="flex min-h-0 flex-1 flex-col"
                   >
-                    <TabsList>
-                      <TabsTrigger value="personal">Personal Information</TabsTrigger>
-                      <TabsTrigger value="documents">Documents</TabsTrigger>
-                      <TabsTrigger value="history">Employment History</TabsTrigger>
-                    </TabsList>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <TabsList className="w-auto">
+                        <TabsTrigger value="personal">Personal Information</TabsTrigger>
+                        <TabsTrigger value="documents">Documents</TabsTrigger>
+                        <TabsTrigger value="history">Employment History</TabsTrigger>
+                      </TabsList>
 
-                    {isSuper && (
-                      <div className="mt-3 flex h-12 flex-nowrap items-center gap-2 overflow-x-auto border-b border-border pb-3">
-                        {profileTab === "documents" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              setDocDialog({ mode: "add", index: -1, name: "", file: "" })
-                            }
-                          >
-                            <Plus className="mr-2 h-3.5 w-3.5" /> Add document
-                          </Button>
-                        )}
-                        {profileTab === "history" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setHistoryFormOpen((v) => !v)}
-                          >
-                            <Plus className="mr-2 h-3.5 w-3.5" /> Create history entry
-                          </Button>
-                        )}
-                      </div>
-                    )}
+                      {isSuper && (
+                        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
+                          {profileTab === "documents" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-[34px]"
+                              onClick={() =>
+                                setDocDialog({ mode: "add", index: -1, name: "", file: "" })
+                              }
+                            >
+                              <Plus className="mr-2 h-3.5 w-3.5" /> Add document
+                            </Button>
+                          )}
+                          {profileTab === "history" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-[34px]"
+                              onClick={() => setHistoryFormOpen((v) => !v)}
+                            >
+                              <Plus className="mr-2 h-3.5 w-3.5" /> Create history entry
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
                     <TabsContent
                       value="personal"
@@ -1436,7 +1524,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
 
                     <TabsContent
                       value="documents"
-                      className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
+                      className="mt-2 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
                     >
                       <div className="space-y-1.5">
                         {docsFor(profile).map((doc, i) => (
@@ -1454,18 +1542,20 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                               <Badge
                                 variant="outline"
                                 className={
-                                  doc.status === "Submitted"
+                                  doc.status === "Verified" || doc.status === "Submitted"
                                     ? "border-success/30 bg-success/15 text-success"
                                     : doc.status === "Pending"
                                       ? "border-warning/40 bg-warning/20 text-warning-foreground"
                                       : "border-destructive/30 bg-destructive/10 text-destructive"
                                 }
                               >
-                                {doc.status === "Submitted"
+                                {doc.status === "Verified"
                                   ? "Verified"
-                                  : doc.status === "Pending"
-                                    ? "Pending verification"
-                                    : "Missing"}
+                                  : doc.status === "Submitted"
+                                    ? "Submitted"
+                                    : doc.status === "Pending"
+                                      ? "Pending verification"
+                                      : "Missing"}
                               </Badge>
                               {doc.id && doc.file && (
                                 <Button
@@ -1486,16 +1576,27 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
                                   <FolderOpen className="h-3.5 w-3.5" />
                                 </Button>
                               )}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="gap-1 text-xs"
+                                title={
+                                  doc.status === "Verified"
+                                    ? "Mark as pending verification"
+                                    : "Mark as verified"
+                                }
+                                aria-label={
+                                  doc.status === "Verified"
+                                    ? `Mark ${doc.name} as pending verification`
+                                    : `Mark ${doc.name} as verified`
+                                }
+                                onClick={() => verifyDoc(i)}
+                              >
+                                <ShieldCheck className="h-3.5 w-3.5" />
+                                {doc.status === "Verified" ? "Unverify" : "Verify"}
+                              </Button>
                               {isSuper && (
                                 <>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    title="Toggle verification"
-                                    onClick={() => verifyDoc(i)}
-                                  >
-                                    <ShieldCheck className="h-3.5 w-3.5" />
-                                  </Button>
                                   <Button
                                     size="sm"
                                     variant="ghost"
@@ -1529,7 +1630,7 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
 
                     <TabsContent
                       value="history"
-                      className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
+                      className="mt-2 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
                     >
                       {isSuper && historyFormOpen && (
                         <div className="rounded-md border border-border p-3">
@@ -1709,67 +1810,58 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
       </Dialog>
 
       {/* BULK GENERATE RESULTS */}
-      <Dialog open={generatedOpen} onOpenChange={setGeneratedOpen}>
+      <Dialog
+        open={generatedOpen}
+        onOpenChange={(open) => {
+          setGeneratedOpen(open);
+          if (!open) setBulkUnlocked(false);
+        }}
+      >
         <DialogContent className="max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Generated Documents</DialogTitle>
             <DialogDescription>
-              Documents generated from the latest bulk generate action.
+              Documents generated from the latest bulk generate action, grouped per employee.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {generatedDocs.length === 0 ? (
               <p className="text-sm text-muted-foreground">No documents generated yet.</p>
             ) : (
-              generatedDocs.map((g) => (
-                <div
-                  key={g.id}
-                  className="flex items-center justify-between rounded-md border border-border p-3"
-                >
-                  <div>
-                    <p className="text-sm font-medium">{g.employeeName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {g.docType} · generated {g.generatedAt}
-                    </p>
+              generatedGroups.map((group) => (
+                <div key={group.employeeCode} className="rounded-md border border-border p-3">
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{group.employeeName}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {group.employeeCode} · {group.department}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="shrink-0">
+                      {group.items.length} document{group.items.length === 1 ? "" : "s"}
+                    </Badge>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      gateSensitive({ sensitive: true }, () => {
-                        const emp = list.find((e) => e.name === g.employeeName);
-                        exportReport(
-                          {
-                            title: `${g.docType} - ${g.employeeName}`,
-                            ...(emp
-                              ? {
-                                  subtitle: `${emp.id} · ${emp.position} · ${emp.department}`,
-                                }
-                              : {}),
-                            columns: [
-                              { header: "Field", key: "field" },
-                              { header: "Detail", key: "detail" },
-                            ],
-                            rows: emp
-                              ? [
-                                  { field: "Employee", detail: emp.name },
-                                  { field: "Employee No.", detail: emp.id },
-                                  { field: "Position", detail: emp.position },
-                                  { field: "Department", detail: emp.department },
-                                  { field: "Document", detail: g.docType },
-                                  { field: "Generated", detail: g.generatedAt },
-                                ]
-                              : [{ field: "Document", detail: g.docType }],
-                            sensitive: true,
-                          },
-                          "pdf",
-                        );
-                        toast.success(`${g.docType} for ${g.employeeName} downloaded`);
-                      })
-                    }
-                  >
-                    <Download className="mr-1.5 h-3.5 w-3.5" /> Download
-                  </Button>
+                  <div className="space-y-1.5">
+                    {group.items.map((g) => (
+                      <div
+                        key={g.id}
+                        className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2.5 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm">{g.docType}</p>
+                          <p className="text-xs text-muted-foreground">generated {g.generatedAt}</p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0"
+                          onClick={() => downloadGenerated(g)}
+                        >
+                          <Download className="mr-1.5 h-3.5 w-3.5" /> Download
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))
             )}
@@ -1786,42 +1878,68 @@ export function EmployeeRecords({ role }: { role: "superadmin" | "admin" }) {
               Select which documents to generate for {selected.length} selected employee(s).
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            {documentTypes.map((d) => (
-              <label
-                key={d}
-                className="flex cursor-pointer items-center gap-3 rounded-md border border-border px-3 py-2 text-sm"
-              >
-                <Checkbox
-                  checked={bulkTypes.includes(d)}
-                  onCheckedChange={(v) =>
-                    setBulkTypes((prev) => (v ? [...prev, d] : prev.filter((x) => x !== d)))
-                  }
-                />
-                {d}
-              </label>
-            ))}
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <p className="eyebrow">Recipients ({bulkRecipients.length})</p>
+              <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+                {bulkRecipients.map((e) => (
+                  <div key={e.id} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="truncate">{e.name}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {e.id} · {e.department}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="eyebrow">Documents</p>
+              {documentTypes.map((d) => (
+                <label
+                  key={d}
+                  className="flex cursor-pointer items-center gap-3 rounded-md border border-border px-3 py-2 text-sm"
+                >
+                  <Checkbox
+                    checked={bulkTypes.includes(d)}
+                    onCheckedChange={(v) =>
+                      setBulkTypes((prev) => (v ? [...prev, d] : prev.filter((x) => x !== d)))
+                    }
+                  />
+                  {d}
+                </label>
+              ))}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkPickOpen(false)}>
               Cancel
             </Button>
             <Button
-              disabled={bulkTypes.length === 0}
+              disabled={bulkTypes.length === 0 || bulkRecipients.length === 0}
               onClick={() => {
-                const targets = list.filter((e) => selected.includes(e.id));
-                const batch: GeneratedDoc[] = targets.flatMap((e) =>
-                  bulkTypes.map((t) => ({
-                    id: `GEN-${Date.now()}-${e.id}-${t}`,
-                    employeeName: e.name,
-                    docType: t,
-                    generatedAt: new Date().toLocaleString(),
-                  })),
-                );
-                setGeneratedDocs((prev) => [...batch, ...prev]);
-                setBulkPickOpen(false);
-                setGeneratedOpen(true);
-                toast.success(`${batch.length} document(s) generated`);
+                const targets = bulkRecipients;
+                if (targets.length === 0 || bulkTypes.length === 0) return;
+                gateSensitive({ sensitive: true }, () => {
+                  const generatedAt = new Date().toLocaleString();
+                  const batch: GeneratedDoc[] = targets.flatMap((e) =>
+                    bulkTypes.map((t) => ({
+                      id: `GEN-${Date.now()}-${e.id}-${t}`,
+                      employeeCode: e.id,
+                      employeeName: e.name,
+                      department: e.department,
+                      docType: t,
+                      generatedAt,
+                    })),
+                  );
+                  setGeneratedDocs((prev) => [...batch, ...prev]);
+                  setBulkUnlocked(true);
+                  setBulkPickOpen(false);
+                  setGeneratedOpen(true);
+                  setSelected([]);
+                  toast.success(
+                    `${batch.length} document(s) generated for ${targets.length} employee(s)`,
+                  );
+                });
               }}
             >
               <Download className="mr-2 h-4 w-4" /> Generate {bulkTypes.length || ""} document

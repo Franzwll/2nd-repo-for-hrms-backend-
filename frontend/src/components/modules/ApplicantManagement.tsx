@@ -5445,7 +5445,14 @@ function ApplicantViewScreen({
             )}
           </div>
           {historyLoading ? (
-            <p className="text-xs text-muted-foreground">Loading application history…</p>
+            <div
+              className="space-y-2"
+              aria-busy="true"
+              aria-label="Loading application history"
+            >
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
           ) : history?.cooldown ? (
             <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed">
               Eligible to re-apply on{" "}
