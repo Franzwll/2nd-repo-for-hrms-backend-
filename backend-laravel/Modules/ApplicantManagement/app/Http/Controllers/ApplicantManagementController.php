@@ -20,6 +20,7 @@ use Modules\ApplicantManagement\Http\Requests\StoreApplicantRequest;
 use Modules\ApplicantManagement\Http\Requests\UpdateApplicantRequest;
 use Modules\ApplicantManagement\Http\Resources\ApplicantResource;
 use Modules\ApplicantManagement\Models\Applicant;
+use Modules\ApplicantManagement\Services\DocumentVerificationService;
 use Modules\ApplicantManagement\Services\OfferService;
 use Modules\ApplicantManagement\Services\ScreeningService;
 use Modules\RecruitmentManagement\Models\JobPost;
@@ -363,6 +364,11 @@ class ApplicantManagementController extends Controller
     public function recomputeScreening(int $applicant): JsonResponse
     {
         $model = Applicant::with('jobPost')->findOrFail($applicant);
+
+        /* Documents uploaded before the resume was screened were never
+           compared (PENDING). Verify them first so a manual recompute really
+           reflects every uploaded paper, not just the ones checked by hand. */
+        app(DocumentVerificationService::class)->verifyPendingDocuments($model);
 
         $screening = $this->screening->recomputeWithDocuments($model);
 

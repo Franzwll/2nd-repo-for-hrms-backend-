@@ -19,18 +19,84 @@ use Modules\ApplicantManagement\Services\ScreeningService;
  *  4. persists the structured result back on the applicant_documents row,
  *  5. logs the action through AuditLogger.
  *
- * Documents uploaded before any screening exists stay at PENDING and can be
- * re-verified later via POST /api/v1/applicant-documents/{id}/verify (e.g.
- * after the resume has been re-screened). The existing resume screening and
- * 7-point credential verification pipeline is completely untouched.
+ * Documents uploaded before any screening exists stay at PENDING until a
+ * resume profile becomes available — ScreeningService::screenAndPersist()
+ * calls verifyPendingDocuments() right after persisting a screening, so a
+ * public landing application (docs uploaded first, resume screened second)
+ * ends up fully verified without HR having to press "Re-verify". They can
+ * also be re-verified on demand via
+ * POST /api/v1/applicant-documents/{id}/verify. The existing resume screening
+ * and 7-point credential verification pipeline is completely untouched.
  */
 class DocumentVerificationService
 {
+    /** Statuses that mean "no comparison has been made yet". */
+    public const PENDING_STATUSES = ['PENDING', 'PROCESSING'];
+
     public function __construct(protected NlpService $nlp)
     {
     }
 
+    /**
+     * Verifies one document and then refreshes the applicant's ranking with
+     * the fresh evidence. Public entry point for the document APIs.
+     */
     public function verifyDocument(ApplicantDocument $document): ApplicantDocument
+    {
+        $document = $this->runVerification($document);
+
+        // Feed the fresh verification result into the applicant's ranking:
+        // the screening score/status is recomputed with the document
+        // evidence, so the percentage, rank order and official status stay
+        // in sync (a discrepancy flips the candidate to Invalid credential).
+        $this->refreshRanking($document->applicant, 'document verification');
+
+        return $document;
+    }
+
+    /**
+     * Verifies every document of the applicant that never got compared to the
+     * resume (uploaded before the resume was screened, or interrupted while
+     * processing). Returns how many documents were submitted for verification.
+     *
+     * The ranking is deliberately NOT refreshed per document: the caller
+     * recomputes it once with the complete evidence set, which avoids one
+     * reclassification call per file.
+     */
+    public function verifyPendingDocuments(Applicant $applicant): int
+    {
+        $documents = $applicant->documents()
+            ->where(function ($query) {
+                $query->whereIn('verification_status', self::PENDING_STATUSES)
+                    ->orWhereNull('verification_status');
+            })
+            ->orderBy('applicant_document_id')
+            ->get();
+
+        $verified = 0;
+        foreach ($documents as $document) {
+            try {
+                $this->runVerification($document);
+                $verified++;
+            } catch (\Throwable $e) {
+                Log::warning(sprintf(
+                    'Could not verify pending document %d for applicant %d: %s',
+                    $document->applicant_document_id,
+                    $applicant->applicant_id,
+                    $e->getMessage()
+                ));
+            }
+        }
+
+        return $verified;
+    }
+
+    /**
+     * Runs the comparison itself (NLP call + persistence) WITHOUT touching the
+     * ranking. verifyDocument() wraps this with a ranking refresh;
+     * verifyPendingDocuments() batches it.
+     */
+    public function runVerification(ApplicantDocument $document): ApplicantDocument
     {
         $document->update(['verification_status' => 'PROCESSING']);
 
@@ -115,12 +181,6 @@ class DocumentVerificationService
                     $document->verification_status
                 )
             );
-
-            // Feed the fresh verification result into the applicant's ranking:
-            // the screening score/status is recomputed with the document
-            // evidence, so the percentage, rank order and official status stay
-            // in sync (a discrepancy flips the candidate to Invalid credential).
-            $this->refreshRanking($document->applicant, 'document verification');
         } catch (\Throwable $e) {
             Log::error('Supporting-document verification failed: ' . $e->getMessage());
 

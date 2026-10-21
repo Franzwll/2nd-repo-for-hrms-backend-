@@ -4718,20 +4718,35 @@ export function ScreeningResumeDocsMatchDetail({
   const checked = sections.filter((s) => s.status !== "not-checked").length;
   const pct = Math.round((confirmed / sections.length) * 100);
 
+  /** Papers exist but the NLP comparison never ran (e.g. documents uploaded
+   *  before the resume was screened). Saying "partially confirmed" here would
+   *  imply a verdict that does not exist yet. */
+  const allPending =
+    docs.length > 0 &&
+    docs.every((d) => {
+      const status = (d.verification_status ?? "").toUpperCase();
+      return status === "" || status === "PENDING" || status === "PROCESSING";
+    });
+
   const overall =
     docs.length === 0
       ? { label: "No papers yet", className: "border-border bg-secondary text-muted-foreground" }
-      : needsReview > 0
+      : allPending
         ? {
-            label: "Needs your review",
-            className: "border-warning/30 bg-warning/10 text-warning-foreground",
+            label: "Comparison pending",
+            className: "border-border bg-secondary text-muted-foreground",
           }
-        : checked === sections.length && confirmed === sections.length
-          ? { label: "All confirmed", className: "border-success/25 bg-success/10 text-success" }
-          : {
-              label: "Partially confirmed",
-              className: "border-primary/25 bg-primary/10 text-primary",
-            };
+        : needsReview > 0
+          ? {
+              label: "Needs your review",
+              className: "border-warning/30 bg-warning/10 text-warning-foreground",
+            }
+          : checked === sections.length && confirmed === sections.length
+            ? { label: "All confirmed", className: "border-success/25 bg-success/10 text-success" }
+            : {
+                label: "Partially confirmed",
+                className: "border-primary/25 bg-primary/10 text-primary",
+              };
 
   const sectionMeta: Record<MatchSection["key"], { icon: React.ReactNode; empty: string }> = {
     identity: {
@@ -4795,6 +4810,12 @@ export function ScreeningResumeDocsMatchDetail({
         <p className="mt-3 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
           <Info className="h-4 w-4 shrink-0" /> No proof papers uploaded yet. Upload a COE,
           education certificate or licence to start the check.
+        </p>
+      ) : allPending ? (
+        <p className="mt-3 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
+          <Clock className="h-4 w-4 shrink-0" /> The papers are uploaded but not compared with the
+          resume yet. Use Re-verify on the document below (new applications are compared
+          automatically once the resume is screened).
         </p>
       ) : (
         <>

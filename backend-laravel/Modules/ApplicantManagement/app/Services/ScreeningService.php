@@ -257,7 +257,22 @@ class ScreeningService
             }
         }
 
-        return $this->persistResult($applicant, $jobPost, $result, $error);
+        $screening = $this->persistResult($applicant, $jobPost, $result, $error);
+
+        /* Supporting documents uploaded BEFORE the resume was screened (public
+           landing application: documents are stored first, screening runs
+           second) have no resume profile to compare against yet, so they were
+           parked at PENDING. Now that a profile exists, verify them and blend
+           the evidence in — otherwise Resume vs Documents Match stays empty
+           and the documents never move the ranking score. */
+        if ($screening && $screening->processing_status !== 'FAILED') {
+            $pending = app(DocumentVerificationService::class)->verifyPendingDocuments($applicant);
+            if ($pending > 0) {
+                $screening = $this->recomputeWithDocuments($applicant) ?? $screening;
+            }
+        }
+
+        return $screening;
     }
 
     /**
