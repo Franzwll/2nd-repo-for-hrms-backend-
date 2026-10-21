@@ -30,14 +30,14 @@ from pydantic import BaseModel
 
 from app import config
 from app.services import document_verification, entity_extraction, matching, pipeline, preprocessing, screening
-from app.services import doc_classifier, reference_data
+from app.services import doc_classifier, reference_data, section_detection
 from app.services.text_extraction import ExtractionError, extract_text
 
 logger = logging.getLogger("nlp-service")
 
 # Bump this whenever the classifier/extractor changes so the test page can
 # prove which engine version actually answered (stale-process diagnosis).
-CLASSIFIER_VERSION = "v8-resume-ocr+diagnostics"
+CLASSIFIER_VERSION = "v9-fast-classify+ocr-warmup"
 
 app = FastAPI(
     title="HRMS NLP Screening Service",
@@ -61,6 +61,35 @@ def load_models() -> None:
         logger.info("Models loaded: %s", info)
     except Exception as exc:
         logger.error("Model loading failed at startup: %s", exc)
+    _warm_extraction()
+
+
+def _warm_extraction() -> None:
+    """Pays first-upload costs at boot: parser imports + one tiny OCR run.
+
+    Tesseract's first invocation per process is several seconds slower than
+    the rest, and pdfplumber/pypdfium2/python-docx are imported lazily. Both
+    are warmed defensively so a missing dependency can never block startup.
+    """
+    for module in ("pdfplumber", "pypdfium2", "docx"):
+        try:
+            __import__(module)
+        except Exception:
+            pass
+    try:
+        from PIL import Image
+
+        from app.services import text_extraction
+
+        if not text_extraction._locate_tesseract():
+            logger.info("OCR warm-up skipped: Tesseract not installed.")
+            return
+        import pytesseract
+
+        pytesseract.image_to_string(Image.new("L", (64, 32), 255), config="--psm 6")
+        logger.info("OCR warm-up complete.")
+    except Exception as exc:  # noqa: BLE001 - warm-up must never block startup
+        logger.warning("OCR warm-up skipped: %s", exc)
 
 
 @app.get("/health")
@@ -413,7 +442,9 @@ async def classify_document(file: UploadFile = File(...), is_first: bool = Form(
 
     try:
         try:
-            extracted_meta = extract_text(tmp_path, file.filename or "")
+            # Classification only needs section/keyword evidence, not a
+            # faithful transcript: allow the single-pass OCR shortcut.
+            extracted_meta = extract_text(tmp_path, file.filename or "", fast=True)
         except ExtractionError as exc:
             logger.warning("Classify-document extraction failed: %s", exc)
             return _unreadable(f"Could not read file text: {exc}")
@@ -425,7 +456,10 @@ async def classify_document(file: UploadFile = File(...), is_first: bool = Form(
             logger.warning("Classify-document preprocessing failed: %s", exc)
             return _unreadable(f"Could not process file text: {exc}")
         try:
-            sections = list(entity_extraction.get_extractor().extract(text).get("sections_detected", []))
+            # classify_text only needs the section NAMES, which is the same
+            # detect_sections() call extract() makes internally. Skipping the
+            # full NER pass saves ~120 ms per classify without changing scores.
+            sections = sorted(section_detection.detect_sections(text))
         except Exception:  # noqa: BLE001 - section detection must never break classification
             sections = []
         try:
