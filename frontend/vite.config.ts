@@ -46,7 +46,8 @@ export default defineConfig({
   preview: {
     host: "0.0.0.0",
     port: 3000,
-    allowedHosts: [
+    allowedHosts:
+    [
       "hrms1.oxfordsuitesmakati.io",
       "testhrms1.oxfordsuitesmakati.io",
     ],
