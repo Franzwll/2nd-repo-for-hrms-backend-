@@ -45,6 +45,7 @@ interface Message {
     buttonText: string;
     linkTo?: string;
     category?: string;
+    requestModule?: "payroll" | "attendance" | "promotion" | "documents";
   };
   serverId?: number | null;
   sources?: ApiChatbotSource[];
@@ -174,8 +175,9 @@ export function EmployeeAiPage() {
       return {
         title: "File a Leave Request",
         description: "Submit vacation, sick, or emergency leave for supervisor review.",
-        buttonText: "Go to Leave Application →",
+        buttonText: "File Leave in My Request →",
         category: "Attendance",
+        requestModule: "attendance",
       };
     if (q.includes("pay") || q.includes("salary") || q.includes("payslip"))
       return {
@@ -188,8 +190,9 @@ export function EmployeeAiPage() {
       return {
         title: "Request Official Document / COE",
         description: "Submit a signed document request to HR Administration.",
-        buttonText: "Open Document Requests in ESS →",
+        buttonText: "Request in My Request →",
         category: "Documents",
+        requestModule: "documents",
       };
     if (q.includes("promotion"))
       return {
@@ -669,7 +672,12 @@ export function EmployeeAiPage() {
                             <Button
                               size="sm"
                               onClick={() => {
-                                if (msg.actionCard?.category) {
+                                if (msg.actionCard?.requestModule) {
+                                  navigate({
+                                    to: "/employee/my-requests/$module",
+                                    params: { module: msg.actionCard.requestModule },
+                                  });
+                                } else if (msg.actionCard?.category) {
                                   navigate({
                                     to: "/employee/ess",
                                     search: { category: msg.actionCard.category },

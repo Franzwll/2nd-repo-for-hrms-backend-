@@ -943,7 +943,7 @@ class EssPortalController extends Controller
                     'overtime_hours' => ($i % 5 === 0 && ! $isWeekend) ? 1.5 : 0.0,
                     'status' => $isWeekend ? 'Rest Day' : ($i === 3 ? 'Late' : 'Present'),
                     'biometric_device_id' => $isWeekend ? null : 'BIO-MAIN-01',
-                    'remarks' => $isWeekend ? 'Scheduled Weekly Rest Day' : 'Biometric Terminal Clock',
+                    'remark' => $isWeekend ? 'Scheduled Weekly Rest Day' : 'Biometric Terminal Clock',
                 ]);
             }
 
@@ -965,7 +965,7 @@ class EssPortalController extends Controller
                 'average_hours' => 8.0,
             ],
             'records' => $records->map(fn ($r) => [
-                'id' => $r->attendance_record_id,
+                'id' => $r->attendance_id,
                 'date' => Carbon::parse($r->work_date)->format('M d, Y'),
                 'day' => Carbon::parse($r->work_date)->format('l'),
                 'rawDate' => $r->work_date?->toDateString() ?? $r->work_date,
@@ -973,8 +973,16 @@ class EssPortalController extends Controller
                 'timeOut' => $r->time_out ? Carbon::parse($r->time_out)->format('h:i A') : '—',
                 'workedHours' => (float) $r->hours_worked,
                 'status' => $r->status,
+                // `status` is the processing state ("Completed" / leave type),
+                // while `remark` holds the attendance verdict ("Present",
+                // "Late 7 mins", "Overtime 2h", ...). Expose both so the ESS
+                // calendar can colour days correctly.
+                'remark' => $r->remark,
+                'remarks' => $r->remark ?: 'Verified via HR Biometric Sync',
+                'lateMinutes' => (int) $r->late_minutes,
+                'undertimeMinutes' => (int) $r->undertime_minutes,
+                'overtimeHours' => (float) $r->overtime_hours,
                 'device' => $r->biometric_device_id ?: 'Web Portal / Mobile Clock',
-                'remarks' => $r->remarks ?: 'Verified via HR Biometric Sync',
             ]),
         ]);
     }

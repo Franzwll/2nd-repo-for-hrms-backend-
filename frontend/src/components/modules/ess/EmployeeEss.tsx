@@ -3,9 +3,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { PageHeader } from "@/components/portal/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuickClockModal } from "@/components/modules/ess/modals/QuickClockModal";
-import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
 import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewerModal";
-import { DocumentRequestModal } from "@/components/modules/ess/modals/DocumentRequestModal";
 import { EssAiAssistantModal } from "@/components/modules/ess/modals/EssAiAssistantModal";
 import { myPayroll } from "@/data/ess";
 
@@ -86,9 +84,7 @@ export function EmployeeEss() {
   const navigate = useNavigate();
   // Global Quick Action Modals
   const [clockModalOpen, setClockModalOpen] = useState(false);
-  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [payslipModalOpen, setPayslipModalOpen] = useState(false);
-  const [docRequestModalOpen, setDocRequestModalOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
 
   // Sync category query parameter from TanStack Router URL (e.g. ?category=Attendance)
@@ -99,52 +95,52 @@ export function EmployeeEss() {
   const getPageTitle = () => {
     switch (categoryParam) {
       case "Schedule":
-        return "Employee Self-Service · Weekly Shift Schedule & Roster";
+        return "Weekly Shift Schedule & Roster";
       case "Clocking":
-        return "Employee Self-Service · Daily Web Clocking";
+        return "Daily Web Clocking";
       case "Leave":
-        return "Employee Self-Service · Apply for Leave";
+        return "My Attendance";
       case "Payroll":
       case "Payslip":
-        return "Employee Self-Service · Payroll";
+        return "My Payroll";
       case "Performance":
       case "Promotion":
-        return "Employee Self-Service · Performance";
+        return "My Performance";
       case "Documents":
       case "RequestDoc":
-        return "Employee Self-Service · Company Documents";
+        return "My Documents";
       case "Recognition":
-        return "Employee Self-Service · Social Recognition & Kudos";
+        return "Social Recognition & Kudos";
       case "Requests":
       case "COE":
-        return "Employee Self-Service · All Requests Tracker";
+        return "All Requests Tracker";
       case "Benefits":
       case "Statutory":
-        return "Employee Self-Service · Statutory Benefits & HMO";
+        return "Statutory Benefits & HMO";
       case "Attendance":
-        return "Employee Self-Service · Attendance, Schedule & Balances";
+        return "My Attendance";
       default:
-        return "Employee Self-Service · Overview";
+        return "Overview";
     }
   };
 
   const getPageDescription = () => {
     switch (categoryParam) {
       case "Schedule":
-        return "7-day weekly shift assignments, station assignments, and shift swap requests.";
+        return "7-day weekly shift assignments and station assignments. Arrange shift swaps from My Request → Attendance.";
       case "Clocking":
         return "Live web clocking terminal, real-time punch records, and station geolocation verification.";
       case "Leave":
-        return "Submit formal paid and statutory leave applications for supervisor approval.";
+        return "Live web clocking, weekly roster, and biometric records. File leave from My Request → Attendance.";
       case "Payroll":
       case "Payslip":
-        return "View net pay information, released payslips history, statutory benefits, and submit inquiries.";
+        return "View net pay, released payslips, and statutory benefits. File payroll inquiries from My Request → Payroll.";
       case "Performance":
       case "Promotion":
-        return "Review your performance evaluation and request a promotion review, then track your HR decision.";
+        return "Review your performance evaluation and learning progress. File career requests from My Request → Promotion.";
       case "Documents":
       case "RequestDoc":
-        return "View submitted, missing, and available employee documents and request official HR records.";
+        return "View submitted, missing, and available employment documents. Request official records from My Request → Documents.";
       case "Recognition":
         return "Explore achievements, amplify praise, and celebrate hotel service values on the public Wall of Fame.";
       case "Requests":
@@ -154,7 +150,7 @@ export function EmployeeEss() {
       case "Statutory":
         return "Review SSS, PhilHealth, Pag-IBIG HDMF, and healthcare coverage.";
       case "Attendance":
-        return "Live web clocking terminal, weekly shift roster, biometric time records, and leave applications.";
+        return "Live web clocking terminal, weekly shift roster, and biometric time records.";
       default:
         return "Your personal HR hub — attendance, payroll, documents, requests, and career tools at a glance.";
     }
@@ -186,18 +182,23 @@ export function EmployeeEss() {
 
       {/* ── Global Modals ── */}
       <QuickClockModal open={clockModalOpen} onOpenChange={setClockModalOpen} />
-      <LeaveApplicationModal open={leaveModalOpen} onOpenChange={setLeaveModalOpen} />
       <PayslipViewerModal
         open={payslipModalOpen}
         onOpenChange={setPayslipModalOpen}
         period="2026-07-01 – 07-15"
         netPay={myPayroll.net}
       />
-      <DocumentRequestModal open={docRequestModalOpen} onOpenChange={setDocRequestModalOpen} />
       <EssAiAssistantModal
         open={aiModalOpen}
         onOpenChange={setAiModalOpen}
         onNavigateCategory={(cat) => {
+          if (cat.startsWith("MyRequest:")) {
+            const module = cat.split(":")[1];
+            if (module === "attendance" || module === "documents" || module === "payroll" || module === "promotion") {
+              navigate({ to: "/employee/my-requests/$module", params: { module } });
+            }
+            return;
+          }
           if (cat === "Schedule" || cat === "Clocking" || cat === "Attendance" || cat === "Leave") {
             navigate({ to: "/employee/ess", search: { category: cat } });
           } else if (cat === "Payroll") {

@@ -64,6 +64,20 @@ export function EssStatusBadge({ status }: { status: string }) {
           Late
         </Badge>
       );
+    case "Rest Day":
+      return (
+        <Badge variant="outline" className="bg-slate-500/10 text-slate-600 border-slate-500/30 font-medium">
+          Rest Day
+        </Badge>
+      );
+    case "Leave":
+    case "Sick Leave":
+    case "Vacation Leave":
+      return (
+        <Badge variant="outline" className="bg-violet-500/10 text-violet-600 border-violet-500/30 font-medium">
+          {status}
+        </Badge>
+      );
     case "In Progress":
       return (
         <Badge variant="outline" className="bg-sky-500/10 text-sky-600 border-sky-500/30 font-medium">

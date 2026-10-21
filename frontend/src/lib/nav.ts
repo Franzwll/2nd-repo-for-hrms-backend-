@@ -43,10 +43,11 @@ const recruitmentChildren = (base: string) => [
 ];
 
 const essChildren = (base: string) => [
-  { label: "Attendance & Schedule", to: `${base}/ess?category=Attendance` },
-  { label: "Payroll", to: `${base}/ess?category=Payroll` },
-  { label: "Performance", to: `${base}/ess?category=Promotion` },
-  { label: "Company Documents", to: `${base}/ess?category=Documents` },
+  { label: "My Attendance", to: `${base}/ess?category=Attendance` },
+  { label: "My Payroll", to: `${base}/ess?category=Payroll` },
+  { label: "My Performance", to: `${base}/ess?category=Promotion` },
+  { label: "My Documents", to: `${base}/ess?category=Documents` },
+  { label: "My Request", to: `${base}/my-requests` },
   { label: "Social Recognition", to: `${base}/ess?category=Recognition` },
   { label: "HR AI Concierge", to: `${base}/ai` },
 ];
@@ -62,7 +63,12 @@ export function navForRole(role: Role): NavItem[] {
   if (role === "employee") {
     return [
       { label: "Dashboard", to: base, icon: LayoutDashboard },
-      { label: "Employee Self-Service", to: `${base}/ess`, icon: Headset, children: essChildren(base) },
+      {
+        label: "Employee Self-Service",
+        to: `${base}/ess`,
+        icon: Headset,
+        children: essChildren(base),
+      },
       { label: "Onboarding", to: `${base}/onboarding`, icon: ClipboardCheck },
       { label: "Settings", to: `${base}/settings`, icon: Settings },
     ];
@@ -95,10 +101,7 @@ export function navForRole(role: Role): NavItem[] {
     ];
   }
 
-  return [
-    ...shared,
-    { label: "Settings", to: `${base}/settings`, icon: Settings },
-  ];
+  return [...shared, { label: "Settings", to: `${base}/settings`, icon: Settings }];
 }
 
 export const iconRegistry = { Users, UserCheck };
