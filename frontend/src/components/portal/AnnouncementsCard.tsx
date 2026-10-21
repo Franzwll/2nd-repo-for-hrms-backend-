@@ -1,4 +1,4 @@
-import { Megaphone, Plus, Trash2, ArrowUpRight, ChevronRight } from "lucide-react";
+import { Megaphone, Plus, Trash2, ArrowUpRight, ChevronRight, CheckCheck } from "lucide-react";
 import { useState } from "react";
 
 import { AnnouncementDialog } from "@/components/portal/AnnouncementDialog";
@@ -13,16 +13,24 @@ import type { Role } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 export function AnnouncementsCard({ role, className }: { role: Role; className?: string }) {
-  const { announcements, removeAnnouncement } = usePortalState();
+  const {
+    announcements,
+    removeAnnouncement,
+    readAnnouncementIds,
+    markAnnouncementRead,
+    markAnnouncementsRead,
+  } = usePortalState();
   const canManage = role === "superadmin" || role === "admin";
   const [publishOpen, setPublishOpen] = useState(false);
   const [viewAllOpen, setViewAllOpen] = useState(false);
   const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<string | null>(null);
 
   const visible = announcements.filter((a) => isVisibleTo(a.audience, role));
+  const unread = visible.filter((a) => !readAnnouncementIds.has(String(a.id)));
   const previewItems = visible.slice(0, 3);
 
   const handleOpenAnnouncement = (id: string) => {
+    void markAnnouncementRead(String(id));
     setSelectedAnnouncementId(id);
     setViewAllOpen(true);
   };
@@ -38,14 +46,27 @@ export function AnnouncementsCard({ role, className }: { role: Role; className?:
             <div>
               <h2 className="font-display text-xl sm:text-2xl font-semibold flex items-center gap-2">
                 Announcements
-                <Badge variant="outline" className="text-xs">
-                  {visible.length}
-                </Badge>
+                {unread.length > 0 && (
+                  <Badge variant="outline" className="text-xs bg-gold/15 text-gold-foreground border-gold/40">
+                    {unread.length} new
+                  </Badge>
+                )}
               </h2>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="shrink-0 h-8 text-xs gap-1"
+              onClick={() => void markAnnouncementsRead(visible.map((a) => String(a.id)))}
+              disabled={unread.length === 0}
+              title="Mark all announcements as read"
+            >
+              <CheckCheck className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Mark all read</span>
+            </Button>
             {canManage && (
               <Button
                 size="sm"
