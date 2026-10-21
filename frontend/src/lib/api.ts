@@ -1268,7 +1268,12 @@ export const jobPostsApi = {
     });
   },
   delete: (id: number | string) =>
-    request<{ message: string }>(`/job-posts/${id}`, { method: "DELETE" }),
+    request<{
+      message: string;
+      archived?: boolean;
+      applicants?: number;
+      requisitions?: number;
+    }>(`/job-posts/${id}`, { method: "DELETE" }),
   toggle: (id: number | string) =>
     request<ApiJobPost>(`/job-posts/${id}/toggle`, { method: "PATCH" }),
   publish: (id: number | string, platforms: string[]) =>

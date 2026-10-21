@@ -1,4 +1,4 @@
-# AI Job-Post Draft Generation (Groq → OpenRouter → Gemini)
+# AI Job-Post Draft Generation (Gemini → Groq → OpenRouter)
 
 One-click auto-fill for the **Job Post Builder** in Recruitment Management.
 HR picks a position, clicks **Generate with AI**, and the 6 content blocks are
@@ -6,13 +6,17 @@ filled with AI-generated text grounded in the screening vocabulary. Nothing
 is published automatically — HR always reviews the draft before **Save draft**
 or **Publish job post**.
 
-- Chain: Groq `JOB_GROQ_MODEL` (default `openai/gpt-oss-20b`) → OpenRouter
-  `JOB_OPENROUTER_MODEL` (default `nvidia/nemotron-3-super-120b-a12b:free`) →
-  shared Gemini `GEMINI_MODEL` (default `gemini-3.5-flash-lite`)
+- Chain: shared Gemini `GEMINI_MODEL` (default `gemini-3.5-flash-lite`) → optional
+  2nd Gemini key `GEMINI_FALLBACK_API_KEY` (same model, other credential) → Groq
+  `JOB_GROQ_MODEL` (default `openai/gpt-oss-20b`) → OpenRouter
+  `JOB_OPENROUTER_MODEL` (default `nvidia/nemotron-3-super-120b-a12b:free`)
+- Fast failover: the primary provider gets a **short timeout + one attempt**
+  (`JOB_GEMINI_TIMEOUT`, 10 s), so a slow Gemini hands over to Groq in seconds
+  instead of stalling the request
 - Pattern: secure **backend proxy** — the API keys never reach the browser
 - Grounding: `screening_reference_data` (skills + certifications), the same
   vocabulary the NLP applicant-screening scores against
-- Resilience: Groq → OpenRouter → Gemini, with per-provider cool-downs after usage limits
+- Resilience: Gemini → 2nd Gemini key → Groq → OpenRouter, with per-provider cool-downs after usage limits
 - **Usage indicator** beside the button: provider chain state, drafts used
   today, and a live "resets in Xm" countdown when the free tier is used up
 
@@ -52,11 +56,17 @@ Backend fallbacks guarantee `instructions` and `about` are never blank
        │                                                              └────────┬───────────────┘
        │                                                                       │ ② prompt + vocabulary
        │                                                                       ▼
-       │                                                              ┌────────────────────────┐
-       │                                                              │ Google Gemini API      │
-       │                                                              │ gemini-3.5-flash-lite  │
-       │                                                              │ :generateContent       │
-       │                                                              └────────────────────────┘
+        │                                                              ┌────────────────────────┐
+        │                                                              │ Google Gemini API      │
+        │                                                              │ gemini-3.5-flash-lite  │
+        │                                                              │ :generateContent       │
+        │                                                              └───────────┬────────────┘
+        │                                                                          │ slow / error
+        │                                                                          ▼
+        │                                                              ┌────────────────────────┐
+        │                                                              │ Groq → OpenRouter     │
+        │                                                              │ (fallback chain)       │
+        │                                                              └────────────────────────┘
 ```
 
 **Why a backend proxy (not calling Gemini from the browser)?**
@@ -182,14 +192,17 @@ chip stays Ready and generation still works.
 1. **Validate** input: `position_title` required; `department`,
    `employment_type` (Full-time/Part-time/Contract/Seasonal), `schedule`,
    `vacancies` (1–500), `experience_level`, `education_level` optional.
-2. **Config check**: if no `GEMINI_API_KEY` → `422` (*"Set GEMINI_API_KEY on
-   the API server"*). Frontend surfaces this as a friendly error.
+2. **Config check**: if no `GEMINI_API_KEY`, `JOB_GROQ_API_KEY` or
+   `JOB_OPENROUTER_API_KEY` → `422` (*"Set GEMINI_API_KEY … on the API
+   server"*). Frontend surfaces this as a friendly error.
 3. **Load vocabulary**: `ScreeningReferenceData::mappingFor('skill')` and
    `mappingFor('certification')` → `{canonical: [aliases]}`. Wrapped in
    try/catch — degrades to empty lists if the table is unavailable.
 4. **Generate**: `JobContentGenerator::generate($job, $vocabulary)` walks the
-   provider chain (Gemini → second Gemini key → OpenRouter):
+   provider chain (Gemini → 2nd Gemini key → Groq → OpenRouter):
    - providers that are cooling down (recent usage limit / dead key) are skipped,
+   - each provider has its own timeout + attempt budget — the primary gets one
+     short attempt, so a slow Gemini fails over in ~10 s,
    - each HTTP failure is classified into a code (`quota_day`, `rate_minute`,
      `auth`, `model`, `request`, `overloaded`, `network`, `unreadable`),
    - the most actionable failure wins the final message (usage limit > bad key
@@ -267,14 +280,14 @@ Success (`200`):
     "about": "Oxford Suites Makati is a premier all-suite hotel…"
   },
   "meta": {
-    "model": "gemini-3.6-flash",
-    "generated_via": { "service": "Google Gemini", "model": "gemini-3.6-flash", "free": false },
+    "model": "gemini-3.5-flash-lite",
+    "generated_via": { "service": "Google Gemini", "model": "gemini-3.5-flash-lite", "free": false },
     "vocabulary": { "skills_count": 53, "certifications_count": 12 },
     "skills_matched": ["Check-in / Check-out", "Communication"],
     "skills_new": ["Upselling"],
     "usage": {
       "configured": true,
-      "primary_model": "gemini-3.6-flash",
+      "primary_model": "gemini-3.5-flash-lite",
       "daily_limit": 0,
       "used_today": 4,
       "remaining_today": null,
@@ -285,9 +298,11 @@ Success (`200`):
       "blocked_code": null,
       "blocked_reason": null,
       "providers": [
-        { "service": "Google Gemini", "model": "gemini-3.6-flash", "kind": "gemini", "blocked": false, "blocked_until": null, "blocked_reason": null }
+        { "service": "Google Gemini", "model": "gemini-3.5-flash-lite", "kind": "gemini", "blocked": false, "blocked_until": null, "blocked_reason": null },
+        { "service": "Groq", "model": "openai/gpt-oss-20b", "kind": "groq", "blocked": false, "blocked_until": null, "blocked_reason": null },
+        { "service": "OpenRouter", "model": "nvidia/nemotron-3-super-120b-a12b:free", "kind": "openrouter", "blocked": false, "blocked_until": null, "blocked_reason": null }
       ],
-      "last_success": { "service": "Google Gemini", "model": "gemini-3.6-flash", "at": "2026-09-23T10:12:04+08:00" },
+      "last_success": { "service": "Google Gemini", "model": "gemini-3.5-flash-lite", "at": "2026-09-23T10:12:04+08:00" },
       "last_error": null
     }
   }
@@ -326,28 +341,45 @@ Errors: `422` validation / key not configured · `429` usage limit reached ·
 
 | Variable | Where | Default | Purpose |
 |----------|-------|---------|---------|
-| `JOB_GROQ_API_KEY` | `backend-laravel/.env` (**gitignored — real key only here**) | — | Groq key for job drafts (1st provider; **different** from the chat key) |
-| `JOB_GROQ_MODEL` | `backend-laravel/.env` (optional) | `openai/gpt-oss-20b` | Groq model slug |
-| `JOB_OPENROUTER_API_KEY` | `backend-laravel/.env` (optional) | — | OpenRouter key for job drafts (2nd fallback; **different** from the chat key) |
-| `JOB_OPENROUTER_MODEL` | `backend-laravel/.env` (optional) | `nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter model slug |
-| `GEMINI_API_KEY` | `backend-laravel/.env` (**gitignored — real key only here**) | — | Shared Google AI Studio key (3rd fallback, same key as chat) |
+| `GEMINI_API_KEY` | `backend-laravel/.env` (**gitignored — real key only here**) | — | Shared Google AI Studio key (**1st provider**, same key as chat) |
 | `GEMINI_MODEL` | `backend-laravel/.env` (optional) | `gemini-3.5-flash-lite` | Model override / version pin |
-| `GEMINI_TIMEOUT` | `backend-laravel/.env` (optional) | `30` | HTTP timeout (seconds) |
-| `GEMINI_FALLBACK_API_KEY` | `backend-laravel/.env` (optional) | — | Extra Gemini key used when the shared key is rate-limited |
+| `JOB_GROQ_API_KEY` | `backend-laravel/.env` (**gitignored — real key only here**) | — | Groq key for job drafts (2nd provider; **different** from the chat key) |
+| `JOB_GROQ_MODEL` | `backend-laravel/.env` (optional) | `openai/gpt-oss-20b` | Groq model slug |
+| `JOB_OPENROUTER_API_KEY` | `backend-laravel/.env` (optional) | — | OpenRouter key for job drafts (3rd provider; **different** from the chat key) |
+| `JOB_OPENROUTER_MODEL` | `backend-laravel/.env` (optional) | `nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter model slug |
+| `GEMINI_TIMEOUT` | `backend-laravel/.env` (optional) | `30` | Fallback HTTP timeout (seconds) when a provider has no own budget |
+| `JOB_GEMINI_TIMEOUT` | `backend-laravel/.env` (optional) | `10` | Timeout for the primary Gemini call — how long a slow Gemini may stall the click |
+| `JOB_GEMINI_ATTEMPTS` | `backend-laravel/.env` (optional) | `1` | Attempts for Gemini — `1` means a slow/timeout Gemini fails over immediately |
+| `JOB_GROQ_TIMEOUT` | `backend-laravel/.env` (optional) | `20` | Timeout for the Groq call |
+| `JOB_GROQ_ATTEMPTS` | `backend-laravel/.env` (optional) | `2` | Attempts for Groq (503/overloaded is retried) |
+| `JOB_OPENROUTER_TIMEOUT` | `backend-laravel/.env` (optional) | `20` | Timeout for the OpenRouter call |
+| `JOB_OPENROUTER_ATTEMPTS` | `backend-laravel/.env` (optional) | `2` | Attempts for OpenRouter |
+| `JOB_AI_TOTAL_BUDGET` | `backend-laravel/.env` (optional) | `25` | Ceiling (seconds) for one generation across all providers — no further provider is started past it |
+| `GEMINI_FALLBACK_API_KEY` | `backend-laravel/.env` (optional) | — | 2nd Gemini key, used right after the primary when the shared key is rate-limited (same model, other credential) |
 | `GEMINI_FALLBACK_MODEL` | `backend-laravel/.env` (optional) | primary model | Model for the fallback key |
 | `JOB_AI_DAILY_LIMIT` | `backend-laravel/.env` (optional) | `0` (unlimited) | App-level cap on drafts per day; the indicator shows `used/limit` and the API answers `429` past it |
 
 Setup:
 
-1. Get keys at `https://console.groq.com/keys`, `https://openrouter.ai/keys`, and `https://aistudio.google.com/apikey`.
-2. Add `JOB_GROQ_API_KEY=...`, `JOB_OPENROUTER_API_KEY=...`, and `GEMINI_API_KEY=...` to `backend-laravel/.env` (never to `.env.example`
+1. Get keys at `https://aistudio.google.com/apikey`, `https://console.groq.com/keys` and `https://openrouter.ai/keys`.
+2. Add `GEMINI_API_KEY=...`, `JOB_GROQ_API_KEY=...`, `JOB_OPENROUTER_API_KEY=...` to `backend-laravel/.env` (never to `.env.example`
    — that file is git-tracked and holds only empty placeholders).
 3. `php artisan config:clear` and restart `php artisan serve`.
 
+**Fast failover.** Every provider carries its own timeout + attempt budget
+(`services.job_ai`). The primary (Gemini) is deliberately the tightest —
+`JOB_GEMINI_TIMEOUT=10` with `JOB_GEMINI_ATTEMPTS=1` — so a slow Gemini costs
+one short attempt before the chain continues with Groq. A provider that timed
+out is also skipped for a while (cache cool-down, code `network`), so the next
+click goes straight to a healthy provider. `JOB_AI_TOTAL_BUDGET` (25 s) caps the
+whole chain: past it no further provider is started, so a fully degraded chain
+answers with a clean error instead of a hanging request. Raise the budgets if
+the network between the API server and the provider is slow.
+
 Cool-downs (per provider) live in the cache, not in the DB:
 `quota_day` 30 min, `rate_minute` ≈ 65 s, `auth`/`model` 30 min (capped),
-`overloaded` 45 s, `network` 20 s. They are best-effort — a broken cache never
-blocks generation.
+`overloaded` 45 s, `network` 20 s (60 s+ after a timeout). They are
+best-effort — a broken cache never blocks generation.
 
 ---
 
@@ -355,12 +387,13 @@ blocks generation.
 
 | Piece | File |
 |-------|------|
-| AI client + prompt + normalize | `backend-laravel/app/Services/JobContentGenerator.php` (`postGroq()`, `postOpenRouter()`, `postGemini()`) |
+| AI client + prompt + normalize | `backend-laravel/app/Services/JobContentGenerator.php` (`postGemini()`, `postGroq()`, `postOpenRouter()`, `requestFor()`) |
+| Chain order + failover budget | same file — `providers()` (order), `timeoutFor()` / `attemptsFor()` (per-provider timeout + attempts), `skipAfterConnectionError()` (skip a timed-out provider) |
 | Failure classification + cool-downs + usage snapshot | `backend-laravel/app/Services/JobContentGenerator.php` (`classifyFailure()`, `blockProvider()`, `usageSnapshot()`) |
 | `POST generate-draft` endpoint | `backend-laravel/Modules/RecruitmentManagement/app/Http/Controllers/RecruitmentManagementController.php` → `generateDraft()` |
 | `GET ai-usage` endpoint | same controller → `aiUsage()` |
 | Routes | `backend-laravel/Modules/RecruitmentManagement/routes/api.php` (`job-post.generate-draft` inside `Recruitment Management:Edit`; `job-post.ai-usage` inside `Recruitment Management`) |
-| Service config | `backend-laravel/config/services.php` (`services.job_groq`, `services.job_openrouter`, `services.gemini`, `services.job_ai.daily_limit`) |
+| Service config | `backend-laravel/config/services.php` (`services.gemini`, `services.job_groq`, `services.job_openrouter`, `services.job_ai.daily_limit`, `services.job_ai.timeouts`, `services.job_ai.attempts`) |
 | Env template | `backend-laravel/.env.example` |
 | Unit tests | `backend-laravel/tests/Unit/JobContentGeneratorTest.php` (config helpers, failure codes, cool-down, daily cap, failure priority) |
 | Frontend client | `frontend/src/lib/api.ts` (`jobPostsApi.generateDraft`, `jobPostsApi.aiUsage`, `JobAiUsage`, `JobDraftErrorPayload`) |

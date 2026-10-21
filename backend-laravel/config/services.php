@@ -65,6 +65,8 @@ return [
     |--------------------------------------------------------------------------
     | AI job-post drafts (own Groq/OpenRouter keys, shared Gemini key)
     |--------------------------------------------------------------------------
+    | Chain: 1st shared Gemini -> 2nd Groq -> 3rd OpenRouter.
+    | Per-provider timeout/attempt budget: services.job_ai.
     */
     'job_groq' => [
         'key' => env('JOB_GROQ_API_KEY'),
@@ -93,6 +95,26 @@ return [
         // (0 = unlimited). When set, the builder's AI usage indicator shows
         // "used X of N today" and the API answers 429 past the cap.
         'daily_limit' => (int) env('JOB_AI_DAILY_LIMIT', 0),
+        /*
+        | Per-provider HTTP timeout (seconds) and attempt budget for the
+        | job-post chain. The first provider gets a short timeout and a
+        | single attempt, so a slow answer fails over to the next provider
+        | in seconds instead of stalling the whole request.
+        */
+        'timeouts' => [
+            'gemini' => (int) env('JOB_GEMINI_TIMEOUT', 10),
+            'groq' => (int) env('JOB_GROQ_TIMEOUT', 20),
+            'openrouter' => (int) env('JOB_OPENROUTER_TIMEOUT', 20),
+        ],
+        'attempts' => [
+            'gemini' => (int) env('JOB_GEMINI_ATTEMPTS', 1),
+            'groq' => (int) env('JOB_GROQ_ATTEMPTS', 2),
+            'openrouter' => (int) env('JOB_OPENROUTER_ATTEMPTS', 2),
+        ],
+        // Ceiling (seconds) for one generation across all providers. When it
+        // is reached no further provider is started, so a fully degraded chain
+        // answers with a clean error instead of a hanging request.
+        'total_budget' => (int) env('JOB_AI_TOTAL_BUDGET', 25),
     ],
 
     /*
