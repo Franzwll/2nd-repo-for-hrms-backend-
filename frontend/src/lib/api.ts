@@ -336,6 +336,7 @@ export interface ApiInterview {
   applicant_id: number;
   scheduled_date: string;
   scheduled_time: string;
+  /** End time added by the interview time-range migration; null on legacy rows. */
   scheduled_end_time: string | null;
   mode: "On-site" | "Virtual";
   facility_id: number | null;
@@ -1121,6 +1122,9 @@ export interface ApiJobPost {
   active: boolean;
   experience_level: string | null;
   education_level: string | null;
+  /** Accepted-level chips; the scalars above are the weakest accepted level. */
+  experience_levels?: string[] | null;
+  education_levels?: string[] | null;
   summary: string | null;
   description: string | null;
   responsibilities: string[];
@@ -1163,6 +1167,14 @@ export interface JobDraftPayload {
   vacancies?: number | undefined;
   experience_level?: string | undefined;
   education_level?: string | undefined;
+  /** Accepted-level chips; any of these clears the bar (scalar is the weakest). */
+  experience_levels?: string[] | undefined;
+  education_levels?: string[] | undefined;
+  /** Post-specific requirements handed to the AI draft generator. */
+  skills?: string[] | undefined;
+  /** Reference-Data grounding terms when the post has no explicit skills. */
+  screening_terms?: string[] | undefined;
+  requested_note?: string | undefined;
   blocks?: string[] | undefined;
   notes?: Record<string, string> | undefined;
 }
@@ -2695,9 +2707,7 @@ export const essApi = {
     request<{
       summary: {
         present_days: number;
-        late_days: number;
-        absent_days: number;
-        overtime_hours: number;
+        leave_days: number;
         average_hours: number;
       };
       records: {
@@ -2708,8 +2718,11 @@ export const essApi = {
         timeIn: string;
         timeOut: string;
         workedHours: number;
-        overtimeHours: number;
         status: string;
+        remark?: string | null;
+        lateMinutes?: number;
+        undertimeMinutes?: number;
+        overtimeHours?: number;
         device: string;
         remarks: string;
       }[];
@@ -3142,10 +3155,10 @@ export const ermApi = {
       if (data.document_date) form.append("document_date", data.document_date);
       if (data.expiry_date) form.append("expiry_date", data.expiry_date);
       if (data.document_status) form.append("document_status", data.document_status);
-      return request<{ message: string; document: ApiDocument }>(
-        `/erm/employees/${id}/documents`,
-        { method: "POST", body: form },
-      );
+      return request<{ message: string; document: ApiDocument }>(`/erm/employees/${id}/documents`, {
+        method: "POST",
+        body: form,
+      });
     },
     verifyDocument: (id: number | string, documentId: number | string, status: string) =>
       request<{ message: string; document: ApiDocument }>(

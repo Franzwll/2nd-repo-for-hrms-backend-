@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
+  BadgeCheck,
   CheckCircle2,
   Clock,
   Download,
@@ -70,6 +71,7 @@ import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import {
   auditLogApi,
   ermApi,
+  hcmApi,
   type ApiAuditLog,
   type ApiDocument,
   type ApiEmployee,

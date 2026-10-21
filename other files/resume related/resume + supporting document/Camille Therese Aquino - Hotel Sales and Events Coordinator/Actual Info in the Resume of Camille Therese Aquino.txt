@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Camille Therese Aquino.txt
+TARGET CANDIDATE: Camille Therese Aquino
+TARGET ROLE: Hotel Sales & Events Coordinator
+EXTRACTION MODE: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-09-18
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Camille Therese Aquino
+Target Position:       Hotel Sales & Events Coordinator
+Contact Phone Number:  +63 918 319 6654
+Email Address:         camille.aquino.events@outlook.ph
+Residential Address:   12 Pioneer Street, Mandaluyong City, 1550 Metro Manila, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/camille-aquino-events
+
+[PROFESSIONAL SUMMARY]
+"Energetic, relationship-driven Hotel Sales & Events Coordinator with 5+ years of progressive success in luxury corporate event planning, wedding sales, and banquet space maximization. Adept in client prospecting, RFP contract drafting, Delphi.fd sales CRM systems, and end-to-end event execution. Consistently surpassed quarterly sales revenue targets by an average of 18% while sustaining a 98% client retention rate."
+
+[CORE COMPETENCIES & SKILLS]
+1. Corporate Event & Wedding Sales Prospecting & Relationship Management
+2. Banquet Event Order (BEO) Drafting & Detailed Specification Mapping
+3. Delphi.fd / Opera Sales & Catering CRM Systems Administration
+4. Client Contract Negotiation, Deposit Tracking & Credit Approvals
+5. Site Inspections, Event Staging & Custom Client Showcases
+6. Cross-Departmental Coordination with Banquets, Kitchen & Audio-Visual
+7. Event Revenue Tracking, Room Block Yielding & Attrition Monitoring
+8. Post-Event Feedback Audits, Billing Reconciliations & Account Retention
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Fairmont Makati & Raffles Residences
+   Location:     Makati City, Metro Manila
+   Job Title:    Senior Event Sales Coordinator
+   Duration:     November 2022 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Manage end-to-end sales, contract negotiations, and planning for corporate conferences, social galas, and diplomatic dinners.
+   • Generated over PHP 24M in banquet event revenues during 2023, exceeding annual sales quota by 22%.
+   • Conduct detailed weekly BEO review meetings with banquet service, culinary, and engineering heads.
+   • Maintained a client satisfaction index of 98.2% across post-event post-con surveys.
+
+2. Employer:     Discovery Primea
+   Location:     Ayala Avenue, Makati City
+   Job Title:    Catering & Event Sales Executive
+   Duration:     August 2020 – October 2022
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Handled boutique wedding sales, executive board meetings, and high-end cocktail receptions.
+   • Prepared sales proposals, tailored catering menus, and conducted prospective client walk-throughs.
+   • Reconciled event billing statements with finance to ensure prompt payment collection within 15 days.
+
+3. Employer:     New World Makati Hotel
+   Location:     Makati City, Metro Manila
+   Job Title:    Events Assistant
+   Duration:     July 2019 – July 2020
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Assisted senior sales managers with RFP inquiries, telephone client screening, and banquet file archiving.
+   • Coordinated event signage, parking passes, and guest gift bags during large conventions.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Tourism and Events Management
+Institution:    Miriam College — Katipunan Avenue, Quezon City
+Graduation:     2019
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   Certified Meeting Professional (CMP)
+   Issuer:  Events Industry Council / PCMA
+   Date:    September 2022
+
+2. Title:   Delphi.fd Hospitality Sales Specialist
+   Issuer:  Amadeus Hospitality University
+   Date:    June 2021
+
+3. Title:   Contract Negotiation in Luxury Events
+   Issuer:  Philippine MICE Institute
+   Date:    January 2020
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Camille_Therese_Aquino_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Camille_Therese_Aquino_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Camille_Therese_Aquino_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Camille_Therese_Aquino_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Camille_Therese_Aquino_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Camille_Therese_Aquino_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Camille_Therese_Aquino_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Fairmont Makati & Raffles Residences
+   - Recipient / Employee: Camille Therese Aquino
+   - Certified Position: Senior Event Sales Coordinator
+   - Certified Period: November 2022 – Present
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+2. Camille_Therese_Aquino_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: Discovery Primea
+   - Recipient / Employee: Camille Therese Aquino
+   - Certified Position: Catering & Event Sales Executive
+   - Certified Period: December 1, 2020 – October 15, 2022 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+3. Camille_Therese_Aquino_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: Miriam College — Katipunan Avenue, Quezon City
+   - Conferred Graduate: Camille Therese Aquino
+   - Degree Conferred: Bachelor of Science in Tourism and Events Management
+   - Graduation Year: 2019
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+4. Camille_Therese_Aquino_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: Events Industry Council / PCMA
+   - Recipient Name: Camille Therese Aquino
+   - Training Title: Certified Meeting Professional (CMP)
+   - Award Date: September 2022
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+5. Camille_Therese_Aquino_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Philippine MICE Institute
+   - Recipient Name: Camille Therese Aquino
+   - Certified Course: Foundations of Social Media Marketing for Event Venues (CONTROLLED DISCREPANCY)
+   - Training Date: January 2020
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+6. Camille_Therese_Aquino_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Amadeus Hospitality University
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Certified Meeting Professional (CMP)
+   - Issuance Date: June 2021
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Fairmont Makati & Raffles Residences | Senior Event Sales Coordinator | November 2022 – Present
+• Evidence: Camille_Therese_Aquino_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: Discovery Primea | Catering & Event Sales Executive | August 2020 – October 2022
+• Evidence: Camille_Therese_Aquino_COE_Previous_Employer.pdf (December 1, 2020 – October 15, 2022)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from December 2020 to October 2022, whereas resume claims start date of August 2020 (4-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Bachelor of Science in Tourism and Events Management | Miriam College — Katipunan Avenue, Quezon City | 2019
+• Evidence: Camille_Therese_Aquino_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: Certified Meeting Professional (CMP) | Events Industry Council / PCMA | September 2022
+• Evidence: Camille_Therese_Aquino_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Contract Negotiation in Luxury Events | Philippine MICE Institute | January 2020
+• Evidence: Camille_Therese_Aquino_Training_Certificate_Service.pdf (Foundations of Social Media Marketing for Event Venues)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'Contract Negotiation in Luxury Events', but certificate certifies 'Foundations of Social Media Marketing for Event Venues'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: Delphi.fd Hospitality Sales Specialist | Amadeus Hospitality University | June 2021
+• Evidence: Camille_Therese_Aquino_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is severed/torn off in the uploaded scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: New World Makati Hotel | Events Assistant | July 2019 – July 2020
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

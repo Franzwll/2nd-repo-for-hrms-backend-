@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
  * which inserts the course rows with explicit ids. This seeder therefore only
  * patches the Tier-1 additions onto the existing rows:
  *
- *   content_text, estimated_reading_minutes, estimated_pages, mandatory
+ *   content_text, material_path, estimated_reading_minutes, estimated_pages, mandatory
  *
  * It is UPDATE-ONLY on purpose — never insert here, or we would claim auto-increment
  * ids 1-3 and collide with the fixture's explicit ids ("Duplicate entry '1' for PRIMARY").
@@ -41,6 +41,7 @@ class LmsTierOneSeeder extends Seeder
                 ->where('course_code', $course['course_code'])
                 ->update([
                     'content_text' => $course['content_text'],
+                    'material_path' => $course['material_path'] ?? null,
                     'estimated_reading_minutes' => $course['estimated_reading_minutes'],
                     'estimated_pages' => $course['estimated_pages'],
                     'mandatory' => $course['mandatory'],
@@ -68,24 +69,25 @@ class LmsTierOneSeeder extends Seeder
         return [
             [
                 'course_code' => 'LMS-101',
-                'estimated_reading_minutes' => 20,
-                'estimated_pages' => 18,
+                'estimated_reading_minutes' => null,
+                'estimated_pages' => null,
                 'mandatory' => true,
                 'content_text' => $this->foodSafetyHandbook(),
             ],
             [
                 'course_code' => 'LMS-102',
-                'estimated_reading_minutes' => 15,
-                'estimated_pages' => 12,
+                'estimated_reading_minutes' => null,
+                'estimated_pages' => null,
                 'mandatory' => false,
                 'content_text' => $this->customerExcellenceHandbook(),
             ],
             [
                 'course_code' => 'LMS-103',
-                'estimated_reading_minutes' => 25,
-                'estimated_pages' => 22,
+                'material_path' => 'handbooks/fire-safety.pdf',
+                'estimated_reading_minutes' => null,
+                'estimated_pages' => null,
                 'mandatory' => true,
-                'content_text' => $this->fireSafetyHandbook(),
+                'content_text' => null,
             ],
         ];
     }
@@ -201,69 +203,6 @@ internal seams. Escalate unsafe or unresolved issues to your supervisor.
 ## 8. Measuring excellence
 We track guest satisfaction scores, review feedback and repeat visits. Every positive
 guest comment reflects the whole team.
-MD;
-    }
-
-    private function fireSafetyHandbook(): string
-    {
-        return <<<'MD'
-# Fire Safety & Emergency Response
-
-## 1. The fire triangle
-Fire needs three things: fuel, oxygen and heat. Remove any one and the fire cannot
-start or continue. Prevention means keeping fuel and heat sources apart.
-
-## 2. Fire prevention
-- Keep exits, corridors and stairwells clear at all times.
-- Never overload electrical sockets; report damaged cables immediately.
-- Keep cooking equipment clean and free of grease build-up.
-- Store flammable materials away from heat sources.
-- Do not smoke anywhere except designated areas.
-
-## 3. Classes of fire
-- Class A: solid materials such as wood, paper and cloth.
-- Class B: flammable liquids such as oil and petrol.
-- Class C: flammable gases.
-- Electrical fires: switch off the power first if it is safe to do so.
-- Never use water on an electrical fire or on a fat/oil fire.
-
-## 4. Fire extinguishers (PASS)
-- Pull the pin.
-- Aim at the base of the fire.
-- Squeeze the handle.
-- Sweep from side to side.
-Only tackle a small fire, always keep your back to an exit, and never let the fire
-come between you and your way out.
-
-## 5. If you discover a fire
-1. Raise the alarm immediately.
-2. Alert guests and colleagues.
-3. Call the emergency number and state the location clearly.
-4. Evacuate if the fire cannot be controlled with one extinguisher.
-5. Never re-enter a building once evacuated.
-
-## 6. Evacuation
-- Know your nearest fire exit and the assembly point for your shift.
-- Leave belongings behind; close doors as you go if safe to do so.
-- Use stairs, never lifts.
-- Assist guests with mobility needs.
-- Do not return until the fire warden declares it safe.
-
-## 7. Assembly and roll call
-Report to your designated assembly point and answer the roll call so we can confirm
-everyone is accounted for. Report anyone missing to the fire warden immediately.
-
-## 8. Fire wardens
-Wardens are responsible for sweeping their area, guiding evacuation and reporting to
-the incident commander. Support them and follow their instructions.
-
-## 9. Other emergencies
-The same calm, staged response applies to medical emergencies, gas leaks and bomb
-threats: alert, assess, act, and communicate clearly with the incident lead.
-
-## 10. Your responsibility
-Take every alarm seriously, keep escape routes clear, and complete your fire-safety
-training every year.
 MD;
     }
 }

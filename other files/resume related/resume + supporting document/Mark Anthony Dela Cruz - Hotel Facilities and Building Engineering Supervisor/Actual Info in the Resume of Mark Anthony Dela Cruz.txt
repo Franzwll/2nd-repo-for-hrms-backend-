@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Mark Anthony Dela Cruz.txt
+TARGET CANDIDATE: Mark Anthony Dela Cruz
+TARGET ROLE: Hotel Facilities & Building Engineering Supervisor
+EXTRACTION MODE: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-09-18
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Mark Anthony Dela Cruz
+Target Position:       Hotel Facilities & Building Engineering Supervisor
+Contact Phone Number:  +63 917 830 4421
+Email Address:         mark.delacruz.engineering@outlook.ph
+Residential Address:   42 Domestic Road, 1301 Pasay City, Metro Manila, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/mark-delacruz-engineering
+
+[PROFESSIONAL SUMMARY]
+"Results-focused, licensed Mechanical Engineer and Hotel Facilities Engineering Supervisor with over 8 years of leadership in luxury hotel central plant maintenance, commercial HVAC systems, building management systems (BMS), and life safety compliance. Proven ability to optimize energy consumption, reduce diesel generator operating costs by 18%, and lead rapid-response engineering teams of up to 22 technicians with zero hotel power interruptions."
+
+[CORE COMPETENCIES & SKILLS]
+1. Central Chiller Plant Operations, Cooling Towers & HVAC Air Handling Units (AHU)
+2. Emergency Diesel Generator Paralleling, High-Voltage Switchgear & UPS Systems
+3. Building Management Systems (BMS) Automation (Schneider Electric / Honeywell)
+4. Hotel Fire Life Safety, NFPA Fire Alarm Loops & Wet Sprinkler System Maintenance
+5. Preventive Maintenance Scheduling (PM) via HotSOS & Maximo CMMS
+6. Kitchen Refrigeration, Walk-in Freezers & Commercial Laundry Equipment Repair
+7. Potable Water Filtration, Reverse Osmosis & Sewage Treatment Plant (STP) Audits
+8. Technical Team Shift Scheduling, Tool Custody & Contractor Safety Compliance
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Newport World Resorts — Maxims Hotel
+   Location:     Pasay City, Metro Manila
+   Job Title:    Facilities Engineering Supervisor
+   Duration:     September 2021 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Supervise building maintenance and MEP infrastructure for an ultra-luxury casino hotel and commercial complex.
+   • Direct a team of 22 duty engineers, electricians, plumbers, and HVAC technicians on 24/7 rotational shifts.
+   • Engineered chiller sequencing schedule reducing monthly facility electrical consumption by PHP 1.4M.
+   • Maintained 100% compliance with Bureau of Fire Protection and local municipal building inspection standards.
+
+2. Employer:     Sofitel Philippine Plaza
+   Location:     Pasay City, Metro Manila
+   Job Title:    Assistant Chief Engineer
+   Duration:     February 2018 – August 2021
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Managed preventive maintenance programs for 609 luxury guestrooms, 2 central chillers, and 4 ballroom kitchens.
+   • Responded to high-priority guestroom maintenance calls, achieving an average resolution time under 12 minutes.
+   • Audited fuel storage and tested emergency diesel generators weekly in accordance with luxury brand protocols.
+
+3. Employer:     Diamond Hotel Philippines
+   Location:     Manila Bay, Manila
+   Job Title:    Shift Duty Engineer
+   Duration:     May 2015 – January 2018
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Conducted hourly mechanical room loggings, boiler water chemical testing, and pump vibration assessments.
+   • Repaired commercial kitchen dishwashers, convection ovens, and guestroom air conditioning thermostats.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Mechanical Engineering (Building Services)
+Institution:    Mapua University — Intramuros, Manila
+Graduation:     2015
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   Certified Hospitality Facilities Executive (CHFE)
+   Issuer:  American Hotel & Lodging Educational Institute (AHLEI)
+   Date:    November 2020
+
+2. Title:   HVAC Central Chiller Plant Efficiency & BMS Automation
+   Issuer:  ASHRAE Philippines Chapter
+   Date:    April 2022
+
+3. Title:   Hotel Fire Life Safety & High-Rise Emergency Standards
+   Issuer:  Philippine Safety & Health Academy
+   Date:    September 2019
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Mark_Anthony_Dela_Cruz_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Mark_Anthony_Dela_Cruz_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Mark_Anthony_Dela_Cruz_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Mark_Anthony_Dela_Cruz_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Mark_Anthony_Dela_Cruz_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Mark_Anthony_Dela_Cruz_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Mark_Anthony_Dela_Cruz_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Newport World Resorts — Maxims Hotel
+   - Recipient / Employee: Mark Anthony Dela Cruz
+   - Certified Position: Facilities Engineering Supervisor
+   - Certified Period: September 2021 – Present
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+2. Mark_Anthony_Dela_Cruz_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: Sofitel Philippine Plaza
+   - Recipient / Employee: Mark Anthony Dela Cruz
+   - Certified Position: Assistant Chief Engineer
+   - Certified Period: May 1, 2018 – August 15, 2021 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+3. Mark_Anthony_Dela_Cruz_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: Mapua University — Intramuros, Manila
+   - Conferred Graduate: Mark Anthony Dela Cruz
+   - Degree Conferred: Bachelor of Science in Mechanical Engineering (Building Services)
+   - Graduation Year: 2015
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+4. Mark_Anthony_Dela_Cruz_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: American Hotel & Lodging Educational Institute (AHLEI)
+   - Recipient Name: Mark Anthony Dela Cruz
+   - Training Title: Certified Hospitality Facilities Executive (CHFE)
+   - Award Date: November 2020
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+5. Mark_Anthony_Dela_Cruz_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Philippine Safety & Health Academy
+   - Recipient Name: Mark Anthony Dela Cruz
+   - Certified Course: Foundations of Basic Electrical Wiring & Water Pump Repair (CONTROLLED DISCREPANCY)
+   - Training Date: September 2019
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+6. Mark_Anthony_Dela_Cruz_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: ASHRAE Philippines Chapter
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Certified Hospitality Facilities Executive (CHFE)
+   - Issuance Date: April 2022
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Newport World Resorts — Maxims Hotel | Facilities Engineering Supervisor | September 2021 – Present
+• Evidence: Mark_Anthony_Dela_Cruz_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: Sofitel Philippine Plaza | Assistant Chief Engineer | February 2018 – August 2021
+• Evidence: Mark_Anthony_Dela_Cruz_COE_Previous_Employer.pdf (May 1, 2018 – August 15, 2021)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from May 2018 to August 2021, whereas resume claims start date of February 2018 (3-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Bachelor of Science in Mechanical Engineering (Building Services) | Mapua University — Intramuros, Manila | 2015
+• Evidence: Mark_Anthony_Dela_Cruz_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: Certified Hospitality Facilities Executive (CHFE) | American Hotel & Lodging Educational Institute (AHLEI) | November 2020
+• Evidence: Mark_Anthony_Dela_Cruz_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Hotel Fire Life Safety & High-Rise Emergency Standards | Philippine Safety & Health Academy | September 2019
+• Evidence: Mark_Anthony_Dela_Cruz_Training_Certificate_Service.pdf (Foundations of Basic Electrical Wiring & Water Pump Repair)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'HVAC Central Chiller Plant Efficiency & BMS Automation', but certificate certifies 'Foundations of Basic Electrical Wiring & Water Pump Repair'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: HVAC Central Chiller Plant Efficiency & BMS Automation | ASHRAE Philippines Chapter | April 2022
+• Evidence: Mark_Anthony_Dela_Cruz_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is severed/torn off in the uploaded scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: Diamond Hotel Philippines | Shift Duty Engineer | May 2015 – January 2018
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

@@ -2,11 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import {
   Calendar,
   Clock,
-  Plus,
-  Search,
-  ArrowUpDown,
   FileText,
-  ArrowLeftRight,
   MapPin,
   CheckCircle2,
   AlertCircle,
@@ -16,13 +12,10 @@ import {
   ShieldCheck,
   Building2,
   Check,
-  Palmtree,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatCard } from "@/components/portal/StatCard";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
@@ -35,26 +28,52 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
-import { usePagination } from "@/hooks/usePagination";
+import { StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import { myAttendance } from "@/data/ess";
-import { ShiftSwapModal } from "@/components/modules/ess/modals/ShiftSwapModal";
-import { LeaveApplicationModal } from "@/components/modules/ess/modals/LeaveApplicationModal";
 import { ScheduleRecordsModal } from "@/components/modules/ess/modals/ScheduleRecordsModal";
-import { essApi, type ApiScheduleDay, type ApiEssEmployee, type ApiLeaveBalance } from "@/lib/api";
-import { toast } from "sonner";
+import { essApi, type ApiScheduleDay, type ApiEssEmployee } from "@/lib/api";
 
 interface EssAttendanceTabProps {
-  initialTab?: "clocking" | "roster" | "schedule" | "leave";
+  initialTab?: "clocking" | "roster" | "schedule";
 }
 
 const DEFAULT_ROSTER: ApiScheduleDay[] = [
-  { day: "Monday", shift: "Morning Shift", time: "07:00 AM – 04:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen · Line 1" },
-  { day: "Tuesday", shift: "Morning Shift", time: "07:00 AM – 04:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen · Line 1" },
-  { day: "Wednesday", shift: "Morning Shift", time: "07:00 AM – 04:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen · Line 1" },
-  { day: "Thursday", shift: "Mid Shift", time: "02:00 PM – 11:00 PM", hours: "8.0h (1h break)", location: "Main Kitchen · Pastry Prep" },
-  { day: "Friday", shift: "Night Shift", time: "11:00 PM – 07:00 AM", hours: "8.0h (1h break)", location: "Main Kitchen · Night Prep" },
+  {
+    day: "Monday",
+    shift: "Morning Shift",
+    time: "07:00 AM – 04:00 PM",
+    hours: "8.0h (1h break)",
+    location: "Main Kitchen · Line 1",
+  },
+  {
+    day: "Tuesday",
+    shift: "Morning Shift",
+    time: "07:00 AM – 04:00 PM",
+    hours: "8.0h (1h break)",
+    location: "Main Kitchen · Line 1",
+  },
+  {
+    day: "Wednesday",
+    shift: "Morning Shift",
+    time: "07:00 AM – 04:00 PM",
+    hours: "8.0h (1h break)",
+    location: "Main Kitchen · Line 1",
+  },
+  {
+    day: "Thursday",
+    shift: "Mid Shift",
+    time: "02:00 PM – 11:00 PM",
+    hours: "8.0h (1h break)",
+    location: "Main Kitchen · Pastry Prep",
+  },
+  {
+    day: "Friday",
+    shift: "Night Shift",
+    time: "11:00 PM – 07:00 AM",
+    hours: "8.0h (1h break)",
+    location: "Main Kitchen · Night Prep",
+  },
   { day: "Saturday", shift: "Rest Day", time: "Off Duty", hours: "0h", location: "Off Duty" },
   { day: "Sunday", shift: "Rest Day", time: "Off Duty", hours: "0h", location: "Off Duty" },
 ];
@@ -78,7 +97,15 @@ function getShiftVisual(shift: string, time: string) {
       badgeColor: "bg-muted text-muted-foreground border-border/80",
       iconSvg: (
         <div className="p-3 rounded-2xl bg-muted/60 text-muted-foreground border border-border/70 shadow-2xs">
-          <svg className="h-8 w-8 text-muted-foreground/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            className="h-8 w-8 text-muted-foreground/70"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M2 4v16" />
             <path d="M2 8h18a2 2 0 0 1 2 2v10" />
             <path d="M2 17h20" />
@@ -110,7 +137,15 @@ function getShiftVisual(shift: string, time: string) {
       badgeColor: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
       iconSvg: (
         <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 shadow-xs">
-          <svg className="h-8 w-8 text-indigo-400 drop-shadow-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            className="h-8 w-8 text-indigo-400 drop-shadow-sm"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" fill="currentColor" fillOpacity="0.25" />
             <path d="M19 3v4" />
             <path d="M21 5h-4" />
@@ -120,7 +155,11 @@ function getShiftVisual(shift: string, time: string) {
     };
   }
 
-  const isMid = s.includes("mid") || s.includes("afternoon") || t.includes("02:00 pm") || t.includes("03:00 pm");
+  const isMid =
+    s.includes("mid") ||
+    s.includes("afternoon") ||
+    t.includes("02:00 pm") ||
+    t.includes("03:00 pm");
   if (isMid) {
     return {
       type: "mid" as const,
@@ -132,7 +171,15 @@ function getShiftVisual(shift: string, time: string) {
       badgeColor: "bg-orange-500/10 text-orange-500 border-orange-500/30",
       iconSvg: (
         <div className="p-3 rounded-2xl bg-orange-500/10 text-orange-500 border border-orange-500/30 shadow-xs">
-          <svg className="h-8 w-8 text-orange-500 drop-shadow-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            className="h-8 w-8 text-orange-500 drop-shadow-sm"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M12 2v6" />
             <path d="m4.93 10.93 1.41 1.41" />
             <path d="M20 18h2" />
@@ -158,7 +205,15 @@ function getShiftVisual(shift: string, time: string) {
     badgeColor: "bg-amber-500/10 text-amber-500 border-amber-500/30",
     iconSvg: (
       <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/30 shadow-xs">
-        <svg className="h-8 w-8 text-amber-500 drop-shadow-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          className="h-8 w-8 text-amber-500 drop-shadow-sm"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <circle cx="12" cy="12" r="4" fill="currentColor" fillOpacity="0.25" />
           <path d="M12 2v2" />
           <path d="M12 20v2" />
@@ -174,26 +229,12 @@ function getShiftVisual(shift: string, time: string) {
   };
 }
 
-export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabProps) {
-  // Navigation tabs — admin-consistent: schedule (clocking + roster combined) / dtr / leave
-  type AttendanceTabValue = "schedule" | "leave";
-  const normalizeTab = (t: string | undefined): AttendanceTabValue => {
-    if (t === "leave") return "leave";
-    return "schedule";
-  };
-  const [activeSubTab, setActiveSubTab] = useState<AttendanceTabValue>(
-    normalizeTab(initialTab)
-  );
-
-  useEffect(() => {
-    if (initialTab) {
-      setActiveSubTab(normalizeTab(initialTab));
-    }
-  }, [initialTab]);
-
+export function EssAttendanceTab(_props: EssAttendanceTabProps) {
   // Live Clock Terminal State — client-only (null until mounted so SSR HTML matches).
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
-  const [currentDutyStatus, setCurrentDutyStatus] = useState<"clocked_in" | "on_break" | "clocked_out">("clocked_in");
+  const [currentDutyStatus, setCurrentDutyStatus] = useState<
+    "clocked_in" | "on_break" | "clocked_out"
+  >("clocked_in");
   const [punchLog, setPunchLog] = useState({
     timeIn: myAttendance.today.timeIn || "07:52 AM",
     breakIn: myAttendance.today.breakIn || "12:00 PM",
@@ -209,21 +250,13 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
   });
   const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
 
-  const [leaveSearch, setLeaveSearch] = useState("");
-  const [swapModalOpen, setSwapModalOpen] = useState(false);
-
   // Schedule state
   const [scheduleLoading, setScheduleLoading] = useState(true);
-  const [loading, setLoading] = useState(true);
   const [employeeInfo, setEmployeeInfo] = useState<ApiEssEmployee | null>(null);
   const [roster, setRoster] = useState<ApiScheduleDay[]>(DEFAULT_ROSTER);
 
-  // Leave state
-  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   // TRY: top-right records modal — remove state if not applicable
   const [recordsModalOpen, setRecordsModalOpen] = useState(false);
-  const [leaveBalances, setLeaveBalances] = useState<ApiLeaveBalance[]>([]);
-  const [leaveHistory, setLeaveHistory] = useState<any[]>([]);
 
   // Clock Ticker — starts after mount so SSR HTML matches (no hydration mismatch).
   useEffect(() => {
@@ -267,18 +300,6 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
     } finally {
       setScheduleLoading(false);
     }
-
-    // Leaves
-    try {
-      const leaveRes = await essApi.leaves();
-      setLeaveHistory(leaveRes.history || []);
-      if (leaveRes?.balances) {
-        setLeaveBalances(leaveRes.balances);
-      }
-    } catch {
-      // ignore
-    }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -303,7 +324,9 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
       })
     : "Loading…";
 
-  const todayDayName = currentTime ? currentTime.toLocaleDateString("en-US", { weekday: "long" }) : "";
+  const todayDayName = currentTime
+    ? currentTime.toLocaleDateString("en-US", { weekday: "long" })
+    : "";
 
   // DTR history — admin-consistent searchable + paginated table
   const dtrRecords = useMemo(() => {
@@ -313,41 +336,13 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
       timeIn: h.in,
       timeOut: h.out,
       workedHours: h.hours,
-      status: h.remark.includes("Present") ? "Present" : h.remark.includes("Late") ? "Late" : h.remark,
+      status: h.remark.includes("Present")
+        ? "Present"
+        : h.remark.includes("Late")
+          ? "Late"
+          : h.remark,
     }));
   }, [attendanceLogs]);
-
-  // Leave history — admin-consistent searchable + paginated table
-  const filteredLeaveHistory = useMemo(() => {
-    const q = leaveSearch.trim().toLowerCase();
-    if (!q) return leaveHistory;
-    return leaveHistory.filter((item: any) =>
-      String(item.request_code ?? item.id ?? "").toLowerCase().includes(q) ||
-      String(item.request_type ?? item.type ?? "").toLowerCase().includes(q) ||
-      String(item.status ?? "").toLowerCase().includes(q) ||
-      String(item.details ?? item.reason ?? "").toLowerCase().includes(q)
-    );
-  }, [leaveHistory, leaveSearch]);
-
-  const leavePage = usePagination(filteredLeaveHistory);
-
-  // Split "Type (N days)" filings into the clean type name + request duration.
-  // Match a history row to its entitlement using the clean name.
-  // Rows with no entitlement record (e.g. maternity) show "—".
-  const splitLeaveType = (t: any) => {
-    const s = String(t ?? "");
-    const m = s.match(/^(.*?)\s*\((\d+)\s*days?\)\s*$/i);
-    if (!m) return { name: s, days: null as number | null };
-    return { name: (m[1] ?? "").trim(), days: Number(m[2]) };
-  };
-  const balanceForLeaveType = (t: any) => {
-    const base = splitLeaveType(t).name.toLowerCase();
-    if (!base) return undefined;
-    return leaveBalances.find((b) => {
-      const bt = String(b.type ?? "").toLowerCase();
-      return base === bt || base.includes(bt) || bt.includes(base);
-    });
-  };
 
   return (
     <div className="space-y-6">
@@ -367,35 +362,18 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
         />
       </div>
 
-      <Tabs
-        value={activeSubTab}
-        onValueChange={(v) => setActiveSubTab(v as typeof activeSubTab)}
-        className="mt-6"
-      >
-        <TabsList>
-          <TabsTrigger
-            className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-            value="schedule"
-          >
-            <Clock className="h-3.5 w-3.5" /> Attendance &amp; Schedule
-          </TabsTrigger>
-          <TabsTrigger
-            className="flex items-center gap-1.5 rounded-lg border-border/70 bg-card px-4 py-2 text-xs font-semibold shadow-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-            value="leave"
-          >
-            <Palmtree className="h-3.5 w-3.5" /> Leave
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="schedule" className="mt-4 space-y-4">
-          <Card className="border-border/70 shadow-xs">
-            <CardContent className="p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
-                <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-                  <Clock className="h-4 w-4 text-primary" /> Attendance &amp; Schedule
-                </h2>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary text-xs font-medium px-2.5 py-1">
+      <div className="mt-6 space-y-4">
+        <Card className="border-border/70 shadow-xs">
+          <CardContent className="p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
+              <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
+                <Clock className="h-4 w-4 text-primary" /> Attendance &amp; Schedule
+              </h2>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Badge
+                  variant="outline"
+                  className="border-primary/30 bg-primary/5 text-primary text-xs font-medium px-2.5 py-1"
+                >
                   Station Active
                 </Badge>
                 {currentDutyStatus === "clocked_in" && (
@@ -415,16 +393,8 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                     Shift Completed / Clocked Out
                   </Badge>
                 )}
-                <Button
-                  onClick={() => setSwapModalOpen(true)}
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 shadow-xs text-xs cursor-pointer"
-                >
-                  <ArrowLeftRight className="h-4 w-4 text-purple-600" /> Request Shift Swap
-                </Button>
-                </div>
               </div>
+            </div>
 
             <div className="space-y-6">
               {/* Terminal Body */}
@@ -444,7 +414,9 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                     <div className="inline-flex items-center gap-2 rounded-full bg-background border border-border/80 px-3.5 py-1 text-xs text-muted-foreground">
                       <span>Active Station Mode:</span>
                       <span className="font-semibold text-foreground">
-                        {currentDutyStatus === "clocked_out" ? "Shift Concluded" : "Live Biometric Clocking"}
+                        {currentDutyStatus === "clocked_out"
+                          ? "Shift Concluded"
+                          : "Live Biometric Clocking"}
                       </span>
                     </div>
                   </div>
@@ -452,20 +424,36 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                   {/* Today's Punch Summary Grid */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
-                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Time In</p>
-                      <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.timeIn}</p>
+                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">
+                        Time In
+                      </p>
+                      <p className="font-bold text-foreground mt-1 text-sm font-mono">
+                        {punchLog.timeIn}
+                      </p>
                     </div>
                     <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
-                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Break Out</p>
-                      <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.breakIn}</p>
+                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">
+                        Break Out
+                      </p>
+                      <p className="font-bold text-foreground mt-1 text-sm font-mono">
+                        {punchLog.breakIn}
+                      </p>
                     </div>
                     <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
-                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Break In</p>
-                      <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.breakOut}</p>
+                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">
+                        Break In
+                      </p>
+                      <p className="font-bold text-foreground mt-1 text-sm font-mono">
+                        {punchLog.breakOut}
+                      </p>
                     </div>
                     <div className="rounded-xl border border-border/80 p-3 bg-muted/20 text-center shadow-2xs">
-                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Time Out</p>
-                      <p className="font-bold text-foreground mt-1 text-sm font-mono">{punchLog.timeOut}</p>
+                      <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">
+                        Time Out
+                      </p>
+                      <p className="font-bold text-foreground mt-1 text-sm font-mono">
+                        {punchLog.timeOut}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -485,7 +473,9 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                     <div className="space-y-2.5 pt-3.5 text-xs">
                       <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
                         <span className="text-muted-foreground font-medium">Assigned Shift:</span>
-                        <span className="font-semibold text-foreground">AM Shift (07:00 AM – 04:00 PM)</span>
+                        <span className="font-semibold text-foreground">
+                          AM Shift (07:00 AM – 04:00 PM)
+                        </span>
                       </div>
 
                       <div className="flex items-center justify-between rounded-xl border border-border/60 p-3 bg-background/80">
@@ -518,249 +508,142 @@ export function EssAttendanceTab({ initialTab = "schedule" }: EssAttendanceTabPr
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
                   <div className="flex items-center gap-2 shrink-0">
                     <AlertCircle className="h-4 w-4 text-primary shrink-0" />
-                    <span className="font-semibold font-display text-foreground">Clocking Guidelines</span>
+                    <span className="font-semibold font-display text-foreground">
+                      Clocking Guidelines
+                    </span>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-muted-foreground w-full lg:w-auto">
                     <div className="flex items-start gap-2">
                       <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                       <span>
-                        <strong>Punctuality:</strong> 15-min grace period compliant past shift start.
+                        <strong>Punctuality:</strong> 15-min grace period compliant past shift
+                        start.
                       </span>
                     </div>
                     <div className="flex items-start gap-2">
                       <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                       <span>
-                        <strong>Meal Breaks:</strong> 1-hour statutory interval for break out and in.
+                        <strong>Meal Breaks:</strong> 1-hour statutory interval for break out and
+                        in.
                       </span>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-            </CardContent>
-          </Card>
-          <Card className="border-border/70 shadow-xs">
-            <CardContent className="p-6">
-              {/* TRY: roster header + top-right records button — remove block if not applicable */}
-              <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
-                <div>
-                  <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-                    <Calendar className="h-4 w-4 text-primary" /> Weekly Shift Schedule &amp; Roster
-                  </h2>
-                </div>
-                <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                  <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary text-xs font-medium px-2.5 py-1">
-                    This Week
-                  </Badge>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setRecordsModalOpen(true)}
-                    className="gap-1.5 shadow-xs text-xs cursor-pointer"
-                  >
-                    <FileText className="h-4 w-4 text-primary" /> View Records
-                  </Button>
-                </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/70 shadow-xs">
+          <CardContent className="p-6">
+            {/* TRY: roster header + top-right records button — remove block if not applicable */}
+            <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
+              <div>
+                <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
+                  <Calendar className="h-4 w-4 text-primary" /> Weekly Shift Schedule &amp; Roster
+                </h2>
               </div>
-              {scheduleLoading ? (
-                <StatCardsSkeleton count={4} />
-              ) : (
-                /* 7 Vertical Cards Layout with Sun/Moon SVGs based on Shift */
-                <div className="grid gap-3.5 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7">
-                  {roster.map((s) => {
-                    const visual = getShiftVisual(s.shift, s.time);
-                    const isToday = s.day.toLowerCase() === todayDayName.toLowerCase();
-                    const isRestDay = visual.type === "rest";
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                <Badge
+                  variant="outline"
+                  className="border-primary/30 bg-primary/5 text-primary text-xs font-medium px-2.5 py-1"
+                >
+                  This Week
+                </Badge>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRecordsModalOpen(true)}
+                  className="gap-1.5 shadow-xs text-xs cursor-pointer"
+                >
+                  <FileText className="h-4 w-4 text-primary" /> View Records
+                </Button>
+              </div>
+            </div>
+            {scheduleLoading ? (
+              <StatCardsSkeleton count={4} />
+            ) : (
+              /* 7 Vertical Cards Layout with Sun/Moon SVGs based on Shift */
+              <div className="grid gap-3.5 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7">
+                {roster.map((s) => {
+                  const visual = getShiftVisual(s.shift, s.time);
+                  const isToday = s.day.toLowerCase() === todayDayName.toLowerCase();
+                  const isRestDay = visual.type === "rest";
 
-                    return (
-                      <div
-                        key={s.day}
-                        className={`group relative flex flex-col items-center text-center justify-between p-4 rounded-2xl border transition-all duration-200 shadow-xs min-h-[260px] bg-gradient-to-b ${visual.themeAccent} bg-card ${visual.themeBorder} ${
-                          isToday ? "ring-2 ring-primary/40 shadow-sm" : ""
-                        }`}
-                      >
-                        {/* Card Top: Day & Date Indicator */}
-                        <div className="w-full flex items-center justify-between pb-2 border-b border-border/50">
-                          <span className="text-xs font-extrabold uppercase tracking-wider text-foreground">
-                            {s.day.slice(0, 3)}
+                  return (
+                    <div
+                      key={s.day}
+                      className={`group relative flex flex-col items-center text-center justify-between p-4 rounded-2xl border transition-all duration-200 shadow-xs min-h-[260px] bg-gradient-to-b ${visual.themeAccent} bg-card ${visual.themeBorder} ${
+                        isToday ? "ring-2 ring-primary/40 shadow-sm" : ""
+                      }`}
+                    >
+                      {/* Card Top: Day & Date Indicator */}
+                      <div className="w-full flex items-center justify-between pb-2 border-b border-border/50">
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-foreground">
+                          {s.day.slice(0, 3)}
+                        </span>
+                        {isToday ? (
+                          <Badge className="bg-primary text-primary-foreground text-[9px] px-2 py-0.5 rounded-full font-bold shadow-2xs">
+                            Today
+                          </Badge>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground font-mono">
+                            {s.day}
                           </span>
-                          {isToday ? (
-                            <Badge className="bg-primary text-primary-foreground text-[9px] px-2 py-0.5 rounded-full font-bold shadow-2xs">
-                              Today
-                            </Badge>
-                          ) : (
-                            <span className="text-[10px] text-muted-foreground font-mono">
-                              {s.day}
-                            </span>
-                          )}
+                        )}
+                      </div>
+
+                      {/* Card Center: Sun or Moon SVG Thingy */}
+                      <div className="my-3 flex flex-col items-center gap-1.5">
+                        {visual.iconSvg}
+                        <span className="text-[11px] font-bold text-foreground tracking-wide">
+                          {visual.label}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground font-medium">
+                          {visual.tag}
+                        </span>
+                      </div>
+
+                      {/* Card Bottom: Working Hours, Station, & Status */}
+                      <div className="w-full pt-2.5 border-t border-border/50 space-y-1.5 text-xs">
+                        <div className="flex items-center justify-center gap-1 font-mono font-semibold text-foreground text-[11px]">
+                          <Clock className="h-3 w-3 text-primary shrink-0" />
+                          <span className="truncate">{s.time}</span>
                         </div>
 
-                        {/* Card Center: Sun or Moon SVG Thingy */}
-                        <div className="my-3 flex flex-col items-center gap-1.5">
-                          {visual.iconSvg}
-                          <span className="text-[11px] font-bold text-foreground tracking-wide">
-                            {visual.label}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground font-medium">
-                            {visual.tag}
+                        <div className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
+                          <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
+                          <span className="truncate max-w-[110px]" title={s.location}>
+                            {s.location}
                           </span>
                         </div>
 
-                        {/* Card Bottom: Working Hours, Station, & Status */}
-                        <div className="w-full pt-2.5 border-t border-border/50 space-y-1.5 text-xs">
-                          <div className="flex items-center justify-center gap-1 font-mono font-semibold text-foreground text-[11px]">
-                            <Clock className="h-3 w-3 text-primary shrink-0" />
-                            <span className="truncate">{s.time}</span>
-                          </div>
-
-                          <div className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
-                            <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
-                            <span className="truncate max-w-[110px]" title={s.location}>{s.location}</span>
-                          </div>
-
-                          <div className="pt-1">
-                            <Badge
-                              variant="outline"
-                              className={`text-[9px] px-2 py-0.5 w-full justify-center font-medium ${visual.badgeColor}`}
-                            >
-                              {isRestDay ? "Rest Day" : "Confirmed"}
-                            </Badge>
-                          </div>
+                        <div className="pt-1">
+                          <Badge
+                            variant="outline"
+                            className={`text-[9px] px-2 py-0.5 w-full justify-center font-medium ${visual.badgeColor}`}
+                          >
+                            {isRestDay ? "Rest Day" : "Confirmed"}
+                          </Badge>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-
-        <TabsContent value="leave" className="mt-4 space-y-4">
-          <Card className="border-border/70 shadow-xs">
-            <CardContent className="p-6">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-                  <FileText className="h-4 w-4 text-primary" /> Leave Filing History &amp; Approvals
-                </h2>
-                <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
-                  <div className="relative col-span-2 w-full min-w-0 md:col-span-1 md:w-64">
-                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      placeholder="Search leave…"
-                      value={leaveSearch}
-                      onChange={(e) => setLeaveSearch(e.target.value)}
-                      className="pl-8"
-                    />
-                  </div>
-                  <Button
-                    size="sm"
-                    onClick={() => setLeaveModalOpen(true)}
-                    className="gap-1.5 text-xs shadow-xs cursor-pointer"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> Apply for Leave
-                  </Button>
-                </div>
+                    </div>
+                  );
+                })}
               </div>
-              <ListBody className="mt-4">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Leave Type</TableHead>
-                      <TableHead>Availability</TableHead>
-                      <TableHead>Effective Dates</TableHead>
-                      <TableHead>Reason / Details</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loading ? (
-                      <TableRowsSkeleton cols={6} rows={5} />
-                    ) : leavePage.pageItems.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5}>
-                          <ListEmptyState placeholder="Search leave…" subject="leave requests" />
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      leavePage.pageItems.map((item: any, idx: number) => (
-                        <TableRow key={idx}>
-                          <TableCell>
-                            {(() => {
-                              const { name, days } = splitLeaveType(item.request_type || item.type);
-                              return (
-                                <>
-                                  <p className="text-xs font-semibold">{name}</p>
-                                  {days != null && (
-                                    <p className="text-[11px] text-muted-foreground">{days}-day request</p>
-                                  )}
-                                </>
-                              );
-                            })()}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {(() => {
-                              const bal = balanceForLeaveType(item.request_type || item.type);
-                              return bal ? `${bal.available}/${bal.total} days left` : "—";
-                            })()}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {item.date_from || item.dateFrom} {item.date_to && item.date_to !== item.date_from ? `to ${item.date_to}` : ""}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{item.details || item.reason}</TableCell>
-                          <TableCell>
-                            <EssStatusBadge status={item.status} />
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </ListBody>
-              <div className="shrink-0 border-t border-border/60 pt-3">
-                <TablePagination
-                  page={leavePage.page}
-                  pageCount={leavePage.pageCount}
-                  from={leavePage.from}
-                  to={leavePage.to}
-                  total={leavePage.total}
-                  label="requests"
-                  showRangeLabel={false}
-                  onPageChange={leavePage.setPage}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Modals */}
-      <LeaveApplicationModal
-        open={leaveModalOpen}
-        onOpenChange={setLeaveModalOpen}
-        onSubmitLeave={(newLeave) => {
-          if (newLeave) {
-            setLeaveHistory((prev) => [newLeave, ...prev]);
-          }
-          loadData();
-        }}
-      />
-      <ShiftSwapModal
-        open={swapModalOpen}
-        onOpenChange={setSwapModalOpen}
-        onSubmitSwap={() => loadData()}
-      />
       {/* TRY: records dialog — remove block if not applicable */}
       <ScheduleRecordsModal
         open={recordsModalOpen}
         onOpenChange={setRecordsModalOpen}
         dtrRecords={dtrRecords}
+        weeklyRoster={roster}
       />
     </div>
   );
 }
-
-
-

@@ -29,7 +29,7 @@ export interface PayslipPdfData {
  * Zero external dependencies, 100% SSR-safe, immune to Vite bundling/MIME issues.
  * Generates an ultra-crisp vector A4 PDF with perfect typography and enterprise styling.
  */
-function createPayslipPdfBinary(data: PayslipPdfData): Uint8Array {
+function createPayslipPdfBinary(data: PayslipPdfData): Uint8Array<ArrayBuffer> {
   const companyName = (data.companyName || "OXFORD SUITES MAKATI").toUpperCase();
   const address = data.companyAddress || "7840 Makati Avenue, Poblacion, Makati City, Philippines 1210";
   const empName = data.employeeName || myProfile.name || "Kevin Santos";
@@ -223,9 +223,11 @@ function createPayslipPdfBinary(data: PayslipPdfData): Uint8Array {
 
   const colW = contentWidth / 5;
   for (let i = 0; i < statCols.length; i++) {
+    const col = statCols[i];
+    if (!col) continue;
     const sx = margin + i * colW + 6;
-    drawText(statCols[i].label, sx, cursorY + 2, "/F2", 6.5, 0.5, 0.5, 0.55);
-    drawText(statCols[i].val, sx, cursorY - 9, "/F2", 7.5, 0.15, 0.15, 0.2);
+    drawText(col.label, sx, cursorY + 2, "/F2", 6.5, 0.5, 0.5, 0.55);
+    drawText(col.val, sx, cursorY - 9, "/F2", 7.5, 0.15, 0.15, 0.2);
   }
 
   // --- 5. Side-by-Side Earnings & Deductions Table ---
@@ -345,8 +347,8 @@ function createPayslipPdfBinary(data: PayslipPdfData): Uint8Array {
   const xrefOffsets = [0];
 
   for (let i = 1; i < objects.length; i++) {
-    xrefOffsets.push(body.length + objects[0].length + 1);
-    body += objects[i] + "\n";
+    xrefOffsets.push(body.length + (objects[0]?.length ?? 0) + 1);
+    body += (objects[i] ?? "") + "\n";
   }
 
   const fullHeaderAndBody = objects[0] + "\n" + body;

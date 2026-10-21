@@ -127,7 +127,7 @@ type ProfileState = {
   dateCreated: string;
   lastLogin: string;
   status: string;
-  gender?: "Male" | "Female" | "Other";
+  gender?: "Male" | "Female" | "Other" | undefined;
 
   // 1. Contact Information
   personalEmail: string;

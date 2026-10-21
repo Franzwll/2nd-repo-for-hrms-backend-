@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Arvin Keith Del Rosario.txt
+TARGET CANDIDATE: Arvin Keith Del Rosario
+TARGET ROLE: Line Cook / Station Chef
+EXTRACTION MODE: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-10-05
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Arvin Keith Del Rosario
+Target Position:       Line Cook / Station Chef
+Contact Phone Number:  +63 917 520 8831
+Email Address:         arvin.delrosario.cook@outlook.ph
+Residential Address:   67 Chino Roces Avenue, Bangkal, 1233 Makati City, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/arvin-delrosario-cook
+
+[PROFESSIONAL SUMMARY]
+"Energetic, precision-focused Line Cook with 4+ years of culinary experience in high-volume hotel banquet kitchens and full-service dining establishments. Certified in TESDA Cookery NC II and HACCP food safety standards. Experienced in hot and cold line stations, high-speed mise en place, sauté and grill techniques, and meticulous plate presentation under high-pressure meal services."
+
+[CORE COMPETENCIES & SKILLS]
+1. Hot Line Culinary Production (Sauté, Grill, Roast, Fry Stations)
+2. Kitchen Mise en Place Speed & Prep Station Organization
+3. Recipe Standardization, Food Portioning & Plating Aesthetics
+4. HACCP Food Hygiene, Temperature Danger Zone Controls & Kitchen Sanitation
+5. Station Ingredient Inventory Par Auditing & Perishable Stock Rotation (FIFO)
+6. High-Volume Banquet & A La Carte Peak Service Execution
+7. Commercial Kitchen Equipment Operation & Knife Skills Mastery
+8. TESDA Cookery Standards & Cross-Contamination Prevention
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     I'M Hotel Makati
+   Location:     Makati City, Metro Manila
+   Job Title:    Line Cook / Station Chef
+   Duration:     November 2022 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Prepare and execute sauté and grill station orders for an upscale 160-seat rooftop dining restaurant and room service.
+   • Conduct morning mise en place prep, ingredient slicing, and sauce reductions adhering strictly to head chef recipes.
+   • Maintain immaculate station cleanliness and food sanitation, achieving zero health audit infractions.
+   • Monitor walk-in chiller temperatures and enforce First-In, First-Out (FIFO) stock rotation for premium meats and seafood.
+
+2. Employer:     Dusit Thani Manila
+   Location:     Makati City, Metro Manila
+   Job Title:    Commis Chef
+   Duration:     January 2021 – October 2022
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Prepared buffet replenishment and banquet production batches catering for events up to 400 attendees.
+   • Maintained safe knife handling, station sanitization, and daily trash removal following hotel kitchen safety codes.
+   • Assisted pastry and cold kitchen sections during high-volume Sunday brunch services.
+
+3. Employer:     Romulo Café Makati
+   Location:     Makati City, Metro Manila
+   Job Title:    Kitchen Prep Assistant
+   Duration:     July 2019 – December 2020
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Peeled, chopped, portioned, and weighed ingredients for traditional Filipino specialty dishes.
+   • Washed, sanitized, and stored heavy cookware, utensils, and service equipment.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Associate Degree in Culinary Arts and Kitchen Management
+Institution:    De La Salle-College of Saint Benilde (DLS-CSB) — Malate, Manila
+Graduation:     2019
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   TESDA National Certificate II in Cookery (NC II)
+   Issuer:  Technical Education and Skills Development Authority (TESDA)
+   Date:    September 2021
+
+2. Title:   ServSafe Food Handler & Kitchen Sanitation Certificate
+   Issuer:  Philippine Food Safety & Hygiene Council
+   Date:    June 2022
+
+3. Title:   Culinary Knife Skills and Modern Plating Workshop
+   Issuer:  Philippine Hospitality Development Center
+   Date:    February 2020
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Arvin_Keith_Del_Rosario_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Arvin_Keith_Del_Rosario_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Arvin_Keith_Del_Rosario_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Arvin_Keith_Del_Rosario_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Arvin_Keith_Del_Rosario_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Arvin_Keith_Del_Rosario_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Arvin_Keith_Del_Rosario_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: I'M Hotel Makati
+   - Recipient / Employee: Arvin Keith Del Rosario
+   - Certified Position: Line Cook / Station Chef
+   - Certified Period: November 2022 – Present
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+2. Arvin_Keith_Del_Rosario_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: Dusit Thani Manila
+   - Recipient / Employee: Arvin Keith Del Rosario
+   - Certified Position: Commis Chef
+   - Certified Period: April 1, 2021 – October 15, 2022 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+3. Arvin_Keith_Del_Rosario_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: De La Salle-College of Saint Benilde (DLS-CSB) — Malate, Manila
+   - Conferred Graduate: Arvin Keith Del Rosario
+   - Degree Conferred: Associate Degree in Culinary Arts and Kitchen Management
+   - Graduation Year: 2019
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+4. Arvin_Keith_Del_Rosario_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: Technical Education and Skills Development Authority (TESDA)
+   - Recipient Name: Arvin Keith Del Rosario
+   - Training Title: TESDA National Certificate II in Cookery (NC II)
+   - Award Date: September 2021
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+5. Arvin_Keith_Del_Rosario_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Philippine Hospitality Development Center
+   - Recipient Name: Arvin Keith Del Rosario
+   - Certified Course: Fundamentals of Basic Western Bakery and Pastry Arts (CONTROLLED DISCREPANCY)
+   - Training Date: February 2020
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+6. Arvin_Keith_Del_Rosario_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Philippine Food Safety & Hygiene Council
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: ServSafe Food Handler & Kitchen Sanitation Certificate
+   - Issuance Date: June 2022
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: I'M Hotel Makati | Line Cook / Station Chef | November 2022 – Present
+• Evidence: Arvin_Keith_Del_Rosario_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: Dusit Thani Manila | Commis Chef | January 2021 – October 2022
+• Evidence: Arvin_Keith_Del_Rosario_COE_Previous_Employer.pdf (April 1, 2021 – October 15, 2022)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from April 2021 to October 2022, whereas resume claims start date of January 2021 (3-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Associate Degree in Culinary Arts and Kitchen Management | De La Salle-College of Saint Benilde (DLS-CSB) — Malate, Manila | 2019
+• Evidence: Arvin_Keith_Del_Rosario_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: TESDA National Certificate II in Cookery (NC II) | Technical Education and Skills Development Authority (TESDA) | September 2021
+• Evidence: Arvin_Keith_Del_Rosario_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Culinary Knife Skills and Modern Plating Workshop | Philippine Hospitality Development Center | February 2020
+• Evidence: Arvin_Keith_Del_Rosario_Training_Certificate_Service.pdf (Fundamentals of Basic Western Bakery and Pastry Arts)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'Culinary Knife Skills and Modern Plating Workshop', but certificate certifies 'Fundamentals of Basic Western Bakery and Pastry Arts'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: ServSafe Food Handler & Kitchen Sanitation Certificate | Philippine Food Safety & Hygiene Council | June 2022
+• Evidence: Arvin_Keith_Del_Rosario_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is severed/torn off in the uploaded scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: Romulo Café Makati | Kitchen Prep Assistant | July 2019 – December 2020
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

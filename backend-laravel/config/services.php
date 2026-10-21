@@ -154,6 +154,10 @@ return [
         'pass_mark' => (int) env('ESS_LMS_PASS_MARK', 80),
         'time_limit_seconds' => (int) env('ESS_LMS_TIME_LIMIT', 600),
         'question_count' => (int) env('ESS_LMS_QUESTION_COUNT', 10),
+        // Wall-clock cap for one quiz-generation call. Kept well under PHP's
+        // 60s max_execution_time so a slow AI provider falls back to the
+        // deterministic bank instead of fatalling the request.
+        'quiz_budget_seconds' => (int) env('ESS_LMS_QUIZ_BUDGET', 45),
     ],
 
 ];

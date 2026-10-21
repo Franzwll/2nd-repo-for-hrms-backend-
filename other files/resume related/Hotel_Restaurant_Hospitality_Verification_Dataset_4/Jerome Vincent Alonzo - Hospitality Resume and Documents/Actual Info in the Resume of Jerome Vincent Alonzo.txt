@@ -1,0 +1,273 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Jerome Vincent Alonzo.txt
+TARGET CANDIDATE: Jerome Vincent Alonzo
+CAREER DOMAIN: Hotel transportation, resort mobility, airport transfers, shuttle operations, fleet management
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-10-04
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Jerome Vincent Alonzo
+Target Position:       Hotel Transportation Services Supervisor
+Contact Phone Number:  +63 918 734 5092
+Email Address:         jerome.alonzo.transport@outlook.ph
+Residential Address:   22 Roxas Boulevard, 1300 Pasay City, Metro Manila, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/jerome-alonzo-transport
+
+[PROFESSIONAL SUMMARY]
+"Energetic, safety-certified Hotel Transportation & Guest Mobility Supervisor with over 6 years of frontline and leadership experience managing executive fleets, airport arrival lounges, and valet operations for five-star integrated resorts. Proven track record in orchestrating 150+ daily VIP airport transfers, maintaining a zero-accident fleet record, reducing guest vehicle retrieval wait times to under 4 minutes, and directing team brigades of up to 25 chauffeurs and valet captains."
+
+[CORE COMPETENCIES & SKILLS]
+1. Executive Chauffeur Fleet Management & Daily Vehicle Allocation
+2. VIP Airport Arrival Staging, Flight Tracking & Baggage Custody Handling
+3. Valet Parking Logistics, Key Management & Vehicle Retrieval Flow
+4. Defensive Driving, Road Safety Protocols & Emergency Fleet Response
+5. Chauffeur Team Rostering, Grooming Inspections & Service Etiquette Training
+6. Fleet Maintenance Scheduling, Fuel Mileage Audits & Telematics Monitoring
+7. Cross-Departmental Coordination with Front Desk, Concierge & Security
+8. Guest Transportation Billing, Mileage Logging & Folio Settlement
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     City of Dreams Manila
+   Location:     Parañaque City, Metro Manila
+   Job Title:    Guest Transportation Supervisor
+   Duration:     November 2021 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Supervise daily operations of a 35-vehicle luxury fleet, 22 chauffeurs, and 12 valet parking attendants.
+   • Achieved 100% on-time airport pickup execution across 2,400+ VIP executive movements in 2023.
+   • Cut average valet car retrieval times from 7.5 minutes to 3.8 minutes by reorganizing parking zone staging.
+   • Maintained a zero-preventable-accident record across 450,000 cumulative fleet kilometers.
+
+2. Employer:     Resorts World Manila (Newport World Resorts)
+   Location:     Pasay City, Metro Manila
+   Job Title:    Airport Transfer Captain
+   Duration:     June 2019 – October 2021
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Stationed at NAIA Terminals 1, 2, and 3 to welcome casino high-rollers and international hotel guests.
+   • Coordinated private luxury van transfers and expedited curbside departures with airport security.
+   • Conducted pre-shift vehicle cleanliness audits and verified driver GPS logs.
+
+3. Employer:     Golden Phoenix Hotel Manila
+   Location:     Pasay City, Metro Manila
+   Job Title:    Fleet & Valet Dispatcher
+   Duration:     May 2018 – May 2019
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Assigned shuttle trips to drivers, answered guest transportation inquiries, and monitored valet ticket returns.
+   • Balanced daily valet cash collections and maintained accurate vehicle log sheets.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Hospitality Management
+Institution:    Polytechnic University of the Philippines (PUP) – Sta. Mesa, Manila
+Graduation:     2018
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   Professional Chauffeur & VIP Mobility Services Executive
+   Issuer:  American Hotel & Lodging Educational Institute (AHLEI)
+   Date:    December 2020
+
+2. Title:   Defensive Driving & Executive Fleet Safety
+   Issuer:  Automobile Association Philippines (AAP)
+   Date:    April 2022
+
+3. Title:   Airport Runway & Terminal Dispatch Coordination
+   Issuer:  Manila Airport Authority Training Center
+   Date:    August 2019
+
+
+================================================================================
+PART 2 — SIX RESUME GROUND TRUTHS
+================================================================================
+
+1. Jerome_Vincent_Alonzo_Hotel_Transportation_Services_Supervisor.pdf
+   - Format: PDF
+   - Layout Design: Design M (Midnight Navy & Signal Red Dynamic Layout)
+   - Target Position: Hotel Transportation Services Supervisor
+   - Career Emphasis: Hotel transportation supervision, chauffeur brigade management, fleet maintenance.
+   - Textual Content: Full Canonical Master Profile text preserved.
+
+2. Jerome_Vincent_Alonzo_Resort_Guest_Mobility_Coordinator.docx
+   - Format: DOCX
+   - Layout Design: Design N (Dark Slate & Amber Gold Corporate Layout)
+   - Target Position: Resort Guest Mobility Coordinator
+   - Career Emphasis: Guest mobility logistics, resort buggy/shuttle fleet, golf cart/van dispatch.
+   - Summary: Highlights inter-property mobility, flight tracking integration, and passenger comfort.
+
+3. Jerome_Vincent_Alonzo_Hotel_Airport_Transfer_Coordinator.png
+   - Format: PNG
+   - Layout Design: Design O (Deep Teal & Electric Blue Aviation/Transfer Theme)
+   - Target Position: Hotel Airport Transfer Coordinator
+   - Career Emphasis: NAIA airport arrivals, flight delay tracking, meet-and-greet curbside staging.
+   - Summary: Focuses on airport terminal logistics, curbside departures, and luggage custody transfer.
+
+4. Jerome_Vincent_Alonzo_Hospitality_Shuttle_Operations_Officer.jpg
+   - Format: JPG
+   - Layout Design: Design P (Onyx & Silver Gray Sleek Modern Layout)
+   - Target Position: Hospitality Shuttle Operations Officer
+   - Career Emphasis: Fixed-route shuttle scheduling, passenger load management, GPS route optimization.
+   - Summary: Emphasizes fleet telematics, fuel consumption auditing, and route efficiency.
+
+5. Jerome_Vincent_Alonzo_Guest_Transport_Team_Leader_Blurred.png
+   - Format: Blurred PNG (Uniform light blur applied for OCR testing)
+   - Layout Design: Design Q (Dark Sapphire & Cyan Split-Card Layout)
+   - Target Position: Guest Transport Team Leader
+   - Career Emphasis: Chauffeur team leadership, grooming & defensive driving audits, shift rostering.
+   - Text Degradation: Light uniform Gaussian blur across the entire image.
+
+6. Jerome_Vincent_Alonzo_Hotel_Arrival_Services_Coordinator_Blurred.jpg
+   - Format: Blurred JPG (Uniform light blur applied for OCR testing)
+   - Layout Design: Design R (Espresso & Warm Copper Executive Layout)
+   - Target Position: Hotel Arrival Services Coordinator
+   - Career Emphasis: Curbside arrival experience, valet parking speed, luggage handover.
+   - Text Degradation: Light uniform defocus and compression simulation across the entire page.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Jerome_Vincent_Alonzo_COE_01.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: City of Dreams Manila
+   - Recipient / Employee: Jerome Vincent Alonzo
+   - Certified Position: Guest Transportation Supervisor
+   - Certified Period: November 2021 – Present
+   - Extraction Mode: Digital Vector Text
+
+2. Jerome_Vincent_Alonzo_COE_02.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: Resorts World Manila (Newport World Resorts)
+   - Recipient / Employee: Jerome Vincent Alonzo
+   - Certified Position: Airport Transfer Captain
+   - Certified Period: September 1, 2019 – October 25, 2021 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: Digital Vector Text
+
+3. Jerome_Vincent_Alonzo_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Institution: Polytechnic University of the Philippines (PUP)
+   - Graduate Name: Jerome Vincent Alonzo
+   - Conferred Degree: Bachelor of Science in Hospitality Management
+   - Graduation Year: 2018 (May 24, 2018)
+   - Extraction Mode: Digital Vector Text
+
+4. Jerome_Vincent_Alonzo_Training_Certificate_01.pdf
+   - Document Type: Professional Training Certificate
+   - Issuing Entity: Automobile Association Philippines (AAP)
+   - Recipient Name: Jerome Vincent Alonzo
+   - Certified Course: Defensive Driving & Executive Fleet Safety
+   - Certification Date: April 22, 2022
+   - Extraction Mode: Digital Vector Text
+
+5. Jerome_Vincent_Alonzo_Training_Certificate_02.pdf
+   - Document Type: Technical Workshop Certificate
+   - Issuing Entity: Manila Airport Authority Training Center
+   - Recipient Name: Jerome Vincent Alonzo
+   - Certified Course: Foundations of Basic Vehicle Inspection & Fluid Checking (CONTROLLED DISCREPANCY)
+   - Certification Date: August 16, 2019
+   - Extraction Mode: Digital Vector Text
+
+6. Jerome_Vincent_Alonzo_Professional_Certification.pdf
+   - Document Type: Executive Professional Designation Certificate
+   - Issuing Entity: American Hotel & Lodging Educational Institute (AHLEI)
+   - Recipient Name: [UNREADABLE / TORN / MISSING RECIPIENT NAME] (CONTROLLED UNABLE TO VERIFY)
+   - Certified Title: Professional Chauffeur & VIP Mobility Services Executive
+   - Issue Date: December 15, 2020
+   - Extraction Mode: OCR-Test Document with Simulated Severe Physical Tear
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+DOCUMENT: Jerome_Vincent_Alonzo_COE_01.pdf
+TYPE: Certificate of Employment
+COMPARED RESUME CLAIM: City of Dreams Manila | Guest Transportation Supervisor | November 2021 – Present
+EXPECTED RESULT: VERIFIED
+FIELDS:
+  Employer   = MATCH (City of Dreams Manila)
+  Position   = MATCH (Guest Transportation Supervisor)
+  Start Date = MATCH (November 2021)
+  End Date   = MATCH (Present)
+REASON: Exact match across candidate name, employer, role, and tenure.
+
+--------------------------------------------------------------------------------
+
+DOCUMENT: Jerome_Vincent_Alonzo_COE_02.pdf
+TYPE: Certificate of Employment and Clearance
+COMPARED RESUME CLAIM: Resorts World Manila (Newport World Resorts) | Airport Transfer Captain | June 2019 – October 2021
+EXPECTED RESULT: DISCREPANCY_FOUND
+FIELDS:
+  Employer   = MATCH (Resorts World Manila / Newport World Resorts)
+  Position   = MATCH (Airport Transfer Captain)
+  Start Date = MISMATCH (Resume claims June 2019; COE certifies September 1, 2019)
+  End Date   = MATCH (October 2021)
+REASON: Official COE certifies employment starting September 2019, whereas resume claims start date of June 2019 (3-month discrepancy). Requires HR review.
+
+--------------------------------------------------------------------------------
+
+DOCUMENT: Jerome_Vincent_Alonzo_Diploma.pdf
+TYPE: Academic University Diploma
+COMPARED RESUME CLAIM: Bachelor of Science in Hospitality Management | Polytechnic University of the Philippines | 2018
+EXPECTED RESULT: VERIFIED
+FIELDS:
+  Institution = MATCH (Polytechnic University of the Philippines)
+  Degree      = MATCH (Bachelor of Science in Hospitality Management)
+  Year        = MATCH (2018)
+REASON: Exact match across candidate name, institution, degree title, and graduation year.
+
+--------------------------------------------------------------------------------
+
+DOCUMENT: Jerome_Vincent_Alonzo_Training_Certificate_01.pdf
+TYPE: Professional Training Certificate
+COMPARED RESUME CLAIM: Defensive Driving & Executive Fleet Safety | Automobile Association Philippines | April 2022
+EXPECTED RESULT: VERIFIED
+FIELDS:
+  Course Title = MATCH (Defensive Driving & Executive Fleet Safety)
+  Issuer       = MATCH (Automobile Association Philippines)
+  Date         = MATCH (April 2022)
+REASON: Exact match across candidate name, training title, issuer, and date.
+
+--------------------------------------------------------------------------------
+
+DOCUMENT: Jerome_Vincent_Alonzo_Training_Certificate_02.pdf
+TYPE: Technical Workshop Certificate
+COMPARED RESUME CLAIM: Airport Runway & Terminal Dispatch Coordination | Manila Airport Authority Training Center | August 2019
+EXPECTED RESULT: DISCREPANCY_FOUND
+FIELDS:
+  Issuer       = MATCH (Manila Airport Authority Training Center)
+  Date         = MATCH (August 2019)
+  Course Title = MISMATCH (Resume claims 'Airport Runway & Terminal Dispatch Coordination'; Certificate certifies 'Foundations of Basic Vehicle Inspection & Fluid Checking')
+REASON: Certificate course title does not match claimed training program. Requires HR review.
+
+--------------------------------------------------------------------------------
+
+DOCUMENT: Jerome_Vincent_Alonzo_Professional_Certification.pdf
+TYPE: Professional Certification
+COMPARED RESUME CLAIM: Professional Chauffeur & VIP Mobility Services Executive | AHLEI | December 2020
+EXPECTED RESULT: UNABLE_TO_VERIFY
+FIELDS:
+  Recipient Name = UNREADABLE / MISSING (Severed due to torn scan artifact)
+  Issuer         = MATCH (American Hotel & Lodging Educational Institute)
+  Credential     = MATCH (Professional Chauffeur & VIP Mobility Services Executive)
+REASON: Recipient identity cannot be verified because the name portion of the credential document is severed/torn off.
+
+--------------------------------------------------------------------------------
+
+DOCUMENT: [DOCUMENT NOT SUBMITTED]
+TYPE: Certificate of Employment (Historical)
+COMPARED RESUME CLAIM: Golden Phoenix Hotel Manila | Fleet & Valet Dispatcher | May 2018 – May 2019
+EXPECTED RESULT: PENDING
+FIELDS:
+  Evidence Status = PENDING_SUBMISSION
+REASON: Supporting certificate of employment has not been provided by applicant for historical employment.
+================================================================================

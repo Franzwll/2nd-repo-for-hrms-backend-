@@ -1,0 +1,273 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Marcus Elijah Navarro.txt
+TARGET CANDIDATE: Marcus Elijah Navarro
+CAREER DOMAIN: Hotel banquet operations, events, catering, function rooms, hospitality event services
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-10-04
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Marcus Elijah Navarro
+Target Position:       Banquet Operations Supervisor
+Contact Phone Number:  +63 917 552 8491
+Email Address:         marcus.navarro.hospitality@outlook.ph
+Residential Address:   Domestic Road, Pasay City, 1301 Metro Manila, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/marcus-navarro-hospitality
+
+[PROFESSIONAL SUMMARY]
+"Dedicated, results-driven Banquet Operations Supervisor with over 5 years of progressive hospitality leadership experience in luxury hotel convention centers and high-volume event venues. Proven expertise in Banquet Event Order (BEO) execution, floor logistics, VIP service protocols, team scheduling, and HACCP food safety standards. Adept at coordinating functions of up to 600 guests while ensuring seamless service delivery, minimal equipment breakage, and exceptional guest satisfaction."
+
+[CORE COMPETENCIES & SKILLS]
+1. Banquet Event Order (BEO) Floor Planning & Execution
+2. Function Room Turnover & Service Floor Logistics
+3. Staff Scheduling, Pre-Shift Briefings & Crew Leadership (up to 25 staff)
+4. Formal Plated Service, Buffet Management & Banquet Bar Protocols
+5. VIP Guest Relations & Protocol Handling
+6. Breakage Mitigation & Chinaware/Glassware/Silverware (CGS) Par Levels
+7. Food Safety, Sanitation, and HACCP Compliance
+8. Banquet Billing, Beverage Requisition & Cost Control
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Grand Crest Hotel & Suites
+   Location:     Pasay City, Metro Manila
+   Job Title:    Banquet Operations Supervisor
+   Duration:     June 2022 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Supervise banquet operations for 3 grand ballrooms and 5 multi-function rooms catering up to 600 attendees per event.
+   • Direct pre-shift briefings and manage a team of 18 full-time banquet servers, captains, and on-call catering staff.
+   • Coordinate directly with culinary and sales teams to review BEO specifications, ensuring 99% on-time food rollout.
+   • Reduced banquet equipment loss and chinaware breakage by 18% through standardized end-of-shift inventory protocols.
+
+2. Employer:     Harborview Hotel & Convention Center
+   Location:     Manila Bay, Manila
+   Job Title:    Banquet Team Leader / Captain
+   Duration:     January 2020 – May 2022
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Led floor teams of 12 banquet attendants during corporate conventions, diplomatic receptions, and wedding galas.
+   • Oversaw banquet table layouts, buffet staging, and silver service standards in compliance with luxury hotel guidelines.
+   • Conducted daily equipment inspections and enforced food temperature logs in coordination with kitchen quality control.
+
+3. Employer:     Bayfront Pavilion & Catering Services
+   Location:     Parañaque City, Metro Manila
+   Job Title:    Banquet Server / Function Attendant
+   Duration:     July 2018 – December 2019
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Delivered plated dinner service, replenished buffet lines, and executed room turnarounds for corporate and private events.
+   • Maintained high standards of table grooming, glassware polishing, and rapid function hall clearing.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Hospitality Management
+Institution:    Pamantasan ng Lungsod ng Maynila (PLM) – Intramuros, Manila
+Graduation:     2018
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   Certified Hospitality Supervisor (CHS)
+   Issuer:  Hospitality Operations Institute / FHCB
+   Date:    November 2021
+
+2. Title:   Food Safety & Sanitation Standards (HACCP Level 2)
+   Issuer:  Hospitality Training Council of the Philippines
+   Date:    August 2022
+
+3. Title:   Customer Service Excellence in Banquets and Events
+   Issuer:  Philippine Hospitality Development Center
+   Date:    March 2020
+
+
+================================================================================
+PART 2 — SIX RESUME GROUND TRUTHS
+================================================================================
+
+1. Marcus_Elijah_Navarro_Banquet_Operations_Supervisor.pdf
+   - Format: PDF
+   - Layout Design: Design A (Modern Executive Two-Column Navy Sidebar)
+   - Target Position: Banquet Operations Supervisor
+   - Career Emphasis: Banquet supervision, floor logistics, BEO execution, VIP service protocols.
+   - Textual Content: Full Canonical Master Profile text preserved.
+
+2. Marcus_Elijah_Navarro_Hotel_Events_Service_Coordinator.docx
+   - Format: DOCX
+   - Layout Design: Design B (Forest Green & Gold Top-Banner Layout)
+   - Target Position: Hotel Events Service Coordinator
+   - Career Emphasis: Event requirements, client coordination, function room setups, timeline enforcement.
+   - Summary: Emphasizes bridging client expectations with hotel operational departments and BEO parameters.
+
+3. Marcus_Elijah_Navarro_Banquet_Team_Leader.png
+   - Format: PNG
+   - Layout Design: Design C (Burgundy Top Header Banner & 2-Column Layout)
+   - Target Position: Banquet Team Leader
+   - Career Emphasis: Staff leadership, pre-shift briefings, service brigade management, on-the-floor coaching.
+   - Summary: Action-oriented focus on motivating and coordinating banquet service crews during peak rushes.
+
+4. Marcus_Elijah_Navarro_Catering_Service_Supervisor.jpg
+   - Format: JPG
+   - Layout Design: Design D (Warm Bronze & Metric Cards Minimalist Grid)
+   - Target Position: Catering Service Supervisor
+   - Career Emphasis: Catering operations, buffet presentation, beverage management, breakage control.
+   - Summary: Emphasizes buffet logistics, equipment allocation, and prompt course rollout.
+
+5. Marcus_Elijah_Navarro_Function_Operations_Officer_Blurred.png
+   - Format: Blurred PNG (Uniform light blur applied for OCR testing)
+   - Layout Design: Design E (Slate Teal Split Header & Card Layout)
+   - Target Position: Function Operations Officer
+   - Career Emphasis: Function room turnaround, audiovisual coordination, floor safety, equipment maintenance.
+   - Text Degradation: Light uniform Gaussian blur across the entire image.
+
+6. Marcus_Elijah_Navarro_Hotel_Events_Operations_Coordinator_Blurred.jpg
+   - Format: Blurred JPG (Uniform light blur applied for OCR testing)
+   - Layout Design: Design F (Royal Purple Classic Framed Layout)
+   - Target Position: Hotel Events Operations Coordinator
+   - Career Emphasis: Luxury event execution, guest journey, VIP protocol, high-volume event delivery.
+   - Text Degradation: Light uniform defocus and compression simulation across the entire page.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Marcus_Elijah_Navarro_COE_01.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Grand Crest Hotel & Suites
+   - Recipient / Employee: Marcus Elijah Navarro
+   - Certified Position: Banquet Operations Supervisor
+   - Certified Period: June 2022 – Present
+   - Extraction Mode: Digital Vector Text
+
+2. Marcus_Elijah_Navarro_COE_02.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: Harborview Hotel & Convention Center
+   - Recipient / Employee: Marcus Elijah Navarro
+   - Certified Position: Banquet Team Leader / Captain
+   - Certified Period: January 15, 2021 – May 20, 2022 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: Digital Vector Text
+
+3. Marcus_Elijah_Navarro_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Institution: Pamantasan ng Lungsod ng Maynila (PLM)
+   - Graduate Name: Marcus Elijah Navarro
+   - Conferred Degree: Bachelor of Science in Hospitality Management
+   - Graduation Year: 2018 (April 18, 2018)
+   - Extraction Mode: Digital Vector Text
+
+4. Marcus_Elijah_Navarro_Training_Certificate_01.pdf
+   - Document Type: Professional Training Certificate
+   - Issuing Entity: Hospitality Training Council of the Philippines
+   - Recipient Name: Marcus Elijah Navarro
+   - Certified Course: Food Safety & Sanitation Standards (HACCP Level 2)
+   - Certification Date: August 14, 2022
+   - Extraction Mode: Digital Vector Text
+
+5. Marcus_Elijah_Navarro_Training_Certificate_02.pdf
+   - Document Type: Technical Workshop Certificate
+   - Issuing Entity: Philippine Hospitality Development Center
+   - Recipient Name: Marcus Elijah Navarro
+   - Certified Course: Basic Table Setting and Napkin Folding Workshop (CONTROLLED DISCREPANCY)
+   - Certification Date: March 18, 2020
+   - Extraction Mode: Digital Vector Text
+
+6. Marcus_Elijah_Navarro_Professional_Certification.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Hospitality Operations Institute / FHCB
+   - Recipient Name: [UNREADABLE / TORN / MISSING RECIPIENT NAME] (CONTROLLED UNABLE TO VERIFY)
+   - Certified Title: Certified Hospitality Supervisor (CHS)
+   - Issue Date: November 12, 2021
+   - Extraction Mode: OCR-Test Document with Simulated Severe Physical Tear
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+DOCUMENT: Marcus_Elijah_Navarro_COE_01.pdf
+TYPE: Certificate of Employment
+COMPARED RESUME CLAIM: Grand Crest Hotel & Suites | Banquet Operations Supervisor | June 2022 – Present
+EXPECTED RESULT: VERIFIED
+FIELDS:
+  Employer   = MATCH (Grand Crest Hotel & Suites)
+  Position   = MATCH (Banquet Operations Supervisor)
+  Start Date = MATCH (June 2022)
+  End Date   = MATCH (Present)
+REASON: Exact match across candidate name, employer, role, and tenure.
+
+--------------------------------------------------------------------------------
+
+DOCUMENT: Marcus_Elijah_Navarro_COE_02.pdf
+TYPE: Certificate of Employment and Clearance
+COMPARED RESUME CLAIM: Harborview Hotel & Convention Center | Banquet Team Leader / Captain | January 2020 – May 2022
+EXPECTED RESULT: DISCREPANCY_FOUND
+FIELDS:
+  Employer   = MATCH (Harborview Hotel & Convention Center)
+  Position   = MATCH (Banquet Team Leader / Captain)
+  Start Date = MISMATCH (Resume claims January 2020; COE certifies January 15, 2021)
+  End Date   = MATCH (May 2022)
+REASON: Official COE certifies employment starting January 2021, whereas resume claims start date of January 2020 (1-year discrepancy). Requires HR review.
+
+--------------------------------------------------------------------------------
+
+DOCUMENT: Marcus_Elijah_Navarro_Diploma.pdf
+TYPE: Academic University Diploma
+COMPARED RESUME CLAIM: Bachelor of Science in Hospitality Management | Pamantasan ng Lungsod ng Maynila | 2018
+EXPECTED RESULT: VERIFIED
+FIELDS:
+  Institution = MATCH (Pamantasan ng Lungsod ng Maynila)
+  Degree      = MATCH (Bachelor of Science in Hospitality Management)
+  Year        = MATCH (2018)
+REASON: Exact match across candidate name, institution, degree title, and graduation year.
+
+--------------------------------------------------------------------------------
+
+DOCUMENT: Marcus_Elijah_Navarro_Training_Certificate_01.pdf
+TYPE: Training Certificate
+COMPARED RESUME CLAIM: Food Safety & Sanitation Standards (HACCP Level 2) | Hospitality Training Council | August 2022
+EXPECTED RESULT: VERIFIED
+FIELDS:
+  Course Title = MATCH (Food Safety & Sanitation Standards - HACCP Level 2)
+  Issuer       = MATCH (Hospitality Training Council of the Philippines)
+  Date         = MATCH (August 2022)
+REASON: Exact match across candidate name, training title, issuer, and date.
+
+--------------------------------------------------------------------------------
+
+DOCUMENT: Marcus_Elijah_Navarro_Training_Certificate_02.pdf
+TYPE: Technical Workshop Certificate
+COMPARED RESUME CLAIM: Customer Service Excellence in Banquets and Events | Philippine Hospitality Development Center | March 2020
+EXPECTED RESULT: DISCREPANCY_FOUND
+FIELDS:
+  Issuer       = MATCH (Philippine Hospitality Development Center)
+  Date         = MATCH (March 2020)
+  Course Title = MISMATCH (Resume claims 'Customer Service Excellence in Banquets and Events'; Certificate certifies 'Basic Table Setting and Napkin Folding Workshop')
+REASON: Certificate course title does not match claimed training program. Requires HR review.
+
+--------------------------------------------------------------------------------
+
+DOCUMENT: Marcus_Elijah_Navarro_Professional_Certification.pdf
+TYPE: Professional Certification
+COMPARED RESUME CLAIM: Certified Hospitality Supervisor (CHS) | Hospitality Operations Institute / FHCB | November 2021
+EXPECTED RESULT: UNABLE_TO_VERIFY
+FIELDS:
+  Recipient Name = UNREADABLE / MISSING (Severed due to torn scan artifact)
+  Issuer         = MATCH (Hospitality Operations Institute / FHCB)
+  Credential     = MATCH (Certified Hospitality Supervisor - CHS)
+REASON: Recipient identity cannot be verified because the name portion of the credential document is severed/torn off.
+
+--------------------------------------------------------------------------------
+
+DOCUMENT: [DOCUMENT NOT SUBMITTED]
+TYPE: Certificate of Employment (Historical)
+COMPARED RESUME CLAIM: Bayfront Pavilion & Catering Services | Banquet Server / Function Attendant | July 2018 – December 2019
+EXPECTED RESULT: PENDING
+FIELDS:
+  Evidence Status = PENDING_SUBMISSION
+REASON: Supporting certificate of employment has not been provided by applicant for historical employment.
+================================================================================

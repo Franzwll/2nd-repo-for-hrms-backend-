@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Nicole Frances Herrera.txt
+TARGET CANDIDATE: Nicole Frances Herrera
+TARGET ROLE: Hotel Recreation & Guest Activities Coordinator
+EXTRACTION MODE: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-09-18
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Nicole Frances Herrera
+Target Position:       Hotel Recreation & Guest Activities Coordinator
+Contact Phone Number:  +63 918 912 7703
+Email Address:         nicole.herrera.recreation@outlook.ph
+Residential Address:   15 Airport Road, 1300 Pasay City, Metro Manila, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/nicole-herrera-recreation
+
+[PROFESSIONAL SUMMARY]
+"Enthusiastic, safety-oriented Hotel Recreation & Guest Activities Coordinator with over 5 years of progressive experience designing dynamic leisure programs, resort poolside experiences, water sports management, and family activity clubs for premier integrated resorts. Certified CPR/AED first responder with a track record of coordinating daily activities for 200+ resort guests, boosting recreation auxiliary revenue by 24%, and ensuring 100% pool safety compliance."
+
+[CORE COMPETENCIES & SKILLS]
+1. Resort Recreation Programming, Theme Days & Daily Activity Scheduling
+2. Poolside Guest Hospitality, Cabana VIP Service & Towel Station Flow
+3. Water Sports Safety, Lifeguard Supervision & Watercraft Pre-Check Logs
+4. Children's Kids Club Curriculum Design, Child Care Protocols & Creative Workshops
+5. Recreation Equipment Inventory, Sports Gear Maintenance & Rental Logistics
+6. Lifeguard Emergency Rescue Protocols, First Aid & CPR / AED Certification
+7. Event Hosting, Holiday Festive Entertainment & Interactive Guest Games
+8. Recreation POS Charging, Cabana Monetization & Auxiliary Revenue Logging
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Okada Manila
+   Location:     Parañaque City, Metro Manila
+   Job Title:    Senior Resort Recreation Supervisor
+   Duration:     October 2021 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Direct daily guest recreation, pool club cabana operations, and children's indoor discovery center.
+   • Supervise team of 16 recreation attendants, certified lifeguards, and kids club activity coordinators.
+   • Increased pool cabana rental and activity package revenues by 24% through curated seasonal family bundles.
+   • Maintained a flawless zero-drowning safety record across 250,000+ guest pool visits during tenure.
+
+2. Employer:     Plantation Bay Resort & Spa
+   Location:     Mactan Island, Cebu
+   Job Title:    Recreation Team Leader
+   Duration:     April 2019 – September 2021
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Coordinated kayak rentals, wall climbing, paddleboarding, and evening cultural dance entertainment for lagoon guests.
+   • Inspected pool water chlorination logs and chemical balance reports twice daily with engineering.
+   • Trained 12 summer activity interns in five-star children's safety and emergency poolside procedures.
+
+3. Employer:     Crimson Resort & Spa
+   Location:     Lapu-Lapu City, Cebu
+   Job Title:    Pool & Water Sports Attendant
+   Duration:     May 2018 – March 2019
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Welcomed guests to the beachfront infinity pool, distributed towels, and assisted with snorkeling gear fitment.
+   • Reported broken loungers and maintained neat towel storage areas according to luxury resort SOPs.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Tourism and Resort Management
+Institution:    University of San Carlos (USC) — Cebu City
+Graduation:     2018
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   Certified Park and Recreation Professional (CPRP)
+   Issuer:  National Recreation and Park Association (NRPA)
+   Date:    November 2020
+
+2. Title:   Lifeguard CPR / AED & Water Rescue First Responder
+   Issuer:  Philippine Red Cross National Headquarters
+   Date:    May 2022
+
+3. Title:   Resort Kids Club & Family Activity Programming
+   Issuer:  Hospitality Leisure Development Council
+   Date:    July 2019
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Nicole_Frances_Herrera_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Nicole_Frances_Herrera_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Nicole_Frances_Herrera_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Nicole_Frances_Herrera_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Nicole_Frances_Herrera_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Nicole_Frances_Herrera_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Nicole_Frances_Herrera_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Okada Manila
+   - Recipient / Employee: Nicole Frances Herrera
+   - Certified Position: Senior Resort Recreation Supervisor
+   - Certified Period: October 2021 – Present
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+2. Nicole_Frances_Herrera_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: Plantation Bay Resort & Spa
+   - Recipient / Employee: Nicole Frances Herrera
+   - Certified Position: Recreation Team Leader
+   - Certified Period: July 1, 2019 – September 20, 2021 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+3. Nicole_Frances_Herrera_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: University of San Carlos (USC) — Cebu City
+   - Conferred Graduate: Nicole Frances Herrera
+   - Degree Conferred: Bachelor of Science in Tourism and Resort Management
+   - Graduation Year: 2018
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+4. Nicole_Frances_Herrera_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: National Recreation and Park Association (NRPA)
+   - Recipient Name: Nicole Frances Herrera
+   - Training Title: Certified Park and Recreation Professional (CPRP)
+   - Award Date: November 2020
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+5. Nicole_Frances_Herrera_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Hospitality Leisure Development Council
+   - Recipient Name: Nicole Frances Herrera
+   - Certified Course: Foundations of Swimming Pool Sand Filtration and Backwashing (CONTROLLED DISCREPANCY)
+   - Training Date: July 2019
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+6. Nicole_Frances_Herrera_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Philippine Red Cross National Headquarters
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Certified Park and Recreation Professional (CPRP)
+   - Issuance Date: May 2022
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Okada Manila | Senior Resort Recreation Supervisor | October 2021 – Present
+• Evidence: Nicole_Frances_Herrera_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: Plantation Bay Resort & Spa | Recreation Team Leader | April 2019 – September 2021
+• Evidence: Nicole_Frances_Herrera_COE_Previous_Employer.pdf (July 1, 2019 – September 20, 2021)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from July 2019 to September 2021, whereas resume claims start date of April 2019 (3-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Bachelor of Science in Tourism and Resort Management | University of San Carlos (USC) — Cebu City | 2018
+• Evidence: Nicole_Frances_Herrera_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: Certified Park and Recreation Professional (CPRP) | National Recreation and Park Association (NRPA) | November 2020
+• Evidence: Nicole_Frances_Herrera_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Resort Kids Club & Family Activity Programming | Hospitality Leisure Development Council | July 2019
+• Evidence: Nicole_Frances_Herrera_Training_Certificate_Service.pdf (Foundations of Swimming Pool Sand Filtration and Backwashing)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'Resort Kids Club & Family Activity Programming', but certificate certifies 'Foundations of Swimming Pool Sand Filtration and Backwashing'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: Lifeguard CPR / AED & Water Rescue First Responder | Philippine Red Cross National Headquarters | May 2022
+• Evidence: Nicole_Frances_Herrera_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is severed/torn off in the uploaded scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: Crimson Resort & Spa | Pool & Water Sports Attendant | May 2018 – March 2019
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

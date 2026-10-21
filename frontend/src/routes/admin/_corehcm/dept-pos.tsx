@@ -3,7 +3,7 @@ import { DeptPosModule } from "@/components/modules/CoreHCM";
 
 export const Route = createFileRoute("/admin/_corehcm/dept-pos")({
   validateSearch: (search: Record<string, unknown>) => ({
-    highlight: typeof search.highlight === "string" ? search.highlight : undefined,
+    highlight: typeof search["highlight"] === "string" ? search["highlight"] : undefined,
   }),
   head: () => ({
     meta: [
