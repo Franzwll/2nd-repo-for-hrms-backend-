@@ -18,12 +18,17 @@ class EssCategory extends Model
         'description',
         'is_open',
         'requires_fulfillment',
+        'default_module',
+        'requires_module_ack',
+        'sla_hours',
         'sort_order',
     ];
 
     protected $casts = [
         'is_open' => 'boolean',
         'requires_fulfillment' => 'boolean',
+        'requires_module_ack' => 'boolean',
+        'sla_hours' => 'integer',
         'sort_order' => 'integer',
     ];
 

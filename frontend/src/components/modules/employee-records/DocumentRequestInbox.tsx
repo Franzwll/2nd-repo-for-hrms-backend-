@@ -40,6 +40,9 @@ import { ermApi, type ApiDocumentRequest } from "@/lib/api";
 const statusClass: Record<string, string> = {
   Pending: "bg-amber-500/10 text-amber-600 border-amber-500/30",
   "Under Review": "bg-blue-500/10 text-blue-600 border-blue-500/30",
+  "For Dispatch": "bg-sky-500/10 text-sky-600 border-sky-500/30",
+  "With Module": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30",
+  "For Release": "bg-teal-500/10 text-teal-600 border-teal-500/30",
   Approved: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
   "For Fulfillment": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30",
   Rejected: "bg-rose-500/10 text-rose-600 border-rose-500/30",
@@ -109,7 +112,7 @@ export function DocumentRequestInbox({
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
       if (statusFilter === "pending") {
-        if (!["For Fulfillment", "Approved"].includes(r.status)) return false;
+        if (!["For Dispatch", "With Module"].includes(r.status)) return false;
       } else if (statusFilter !== "all" && r.status !== statusFilter) {
         return false;
       }
@@ -167,7 +170,7 @@ export function DocumentRequestInbox({
         ...(source === "archive" && documentId ? { document_id: Number(documentId) } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
       });
-      toast.success("Request fulfilled — the employee has been notified.");
+      toast.success("Request sent back to ESS Management — it will be released to the employee.");
       setFulfilRow(null);
       await load();
       onCountsChange?.();
@@ -201,9 +204,10 @@ export function DocumentRequestInbox({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="pending">Awaiting fulfilment</SelectItem>
-                <SelectItem value="Pending">Pending</SelectItem>
-                <SelectItem value="For Fulfillment">For Fulfillment</SelectItem>
+                <SelectItem value="pending">Awaiting ERM action</SelectItem>
+                <SelectItem value="For Dispatch">For Dispatch</SelectItem>
+                <SelectItem value="With Module">With Module</SelectItem>
+                <SelectItem value="For Release">For Release</SelectItem>
                 <SelectItem value="Completed">Completed</SelectItem>
               </SelectContent>
             </Select>
@@ -211,8 +215,8 @@ export function DocumentRequestInbox({
         </div>
 
         <p className="mt-1 text-xs text-muted-foreground">
-          Requests filed by employees in the Employee Self-Service portal. Attach the document they
-          asked for to complete the request.
+          Requests approved by ESS Management and routed to Employee Records. Attach the document
+          the employee asked for; ESS Management releases it to the employee.
         </p>
 
         <div className="mt-4 overflow-x-auto">
@@ -295,13 +299,9 @@ export function DocumentRequestInbox({
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          {["For Fulfillment", "Approved"].includes(r.status) ? (
+                          {["For Dispatch", "With Module"].includes(r.status) ? (
                             <Button size="sm" variant="outline" onClick={() => void openFulfil(r)}>
-                              {hr ? "Replace" : "Fulfil"}
-                            </Button>
-                          ) : r.status === "Completed" && hr ? (
-                            <Button size="sm" variant="outline" onClick={() => void openFulfil(r)}>
-                              Replace
+                              {hr ? "Replace" : "Send back"}
                             </Button>
                           ) : (
                             <span className="text-xs text-muted-foreground">—</span>
@@ -406,7 +406,7 @@ export function DocumentRequestInbox({
               Cancel
             </Button>
             <Button onClick={() => void submitFulfil()} disabled={saving}>
-              <Download className="mr-2 h-4 w-4" /> Fulfil &amp; notify
+              <Download className="mr-2 h-4 w-4" /> Send back to ESS
             </Button>
           </DialogFooter>
         </DialogContent>

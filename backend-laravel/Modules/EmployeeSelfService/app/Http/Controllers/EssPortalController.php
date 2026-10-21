@@ -568,20 +568,32 @@ class EssPortalController extends Controller
                 'date_from' => $r->date_from?->toDateString(),
                 'date_to' => $r->date_to?->toDateString(),
                 'status' => $r->status,
+                'module' => $r->routed_module,
+                'module_label' => $r->routed_module
+                    ? (config("ess_routing.modules.{$r->routed_module}.label") ?? ucfirst($r->routed_module))
+                    : null,
                 'details' => $r->details,
                 'review_note' => $r->review_note,
                 'returned_count' => $r->returned_count,
                 'completed_at' => $r->completed_at?->toIso8601String(),
+                'released_at' => $r->released_at?->toIso8601String(),
+                // Module output/notes are only visible after release.
+                'module_note' => $r->status === 'Completed' ? $r->module_note : null,
                 'assigned_to' => $r->assignedTo?->full_name ?? 'HR Admin',
-                'attachments' => $r->attachments->map(fn ($a) => [
-                    'id' => $a->ess_request_attachment_id,
-                    'direction' => $a->direction,
-                    'original_name' => $a->original_name,
-                    'mime_type' => $a->mime_type,
-                    'file_size_bytes' => $a->file_size_bytes,
-                    'has_file' => $this->attachmentFileExists($a->file_path),
-                ])->values(),
-                'has_fulfillment' => $r->attachments->contains(fn ($a) => $a->direction === 'hr'),
+                'attachments' => $r->attachments
+                    ->filter(fn ($a) => $a->direction !== 'hr' || $r->status === 'Completed')
+                    ->map(fn ($a) => [
+                        'id' => $a->ess_request_attachment_id,
+                        'direction' => $a->direction,
+                        'source_module' => $a->source_module,
+                        'original_name' => $a->original_name,
+                        'mime_type' => $a->mime_type,
+                        'file_size_bytes' => $a->file_size_bytes,
+                        'has_file' => $this->attachmentFileExists($a->file_path),
+                    ])->values(),
+                // Module output stays hidden until ESS Management releases it.
+                'has_fulfillment' => $r->status === 'Completed'
+                    && $r->attachments->contains(fn ($a) => $a->direction === 'hr'),
                 'timeline' => $r->statusHistory->map(fn ($h) => [
                     'status' => $h->status,
                     'note' => $h->note,
@@ -975,7 +987,7 @@ class EssPortalController extends Controller
 
         $presentCount = $records->where('status', 'Present')->count();
         $leaveCount = EssRequest::where('employee_id', $employee->employee_id)
-            ->where('status', 'Approved')
+            ->whereIn('status', ['For Release', 'Completed'])
             ->where('request_type', 'like', '%Leave%')
             ->count();
 
@@ -1180,6 +1192,14 @@ class EssPortalController extends Controller
             ->first();
         if (! $attachment) {
             return response()->json(['message' => 'Attachment not found.'], 404);
+        }
+
+        // Release gate: the employee cannot open a module/HR file until ESS
+        // Management has explicitly released the request.
+        if ($attachment->direction === 'hr' && $essRequest->status !== 'Completed') {
+            return response()->json([
+                'message' => 'This document has not been released to you yet.',
+            ], 403);
         }
 
         $relative = ltrim((string) $attachment->file_path, '/');

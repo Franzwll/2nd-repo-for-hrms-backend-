@@ -21,7 +21,6 @@ import {
   LockOpen,
   Paperclip,
   Plus,
-  RotateCcw,
   Search,
   Send,
   Settings2,
@@ -99,6 +98,7 @@ import { useSort, SortHead } from "@/components/portal/sortable";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { EmployeeEss } from "./EmployeeEss";
+import { ModuleQueuesPanel } from "./ModuleQueuesPanel";
 import { essApi, type ApiEssRequestAttachment, type ApiEssRequestItem } from "@/lib/api";
 
 type Status = ESSRequest["status"] | "Returned for Clarification";
@@ -110,11 +110,18 @@ type Row = Omit<ESSRequest, "status" | "note"> & {
   categoryCode?: string | undefined;
   attachments?: ApiEssRequestAttachment[] | undefined;
   hasFulfillment?: boolean | undefined;
+  module?: string | null | undefined;
+  moduleLabel?: string | null | undefined;
+  moduleNote?: string | null | undefined;
+  releasedAt?: string | null | undefined;
 };
 
 const statusClass: Record<Status, string> = {
   Pending: "bg-amber-500/10 text-amber-600 border-amber-500/30",
   "Under Review": "bg-blue-500/10 text-blue-600 border-blue-500/30",
+  "For Dispatch": "bg-sky-500/10 text-sky-600 border-sky-500/30",
+  "With Module": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30",
+  "For Release": "bg-teal-500/10 text-teal-600 border-teal-500/30",
   Approved: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
   "For Fulfillment": "bg-indigo-500/10 text-indigo-600 border-indigo-500/30",
   Rejected: "bg-rose-500/10 text-rose-600 border-rose-500/30",
@@ -159,6 +166,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     total: number;
     pending: number;
     under_review: number;
+    for_dispatch: number;
+    with_module: number;
+    for_release: number;
     approved: number;
     for_fulfillment: number;
     completed: number;
@@ -169,6 +179,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
     total: seed.length,
     pending: seed.filter((r) => r.status === "Pending").length,
     under_review: seed.filter((r) => r.status === "Under Review").length,
+    for_dispatch: 0,
+    with_module: 0,
+    for_release: seed.filter((r) => r.status === "For Release" || r.status === "Approved").length,
     approved: seed.filter((r) => r.status === "Approved").length,
     for_fulfillment: 0,
     completed: seed.filter((r) => r.status === "Completed").length,
@@ -254,6 +267,10 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
             categoryCode: r.category_code,
             attachments: r.attachments,
             hasFulfillment: r.has_fulfillment,
+            module: r.module,
+            moduleLabel: r.module_label,
+            moduleNote: r.module_note,
+            releasedAt: r.released_at,
           })),
         );
       }
@@ -506,6 +523,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
   const count = (s: Status) => {
     if (s === "Pending") return countsData.pending;
     if (s === "Under Review") return countsData.under_review;
+    if (s === "For Dispatch") return countsData.for_dispatch;
+    if (s === "With Module") return countsData.with_module;
+    if (s === "For Release") return countsData.for_release;
     if (s === "Approved") return countsData.approved;
     if (s === "For Fulfillment") return countsData.for_fulfillment;
     if (s === "Completed") return countsData.completed;
@@ -543,7 +563,8 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
         { label: "Total Requests", value: countsData.total },
         { label: "Pending", value: countsData.pending },
         { label: "Under Review", value: countsData.under_review },
-        { label: "Approved", value: countsData.approved },
+        { label: "With Module", value: countsData.with_module },
+        { label: "For Release", value: countsData.for_release },
         { label: "Completed", value: countsData.completed },
         { label: "Rows in Report", value: baseRows.length },
       ],
@@ -613,7 +634,10 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
       if (fulfillNote.trim()) payload.note = fulfillNote.trim();
 
       const res = await essApi.fulfillRequest(fulfillRow.id, payload);
-      toast.success(res.message || `${fulfillRow.id} completed — the employee has been notified.`);
+      toast.success(
+        res.message ||
+          `${fulfillRow.id} released — the employee can now download the document.`,
+      );
       setFulfillRow(null);
       setFulfillFile(null);
       setFulfillNote("");
@@ -634,6 +658,45 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
       loadAuditLogs();
     } catch (err: any) {
       toast.error(err.message || "Failed to approve request.");
+    }
+  };
+
+  /** Manual release: the only action that makes module output visible. */
+  const releaseRow = async (row: Row) => {
+    if (!window.confirm(`Release ${row.id} to ${row.employee}?`)) return;
+
+    try {
+      const res = await essApi.releaseRequest(row.id);
+      toast.success(res.message || `${row.id} released to the employee.`);
+      loadRequests();
+      loadAuditLogs();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to release request.");
+    }
+  };
+
+  /** Send the request to another module; applied results are reversed. */
+  const rerouteRow = async (row: Row) => {
+    const module = window.prompt(
+      "Send to module (erm, attendance, payroll, performance):",
+      row.module || "erm",
+    );
+
+    if (!module) return;
+
+    const normalized = module.trim().toLowerCase();
+    if (!["erm", "attendance", "payroll", "performance"].includes(normalized)) {
+      toast.error("Unknown module. Use erm, attendance, payroll or performance.");
+      return;
+    }
+
+    try {
+      const res = await essApi.rerouteRequest(row.id, normalized);
+      toast.success(res.message || `${row.id} rerouted.`);
+      loadRequests();
+      loadAuditLogs();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to reroute request.");
     }
   };
 
@@ -714,17 +777,18 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
           onClick={() => setStatus("Under Review")}
         />
         <StatCard
-          label="Returned"
-          value={count("Returned for Clarification")}
-          icon={RotateCcw}
-          onClick={() => setStatus("Returned for Clarification")}
+          label="With Module"
+          value={count("With Module")}
+          icon={Send}
+          tone="gold"
+          onClick={() => setStatus("With Module")}
         />
         <StatCard
-          label="For Fulfillment"
-          value={count("For Fulfillment")}
+          label="For Release"
+          value={count("For Release")}
           icon={Upload}
           tone="gold"
-          onClick={() => setStatus("For Fulfillment")}
+          onClick={() => setStatus("For Release")}
         />
         <StatCard
           label="Completed"
@@ -739,6 +803,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
         <TabsList>
           <TabsTrigger className="flex items-center gap-1.5" value="requests">
             <ListChecks className="h-3.5 w-3.5" /> Request Queue
+          </TabsTrigger>
+          <TabsTrigger className="flex items-center gap-1.5" value="modules">
+            <ClipboardList className="h-3.5 w-3.5" /> Module Queues
           </TabsTrigger>
           <TabsTrigger className="flex items-center gap-1.5" value="learning">
             <BookOpen className="h-3.5 w-3.5" /> Learning
@@ -795,8 +862,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                         "Pending",
                         "Under Review",
                         "Returned for Clarification",
-                        "For Fulfillment",
-                        "Approved",
+                        "For Dispatch",
+                        "With Module",
+                        "For Release",
                         "Rejected",
                         "Completed",
                         "Cancelled",
@@ -991,6 +1059,19 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                             <Badge variant="outline" className={statusClass[r.status]}>
                               {r.status === "Returned for Clarification" ? "Returned" : r.status}
                             </Badge>
+                            {r.moduleLabel && (
+                              <p className="mt-1 text-[11px] text-muted-foreground">
+                                {r.moduleLabel}
+                              </p>
+                            )}
+                            {r.status === "Under Review" && r.moduleNote && (
+                              <p
+                                className="mt-1 max-w-[180px] truncate text-[11px] text-amber-600"
+                                title={r.moduleNote}
+                              >
+                                Declined: {r.moduleNote}
+                              </p>
+                            )}
                             {(r.returnedCount ?? 0) > 1 && (
                               <p className="mt-1 text-[11px] text-caution">
                                 Returned {r.returnedCount}×
@@ -1033,7 +1114,59 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                                   >
                                     <Eye className="mr-2 h-4 w-4" /> Review
                                   </Button>
+                                  {r.status === "Under Review" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      title="Send to a different module"
+                                      onClick={() => void rerouteRow(r)}
+                                    >
+                                      Reroute
+                                    </Button>
+                                  )}
                                 </>
+                              ) : r.status === "For Release" ? (
+                                <>
+                                  {requiresDocument(r) && !r.hasFulfillment ? (
+                                    <Button
+                                      size="sm"
+                                      className="bg-primary text-primary-foreground"
+                                      onClick={() => openFulfill(r)}
+                                    >
+                                      <Upload className="mr-2 h-4 w-4" /> Attach &amp; release
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      className="bg-primary text-primary-foreground"
+                                      onClick={() => void releaseRow(r)}
+                                    >
+                                      <Send className="mr-2 h-4 w-4" /> Release
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => void rerouteRow(r)}
+                                  >
+                                    Reroute
+                                  </Button>
+                                </>
+                              ) : r.status === "For Dispatch" || r.status === "With Module" ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-muted-foreground">
+                                    {r.status === "For Dispatch"
+                                      ? `Dispatching to ${r.moduleLabel ?? "module"}`
+                                      : `${r.moduleLabel ?? "Module"} is processing`}
+                                  </span>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => void rerouteRow(r)}
+                                  >
+                                    Reroute
+                                  </Button>
+                                </div>
                               ) : r.status === "For Fulfillment" ? (
                                 <Button
                                   size="sm"
@@ -1072,6 +1205,14 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+        <TabsContent value="modules" className="mt-4">
+          <ModuleQueuesPanel
+            onChanged={() => {
+              loadRequests();
+              loadAuditLogs();
+            }}
+          />
         </TabsContent>
         <TabsContent value="learning" className="mt-4">
           <Card className="border-border/70">
@@ -1676,9 +1817,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                     onChange={(e) => setReviewFile(e.target.files?.[0] ?? null)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    If you skip this, the request moves to <strong>For Fulfillment</strong> and
-                    stays there until a file is uploaded. It cannot be marked Completed without a
-                    file.
+                    If you skip this, the request is dispatched to the owning module (Employee
+                    Records for documents). It comes back here as <strong>For Release</strong> and
+                    only then can you release it to the employee.
                   </p>
                 </div>
               )}
@@ -1700,9 +1841,9 @@ export function AdminEssManagement({ role }: { role: "superadmin" | "admin" }) {
                 : reviewDecision === "Returned for Clarification"
                   ? "Return to employee"
                   : reviewFile
-                    ? "Approve & complete"
+                    ? "Approve & release"
                     : reviewRow && requiresDocument(reviewRow)
-                      ? "Approve → For Fulfillment"
+                      ? "Approve → Dispatch"
                       : "Approve request"}
             </Button>
           </DialogFooter>

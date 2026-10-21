@@ -28,6 +28,13 @@ class EssRequest extends Model
         'returned_count',
         'attachment_path',
         'completed_at',
+        'routed_module',
+        'routed_at',
+        'module_responded_at',
+        'module_reference',
+        'module_note',
+        'released_at',
+        'released_by_user_id',
     ];
 
     protected $casts = [
@@ -36,6 +43,9 @@ class EssRequest extends Model
         'date_to' => 'date',
         'returned_count' => 'integer',
         'completed_at' => 'datetime',
+        'routed_at' => 'datetime',
+        'module_responded_at' => 'datetime',
+        'released_at' => 'datetime',
     ];
 
     public function employee(): BelongsTo
@@ -65,12 +75,34 @@ class EssRequest extends Model
             ->orderBy('ess_request_status_history_id');
     }
 
+    public function routings(): HasMany
+    {
+        return $this->hasMany(EssRequestRouting::class, 'ess_request_id', 'ess_request_id')
+            ->orderBy('leg')
+            ->orderBy('ess_request_routing_id');
+    }
+
+    public function releasedBy(): BelongsTo
+    {
+        return $this->belongsTo(SystemUser::class, 'released_by_user_id', 'system_user_id');
+    }
+
     /**
-     * Convenience: the file HR sent back to the employee, if any.
+     * Convenience: the file the employee can download after release.
      */
     public function fulfillmentAttachment(): ?EssRequestAttachment
     {
         return $this->attachments
             ->firstWhere('direction', 'hr');
+    }
+
+    public function outboundAttachment(): ?EssRequestAttachment
+    {
+        return $this->fulfillmentAttachment();
+    }
+
+    public function isWithModule(): bool
+    {
+        return in_array($this->status, ['For Dispatch', 'With Module'], true);
     }
 }

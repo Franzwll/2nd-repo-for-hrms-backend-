@@ -8,7 +8,7 @@ export type ESSRequest = {
   category: string;
   type: string;
   filed: string;
-  status: "Pending" | "Under Review" | "Approved" | "For Fulfillment" | "Rejected" | "Completed" | "Cancelled" | "Returned for Clarification";
+  status: "Pending" | "Under Review" | "For Dispatch" | "With Module" | "For Release" | "Approved" | "For Fulfillment" | "Rejected" | "Completed" | "Cancelled" | "Returned for Clarification";
   assignedTo: string;
   details: string;
   returnedCount?: number | undefined;
@@ -48,7 +48,7 @@ export const essRequests: ESSRequest[] = [
     category: "Attendance",
     type: "Attendance Correction",
     filed: "2026-07-24",
-    status: "Approved",
+    status: "For Release",
     assignedTo: "Juan Dela Cruz",
     details: "Missing time-out on 2026-07-22, verified with floor logbook.",
   },

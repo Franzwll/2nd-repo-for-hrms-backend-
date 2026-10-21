@@ -41,7 +41,9 @@ const STATUS_FILTERS = [
   "all",
   "Pending",
   "Under Review",
-  "Approved",
+  "For Dispatch",
+  "With Module",
+  "For Release",
   "Completed",
   "Rejected",
   "Returned for Clarification",
@@ -142,6 +144,9 @@ export function MyRequestHistoryTable({
     if (r.details) item.details = r.details;
     if (r.attachments) item.attachments = r.attachments;
     if (r.has_fulfillment != null) item.has_fulfillment = r.has_fulfillment;
+    if (r.module) item.module = r.module;
+    if (r.module_label) item.moduleLabel = r.module_label;
+    if (r.module_note) item.moduleNote = r.module_note;
     if (r.timeline) item.timeline = r.timeline;
     setSelectedRequest(item);
     setTimelineOpen(true);

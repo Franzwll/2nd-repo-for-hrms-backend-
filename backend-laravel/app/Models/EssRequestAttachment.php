@@ -13,6 +13,7 @@ class EssRequestAttachment extends Model
     protected $fillable = [
         'ess_request_id',
         'direction',
+        'source_module',
         'file_path',
         'original_name',
         'mime_type',
@@ -37,5 +38,10 @@ class EssRequestAttachment extends Model
     public function isHrFulfillment(): bool
     {
         return $this->direction === 'hr';
+    }
+
+    public function isModuleOutput(): bool
+    {
+        return $this->direction === 'hr' && $this->source_module !== null;
     }
 }

@@ -15,6 +15,7 @@ import { EssStatusBadge, docCategoryTint, ON_FILE_STATUSES } from "@/components/
 import { myEmployeeDocuments } from "@/data/ess";
 import { DocumentUploadModal } from "@/components/modules/ess/modals/DocumentUploadModal";
 import { DocumentViewerModal } from "@/components/modules/ess/modals/DocumentViewerModal";
+import { ReportMenu } from "@/components/ui/report-menu";
 import { essApi } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -376,9 +377,6 @@ export function EssDocumentsTab() {
               )}
             </CardContent>
           </Card>
-
-        </TabsContent>
-      </Tabs>
 
       {/* Modals */}
       <DocumentUploadModal

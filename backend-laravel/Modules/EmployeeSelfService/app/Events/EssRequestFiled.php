@@ -7,9 +7,11 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * Fired the moment an employee submits an ESS request. The Employee Records
- * module listens for this to surface document (hr_document) requests in its
- * fulfilment inbox — the "outbound" half of the ESS <-> ERM loop.
+ * Fired the moment an employee submits an ESS request.
+ *
+ * This is a pre-gate event: the request is still Pending and no module may act
+ * on it. Modules subscribe to EssRequestDispatched (after ESS Management
+ * approval) instead. Kept for audit/analytics listeners only.
  */
 class EssRequestFiled
 {

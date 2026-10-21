@@ -88,6 +88,45 @@ class Notifier
     }
 
     /**
+     * Audience for an ESS module queue: roles with edit-grade access to the
+     * module, plus HR/Super Admins as oversight. View-only roles are excluded so
+     * the Employee role (which has View on ESS Management for the portal) is not
+     * subscribed to module-work notifications.
+     *
+     * @param  string|array<int, string>  $modules
+     * @return array<int, int>
+     */
+    public static function moduleAudienceIds(string|array $modules): array
+    {
+        $modules = array_values(array_filter((array) $modules, fn ($m) => is_string($m) && $m !== ''));
+
+        $ids = [];
+
+        if ($modules !== []) {
+            // Edit-grade access only. View/Read is enough to open the employee
+            // ESS portal (role Employee has View on ESS Management), but it
+            // must not subscribe every employee to module-work notifications.
+            $roleIds = DB::table('role_permissions')
+                ->whereIn('module_name', $modules)
+                ->whereIn('permission_level', ['Full', 'Edit', 'Write', 'Approve / Reject Only'])
+                ->pluck('role_id')
+                ->all();
+
+            if ($roleIds !== []) {
+                $ids = SystemUser::whereIn('role_id', $roleIds)
+                    ->pluck('system_user_id')
+                    ->all();
+            }
+        }
+
+        return array_values(array_unique(array_merge(
+            $ids,
+            self::hrAdminIds(),
+            self::superAdminIds()
+        )));
+    }
+
+    /**
      * Audience for an announcement: respects the Audience column so the bell
      * matches what the board shows (All / Employee / Admin / Super Admin).
      * Returns null to mean "all users".

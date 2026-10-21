@@ -16,12 +16,14 @@ use Modules\EmployeeSelfService\Services\EssRequestWorkflow;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
- * Employee Records fulfilment inbox for ESS document requests.
+ * Employee Records module queue for ESS document requests.
  *
- * The employee files a request in ESS (category hr_document); it lands here.
- * Records staff attach the file the employee asked for and the request is
- * marked Completed — the employee is then notified and can download it.
- * This is the "return" half of the ESS <-> ERM document loop.
+ * Request flow: Employee files in ESS -> ESS Management approves -> ERM is
+ * notified and the request appears here -> Records staff attach the file and
+ * send it back -> ESS Management releases it to the employee.
+ *
+ * ERM never completes a request. "Fulfilled" here means "returned to ESS
+ * Management for release".
  */
 class DocumentRequestController extends Controller
 {
@@ -48,17 +50,20 @@ class DocumentRequestController extends Controller
             });
         }
 
-        $requests = $query->orderByDesc('filed_at')->get();
+        $requests = $query->orderByDesc('routed_at')->orderByDesc('filed_at')->get();
 
         $counts = [
             'total' => $this->documentRequests()->count(),
             'pending' => $this->documentRequests()
-                ->whereIn('status', ['For Fulfillment', 'Approved'])
+                ->whereIn('status', ['For Dispatch', 'With Module'])
                 ->count(),
+            'for_release' => $this->documentRequests()->where('status', 'For Release')->count(),
             'fulfilled' => $this->documentRequests()->where('status', 'Completed')->count(),
         ];
 
         return response()->json([
+            'module' => 'erm',
+            'module_label' => 'Employee Records',
             'counts' => $counts,
             'requests' => $requests->map(fn ($r) => $this->transform($r)),
         ]);
@@ -103,16 +108,17 @@ class DocumentRequestController extends Controller
             return response()->json(['message' => 'This request does not require a document.'], 422);
         }
 
-        if (! in_array($essRequest->status, ['For Fulfillment', 'Approved', 'Completed'], true)) {
+        if (! in_array($essRequest->status, ['For Dispatch', 'With Module'], true)) {
             return response()->json([
-                'message' => 'Approve the request before attaching the document.',
+                'message' => 'This request is not waiting for an Employee Records result.',
             ], 422);
         }
 
-        // Resolve the file payload: either a fresh upload or a document pulled
-        // from the employee's archive (Team 8 seam).
+        // Fresh upload -> submit the file. Archive pick -> submit the
+        // document_id and let the ERM adapter copy it onto the request.
         if ($request->hasFile('file')) {
-            $payload = $workflow->storeUpload($request->file('file'), 'ess-request-fulfillments');
+            $payload = ['note' => $validated['note'] ?? null];
+            $file = $request->file('file');
         } else {
             $source = EmployeeDocument::where('document_id', $validated['document_id'])
                 ->where('employee_id', $essRequest->employee_id)
@@ -123,21 +129,20 @@ class DocumentRequestController extends Controller
             }
 
             $payload = [
-                'file_path' => $source->file_path,
-                'original_name' => $source->original_name ?: $source->title,
-                'mime_type' => $source->mime_type,
-                'file_size_bytes' => $source->file_size_bytes,
+                'document_id' => $source->document_id,
+                'note' => $validated['note'] ?? null,
             ];
+            $file = null;
         }
 
         try {
-            $workflow->fulfill($essRequest, $user, $payload, $validated['note'] ?? null);
+            $workflow->submitResult($essRequest, $user, $payload, $file);
         } catch (\RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
         return response()->json([
-            'message' => "Request {$essRequest->request_code} fulfilled.",
+            'message' => "Request {$essRequest->request_code} sent back to ESS Management for release.",
             'request' => $this->transform($essRequest->fresh(['employee.department', 'category', 'assignedTo', 'attachments', 'statusHistory'])),
         ]);
     }
@@ -160,9 +165,9 @@ class DocumentRequestController extends Controller
             ], 403);
         }
 
-        $essRequest = EssRequest::where('ess_request_id', (int) $id)
-            ->orWhere('request_code', $id)
-            ->first();
+        // Use the gate-scoped lookup: an ERM user must not be able to stream a
+        // file from a request that has not been dispatched to ERM.
+        $essRequest = $this->findRequest($id);
         if (! $essRequest) {
             return response()->json(['message' => 'Document request not found.'], 404);
         }
@@ -200,23 +205,24 @@ class DocumentRequestController extends Controller
     {
         return EssRequest::with(['employee.department', 'category', 'assignedTo', 'attachments', 'statusHistory'])
             ->where(function ($q) {
-                $q->whereHas('category', function ($c) {
-                    $c->whereIn('code', ['hr_document', 'ESS-HRDOC'])
-                        ->orWhere('name', 'LIKE', '%Document%');
-                })
-                    ->orWhere('request_type', 'LIKE', '%document%')
-                    ->orWhere('request_type', 'LIKE', '%certificate%')
-                    ->orWhere('request_type', 'LIKE', '%COE%')
-                    ->orWhere('request_type', 'LIKE', '%service record%')
-                    ->orWhere('request_type', 'LIKE', '%employment%');
-            });
+                // Primary queue: requests dispatched to ERM by the ESS gate.
+                $q->where('routed_module', 'erm')
+                    // Legacy completed rows that predate module routing stay
+                    // visible as history only.
+                    ->orWhere(function ($legacy) {
+                        $legacy->whereNull('routed_module')
+                            ->where('status', 'Completed');
+                    });
+            })
+            ->whereIn('status', ['For Dispatch', 'With Module', 'For Release', 'Completed']);
     }
 
     private function findRequest(string $id): ?EssRequest
     {
-        return EssRequest::with(['employee.department', 'category', 'assignedTo', 'attachments', 'statusHistory'])
-            ->where('request_code', $id)
-            ->orWhere('ess_request_id', $id)
+        return $this->documentRequests()
+            ->where(function ($q) use ($id) {
+                $q->where('request_code', $id)->orWhere('ess_request_id', $id);
+            })
             ->first();
     }
 
@@ -236,13 +242,20 @@ class DocumentRequestController extends Controller
             'type' => $r->request_type,
             'filed' => $r->filed_at?->toDateString(),
             'status' => $r->status,
-            'assignedTo' => $r->assignedTo?->full_name ?? ($r->status === 'Pending' ? 'Unassigned' : 'HR Admin'),
+            'module' => $r->routed_module,
+            'module_label' => $r->routed_module === 'erm' ? 'Employee Records' : null,
+            'module_note' => $r->module_note,
+            'module_reference' => $r->module_reference,
+            'routed_at' => $r->routed_at?->toIso8601String(),
+            'assignedTo' => $r->assignedTo?->full_name
+                ?? ($r->status === 'For Dispatch' ? 'Unassigned' : 'Employee Records'),
             'details' => $r->details,
             'note' => $r->review_note,
             'has_fulfillment' => (bool) $hrAttachment,
             'attachments' => $r->attachments->map(fn ($a) => [
                 'id' => $a->ess_request_attachment_id,
                 'direction' => $a->direction,
+                'source_module' => $a->source_module,
                 'original_name' => $a->original_name,
                 'mime_type' => $a->mime_type,
                 'file_size_bytes' => $a->file_size_bytes,

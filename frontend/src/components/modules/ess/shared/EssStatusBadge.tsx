@@ -17,10 +17,28 @@ export function EssStatusBadge({ status }: { status: string }) {
           {status}
         </Badge>
       );
+    case "For Dispatch":
+      return (
+        <Badge variant="outline" className="bg-sky-500/10 text-sky-600 border-sky-500/30 font-medium">
+          For Dispatch
+        </Badge>
+      );
+    case "With Module":
+      return (
+        <Badge variant="outline" className="bg-indigo-500/10 text-indigo-600 border-indigo-500/30 font-medium">
+          With Module
+        </Badge>
+      );
+    case "For Release":
+      return (
+        <Badge variant="outline" className="bg-teal-500/10 text-teal-600 border-teal-500/30 font-medium">
+          For Release
+        </Badge>
+      );
     case "For Fulfillment":
       return (
         <Badge variant="outline" className="bg-indigo-500/10 text-indigo-600 border-indigo-500/30 font-medium">
-          For Fulfillment
+          With Module
         </Badge>
       );
     case "Cancelled":

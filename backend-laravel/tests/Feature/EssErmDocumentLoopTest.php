@@ -11,11 +11,15 @@ use Tests\Concerns\RefreshesSeededDatabase;
 use Tests\TestCase;
 
 /**
- * Closed-loop ESS <-> ERM document-request workflow.
+ * Closed-loop ESS <-> ERM document-request workflow, with the ESS Management
+ * gate in front:
  *
- * Employee files an HR Document request in ESS -> it appears in the Employee
- * Records fulfilment inbox -> Records staff attach the file and complete it ->
- * the employee sees the fulfilment and can download it.
+ * Employee files -> ESS Management approves (For Dispatch) -> ERM accepts and
+ * sends the document back (For Release) -> ESS Management releases (Completed)
+ * -> the employee can download it.
+ *
+ * The invariant: ERM never sees a request before the gate, and ERM cannot make
+ * a document visible to the employee. Only release does that.
  */
 class EssErmDocumentLoopTest extends TestCase
 {
@@ -40,6 +44,22 @@ class EssErmDocumentLoopTest extends TestCase
         return $this->tokenFor(2);
     }
 
+    public function test_employee_cannot_read_the_admin_queue_or_work_module_queues(): void
+    {
+        // The Employee role has View on ESS Management so it can open the
+        // portal. That must not expose the company-wide queue or module actions.
+        $this->getJson('/api/v1/ess/admin/requests', $this->authHeaders($this->employeeToken()))
+            ->assertForbidden();
+
+        $this->getJson('/api/v1/ess/modules/attendance/requests', $this->authHeaders($this->employeeToken()))
+            ->assertForbidden();
+
+        // The HR/Admin role has edit-grade ESS Management access (interim owner
+        // of Attendance/Payroll/Performance) and can open the queue.
+        $this->getJson('/api/v1/ess/modules/attendance/requests', $this->authHeaders($this->recordsToken()))
+            ->assertOk();
+    }
+
     public function test_employee_files_document_request_and_records_fulfils_it(): void
     {
         Storage::fake('public');
@@ -61,55 +81,88 @@ class EssErmDocumentLoopTest extends TestCase
             'status' => 'Pending',
         ]);
 
-        // 2. It shows up in the ERM fulfilment inbox.
+        // 2. GATE: the request is NOT in the ERM inbox yet.
         $inbox = $this->getJson('/api/v1/erm/document-requests', $this->authHeaders($this->recordsToken()))
             ->assertOk()
             ->json();
 
-        $codes = array_column($inbox['requests'], 'id');
-        $this->assertContains($code, $codes);
-        $this->assertGreaterThanOrEqual(1, $inbox['counts']['total']);
+        $this->assertNotContains($code, array_column($inbox['requests'], 'id'));
 
-        // 3. Records cannot bypass approval: a Pending request has no file yet.
+        // 3. Records cannot bypass the gate: the request is not in their queue.
         $blockedFile = UploadedFile::fake()->create('coe.pdf', 12, 'application/pdf');
         $this->post('/api/v1/erm/document-requests/' . $code . '/fulfill', [
             'file' => $blockedFile,
         ], $this->authHeaders($this->recordsToken()))
-            ->assertStatus(422);
+            ->assertStatus(404);
 
-        // 4. ESS HR approves; the document request moves to For Fulfillment.
+        // 4. ESS Management approves and dispatches to ERM.
         $this->postJson('/api/v1/ess/admin/requests/' . $code . '/review', [
             'decision' => 'approve',
         ], $this->authHeaders($this->superAdminToken()))
             ->assertOk()
-            ->assertJsonPath('request.status', 'For Fulfillment');
+            ->assertJsonPath('request.status', 'For Dispatch')
+            ->assertJsonPath('request.routed_module', 'erm');
 
-        // 5. Records staff fulfil it with a fresh upload.
+        // 5. It now appears in the ERM inbox.
+        $inbox = $this->getJson('/api/v1/erm/document-requests', $this->authHeaders($this->recordsToken()))
+            ->assertOk()
+            ->json();
+
+        $this->assertContains($code, array_column($inbox['requests'], 'id'));
+
+        // 6. Records staff send the document back. The request becomes
+        //    For Release; it is NOT completed and the employee cannot see it.
         $file = UploadedFile::fake()->create('coe.pdf', 12, 'application/pdf');
         $this->post('/api/v1/erm/document-requests/' . $code . '/fulfill', [
             'file' => $file,
             'note' => 'COE issued, signed by HR Manager.',
         ], $this->authHeaders($this->recordsToken()))
             ->assertOk()
-            ->assertJsonPath('request.status', 'Completed')
+            ->assertJsonPath('request.status', 'For Release')
             ->assertJsonPath('request.has_fulfillment', true);
 
         $this->assertDatabaseHas('ess_requests', [
             'request_code' => $code,
-            'status' => 'Completed',
+            'status' => 'For Release',
+            'routed_module' => 'erm',
         ]);
 
         $essRequestId = EssRequest::where('request_code', $code)->value('ess_request_id');
         $this->assertDatabaseHas('ess_request_attachments', [
             'ess_request_id' => $essRequestId,
             'direction' => 'hr',
+            'source_module' => 'erm',
+        ]);
+        $this->assertDatabaseMissing('ess_request_status_histories', [
+            'ess_request_id' => $essRequestId,
+            'status' => 'Completed',
+        ]);
+
+        $mineBeforeRelease = collect(
+            $this->getJson('/api/v1/ess/my-requests', $this->authHeaders($this->employeeToken()))
+                ->assertOk()
+                ->json('requests')
+        )->firstWhere('id', $code);
+
+        $this->assertNotNull($mineBeforeRelease);
+        $this->assertSame('For Release', $mineBeforeRelease['status']);
+        $this->assertFalse($mineBeforeRelease['has_fulfillment']);
+
+        // 7. ESS Management releases the result to the employee.
+        $this->postJson('/api/v1/ess/admin/requests/' . $code . '/release', [], $this->authHeaders($this->superAdminToken()))
+            ->assertOk()
+            ->assertJsonPath('request.status', 'Completed');
+
+        $this->assertDatabaseHas('ess_requests', [
+            'request_code' => $code,
+            'status' => 'Completed',
         ]);
         $this->assertDatabaseHas('ess_request_status_histories', [
             'ess_request_id' => $essRequestId,
             'status' => 'Completed',
         ]);
 
-        // 4. The employee sees the fulfilment and a non-empty timeline.
+        // 8. The employee sees the released document and can download it.
         $mine = $this->getJson('/api/v1/ess/my-requests', $this->authHeaders($this->employeeToken()))
             ->assertOk()
             ->json('requests');
@@ -139,7 +192,9 @@ class EssErmDocumentLoopTest extends TestCase
             'employee_id' => $employeeId,
             'request_type' => 'Certificate of Employment',
             'filed_at' => now(),
-            'status' => 'For Fulfillment',
+            'status' => 'For Dispatch',
+            'routed_module' => 'erm',
+            'routed_at' => now(),
             'details' => 'Archived document fulfilment test.',
         ]);
 
@@ -147,13 +202,20 @@ class EssErmDocumentLoopTest extends TestCase
             'document_id' => $document->document_id,
         ], $this->authHeaders($this->recordsToken()))
             ->assertOk()
-            ->assertJsonPath('request.status', 'Completed');
+            ->assertJsonPath('request.status', 'For Release');
 
         $this->assertDatabaseHas('ess_request_attachments', [
             'ess_request_id' => $request->ess_request_id,
             'direction' => 'hr',
+            'source_module' => 'erm',
             'file_path' => 'employee-documents/archived-coe.pdf',
         ]);
+
+        $this->postJson(
+            '/api/v1/ess/admin/requests/' . $request->request_code . '/release',
+            [],
+            $this->authHeaders($this->superAdminToken())
+        )->assertOk()->assertJsonPath('request.status', 'Completed');
     }
 
     public function test_employee_role_cannot_access_erm_document_requests(): void
