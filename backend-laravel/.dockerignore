@@ -18,4 +18,8 @@ tests/
 .git/
 .idea/
 .vscode/
+<<<<<<< Updated upstream
 *-DESKTOP-*
+=======
+*-DESKTOP-*
+>>>>>>> Stashed changes
