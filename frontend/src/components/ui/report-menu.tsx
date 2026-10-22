@@ -40,6 +40,10 @@ const FORMATS: { id: ReportFormat; label: string }[] = [
   { id: "csv", label: "CSV" },
 ];
 
+/** One empty-state message for every export/print entry point. */
+const emptyExportMessage = (title: string) =>
+  `No records to export for ${title}. Adjust the filters and try again.`;
+
 /**
  * Reusable password gate for confidential exports outside ReportMenu.
  *
@@ -173,6 +177,8 @@ export type ReportMenuOption = {
   build: () => ReportData;
 };
 
+type ReportBuilder = () => ReportData | Promise<ReportData>;
+
 export function ReportMenu({
   report,
   reports,
@@ -182,8 +188,8 @@ export function ReportMenu({
   size = "default",
   showPrint = true,
 }: {
-  /** Single live report (most callers). */
-  report?: ReportData | (() => ReportData);
+  /** Single live report (most callers). Builders may be async for server-paginated data. */
+  report?: ReportData | ReportBuilder;
   /** Predefined report list - renders one submenu per report (Recruitment, ESS). */
   reports?: ReportMenuOption[];
   recordCount?: number;
@@ -195,6 +201,7 @@ export function ReportMenu({
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [pending, setPending] = useState<{
     data: ReportData;
     format: ReportFormat;
@@ -203,14 +210,31 @@ export function ReportMenu({
 
   const isMulti = report === undefined && !!reports && reports.length > 0;
 
-  const requestExport = (
-    data: ReportData,
-    format: ReportFormat,
-    count?: number,
-    emptyMessage = `No records to export for ${data.title}.`,
-  ) => {
+  const resolveReport = async (builder: ReportBuilder): Promise<ReportData | null> => {
+    setPreparing(true);
+    try {
+      return await builder();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Unable to prepare report.");
+      return null;
+    } finally {
+      setPreparing(false);
+    }
+  };
+
+  const handleExport = async (builder: ReportBuilder, format: ReportFormat, count?: number) => {
+    const data = await resolveReport(builder);
+    if (data) requestExport(data, format, count);
+  };
+
+  const handlePrint = async (builder: ReportBuilder) => {
+    const data = await resolveReport(builder);
+    if (data) requestPrint(data);
+  };
+
+  const requestExport = (data: ReportData, format: ReportFormat, count?: number) => {
     if (data.rows.length === 0) {
-      toast.error(emptyMessage);
+      toast.error(emptyExportMessage(data.title));
       return;
     }
     setPending({ data, format, count });
@@ -218,6 +242,10 @@ export function ReportMenu({
   };
 
   const requestPrint = (data: ReportData) => {
+    if (data.rows.length === 0) {
+      toast.error(emptyExportMessage(data.title));
+      return;
+    }
     printReport(data);
     toast.success(`${data.title} sent to printer.`);
   };
@@ -249,8 +277,13 @@ export function ReportMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size={size} className={cn("gap-2", buttonClassName)}>
-            <Download className="h-4 w-4" /> {label}
+          <Button
+            variant="outline"
+            size={size}
+            className={cn("gap-2", buttonClassName)}
+            disabled={preparing}
+          >
+            <Download className="h-4 w-4" /> {preparing ? "Preparing…" : label}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64">
@@ -273,7 +306,7 @@ export function ReportMenu({
                       <DropdownMenuItem
                         key={format.id}
                         onClick={() =>
-                          requestExport(option.build(), format.id, option.recordCount)
+                          void handleExport(() => option.build(), format.id, option.recordCount)
                         }
                       >
                         <FileText className="mr-2 h-4 w-4" />
@@ -286,7 +319,7 @@ export function ReportMenu({
                     {showPrint && (
                       <>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => requestPrint(option.build())}>
+                        <DropdownMenuItem onClick={() => void handlePrint(() => option.build())}>
                           <Printer className="mr-2 h-4 w-4" /> Print…
                         </DropdownMenuItem>
                       </>
@@ -299,18 +332,16 @@ export function ReportMenu({
                   key={format.id}
                   onClick={() =>
                     report &&
-                    requestExport(
-                      typeof report === "function" ? report() : report,
+                    void handleExport(
+                      () => (typeof report === "function" ? report() : report),
                       format.id,
                       recordCount,
-                      "No records to export for the current filters.",
                     )
                   }
                 >
                   <FileText className="mr-2 h-4 w-4" />
                   <span className="flex items-center gap-1.5">
-                    Export as {format.label}{" "}
-                    <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                    Export as {format.label} <Lock className="h-3.5 w-3.5 text-muted-foreground" />
                   </span>
                 </DropdownMenuItem>
               ))}
@@ -324,7 +355,7 @@ export function ReportMenu({
               <DropdownMenuItem
                 onClick={() => {
                   if (!report) return;
-                  requestPrint(typeof report === "function" ? report() : report);
+                  void handlePrint(() => (typeof report === "function" ? report() : report));
                 }}
               >
                 <Printer className="mr-2 h-4 w-4" /> Print…
@@ -386,7 +417,7 @@ export function MultiReportMenu({
   const requestExport = (format: ReportFormat) => {
     const data = typeof report === "function" ? report() : report;
     if (data.rows.length === 0) {
-      toast.error(`No records to export for ${data.title}.`);
+      toast.error(emptyExportMessage(data.title));
       return;
     }
     setPending({ data, format });
@@ -443,6 +474,10 @@ export function MultiReportMenu({
               <DropdownMenuItem
                 onClick={() => {
                   const data = typeof report === "function" ? report() : report;
+                  if (data.rows.length === 0) {
+                    toast.error(emptyExportMessage(data.title));
+                    return;
+                  }
                   printReport(data);
                   toast.success(`${data.title} sent to printer.`);
                 }}

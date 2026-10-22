@@ -8,7 +8,7 @@
  *            control block, ruled tables, sign-off block, page footers)
  *  - DOCX  : a Microsoft Word–compatible .doc typeset like an official
  *            company report (Times New Roman, ruled tables, sign-off block)
- *  - Excel : a native Excel workbook (.xls / SpreadsheetML 2003)
+ *  - Excel : a native Office Open XML workbook (.xlsx)
  *  - CSV   : a UTF-8 .csv file (BOM-prefixed for Excel) mirroring the formal
  *            report header + summary + data table
  *
@@ -19,6 +19,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import oxfordMarkMaroon from "@/assets/oxford-mark-maroon.png";
+import { company } from "@/data/company";
 import { getUser } from "@/lib/auth";
 
 export type ReportFormat = "pdf" | "docx" | "excel" | "csv";
@@ -39,7 +40,7 @@ export interface ReportData {
   title: string;
   subtitle?: string;
   columns: ReportColumn[];
-  rows: Record<string, any>[];
+  rows: Record<string, unknown>[];
   summary?: { label: string; value: string | number }[];
   sensitive?: boolean;
   chart?: {
@@ -49,14 +50,16 @@ export interface ReportData {
   };
 }
 
-/** Brand identity shared by every exported document. */
-const BRAND = "OXFORD SUITES MAKATI";
+/** Brand identity shared by every exported document.
+ *  Company details come from the same source as the public landing page so
+ *  reports can never drift from the contact information shown in the app. */
+const BRAND = company.name.toUpperCase();
 const BRAND_SUB = "Human Resources Management System";
 const BRAND_COLOR = "#520c19";
 const BRAND_COLOR_LIGHT = "#7a1226";
 const ACCENT = "#d4af37";
-const ADDRESS = "518 P. Burgos St., Makati, Metro Manila, Philippines";
-const CONTACT = "Tel: +63 (2) 8888-0000 · hr@oxfordsuitesmakati.com";
+const ADDRESS = company.address;
+const CONTACT = `Tel: ${company.phone} · ${company.email}`;
 /** Preload the company logo as a base64 data URI so it can be embedded
  *  directly into the Word documents (no external file dependency). */
 let LOGO_DATA_URI: string | null = null;
@@ -83,7 +86,7 @@ function buildReference(report: ReportData): string {
   return `OSM-HR-${prefix}-${datePart}-${rand}`;
 }
 
-function escapeHtml(value: any): string {
+function escapeHtml(value: unknown): string {
   if (value === null || value === undefined) return "";
   return String(value)
     .replace(/&/g, "&amp;")
@@ -92,9 +95,19 @@ function escapeHtml(value: any): string {
     .replace(/"/g, "&quot;");
 }
 
-function escapeXml(value: any): string {
+/** Removes characters XML 1.0 cannot carry (control chars except tab/LF/CR). */
+function stripInvalidXmlChars(value: string): string {
+  let out = "";
+  for (const ch of value) {
+    const code = ch.charCodeAt(0);
+    if (code === 9 || code === 10 || code === 13 || code >= 32) out += ch;
+  }
+  return out;
+}
+
+function escapeXml(value: unknown): string {
   if (value === null || value === undefined) return "";
-  return String(value)
+  return stripInvalidXmlChars(String(value))
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -120,7 +133,7 @@ function formalTime(d: Date): string {
 const INNER_EXT: Record<ReportFormat, string> = {
   pdf: "pdf",
   docx: "doc",
-  excel: "xls",
+  excel: "xlsx",
   csv: "csv",
 };
 
@@ -141,7 +154,7 @@ export async function exportReport(
 
   let fileBlob: Blob;
   if (format === "excel") {
-    fileBlob = buildExcelBlob(report, generatedAt, refNo, preparedBy);
+    fileBlob = await buildExcelBlob(report, generatedAt, refNo, preparedBy, preparedByDept);
   } else if (format === "docx") {
     fileBlob = buildWordBlob(
       report,
@@ -194,111 +207,291 @@ async function zipSingleFile(
 }
 
 /* ------------------------------------------------------------------ */
-/* EXCEL — native workbook via SpreadsheetML 2003 (.xls)               */
+/* EXCEL — native Office Open XML workbook (.xlsx)                     */
 /* ------------------------------------------------------------------ */
-function buildExcelBlob(
+
+type XlsxCell = { value: string | number; style?: number } | null;
+
+/** 0-based column index → spreadsheet column label (A, B, … AA). */
+function columnLetter(index: number): string {
+  let n = index + 1;
+  let label = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    label = String.fromCharCode(65 + rem) + label;
+    n = Math.floor((n - 1) / 26);
+  }
+  return label;
+}
+
+function xlsxCell(ref: string, cell: XlsxCell): string {
+  if (!cell) return "";
+  const style = cell.style !== undefined ? ` s="${cell.style}"` : "";
+  if (typeof cell.value === "number" && Number.isFinite(cell.value)) {
+    return `<c r="${ref}"${style}><v>${cell.value}</v></c>`;
+  }
+  return `<c r="${ref}"${style} t="inlineStr"><is><t xml:space="preserve">${escapeXml(cell.value)}</t></is></c>`;
+}
+
+/** Builds one worksheet that mirrors the formal PDF/Word letterhead. */
+function buildXlsxSheet(
   report: ReportData,
   generatedAt: string,
   refNo: string,
   preparedBy: string,
-): Blob {
-  const span = Math.max(report.columns.length - 1, 5);
+  preparedByDept: string,
+): string {
+  const columns =
+    report.columns.length > 0 ? report.columns : [{ header: "Record", key: "record" }];
+  const colCount = columns.length;
+  const lastCol = columnLetter(colCount - 1);
+  const rowsXml: string[] = [];
+  const merges: string[] = [];
+  let rowIndex = 0;
 
-  const metaRows = `
-    <Row>
-      <Cell ss:MergeAcross="${span}" ss:StyleID="Title"><Data ss:Type="String">${escapeXml(BRAND)}</Data></Cell>
-    </Row>
-    <Row>
-      <Cell ss:MergeAcross="${span}" ss:StyleID="Sub"><Data ss:Type="String">${escapeXml(BRAND_SUB)}</Data></Cell>
-    </Row>
-    <Row>
-      <Cell ss:MergeAcross="${span}" ss:StyleID="Sub"><Data ss:Type="String">${escapeXml(report.title)}</Data></Cell>
-    </Row>
-    <Row>
-      <Cell ss:StyleID="Meta"><Data ss:Type="String">Document Control No.:</Data></Cell>
-      <Cell ss:MergeAcross="2" ss:StyleID="MetaVal"><Data ss:Type="String">${escapeXml(refNo)}</Data></Cell>
-      <Cell ss:StyleID="Meta"><Data ss:Type="String">Date of Issue:</Data></Cell>
-      <Cell ss:MergeAcross="${Math.max(span - 4, 0)}" ss:StyleID="MetaVal"><Data ss:Type="String">${escapeXml(generatedAt)}</Data></Cell>
-    </Row>
-    <Row>
-      <Cell ss:StyleID="Meta"><Data ss:Type="String">Prepared by:</Data></Cell>
-      <Cell ss:MergeAcross="${span - 1}" ss:StyleID="MetaVal"><Data ss:Type="String">${escapeXml(preparedBy)}</Data></Cell>
-    </Row>
-    <Row>
-      <Cell ss:StyleID="Meta"><Data ss:Type="String">Subject:</Data></Cell>
-      <Cell ss:MergeAcross="${span - 1}" ss:StyleID="MetaVal"><Data ss:Type="String">${escapeXml(report.subtitle || `${BRAND} · ${BRAND_SUB}`)}</Data></Cell>
-    </Row>`;
+  const addRow = (cells: XlsxCell[]): number => {
+    rowIndex += 1;
+    const cellsXml = cells
+      .map((cell, i) => xlsxCell(`${columnLetter(i)}${rowIndex}`, cell))
+      .join("");
+    rowsXml.push(`<row r="${rowIndex}">${cellsXml}</row>`);
+    return rowIndex;
+  };
 
-  const summaryRows = (report.summary ?? [])
-    .map(
-      (s, i) => `
-      <Row>
-        <Cell ss:StyleID="SumLabel"><Data ss:Type="String">${escapeXml(s.label)}</Data></Cell>
-        <Cell ss:StyleID="SumVal"><Data ss:Type="String">${escapeXml(s.value)}</Data></Cell>
-        ${
-          i === 0
-            ? `<Cell ss:MergeAcross="${span - 1}" ss:StyleID="Meta"><Data ss:Type="String">Company: ${escapeXml(BRAND)} · ${escapeXml(ADDRESS)}</Data></Cell>`
-            : Array.from({ length: span - 1 })
-                .map(() => '<Cell><Data ss:Type="String"></Data></Cell>')
-                .join("")
-        }
-      </Row>`,
-    )
-    .join("");
+  const mergeAcross = (row: number, from: number, to: number) => {
+    if (to > from) merges.push(`${columnLetter(from)}${row}:${columnLetter(to)}${row}`);
+  };
 
-  const headerRow = `
-    <Row>
-      ${report.columns
-        .map(
-          (c) =>
-            `<Cell ss:StyleID="Head"><Data ss:Type="String">${escapeXml(c.header)}</Data></Cell>`,
-        )
-        .join("")}
-    </Row>`;
+  const addFullRow = (value: string, style: number) => {
+    const row = addRow([{ value, style }]);
+    mergeAcross(row, 0, colCount - 1);
+    return row;
+  };
 
-  const dataRows = report.rows
-    .map(
-      (row) => `
-      <Row>
-        ${report.columns
-          .map(
-            (c) =>
-              `<Cell ss:StyleID="Cell"><Data ss:Type="String">${escapeXml(row[c.key] ?? "—")}</Data></Cell>`,
-          )
-          .join("")}
-      </Row>`,
-    )
-    .join("");
+  const addMetaRow = (label: string, value: string) => {
+    if (colCount === 1) return addRow([{ value: `${label} ${value}`, style: 5 }]);
+    const row = addRow([
+      { value: label, style: 4 },
+      { value, style: 5 },
+    ]);
+    mergeAcross(row, 1, colCount - 1);
+    return row;
+  };
 
-  const xml = `<?xml version="1.0"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
- <Styles>
-   <Style ss:ID="Title"><Font ss:Bold="1" ss:Size="14" ss:Color="${BRAND_COLOR}"/></Style>
-   <Style ss:ID="Sub"><Font ss:Color="#6B7280" ss:Size="10"/></Style>
-   <Style ss:ID="Meta"><Font ss:Bold="1" ss:Color="#374151" ss:Size="10"/></Style>
-   <Style ss:ID="MetaVal"><Font ss:Color="#111827" ss:Size="10"/></Style>
-   <Style ss:ID="Head"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="${BRAND_COLOR}" ss:Pattern="Solid"/><Alignment ss:Horizontal="Left"/></Style>
-   <Style ss:ID="SumLabel"><Font ss:Bold="1" ss:Color="#854D0E" ss:Size="10"/></Style>
-   <Style ss:ID="SumVal"><Font ss:Bold="1" ss:Size="14" ss:Color="${BRAND_COLOR}"/></Style>
-   <Style ss:ID="Cell"><Font ss:Size="10"/></Style>
- </Styles>
- <Worksheet ss:Name="Report">
-   <Table>
-    ${metaRows}
-    <Row><Cell><Data ss:Type="String"></Data></Cell></Row>
-    ${summaryRows}
-    <Row><Cell><Data ss:Type="String"></Data></Cell></Row>
-    ${headerRow}
-    ${dataRows}
-   </Table>
- </Worksheet>
-</Workbook>`;
+  const addBlankRow = () => {
+    rowIndex += 1;
+    rowsXml.push(`<row r="${rowIndex}"/>`);
+  };
 
-  return new Blob(["﻿" + xml], {
-    type: "application/vnd.ms-excel;charset=utf-8;",
+  addFullRow(BRAND, 1);
+  addFullRow(BRAND_SUB, 2);
+  addFullRow(report.title, 3);
+  addMetaRow("Document Control No.:", refNo);
+  addMetaRow("Date of Issue:", generatedAt);
+  addMetaRow("Prepared by:", preparedBy);
+  addMetaRow("Department:", preparedByDept);
+  addMetaRow("Subject:", report.subtitle || `${BRAND} · ${BRAND_SUB}`);
+  addBlankRow();
+
+  for (const s of report.summary ?? []) {
+    if (colCount === 1) {
+      addRow([{ value: `${s.label}: ${s.value}`, style: 7 }]);
+    } else {
+      const row = addRow([
+        { value: s.label, style: 7 },
+        { value: s.value, style: 8 },
+      ]);
+      mergeAcross(row, 1, colCount - 1);
+    }
+  }
+  if ((report.summary ?? []).length > 0) {
+    addFullRow(`Company: ${BRAND} · ${ADDRESS}`, 5);
+  }
+  addBlankRow();
+
+  const headerRow = addRow(columns.map((c) => ({ value: c.header, style: 6 })));
+
+  if (report.rows.length === 0) {
+    const row = addRow([
+      { value: "No records were available for inclusion in this report.", style: 9 },
+    ]);
+    mergeAcross(row, 0, colCount - 1);
+  } else {
+    for (const record of report.rows) {
+      addRow(
+        columns.map((c) => {
+          const raw = record[c.key];
+          if (raw === null || raw === undefined || raw === "") return { value: "—", style: 9 };
+          return { value: typeof raw === "number" ? raw : String(raw), style: 9 };
+        }),
+      );
+    }
+  }
+  const lastDataRow = Math.max(rowIndex, headerRow);
+
+  addBlankRow();
+  addMetaRow("Prepared by:", preparedBy);
+  addMetaRow("Department:", preparedByDept);
+  addMetaRow("Noted / Received by:", "Signature over printed name · Date");
+  addBlankRow();
+  addFullRow(`${ADDRESS} · ${CONTACT}`, 10);
+  addFullRow(
+    `This document is a system-generated record of the ${BRAND} Human Resources Management System and is strictly confidential.`,
+    10,
+  );
+
+  const widths = columns.map((c) => {
+    if (String(c.header).trim() === "#") return 6;
+    let maxLen = String(c.header).length;
+    for (const record of report.rows.slice(0, 200)) {
+      const v = record[c.key];
+      if (v !== null && v !== undefined) maxLen = Math.max(maxLen, String(v).length);
+    }
+    return Math.min(Math.max(maxLen + 2, 10), 48);
   });
+  const colsXml = widths
+    .map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`)
+    .join("");
+
+  const mergesXml = merges.length
+    ? `<mergeCells count="${merges.length}">${merges
+        .map((ref) => `<mergeCell ref="${ref}"/>`)
+        .join("")}</mergeCells>`
+    : "";
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+ <dimension ref="A1:${lastCol}${rowIndex}"/>
+ <sheetViews>
+  <sheetView workbookViewId="0">
+   <pane ySplit="${headerRow}" topLeftCell="A${headerRow + 1}" activePane="bottomLeft" state="frozen"/>
+  </sheetView>
+ </sheetViews>
+ <sheetFormatPr defaultRowHeight="15"/>
+ <cols>${colsXml}</cols>
+ <sheetData>${rowsXml.join("")}</sheetData>
+ <autoFilter ref="A${headerRow}:${lastCol}${lastDataRow}"/>
+ ${mergesXml}
+ <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
+</worksheet>`;
+}
+
+function xlsxStyles(): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+ <fonts count="9">
+  <font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/></font>
+  <font><b/><sz val="16"/><color rgb="FF520C19"/><name val="Calibri"/></font>
+  <font><sz val="10"/><color rgb="FF6B7280"/><name val="Calibri"/></font>
+  <font><b/><sz val="13"/><color rgb="FF111827"/><name val="Calibri"/></font>
+  <font><b/><sz val="10"/><color rgb="FF374151"/><name val="Calibri"/></font>
+  <font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+  <font><b/><sz val="10"/><color rgb="FF854D0E"/><name val="Calibri"/></font>
+  <font><b/><sz val="12"/><color rgb="FF520C19"/><name val="Calibri"/></font>
+  <font><i/><sz val="8"/><color rgb="FF8A8A8A"/><name val="Calibri"/></font>
+ </fonts>
+ <fills count="4">
+  <fill><patternFill patternType="none"/></fill>
+  <fill><patternFill patternType="gray125"/></fill>
+  <fill><patternFill patternType="solid"><fgColor rgb="FF520C19"/><bgColor indexed="64"/></patternFill></fill>
+  <fill><patternFill patternType="solid"><fgColor rgb="FFFAF7F0"/><bgColor indexed="64"/></patternFill></fill>
+ </fills>
+ <borders count="2">
+  <border><left/><right/><top/><bottom/><diagonal/></border>
+  <border>
+   <left style="thin"><color rgb="FFB8B2A8"/></left>
+   <right style="thin"><color rgb="FFB8B2A8"/></right>
+   <top style="thin"><color rgb="FFB8B2A8"/></top>
+   <bottom style="thin"><color rgb="FFB8B2A8"/></bottom>
+   <diagonal/>
+  </border>
+ </borders>
+ <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+ <cellXfs count="11">
+  <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+  <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+  <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+  <xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+  <xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+  <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+  <xf numFmtId="0" fontId="5" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+  <xf numFmtId="0" fontId="6" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+  <xf numFmtId="0" fontId="7" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+  <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
+  <xf numFmtId="0" fontId="8" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+ </cellXfs>
+ <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+}
+
+async function buildExcelBlob(
+  report: ReportData,
+  generatedAt: string,
+  refNo: string,
+  preparedBy: string,
+  preparedByDept: string,
+): Promise<Blob> {
+  const now = new Date().toISOString();
+  const files: Record<string, string> = {
+    "[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+ <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+ <Default Extension="xml" ContentType="application/xml"/>
+ <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+ <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+ <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+ <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+ <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>`,
+    "_rels/.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+ <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+ <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`,
+    "docProps/core.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+ <dc:title>${escapeXml(report.title)} — ${escapeXml(BRAND)}</dc:title>
+ <dc:creator>${escapeXml(BRAND)} HRMS</dc:creator>
+ <cp:lastModifiedBy>${escapeXml(preparedBy)}</cp:lastModifiedBy>
+ <dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created>
+ <dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified>
+</cp:coreProperties>`,
+    "docProps/app.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+ <Application>${escapeXml(BRAND)} HRMS</Application>
+ <DocSecurity>0</DocSecurity>
+</Properties>`,
+    "xl/workbook.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+ <sheets><sheet name="Report" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`,
+    "xl/_rels/workbook.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+ <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`,
+    "xl/styles.xml": xlsxStyles(),
+    "xl/worksheets/sheet1.xml": buildXlsxSheet(
+      report,
+      generatedAt,
+      refNo,
+      preparedBy,
+      preparedByDept,
+    ),
+  };
+
+  const { BlobReader, BlobWriter, ZipWriter } = await import("@zip.js/zip.js");
+  const zipWriter = new ZipWriter(
+    new BlobWriter("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+  );
+  for (const [path, content] of Object.entries(files)) {
+    await zipWriter.add(
+      path,
+      new BlobReader(new Blob([content], { type: "application/xml;charset=utf-8" })),
+    );
+  }
+  return zipWriter.close();
 }
 
 /* ------------------------------------------------------------------ */
@@ -321,7 +514,7 @@ function buildWordBlob(
       <tr>
         <td style="width:52%;vertical-align:top;padding:0;">
           ${logo}
-          <div style="font-size:19px;font-weight:700;color:${BRAND_COLOR};letter-spacing:0.06em;font-family:'Times New Roman',serif;margin-top:6px;">OXFORD SUITES MAKATI</div>
+          <div style="font-size:19px;font-weight:700;color:${BRAND_COLOR};letter-spacing:0.06em;font-family:'Times New Roman',serif;margin-top:6px;">${BRAND}</div>
           <div style="font-size:9px;color:${ACCENT};font-weight:700;letter-spacing:0.22em;text-transform:uppercase;font-family:'Times New Roman',serif;">Human Resources Management System</div>
           <div style="font-size:9px;color:#6b7280;margin-top:6px;font-family:'Times New Roman',serif;">${escapeHtml(ADDRESS)}</div>
         </td>
@@ -429,7 +622,7 @@ function buildWordBlob(
   </body>
   </html>`;
 
-  return new Blob(["﻿" + html], { type: "application/msword;charset=utf-8" });
+  return new Blob(["\uFEFF" + html], { type: "application/msword;charset=utf-8" });
 }
 
 /* ------------------------------------------------------------------ */
@@ -618,14 +811,27 @@ function buildPdfBlob(
 /* caller, like every format.                                          */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Neutralises spreadsheet formula injection (CSV is opened directly in Excel).
+ * Cells beginning with =, +, @ or a bare -expression are prefixed with an
+ * apostrophe so they are treated as text instead of executable formulas.
+ * Plain values (including a lone "—" placeholder) are left untouched.
+ */
+function sanitizeCsvFormula(value: string): string {
+  if (/^[\s]*[=+@]/.test(value) || /^[\s]*-[A-Za-z0-9(]/.test(value)) {
+    return `'${value}`;
+  }
+  return value;
+}
+
 /** RFC 4180 cell escaping — quotes, commas, CR/LF safe; null → empty. */
-function escapeCsvCell(value: any): string {
+function escapeCsvCell(value: unknown): string {
   if (value === null || value === undefined) return "";
-  const s = String(value);
+  const s = sanitizeCsvFormula(String(value));
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-function csvRow(cells: any[]): string {
+function csvRow(cells: unknown[]): string {
   return cells.map(escapeCsvCell).join(",");
 }
 
@@ -703,11 +909,11 @@ function letterheadHtml(opts: { inline?: boolean }): string {
     : "";
   const wordmark = opts.inline
     ? `<div style="line-height:1.1;">
-         <div style="font-size:19px;font-weight:700;color:${BRAND_COLOR};letter-spacing:0.06em;font-family:'Times New Roman',serif;">OXFORD SUITES MAKATI</div>
+         <div style="font-size:19px;font-weight:700;color:${BRAND_COLOR};letter-spacing:0.06em;font-family:'Times New Roman',serif;">${BRAND}</div>
          <div style="font-size:9px;color:${ACCENT};font-weight:700;letter-spacing:0.22em;text-transform:uppercase;margin-top:3px;font-family:'Times New Roman',serif;">Human Resources Management System</div>
        </div>`
     : `<div class="brand-words">
-         <div class="brand-title">OXFORD SUITES MAKATI</div>
+         <div class="brand-title">${BRAND}</div>
          <div class="brand-sub">Human Resources Management System</div>
        </div>`;
 
@@ -976,15 +1182,18 @@ export function build201FileReport(input: Build201FileInput): ReportData {
   /* Combine document rows and history rows so the single report contains
      everything.  If history is present, append a visual separator row and
      then history entries. */
-  const rows: Record<string, any>[] = [
+  const rows: Record<string, unknown>[] = [
     ...docRows,
     ...(historyRows.length
-      ? [{ "#": "", document: "— Employment History —", status: "", file: "" }, ...historyRows.map((h) => ({
-          "#": h["#"],
-          document: `[${h.type}] ${h.detail}`,
-          status: h.date,
-          file: "",
-        }))]
+      ? [
+          { "#": "", document: "— Employment History —", status: "", file: "" },
+          ...historyRows.map((h) => ({
+            "#": h["#"],
+            document: `[${h.type}] ${h.detail}`,
+            status: h.date,
+            file: "",
+          })),
+        ]
       : []),
   ];
 
@@ -1015,4 +1224,3 @@ export function build201FileReport(input: Build201FileInput): ReportData {
     ],
   };
 }
-

@@ -14,11 +14,11 @@ class SettingsDatabaseSeeder extends Seeder
     {
         $defaults = [
             'company' => [
-                'name'          => 'Oxford Suites',
+                'name'          => 'Oxford Suites Makati',
                 'email'         => 'hr@oxfordsuites.com.ph',
-                'contact'       => '+63 2 8999 0000',
-                'businessHours' => 'Monday–Friday · 8:00 AM – 6:00 PM',
-                'address'       => '123 Makati Avenue, Makati City, Metro Manila',
+                'contact'       => '+63 2 8888 8688',
+                'businessHours' => '24 Hours',
+                'address'       => '528 P. Burgos Street, Makati City, Metro Manila, Philippines 1210',
                 'tin'           => '000-000-000-000',
             ],
 

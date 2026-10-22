@@ -63,12 +63,97 @@ class UserManagementTest extends TestCase
         $this->assertDatabaseMissing('system_users', ['system_user_id' => $id]);
     }
 
+    public function test_create_user_without_status_defaults_to_active(): void
+    {
+        $token = $this->loginViaOtp();
+
+        $this->postJson('/api/v1/users', [
+            'username' => 'no.status',
+            'email' => 'no.status@oxfordsuites.com.ph',
+            'password' => 'Temp@1234',
+            'full_name' => 'No Status User',
+            'role_id' => 3,
+        ], $this->authHeaders($token))
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'Active');
+    }
+
+    public function test_admin_can_reset_password_and_revoke_sessions(): void
+    {
+        $token = $this->loginViaOtp();
+
+        $created = $this->postJson('/api/v1/users', [
+            'username' => 'reset.user',
+            'email' => 'reset.user@oxfordsuites.com.ph',
+            'password' => 'Temp@1234',
+            'full_name' => 'Reset User',
+            'role_id' => 3,
+            'status' => 'Active',
+        ], $this->authHeaders($token))->assertCreated()->json('data');
+
+        $user = SystemUser::findOrFail($created['system_user_id']);
+        $session = $user->createToken('reset-test');
+        $sessionId = $session->accessToken->id;
+
+        $this->postJson("/api/v1/users/{$user->system_user_id}/password", [
+            'password' => 'Reset@1234',
+        ], $this->authHeaders($token))->assertOk();
+
+        $this->assertDatabaseMissing('personal_access_tokens', ['id' => $sessionId]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'reset.user@oxfordsuites.com.ph',
+            'password' => 'Reset@1234',
+        ])->assertOk();
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'reset.user@oxfordsuites.com.ph',
+            'password' => 'Temp@1234',
+        ])->assertStatus(401);
+    }
+
+    public function test_non_super_admin_cannot_reset_super_admin_password(): void
+    {
+        $admin = SystemUser::where('role_id', 2)->firstOrFail();
+        $token = $admin->createToken('test-token')->plainTextToken;
+
+        $this->postJson('/api/v1/users/1/password', [
+            'password' => 'Reset@1234',
+        ], $this->authHeaders($token))->assertStatus(403);
+    }
+
     public function test_cannot_delete_last_active_super_admin(): void
     {
         $token = $this->loginViaOtp();
 
         $this->deleteJson('/api/v1/users/1', [], $this->authHeaders($token))
             ->assertStatus(422);
+    }
+
+    public function test_cannot_deactivate_last_active_super_admin(): void
+    {
+        $token = $this->loginViaOtp();
+        $user = SystemUser::findOrFail(1);
+
+        $this->putJson('/api/v1/users/1', [
+            'username' => $user->username,
+            'email' => $user->email,
+            'full_name' => $user->full_name,
+            'role_id' => 1,
+            'status' => 'Suspended',
+        ], $this->authHeaders($token))->assertStatus(422);
+    }
+
+    public function test_protected_role_cannot_be_renamed_or_deleted(): void
+    {
+        $token = $this->loginViaOtp();
+
+        $this->putJson('/api/v1/roles/1', [
+            'role_name' => 'Renamed Super Admin',
+        ], $this->authHeaders($token))->assertStatus(403);
+
+        $this->deleteJson('/api/v1/roles/1', [], $this->authHeaders($token))
+            ->assertStatus(403);
     }
 
     public function test_update_role_permissions(): void

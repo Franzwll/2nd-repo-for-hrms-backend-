@@ -22,7 +22,7 @@ class RoleController extends Controller
             ->with('permissions')
             ->withCount('users')
             ->orderBy('role_id')
-            ->paginate($request->integer('per_page', 25));
+            ->paginate(min(max($request->integer('per_page', 25), 1), 100));
 
         return response()->json([
             'data' => RoleResource::collection($roles),
@@ -57,6 +57,12 @@ class RoleController extends Controller
 
     public function update(UpdateRoleRequest $request, SystemRole $role): JsonResponse
     {
+        if ($role->is_protected) {
+            return response()->json([
+                'message' => "The {$role->role_name} role is a system role and cannot be modified.",
+            ], 403);
+        }
+
         $role->update($request->validated());
 
         return response()->json([
@@ -67,11 +73,16 @@ class RoleController extends Controller
 
     public function destroy(SystemRole $role): JsonResponse
     {
+        if ($role->is_protected) {
+            return response()->json([
+                'message' => "The {$role->role_name} role is a system role and cannot be deleted.",
+            ], 403);
+        }
+
         if ($role->users()->exists()) {
             return response()->json(['message' => 'Cannot delete a role that has users assigned.'], 422);
         }
 
-        $name = $role->role_name;
         $role->permissions()->delete();
         $role->delete();
 
