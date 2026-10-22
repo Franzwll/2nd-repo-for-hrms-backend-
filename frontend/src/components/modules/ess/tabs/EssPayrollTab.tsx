@@ -24,7 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
+import { CardSkeleton } from "@/components/ui/loading-skeletons";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
 import { usePagination } from "@/hooks/usePagination";
@@ -47,6 +47,7 @@ export function EssPayrollTab() {
   const navigate = useNavigate();
 
   const [payrollData, setPayrollData] = useState<ApiPayrollData | null>(null);
+  const [loading, setLoading] = useState(true);
   const [selectedPayslipPeriod, setSelectedPayslipPeriod] =
     useState<string>("Aug 01 - Aug 15, 2026");
   const [selectedPayslipNet, setSelectedPayslipNet] = useState<number>(28080);
@@ -63,7 +64,8 @@ export function EssPayrollTab() {
         setPayrollData(res);
         if (res.net) setSelectedPayslipNet(res.net);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   const baseSalary = payrollData?.baseSalary ?? 28000;
@@ -236,6 +238,30 @@ export function EssPayrollTab() {
       tone: "bg-purple-500/10 text-purple-600",
     },
   ];
+
+  if (loading) {
+    return (
+      <div className="space-y-6" aria-busy="true" aria-label="Loading payroll">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="border-border/70 shadow-xs">
+            <CardContent className="p-5">
+              <CardSkeleton rows={5} />
+            </CardContent>
+          </Card>
+          <Card className="border-border/70 shadow-xs">
+            <CardContent className="p-5">
+              <CardSkeleton rows={5} />
+            </CardContent>
+          </Card>
+        </div>
+        <Card className="border-border/70 shadow-xs">
+          <CardContent className="p-5">
+            <CardSkeleton rows={6} />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

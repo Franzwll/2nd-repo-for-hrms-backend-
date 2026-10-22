@@ -249,6 +249,7 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
     average_hours: 8.0,
   });
   const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(true);
 
   // Schedule state
   const [scheduleLoading, setScheduleLoading] = useState(true);
@@ -285,7 +286,8 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
           setAttSummary(res.summary);
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setAttendanceLoading(false));
 
     // Schedule Roster
     try {
@@ -347,6 +349,9 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
   return (
     <div className="space-y-6">
       {/* Metric cards — admin-consistent placement above tabs */}
+      {attendanceLoading ? (
+        <StatCardsSkeleton count={2} />
+      ) : (
       <div className="grid gap-4 sm:grid-cols-2">
         <StatCard
           label="Present Days"
@@ -361,6 +366,7 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
           tone="primary"
         />
       </div>
+      )}
 
       <div className="mt-6 space-y-4">
         <Card className="border-border/70 shadow-xs">

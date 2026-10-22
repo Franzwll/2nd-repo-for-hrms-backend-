@@ -720,35 +720,47 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
             <div className="ml-5 mt-1 space-y-0.5 border-l border-sidebar-border pl-3">
 
-              {item.children!.map((child) => (
+              {item.children!.map((child) => {
 
-                <Link
+                // Child targets may carry a query string (e.g.
+                // `/employee/ess?category=Payroll`). Split it into `to` +
+                // `search` so the link stays a client-side navigation.
+                const [childPath, childQuery] = child.to.split("?");
 
-                  key={child.to}
+                const childSearch = childQuery
+                  ? Object.fromEntries(new URLSearchParams(childQuery))
+                  : undefined;
 
-                  to={child.to}
+                return (
+                  <Link
 
-                  onClick={onNavigate}
+                    key={child.to}
 
-                  className={cn(
+                    to={childPath as never}
 
-                    "block rounded-md px-3 py-2 text-[0.8rem] transition-colors",
+                    search={childSearch as never}
 
-                    isChildActive(child.to)
+                    onClick={onNavigate}
 
-                      ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                    className={cn(
 
-                      : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+                      "block rounded-md px-3 py-2 text-[0.8rem] transition-colors",
 
-                  )}
+                      isChildActive(child.to)
 
-                >
+                        ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
 
-                  {child.label}
+                        : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
 
-                </Link>
+                    )}
 
-              ))}
+                  >
+
+                    {child.label}
+
+                  </Link>
+                );
+              })}
 
             </div>
 

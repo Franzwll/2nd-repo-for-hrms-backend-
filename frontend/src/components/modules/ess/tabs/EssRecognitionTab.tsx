@@ -36,6 +36,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { CardSkeleton, ListSkeleton } from "@/components/ui/loading-skeletons";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
@@ -255,6 +256,7 @@ export function EssRecognitionTab() {
   // back to storage once hydrated (otherwise mount would clobber saved data).
   const [posts, setPosts] = useState<RecognitionPost[]>(INITIAL_POSTS);
   const [hydrated, setHydrated] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     try {
@@ -305,7 +307,8 @@ export function EssRecognitionTab() {
           setPosts(res.recognitions.map(mapApiPost));
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   // Save to localStorage and notify other components (only after hydration,
@@ -606,6 +609,34 @@ export function EssRecognitionTab() {
     setShareComment("");
     toast.success("Recognition shared to Wall of Fame feed! 🚀");
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6" aria-busy="true" aria-label="Loading recognition">
+        <div className="grid gap-4 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="border-border/70 shadow-xs">
+              <CardContent className="p-4">
+                <CardSkeleton rows={2} />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <Card className="border-border/70 shadow-xs lg:col-span-2">
+            <CardContent className="p-5">
+              <ListSkeleton items={4} />
+            </CardContent>
+          </Card>
+          <Card className="border-border/70 shadow-xs">
+            <CardContent className="p-5">
+              <CardSkeleton rows={5} />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

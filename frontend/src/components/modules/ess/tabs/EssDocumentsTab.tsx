@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EssStatusBadge, docCategoryTint, ON_FILE_STATUSES } from "@/components/modules/ess/shared/EssStatusBadge";
+import { CardSkeleton, StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 import { myEmployeeDocuments } from "@/data/ess";
 import { DocumentUploadModal } from "@/components/modules/ess/modals/DocumentUploadModal";
 import { DocumentViewerModal } from "@/components/modules/ess/modals/DocumentViewerModal";
@@ -51,6 +52,7 @@ function toDocRequestItem(raw: any) {
 
 export function EssDocumentsTab() {
   const [documents, setDocuments] = useState(myEmployeeDocuments);
+  const [loading, setLoading] = useState(true);
 
   // Live Database Fetch
   useEffect(() => {
@@ -73,7 +75,8 @@ export function EssDocumentsTab() {
           );
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -124,6 +127,19 @@ export function EssDocumentsTab() {
     const days = Math.ceil((exp.getTime() - Date.now()) / 86400000);
     return days >= 0 && days <= 60;
   });
+
+  if (loading) {
+    return (
+      <div className="space-y-6" aria-busy="true" aria-label="Loading documents">
+        <StatCardsSkeleton count={3} />
+        <Card className="border-border/70 shadow-xs">
+          <CardContent className="p-5">
+            <CardSkeleton rows={6} />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

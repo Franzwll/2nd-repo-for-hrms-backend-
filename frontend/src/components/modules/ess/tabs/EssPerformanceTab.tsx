@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { CardSkeleton, StatCardsSkeleton } from "@/components/ui/loading-skeletons";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
@@ -86,6 +87,7 @@ function isCourseUrgent(c: any): boolean {
 
 export function EssPerformanceTab() {
   const [courses, setCourses] = useState<any[]>(myLearningCourses);
+  const [loading, setLoading] = useState(true);
   const [perfData, setPerfData] = useState<{
     rating: number | null;
     competencyLevel: string | null;
@@ -194,7 +196,8 @@ export function EssPerformanceTab() {
     essApi
       .myPerformance()
       .then(applyPerformance)
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   const handleOpenCert = (course: any) => {
@@ -232,6 +235,23 @@ export function EssPerformanceTab() {
     const fresh = (mapCourses(res) as any[]).find((c) => c.id === courseCode) ?? playerCourse;
     if (fresh) handleOpenCert(fresh);
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6" aria-busy="true" aria-label="Loading performance">
+        <StatCardsSkeleton count={4} />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="border-border/70 shadow-xs">
+              <CardContent className="p-5">
+                <CardSkeleton rows={4} />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
