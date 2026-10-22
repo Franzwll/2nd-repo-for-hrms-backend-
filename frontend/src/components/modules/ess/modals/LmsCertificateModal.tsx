@@ -15,6 +15,7 @@ import { myProfile } from "@/data/ess";
 import { getUser } from "@/lib/auth";
 import { essApi } from "@/lib/api";
 import { downloadCertificatePdf } from "@/lib/downloadCertificatePdf";
+import { printElement } from "@/lib/printElement";
 
 interface LmsCertificateModalProps {
   open: boolean;
@@ -65,8 +66,55 @@ export function LmsCertificateModal({
   }, [open, courseId]);
 
   const handlePrint = () => {
-    window.print();
-    toast.success("Printing certificate...");
+    // Print from an isolated frame: the modal's portal/fixed positioning and the
+    // app's global print rules otherwise clip the certificate or add pages.
+    printElement({
+      elementId: "lms-certificate",
+      title: "Certificate of Completion",
+      frameId: "lms-certificate-print-frame",
+      extraCss: `
+        html, body {
+          height: 100% !important;
+          min-height: 100% !important;
+        }
+        body {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          padding: 15mm !important;
+          box-sizing: border-box !important;
+        }
+        #print-element-root {
+          width: 100% !important;
+          display: flex !important;
+          justify-content: center !important;
+        }
+        #lms-certificate {
+          --background: #ffffff;
+          --foreground: #0f172a;
+          --card: #ffffff;
+          --card-foreground: #0f172a;
+          --muted: #f1f5f9;
+          --muted-foreground: #475569;
+          --border: #e2e8f0;
+          --primary: #9f1239;
+          position: static !important;
+          width: 100% !important;
+          max-width: 720px !important;
+          margin: 0 auto !important;
+          padding: 32px !important;
+          border: 4px double #9f1239 !important;
+          border-radius: 12px !important;
+          background: #ffffff !important;
+          box-shadow: none !important;
+          page-break-inside: avoid !important;
+          page-break-after: avoid !important;
+        }
+        #lms-certificate * { visibility: visible !important; }
+        button, [role="button"] { display: none !important; }
+      `,
+    });
+    toast.success("Opening the print dialog…");
   };
 
   const handleDownload = async () => {
@@ -109,7 +157,10 @@ export function LmsCertificateModal({
         </DialogHeader>
 
         {/* Certificate Frame */}
-        <div className="rounded-xl border-4 border-double border-primary/40 bg-gradient-to-b from-card via-muted/30 to-card p-6 text-center shadow-sm space-y-4">
+        <div
+          id="lms-certificate"
+          className="rounded-xl border-4 border-double border-primary/40 bg-gradient-to-b from-card via-muted/30 to-card p-6 text-center shadow-sm space-y-4"
+        >
           <div className="flex items-center justify-center gap-2 text-primary font-display font-bold text-xs uppercase tracking-widest">
             <ShieldCheck className="h-4 w-4" /> Oxford Suites Makati · Learning &amp; Development
           </div>

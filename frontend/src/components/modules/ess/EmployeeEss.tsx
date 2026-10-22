@@ -113,7 +113,7 @@ export function EmployeeEss() {
       case "RequestDoc":
         return "My Documents";
       case "Recognition":
-        return "Social Recognition & Kudos";
+        return "My Feed";
       case "Requests":
       case "COE":
         return "All Requests Tracker";

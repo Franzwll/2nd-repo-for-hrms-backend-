@@ -12,10 +12,12 @@ import {
   ShieldCheck,
   Building2,
   Check,
+  Info,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StatCard } from "@/components/portal/StatCard";
 import { ListBody } from "@/components/portal/ListBody";
 import { ListEmptyState } from "@/components/portal/ListEmptyState";
@@ -352,20 +354,20 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
       {attendanceLoading ? (
         <StatCardsSkeleton count={2} />
       ) : (
-      <div className="grid gap-4 sm:grid-cols-2">
-        <StatCard
-          label="Present Days"
-          value={attSummary.present_days}
-          icon={CheckCircle2}
-          tone="success"
-        />
-        <StatCard
-          label="Leave Days"
-          value={attSummary.leave_days}
-          icon={AlertCircle}
-          tone="primary"
-        />
-      </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <StatCard
+            label="Present Days"
+            value={attSummary.present_days}
+            icon={CheckCircle2}
+            tone="success"
+          />
+          <StatCard
+            label="Leave Days"
+            value={attSummary.leave_days}
+            icon={AlertCircle}
+            tone="primary"
+          />
+        </div>
       )}
 
       <div className="mt-6 space-y-4">
@@ -399,6 +401,44 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
                     Shift Completed / Clocked Out
                   </Badge>
                 )}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Clocking guidelines"
+                      title="Clocking guidelines"
+                      className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
+                    >
+                      <Info className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-80 text-xs">
+                    <div className="flex items-center gap-2 pb-2">
+                      <Info className="h-4 w-4 shrink-0 text-primary" />
+                      <p className="font-display text-sm font-semibold text-foreground">
+                        Clocking Guidelines
+                      </p>
+                    </div>
+                    <div className="space-y-2 text-muted-foreground">
+                      <div className="flex items-start gap-2">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        <span>
+                          <strong className="text-foreground">Punctuality:</strong> 15-min grace
+                          period compliant past shift start.
+                        </span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        <span>
+                          <strong className="text-foreground">Meal Breaks:</strong> 1-hour statutory
+                          interval for break out and in.
+                        </span>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
 
@@ -415,14 +455,6 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
                     <div className="my-2.5">
                       <span className="text-5xl sm:text-6xl font-extrabold font-mono tracking-tight text-foreground drop-shadow-xs">
                         {formattedTime}
-                      </span>
-                    </div>
-                    <div className="inline-flex items-center gap-2 rounded-full bg-background border border-border/80 px-3.5 py-1 text-xs text-muted-foreground">
-                      <span>Active Station Mode:</span>
-                      <span className="font-semibold text-foreground">
-                        {currentDutyStatus === "clocked_out"
-                          ? "Shift Concluded"
-                          : "Live Biometric Clocking"}
                       </span>
                     </div>
                   </div>
@@ -504,35 +536,6 @@ export function EssAttendanceTab(_props: EssAttendanceTabProps) {
                           {employeeInfo?.department || "Kitchen / Culinary"}
                         </span>
                       </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Terminal Guidelines Footer */}
-              <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-2 shrink-0">
-                    <AlertCircle className="h-4 w-4 text-primary shrink-0" />
-                    <span className="font-semibold font-display text-foreground">
-                      Clocking Guidelines
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-muted-foreground w-full lg:w-auto">
-                    <div className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                      <span>
-                        <strong>Punctuality:</strong> 15-min grace period compliant past shift
-                        start.
-                      </span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                      <span>
-                        <strong>Meal Breaks:</strong> 1-hour statutory interval for break out and
-                        in.
-                      </span>
                     </div>
                   </div>
                 </div>

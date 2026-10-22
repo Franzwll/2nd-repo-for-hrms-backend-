@@ -281,6 +281,14 @@
     font-family: var(--font-display-family);
     letter-spacing: -0.01em;
   }
+
+  /* Tailwind v4 preflight gives buttons `cursor: default`; restore the
+   * expected pointer for every interactive button unless a utility
+   * (e.g. `cursor-default`, `disabled:cursor-not-allowed`) overrides it. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
 }
 
 /* Omni-directional slow-motion montage animations */
@@ -346,13 +354,16 @@
     visibility: hidden !important;
   }
 
-  /* Unhide only the official payslip receipt and all its inner children */
+  /* Unhide only the printable documents and all their inner children */
   #official-payslip-receipt,
-  #official-payslip-receipt * {
+  #official-payslip-receipt *,
+  #lms-certificate,
+  #lms-certificate * {
     visibility: visible !important;
   }
 
-  #official-payslip-receipt {
+  #official-payslip-receipt,
+  #lms-certificate {
     position: absolute !important;
     left: 0 !important;
     top: 0 !important;
@@ -368,6 +379,21 @@
     border-radius: 0 !important;
     page-break-inside: avoid !important;
     page-break-after: avoid !important;
+  }
+
+  /* Keep the certificate's decorative double border and force light-mode
+   * tokens so it stays readable even when printing from dark mode. */
+  #lms-certificate {
+    --background: #ffffff;
+    --foreground: #0f172a;
+    --card: #ffffff;
+    --card-foreground: #0f172a;
+    --muted: #f1f5f9;
+    --muted-foreground: #475569;
+    --border: #e2e8f0;
+    --primary: #9f1239;
+    border: 4px double #9f1239 !important;
+    border-radius: 12px !important;
   }
 
   /* Transparently hide modal shells, dialog backdrops, and navigation */
