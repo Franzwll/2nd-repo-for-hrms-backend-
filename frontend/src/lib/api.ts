@@ -2233,7 +2233,16 @@ export const userManagementApi = {
   users: {
     list: (params?: Record<string, any>) => {
       const qs = new URLSearchParams(params).toString();
-      return request<{ data: ApiSystemUser[]; meta: any }>(`/users${qs ? `?${qs}` : ""}`);
+      return request<{
+        data: ApiSystemUser[];
+        meta: any;
+        stats?: {
+          total: number;
+          active: number;
+          suspended: number;
+          admins: number;
+        };
+      }>(`/users${qs ? `?${qs}` : ""}`);
     },
     get: (id: number | string) => request<{ data: ApiSystemUser }>(`/users/${id}`),
     create: (data: Record<string, any>) =>
@@ -2248,6 +2257,11 @@ export const userManagementApi = {
       }),
     remove: (id: number | string) =>
       request<{ message: string }>(`/users/${id}`, { method: "DELETE" }),
+    resetPassword: (id: number | string, password: string) =>
+      request<{ message: string }>(`/users/${id}/password`, {
+        method: "POST",
+        body: JSON.stringify({ password }),
+      }),
     loginActivity: (id: number | string) =>
       request<{ data: ApiLoginActivity[]; meta: any }>(`/users/${id}/login-activity`),
   },
@@ -2294,8 +2308,8 @@ export interface ApiAuditLog {
   timestamp: string;
   occurred_at: string;
   user: string;
-  role: string;
-  department: string;
+  role: string | null;
+  department: string | null;
   action: string;
   module: string;
   module_name: string;
@@ -2303,8 +2317,8 @@ export interface ApiAuditLog {
   target_id: string | null;
   details: string | null;
   severity: "Info" | "Warning" | "Critical";
-  ip_address: string;
-  device: string;
+  ip_address: string | null;
+  device: string | null;
   url?: string | null;
 }
 
@@ -2319,6 +2333,8 @@ export const auditLogApi = {
         total: number;
         by_severity: Record<string, number>;
         by_module: Record<string, number>;
+        modules: string[];
+        unique_actors: number;
         latest: ApiAuditLog | null;
       };
     }>("/audit-logs/stats"),
@@ -2342,7 +2358,7 @@ export interface ApiLandingCompany {
   email?: string;
   hours?: string;
   facilities?: { name: string; body: string }[];
-  faqs?: { q: string; a: string }[];
+  faqs?: { q: string; a: string; category?: string }[];
   socials?: string[];
 }
 

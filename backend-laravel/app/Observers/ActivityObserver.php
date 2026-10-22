@@ -38,6 +38,8 @@ class ActivityObserver
         'remember_token',
         'email_verified_at',
         'last_activity_at',
+        'failed_attempts',
+        'locked_until',
     ];
 
     /** Sensitive fields that should never be echoed into audit details. */
@@ -45,6 +47,13 @@ class ActivityObserver
         'password',
         'password_hash',
         'remember_token',
+        'api_token',
+        'otp_code',
+        'mfa_secret',
+        'mfa_recovery_codes',
+        'totp_secret',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
     ];
 
     public static function withoutLogging(callable $callback)
@@ -96,8 +105,22 @@ class ActivityObserver
         $details = null;
 
         if ($changed) {
-            $shown = array_diff($changed, self::HIDDEN_FIELDS);
-            $details = 'Changed: ' . implode(', ', $shown);
+            $changes = [];
+
+            foreach ($changed as $field) {
+                if (in_array($field, self::HIDDEN_FIELDS, true)) {
+                    continue;
+                }
+
+                $changes[] = $field . ': '
+                    . $this->formatValue($model->getOriginal($field))
+                    . ' -> '
+                    . $this->formatValue($model->getAttribute($field));
+            }
+
+            $details = $changes === []
+                ? 'Sensitive fields updated'
+                : 'Changed: ' . implode('; ', $changes);
         }
 
         AuditLogger::log(
@@ -115,6 +138,29 @@ class ActivityObserver
         }
 
         NotificationRules::handle($event, $model);
+    }
+
+    protected function formatValue(mixed $value): string
+    {
+        if ($value === null) {
+            return 'null';
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            $value = $value->format('Y-m-d H:i:s');
+        } elseif (is_array($value) || is_object($value)) {
+            $value = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[unserializable]';
+        }
+
+        $value = (string) $value;
+
+        return mb_strlen($value) > 120
+            ? mb_substr($value, 0, 117) . '...'
+            : $value;
     }
 
     /**

@@ -162,11 +162,18 @@ export function PublicShell({ children, bare = false }: { children: ReactNode; b
               </li>
               <li className="flex gap-2">
                 <Phone className="h-4 w-4 shrink-0 text-gold" />
-                {company.phone}
+                <a
+                  href={`tel:${company.phone.replace(/[^\d+]/g, "")}`}
+                  className="hover:text-primary"
+                >
+                  {company.phone}
+                </a>
               </li>
               <li className="flex gap-2">
                 <Mail className="h-4 w-4 shrink-0 text-gold" />
-                {company.email}
+                <a href={`mailto:${company.email}`} className="break-all hover:text-primary">
+                  {company.email}
+                </a>
               </li>
             </ul>
             <div className="mt-4 flex flex-wrap gap-2">

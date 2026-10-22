@@ -10,6 +10,7 @@ Route::middleware(['auth:sanctum', 'permission:User Management:Full'])->prefix('
     Route::get('users/{user}', [UserController::class, 'show'])->name('usermanagement.users.show');
     Route::put('users/{user}', [UserController::class, 'update'])->name('usermanagement.users.update');
     Route::delete('users/{user}', [UserController::class, 'destroy'])->name('usermanagement.users.destroy');
+    Route::post('users/{user}/password', [UserController::class, 'resetPassword'])->name('usermanagement.users.password');
     Route::get('users/{user}/login-activity', [UserController::class, 'loginActivity'])->name('usermanagement.users.login-activity');
 
     Route::get('roles', [RoleController::class, 'index'])->name('usermanagement.roles.index');

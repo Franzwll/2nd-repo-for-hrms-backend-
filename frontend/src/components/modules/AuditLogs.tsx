@@ -1,21 +1,22 @@
-import { useEffect, useState } from "react";
-import {
-  Activity,
-  AlertTriangle,
-  ScrollText,
-  Search,
-  ShieldAlert,
-  Users,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Activity, AlertTriangle, Eye, ScrollText, Search, ShieldAlert, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/portal/PageHeader";
 import { ReportMenu } from "@/components/ui/report-menu";
-import { SortHead, useSort } from "@/components/portal/sortable";
+import { SortHead, type SortState } from "@/components/portal/sortable";
 import { StatCard } from "@/components/portal/StatCard";
 import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -33,12 +34,33 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { ListBody } from "@/components/portal/ListBody";
-import { usePagination } from "@/hooks/usePagination";
 import { auditLogApi, type ApiAuditLog } from "@/lib/api";
+import type { ReportData } from "@/lib/report-export";
 import { cn } from "@/lib/utils";
 
-const formatTimestamp = (iso: string) => {
+type AuditSortKey = "occurred_at" | "action" | "module_name" | "severity";
+
+type AuditMeta = {
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+};
+
+type AuditStats = {
+  total: number;
+  by_severity: Record<string, number>;
+  by_module: Record<string, number>;
+  modules: string[];
+  unique_actors: number;
+  latest: ApiAuditLog | null;
+};
+
+const EMPTY_META: AuditMeta = { current_page: 1, last_page: 1, per_page: 10, total: 0 };
+const REPORT_ROW_LIMIT = 1000;
+
+const formatTimestamp = (iso?: string | null) => {
+  if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString("en-US", {
@@ -50,106 +72,193 @@ const formatTimestamp = (iso: string) => {
   });
 };
 
+const display = (value?: string | null) => (value?.trim() ? value : "—");
+
+const actionTypeFor = (action: string): "Create" | "Update" | "Delete" | "Security" => {
+  const actLower = action.toLowerCase();
+  if (
+    actLower.includes("create") ||
+    actLower.includes("add") ||
+    actLower.includes("generate") ||
+    actLower.includes("regularized")
+  ) {
+    return "Create";
+  }
+  if (
+    actLower.includes("delete") ||
+    actLower.includes("revoke") ||
+    actLower.includes("disable") ||
+    actLower.includes("exit") ||
+    actLower.includes("deactivated")
+  ) {
+    return "Delete";
+  }
+  if (
+    actLower.includes("login") ||
+    actLower.includes("password") ||
+    actLower.includes("2fa") ||
+    actLower.includes("permission") ||
+    actLower.includes("policy") ||
+    actLower.includes("security")
+  ) {
+    return "Security";
+  }
+  return "Update";
+};
+
 export function AuditLogs() {
   const [severity, setSeverity] = useState("all");
   const [moduleFilter, setModuleFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [entries, setEntries] = useState<ApiAuditLog[]>([]);
+  const [meta, setMeta] = useState<AuditMeta>(EMPTY_META);
+  const [stats, setStats] = useState<AuditStats | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(10);
+  const [sort, setSort] = useState<SortState<AuditSortKey>>(null);
   const [loading, setLoading] = useState(true);
+  const [detail, setDetail] = useState<ApiAuditLog | null>(null);
+
+  const filterParams = useMemo(
+    () => ({
+      q: search.trim() || undefined,
+      module: moduleFilter !== "all" ? moduleFilter : undefined,
+      severity: severity !== "all" ? severity : undefined,
+      from: fromDate || undefined,
+      to: toDate || undefined,
+    }),
+    [search, moduleFilter, severity, fromDate, toDate],
+  );
+
+  useEffect(() => {
+    auditLogApi
+      .stats()
+      .then((res) => setStats(res.data))
+      .catch(() => toast.error("Unable to load audit statistics."));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    auditLogApi
-      .list({ per_page: 500 })
-      .then((res) => {
-        if (!cancelled) setEntries(res.data);
-      })
-      .catch(() => {
-        if (!cancelled) toast.error("Unable to load audit logs.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+
+    const timer = setTimeout(
+      () => {
+        auditLogApi
+          .list({
+            ...filterParams,
+            page,
+            per_page: pageSize,
+            sort: sort?.key,
+            direction: sort?.dir,
+          })
+          .then((res) => {
+            if (cancelled) return;
+            setEntries(res.data);
+            setMeta(res.meta ?? EMPTY_META);
+          })
+          .catch(() => {
+            if (!cancelled) toast.error("Unable to load audit logs.");
+          })
+          .finally(() => {
+            if (!cancelled) setLoading(false);
+          });
+      },
+      search ? 300 : 0,
+    );
+
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, []);
+  }, [filterParams, page, pageSize, sort, search]);
 
-  const moduleOptions = Array.from(new Set(entries.map((a) => a.module)));
-  const filteredRows = entries.filter((a) => {
-    const matchesSeverity = severity === "all" || a.severity === severity;
-    const matchesModule = moduleFilter === "all" || a.module === moduleFilter;
-    const q = search.trim().toLowerCase();
-    const matchesSearch =
-      !q ||
-      a.user.toLowerCase().includes(q) ||
-      a.action.toLowerCase().includes(q) ||
-      a.module.toLowerCase().includes(q) ||
-      a.department.toLowerCase().includes(q) ||
-      a.ip_address.toLowerCase().includes(q) ||
-      (a.url ?? "").toLowerCase().includes(q);
-    return matchesSeverity && matchesModule && matchesSearch;
-  });
-  const {
-    sort,
-    toggle,
-    sorted: rows,
-  } = useSort(filteredRows, {
-    timestamp: (a) => a.timestamp,
-    user: (a) => a.user,
-    role: (a) => a.role,
-    action: (a) => a.action,
-    module: (a) => a.module,
-    department: (a) => a.department,
-    device: (a) => a.device,
-    ipAddress: (a) => a.ip_address,
-    url: (a) => a.url ?? "",
-    severity: (a) => a.severity,
-  });
+  const moduleOptions = stats?.modules?.length
+    ? stats.modules
+    : Array.from(new Set(entries.map((a) => a.module))).sort((a, b) => a.localeCompare(b));
 
-  const auditPage = usePagination(rows, 5);
+  const toggleSort = (key: AuditSortKey) => {
+    setSort((prev) => {
+      if (!prev || prev.key !== key) return { key, dir: "asc" };
+      if (prev.dir === "asc") return { key, dir: "desc" };
+      return null;
+    });
+    setPage(1);
+  };
 
-  const totalEvents = entries.length;
-  const criticalCount = entries.filter((a) => a.severity === "Critical").length;
-  const warningCount = entries.filter((a) => a.severity === "Warning").length;
-  const uniqueActors = new Set(entries.map((a) => a.user)).size;
+  const totalEvents = stats?.total ?? meta.total;
+  const criticalCount = stats?.by_severity?.["Critical"] ?? 0;
+  const warningCount = stats?.by_severity?.["Warning"] ?? 0;
+  const uniqueActors =
+    stats?.unique_actors ?? new Set(entries.map((a) => a.user).filter(Boolean)).size;
 
-  const buildAuditReport = () => ({
-    title: "Audit Logs Report",
-    subtitle: `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · Severity: ${severity} | Module: ${moduleFilter}`,
-    columns: [
-      { header: "Timestamp", key: "timestamp" },
-      { header: "User", key: "user" },
-      { header: "Role", key: "role" },
-      { header: "Department", key: "department" },
-      { header: "Action", key: "action" },
-      { header: "Module", key: "module" },
-      { header: "Device", key: "device" },
-      { header: "IP Address", key: "ip_address" },
-      { header: "URL", key: "url" },
-      { header: "Severity", key: "severity" },
-    ],
-    rows: rows.map((a) => ({
-      timestamp: formatTimestamp(a.timestamp),
-      user: a.user,
-      role: a.role,
-      department: a.department,
-      action: a.action,
-      module: a.module,
-      device: a.device,
-      ip_address: a.ip_address,
-      url: a.url ?? "—",
-      severity: a.severity,
-    })),
-    summary: [
-      { label: "Total Events", value: totalEvents },
-      { label: "Critical", value: criticalCount },
-      { label: "Warnings", value: warningCount },
-      { label: "Unique Actors", value: uniqueActors },
-      { label: "Rows in Report", value: rows.length },
-    ],
-  });
+  const buildAuditReport = async (): Promise<ReportData> => {
+    const all: ApiAuditLog[] = [];
+    let current = 1;
+
+    while (all.length < REPORT_ROW_LIMIT) {
+      const res = await auditLogApi.list({
+        ...filterParams,
+        page: current,
+        per_page: 100,
+        sort: sort?.key,
+        direction: sort?.dir,
+      });
+      all.push(...res.data);
+      if (current >= res.meta.last_page || res.data.length === 0) break;
+      current += 1;
+    }
+
+    const reportRows = all.slice(0, REPORT_ROW_LIMIT);
+    const capped = meta.total > reportRows.length;
+
+    return {
+      title: "Audit Logs Report",
+      subtitle:
+        `Oxford Suites Makati HRMS · ${new Date().toLocaleDateString()} · ` +
+        `Severity: ${severity} | Module: ${moduleFilter}` +
+        (capped ? ` · First ${REPORT_ROW_LIMIT} matching rows` : ""),
+      columns: [
+        { header: "Timestamp", key: "timestamp" },
+        { header: "User", key: "user" },
+        { header: "Role", key: "role" },
+        { header: "Department", key: "department" },
+        { header: "Action", key: "action" },
+        { header: "Module", key: "module" },
+        { header: "Target", key: "target" },
+        { header: "Details", key: "details" },
+        { header: "Device", key: "device" },
+        { header: "IP Address", key: "ip_address" },
+        { header: "URL", key: "url" },
+        { header: "Severity", key: "severity" },
+      ],
+      rows: reportRows.map((a) => ({
+        timestamp: formatTimestamp(a.occurred_at || a.timestamp),
+        user: display(a.user),
+        role: display(a.role),
+        department: display(a.department),
+        action: a.action,
+        module: a.module,
+        target: a.target_type ? `${a.target_type}${a.target_id ? ` #${a.target_id}` : ""}` : "—",
+        details: display(a.details),
+        device: display(a.device),
+        ip_address: display(a.ip_address),
+        url: display(a.url),
+        severity: a.severity,
+      })),
+      summary: [
+        { label: "Total Events", value: totalEvents },
+        { label: "Critical", value: criticalCount },
+        { label: "Warnings", value: warningCount },
+        { label: "Unique Actors", value: uniqueActors },
+        { label: "Rows in Report", value: reportRows.length },
+      ],
+    };
+  };
+
+  const from = meta.total === 0 ? 0 : (meta.current_page - 1) * meta.per_page + 1;
+  const to = Math.min(meta.current_page * meta.per_page, meta.total);
 
   return (
     <div>
@@ -157,7 +266,12 @@ export function AuditLogs() {
         title="Audit Logs"
         description="Full system activity trail across all HRMS modules and users."
         actions={
-          <ReportMenu size="sm" report={() => buildAuditReport()} recordCount={rows.length} />
+          <ReportMenu
+            size="sm"
+            report={buildAuditReport}
+            recordCount={meta.total}
+            label="Generate Report"
+          />
         }
       />
 
@@ -167,28 +281,40 @@ export function AuditLogs() {
           value={totalEvents}
           tone="primary"
           icon={Activity}
-          onClick={() => setSeverity("all")}
+          onClick={() => {
+            setSeverity("all");
+            setPage(1);
+          }}
         />
         <StatCard
           label="Critical"
           value={criticalCount}
           tone="caution"
           icon={ShieldAlert}
-          onClick={() => setSeverity("Critical")}
+          onClick={() => {
+            setSeverity("Critical");
+            setPage(1);
+          }}
         />
         <StatCard
           label="Warnings"
           value={warningCount}
           tone="gold"
           icon={AlertTriangle}
-          onClick={() => setSeverity("Warning")}
+          onClick={() => {
+            setSeverity("Warning");
+            setPage(1);
+          }}
         />
         <StatCard
           label="Unique Actors"
           value={uniqueActors}
           tone="success"
           icon={Users}
-          onClick={() => setSeverity("Info")}
+          onClick={() => {
+            setSeverity("Info");
+            setPage(1);
+          }}
         />
       </div>
 
@@ -205,10 +331,19 @@ export function AuditLogs() {
                   className="pl-8"
                   placeholder="Search user, action, module, IP…"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
                 />
               </div>
-              <Select value={moduleFilter} onValueChange={setModuleFilter}>
+              <Select
+                value={moduleFilter}
+                onValueChange={(value) => {
+                  setModuleFilter(value);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger className="w-48">
                   <SelectValue placeholder="Module" />
                 </SelectTrigger>
@@ -221,7 +356,13 @@ export function AuditLogs() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={severity} onValueChange={setSeverity}>
+              <Select
+                value={severity}
+                onValueChange={(value) => {
+                  setSeverity(value);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger className="w-44">
                   <SelectValue />
                 </SelectTrigger>
@@ -234,62 +375,55 @@ export function AuditLogs() {
                   ))}
                 </SelectContent>
               </Select>
+              <Input
+                type="date"
+                aria-label="From date"
+                className="w-40"
+                value={fromDate}
+                onChange={(e) => {
+                  setFromDate(e.target.value);
+                  setPage(1);
+                }}
+              />
+              <Input
+                type="date"
+                aria-label="To date"
+                className="w-40"
+                value={toDate}
+                onChange={(e) => {
+                  setToDate(e.target.value);
+                  setPage(1);
+                }}
+              />
             </div>
           </div>
           <div className="mt-4 overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <SortHead sortKey="timestamp" sort={sort} onSort={toggle}>
+                  <SortHead sortKey="occurred_at" sort={sort} onSort={toggleSort}>
                     Timestamp
                   </SortHead>
-                  <SortHead sortKey="user" sort={sort} onSort={toggle}>
-                    User
-                  </SortHead>
-                  <SortHead sortKey="role" sort={sort} onSort={toggle}>
-                    Role
-                  </SortHead>
+                  <TableHead>User</TableHead>
+                  <TableHead>Role</TableHead>
                   <TableHead>Action Type</TableHead>
-                  <SortHead sortKey="action" sort={sort} onSort={toggle}>
+                  <SortHead sortKey="action" sort={sort} onSort={toggleSort}>
                     Action Details
                   </SortHead>
-                  <SortHead sortKey="module" sort={sort} onSort={toggle}>
+                  <SortHead sortKey="module_name" sort={sort} onSort={toggleSort}>
                     Module
                   </SortHead>
-                  <SortHead sortKey="device" sort={sort} onSort={toggle}>
-                    Device &amp; IP
-                  </SortHead>
-                  <SortHead sortKey="url" sort={sort} onSort={toggle}>
-                    URL
-                  </SortHead>
-                  <SortHead sortKey="severity" sort={sort} onSort={toggle}>
+                  <TableHead>Device &amp; IP</TableHead>
+                  <TableHead>URL</TableHead>
+                  <SortHead sortKey="severity" sort={sort} onSort={toggleSort}>
                     Severity
                   </SortHead>
+                  <TableHead>Details</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {auditPage.pageItems.map((a) => {
-                  const actLower = a.action.toLowerCase();
-                  const actionType: "Create" | "Update" | "Delete" | "Security" =
-                    actLower.includes("create") ||
-                    actLower.includes("add") ||
-                    actLower.includes("generate") ||
-                    actLower.includes("regularized")
-                      ? "Create"
-                      : actLower.includes("delete") ||
-                          actLower.includes("revoke") ||
-                          actLower.includes("disable") ||
-                          actLower.includes("exit") ||
-                          actLower.includes("deactivated")
-                        ? "Delete"
-                        : actLower.includes("login") ||
-                            actLower.includes("password") ||
-                            actLower.includes("2fa") ||
-                            actLower.includes("permission") ||
-                            actLower.includes("policy") ||
-                            actLower.includes("security")
-                          ? "Security"
-                          : "Update";
+                {entries.map((a) => {
+                  const actionType = actionTypeFor(a.action);
 
                   const actionTypeTone =
                     actionType === "Create"
@@ -303,14 +437,14 @@ export function AuditLogs() {
                   return (
                     <TableRow key={a.audit_log_id}>
                       <TableCell className="text-xs text-muted-foreground">
-                        {formatTimestamp(a.timestamp)}
+                        {formatTimestamp(a.occurred_at || a.timestamp)}
                       </TableCell>
                       <TableCell className="text-xs">
-                        <div className="font-semibold text-foreground">{a.user}</div>
+                        <div className="font-semibold text-foreground">{display(a.user)}</div>
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-[10px] font-medium">
-                          {a.role}
+                          {display(a.role)}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -324,9 +458,9 @@ export function AuditLogs() {
                       <TableCell className="text-xs font-medium max-w-sm">{a.action}</TableCell>
                       <TableCell className="text-xs text-muted-foreground">{a.module}</TableCell>
                       <TableCell className="text-xs">
-                        <div>{a.device}</div>
+                        <div>{display(a.device)}</div>
                         <div className="font-mono text-[11px] text-muted-foreground">
-                          {a.ip_address}
+                          {display(a.ip_address)}
                         </div>
                       </TableCell>
                       <TableCell className="max-w-[18rem]">
@@ -355,14 +489,25 @@ export function AuditLogs() {
                           {a.severity}
                         </Badge>
                       </TableCell>
+                      <TableCell>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title={`View details for ${a.action}`}
+                          aria-label={`View details for ${a.action}`}
+                          onClick={() => setDetail(a)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   );
                 })}
-                {loading && <TableRowsSkeleton cols={9} rows={6} />}
-                {!loading && rows.length === 0 && (
+                {loading && <TableRowsSkeleton cols={10} rows={6} />}
+                {!loading && entries.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={10}
                       className="py-8 text-center text-sm text-muted-foreground"
                     >
                       No activity matches your filters.
@@ -373,17 +518,80 @@ export function AuditLogs() {
             </Table>
           </div>
           <TablePagination
-            page={auditPage.page}
-            pageCount={auditPage.pageCount}
-            from={auditPage.from}
-            to={auditPage.to}
-            total={auditPage.total}
+            page={meta.current_page}
+            pageCount={Math.max(1, meta.last_page)}
+            from={from}
+            to={to}
+            total={meta.total}
             label="entries"
             showRangeLabel={false}
-            onPageChange={auditPage.setPage}
+            onPageChange={setPage}
           />
         </CardContent>
       </Card>
+
+      <Dialog open={!!detail} onOpenChange={(open) => !open && setDetail(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">Audit Log Details</DialogTitle>
+            <DialogDescription>
+              {detail ? formatTimestamp(detail.occurred_at || detail.timestamp) : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {detail && (
+            <div className="grid gap-3 text-sm sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">User</p>
+                <p>{display(detail.user)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Role</p>
+                <p>{display(detail.role)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Department</p>
+                <p>{display(detail.department)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Module</p>
+                <p>{detail.module}</p>
+              </div>
+              <div className="sm:col-span-2">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Action</p>
+                <p>{detail.action}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Target</p>
+                <p>
+                  {detail.target_type
+                    ? `${detail.target_type}${detail.target_id ? ` #${detail.target_id}` : ""}`
+                    : "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Severity</p>
+                <p>{detail.severity}</p>
+              </div>
+              <div className="sm:col-span-2">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Details</p>
+                <p className="whitespace-pre-wrap break-words">{display(detail.details)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Device</p>
+                <p>{display(detail.device)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">IP Address</p>
+                <p className="font-mono text-xs">{display(detail.ip_address)}</p>
+              </div>
+              <div className="sm:col-span-2">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">URL</p>
+                <p className="break-all font-mono text-xs">{display(detail.url)}</p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

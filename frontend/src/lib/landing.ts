@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
-import { landingApi, type ApiLandingCompany, type ApiLandingJob } from "./api";
+import {
+  landingApi,
+  type ApiAnnouncement,
+  type ApiLandingCompany,
+  type ApiLandingJob,
+} from "./api";
+import {
+  announcements as companyAnnouncements,
+  company,
+  facilities as companyFacilities,
+  faqs as companyFaqs,
+} from "@/data/company";
 
 export interface LandingJob {
   id: string;
@@ -76,6 +87,14 @@ export interface LandingFacility {
 export interface LandingFaq {
   q: string;
   a: string;
+  category?: string;
+}
+
+export interface LandingAnnouncement {
+  id: string;
+  title: string;
+  body: string;
+  date: string;
 }
 
 export interface CompanyInfo {
@@ -96,46 +115,67 @@ export interface CompanyInfo {
 }
 
 export const FALLBACK_COMPANY: CompanyInfo = {
-  name: "Oxford Suites Makati",
+  name: company.name,
   timezone: "Asia/Manila",
-  tagline: "Boutique hospitality, home to passionate people.",
-  overview:
-    "Oxford Suites Makati is a boutique hotel delivering warm Filipino hospitality in the heart of Makati. We invest in our people because they are the heart of every guest experience.",
-  mission:
-    "To provide outstanding service and create memorable experiences for every guest, while nurturing a workplace where every employee can grow and thrive.",
-  vision:
-    "To be the preferred boutique hotel in the Philippines, known for genuine care, consistency, and an engaged, empowered workforce.",
-  values: ["Care", "Integrity", "Excellence", "Teamwork", "Hospitality"],
-  address: "528 P. Burgos Street, Makati City, Metro Manila, Philippines 1210",
-  phone: "+63 2 8888 8688",
-  email: "hr@oxfordsuites.com.ph",
-  hours: "24 Hours",
-  facilities: [],
-  faqs: [],
-  socials: ["Facebook", "Instagram", "LinkedIn", "Indeed"],
+  tagline: company.tagline,
+  overview: company.overview,
+  mission: company.mission,
+  vision: company.vision,
+  values: company.values.map((value) => value.title),
+  address: company.address,
+  phone: company.phone,
+  email: company.email,
+  hours: company.hours,
+  facilities: companyFacilities,
+  faqs: companyFaqs,
+  socials: company.socials,
 };
+
+export const FALLBACK_ANNOUNCEMENTS: LandingAnnouncement[] = companyAnnouncements.map(
+  (announcement, index) => ({
+    id: `static-${index}`,
+    title: announcement.title,
+    body: announcement.body,
+    date: announcement.date,
+  }),
+);
+
+function mapAnnouncement(announcement: ApiAnnouncement): LandingAnnouncement {
+  return {
+    id: String(announcement.id ?? announcement.announcement_id),
+    title: announcement.title,
+    body: announcement.body,
+    date: announcement.published_date ?? announcement.created_at ?? "",
+  };
+}
+
+/** Prefer a non-empty API value, otherwise keep the bundled content. */
+function text(value: string | null | undefined, fallback: string): string {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : fallback;
+}
 
 function mapCompany(c: ApiLandingCompany): CompanyInfo {
   return {
-    name: c.name,
-    timezone: c.timezone,
-    tagline: c.tagline,
-    overview: c.about,
-    mission: c.mission,
-    vision: c.vision,
-    values: c.values,
-    address: c.address ?? FALLBACK_COMPANY.address,
-    phone: c.phone ?? FALLBACK_COMPANY.phone,
-    email: c.email ?? FALLBACK_COMPANY.email,
-    hours: c.hours ?? FALLBACK_COMPANY.hours,
-    facilities: c.facilities ?? [],
-    faqs: c.faqs ?? [],
-    socials: c.socials ?? FALLBACK_COMPANY.socials,
+    name: text(c.name, FALLBACK_COMPANY.name),
+    timezone: text(c.timezone, FALLBACK_COMPANY.timezone),
+    tagline: text(c.tagline, FALLBACK_COMPANY.tagline),
+    overview: text(c.about, FALLBACK_COMPANY.overview),
+    mission: text(c.mission, FALLBACK_COMPANY.mission),
+    vision: text(c.vision, FALLBACK_COMPANY.vision),
+    values: c.values?.length ? c.values : FALLBACK_COMPANY.values,
+    address: text(c.address, FALLBACK_COMPANY.address),
+    phone: text(c.phone, FALLBACK_COMPANY.phone),
+    email: text(c.email, FALLBACK_COMPANY.email),
+    hours: text(c.hours, FALLBACK_COMPANY.hours),
+    facilities: c.facilities?.length ? c.facilities : FALLBACK_COMPANY.facilities,
+    faqs: c.faqs?.length ? c.faqs : FALLBACK_COMPANY.faqs,
+    socials: c.socials?.length ? c.socials : FALLBACK_COMPANY.socials,
   };
 }
 
 export function useCompany(): { company: CompanyInfo; loading: boolean } {
-  const [company, setCompany] = useState<CompanyInfo>(FALLBACK_COMPANY);
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo>(FALLBACK_COMPANY);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -143,7 +183,7 @@ export function useCompany(): { company: CompanyInfo; loading: boolean } {
     landingApi
       .company()
       .then((res) => {
-        if (!cancelled) setCompany(mapCompany(res.data));
+        if (!cancelled) setCompanyInfo(mapCompany(res.data));
       })
       .catch(() => {
         // keep fallback
@@ -156,7 +196,7 @@ export function useCompany(): { company: CompanyInfo; loading: boolean } {
     };
   }, []);
 
-  return { company, loading };
+  return { company: companyInfo, loading };
 }
 
 export function useLandingJobs(): { jobs: LandingJob[]; loading: boolean } {
@@ -186,6 +226,36 @@ export function useLandingJobs(): { jobs: LandingJob[]; loading: boolean } {
   return { jobs, loading };
 }
 
+export function useAnnouncements(limit = 3): {
+  announcements: LandingAnnouncement[];
+  loading: boolean;
+} {
+  const [announcements, setAnnouncements] = useState<LandingAnnouncement[]>(FALLBACK_ANNOUNCEMENTS);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    landingApi
+      .announcements({ per_page: limit })
+      .then((res) => {
+        if (!cancelled && res.data.length > 0) {
+          setAnnouncements(res.data.map(mapAnnouncement));
+        }
+      })
+      .catch(() => {
+        // keep bundled announcements
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [limit]);
+
+  return { announcements, loading };
+}
+
 export const VALUE_BODIES: Record<string, string> = {
   Care: "We treat every guest and teammate with genuine warmth and empathy, anticipating needs before they are spoken.",
   Integrity:
@@ -196,6 +266,9 @@ export const VALUE_BODIES: Record<string, string> = {
     "We succeed together — every department supports the other to deliver one seamless guest experience.",
   Hospitality:
     "We welcome every guest as family, carrying the Filipino tradition of gracious service.",
+  Warmth: "Every guest is welcomed like family, every colleague like a peer.",
+  Craft: "Details are never incidental. Standards are practiced, not posted.",
+  Growth: "We promote from within and invest in certification and training.",
 };
 
 export const peso = (n: number) => `₱${n.toLocaleString("en-PH")}`;

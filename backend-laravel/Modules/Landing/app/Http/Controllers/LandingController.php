@@ -64,8 +64,14 @@ class LandingController extends Controller
     public function company(): JsonResponse
     {
         $keys = [
+            'company',
             'company.name',
             'company.timezone',
+            'company.tagline',
+            'company.about',
+            'company.mission',
+            'company.vision',
+            'company.values',
             'company.address',
             'company.phone',
             'company.email',
@@ -75,29 +81,218 @@ class LandingController extends Controller
             'company.socials',
         ];
         $settings = SystemSetting::whereIn('setting_key', $keys)
-            ->pluck('setting_value', 'setting_key');
+            ->pluck('setting_value', 'setting_key')
+            ->all();
 
-        $decode = fn ($value) => json_decode($value, true);
-        $value = fn (string $key, mixed $default) => $decode($settings[$key] ?? null)['value'] ?? $default;
+        $decode = function ($raw) {
+            if ($raw === null) {
+                return null;
+            }
+            $decoded = is_string($raw) ? json_decode($raw, true) : $raw;
+
+            return is_array($decoded) && array_key_exists('value', $decoded)
+                ? $decoded['value']
+                : $decoded;
+        };
+
+        // Settings → Company saves ONE `company` blob ({name,email,contact,
+        // businessHours,address,tin}), while older readers expect flat
+        // `company.*` rows. Read the blob first, then flat rows, then the
+        // canonical defaults below so edits in Settings reach the landing page.
+        $blob = $decode($settings['company'] ?? null);
+        $blob = is_array($blob) ? $blob : [];
+
+        // Values from the original demo seeder. Treat them as "not set" so a
+        // stale seed cannot override the real property details.
+        $legacy = [
+            'Oxford Suites',
+            '123 Makati Avenue, Makati City, Metro Manila',
+            '+63 2 8999 0000',
+            'Monday–Friday · 8:00 AM – 6:00 PM',
+        ];
+
+        $clean = function ($value) use ($legacy) {
+            if (is_string($value)) {
+                $value = trim($value);
+
+                return $value === '' || in_array($value, $legacy, true) ? null : $value;
+            }
+
+            return $value === [] ? null : $value;
+        };
+
+        $pick = function (array $blobKeys, array $settingKeys, $default) use ($blob, $settings, $decode, $clean) {
+            foreach ($blobKeys as $key) {
+                $value = $clean($blob[$key] ?? null);
+                if ($value !== null) {
+                    return $value;
+                }
+            }
+            foreach ($settingKeys as $key) {
+                if (! array_key_exists($key, $settings)) {
+                    continue;
+                }
+                $value = $clean($decode($settings[$key]));
+                if ($value !== null) {
+                    return $value;
+                }
+            }
+
+            return $default;
+        };
 
         return response()->json([
             'data' => [
-                'name' => $value('company.name', 'Oxford Suites Makati'),
-                'timezone' => $value('company.timezone', 'Asia/Manila'),
-                'tagline' => 'Boutique hospitality, home to passionate people.',
-                'about' => 'Oxford Suites Makati is a boutique hotel delivering warm Filipino hospitality in the heart of Makati. We invest in our people because they are the heart of every guest experience.',
-                'mission' => 'To provide outstanding service and create memorable experiences for every guest, while nurturing a workplace where every employee can grow and thrive.',
-                'vision' => 'To be the preferred boutique hotel in the Philippines, known for genuine care, consistency, and an engaged, empowered workforce.',
-                'values' => ['Care', 'Integrity', 'Excellence', 'Teamwork', 'Hospitality'],
-                'address' => $value('company.address', '528 P. Burgos Street, Makati City, Metro Manila, Philippines 1210'),
-                'phone' => $value('company.phone', '+63 2 8888 8688'),
-                'email' => $value('company.email', 'hr@oxfordsuites.com.ph'),
-                'hours' => $value('company.hours', '24 Hours'),
-                'facilities' => $value('company.facilities', []),
-                'faqs' => $value('company.faqs', []),
-                'socials' => $value('company.socials', []),
+                'name' => $pick(['name'], ['company.name'], 'Oxford Suites Makati'),
+                'timezone' => $pick(['timezone'], ['company.timezone'], 'Asia/Manila'),
+                'tagline' => $pick(
+                    ['tagline'],
+                    ['company.tagline'],
+                    'Boutique hospitality, home to passionate people.'
+                ),
+                'about' => $pick(
+                    ['about', 'overview'],
+                    ['company.about'],
+                    'Oxford Suites Makati is a premier hotel and restaurant destination in the heart of Makati City, offering elegant accommodations, distinctive dining, and event spaces designed around genuine Filipino hospitality.'
+                ),
+                'mission' => $pick(
+                    ['mission'],
+                    ['company.mission'],
+                    'To deliver consistently exceptional hotel and dining experiences through empowered people, disciplined service standards, and thoughtful modern systems.'
+                ),
+                'vision' => $pick(
+                    ['vision'],
+                    ['company.vision'],
+                    'To be the most respected independent hospitality brand in Metro Manila — recognized for warmth, craft, and career growth.'
+                ),
+                'values' => $pick(['values'], ['company.values'], $this->defaultValues()),
+                'address' => $pick(
+                    ['address'],
+                    ['company.address'],
+                    '528 P. Burgos Street, Makati City, Metro Manila, Philippines 1210'
+                ),
+                'phone' => $pick(['phone', 'contact'], ['company.phone'], '+63 2 8888 8688'),
+                'email' => $pick(['email'], ['company.email'], 'hr@oxfordsuites.com.ph'),
+                'hours' => $pick(['hours', 'businessHours'], ['company.hours'], '24 Hours'),
+                'facilities' => $pick(
+                    ['facilities'],
+                    ['company.facilities'],
+                    $this->defaultFacilities()
+                ),
+                'faqs' => $pick(['faqs'], ['company.faqs'], $this->defaultFaqs()),
+                'socials' => $pick(
+                    ['socials'],
+                    ['company.socials'],
+                    ['Facebook', 'Instagram', 'LinkedIn', 'Indeed']
+                ),
             ],
         ]);
+    }
+
+    private function defaultValues(): array
+    {
+        return ['Warmth', 'Craft', 'Integrity', 'Growth'];
+    }
+
+    private function defaultFacilities(): array
+    {
+        return [
+            [
+                'name' => 'Guest Rooms & Suites',
+                'body' => '128 keys across Deluxe, Executive, and Oxford Suite categories with skyline views.',
+            ],
+            [
+                'name' => 'The Oxford Dining Room',
+                'body' => 'All-day dining featuring Filipino and continental menus with a live cooking station.',
+            ],
+            [
+                'name' => 'Rooftop Lounge & Bar',
+                'body' => 'Signature cocktails, curated pairings, and sunset service above Burgos Street.',
+            ],
+            [
+                'name' => 'Function & Banquet Halls',
+                'body' => 'Five configurable venues seating 20 to 300 for weddings, conferences, and socials.',
+            ],
+            [
+                'name' => 'Wellness & Fitness Centre',
+                'body' => '24-hour gym, lap pool, and spa treatment rooms for in-house and member guests.',
+            ],
+            [
+                'name' => 'Business Centre',
+                'body' => 'Meeting pods, printing, and concierge support for corporate long-stay guests.',
+            ],
+        ];
+    }
+
+    private function defaultFaqs(): array
+    {
+        return [
+            [
+                'q' => 'Do I need an account to apply?',
+                'category' => 'Applying',
+                'a' => 'No. You can browse all vacancies and submit an application with your resume without creating an HRMS account.',
+            ],
+            [
+                'q' => 'What documents should I prepare?',
+                'category' => 'Applying',
+                'a' => 'An updated resume, valid government ID, NBI clearance, and any role-specific certification such as TESDA NC II, food handler, or bartending licenses.',
+            ],
+            [
+                'q' => 'How is my resume screened?',
+                'category' => 'Screening & interviews',
+                'a' => 'Our system uses spaCy-based Natural Language Processing with Named Entity Recognition to extract your skills, experience, education, and certifications, then scores your fit against the role criteria set by HR.',
+            ],
+            [
+                'q' => 'How long does the hiring process take?',
+                'category' => 'Screening & interviews',
+                'a' => 'Shortlisted applicants are typically contacted within 3–5 working days. The full process — screening, interview, assessment, and background verification — usually takes two to three weeks.',
+            ],
+            [
+                'q' => 'Do you accept applicants with no experience?',
+                'category' => 'Eligibility',
+                'a' => 'Yes. Several Housekeeping and Food & Beverage roles are open to entry-level applicants, with paid on-the-job training.',
+            ],
+            [
+                'q' => 'Can I apply for more than one position?',
+                'category' => 'Applying',
+                'a' => 'Yes. If our screening finds you are a stronger match for a different vacancy, our recruiters may also endorse you to that role.',
+            ],
+            [
+                'q' => 'Can I apply if I am a fresh graduate or career shifter?',
+                'category' => 'Eligibility',
+                'a' => 'Yes. We welcome fresh graduates and career shifters. Several entry-level Housekeeping, Front Office, and Food & Beverage roles include paid on-the-job training.',
+            ],
+            [
+                'q' => 'What happens after I submit my application?',
+                'category' => 'Screening & interviews',
+                'a' => 'Your resume is screened against the role requirements, then shortlisted applicants are contacted for an interview and practical assessment. You can expect an update within 3-5 working days.',
+            ],
+            [
+                'q' => 'Do you offer part-time, seasonal, or shift-based roles?',
+                'category' => 'Working at Oxford',
+                'a' => 'Yes. Depending on the department, we hire full-time, part-time, contract, and seasonal teammates. Hotel operations also follow shifting schedules, including weekends and holidays.',
+            ],
+            [
+                'q' => 'What benefits do regular employees receive?',
+                'category' => 'Working at Oxford',
+                'a' => 'Regular teammates enjoy service charge, meal allowance, HMO coverage after regularization, paid leave, and access to training and certification programs.',
+            ],
+            [
+                'q' => 'Is training provided for entry-level roles?',
+                'category' => 'Working at Oxford',
+                'a' => 'Yes. New teammates receive department orientation, service-standard training, and paid on-the-job training. We also sponsor TESDA certification for qualified employees.',
+            ],
+            [
+                'q' => 'Where is Oxford Suites Makati, and can I walk in?',
+                'category' => 'Applying',
+                'a' => 'We are at 528 P. Burgos Street, Makati City. Walk-in applicants are welcome at the HR office during business hours, but applying online is the fastest way to be screened.',
+            ],
+            [
+                'q' => 'How can I follow up on my application?',
+                'category' => 'Screening & interviews',
+                'a' => 'Reply to the acknowledgment email you receive after applying, or contact HR at hr@oxfordsuites.com.ph with your full name and the role you applied for.',
+            ],
+        ];
     }
 
     public function jobs(Request $request): JsonResponse

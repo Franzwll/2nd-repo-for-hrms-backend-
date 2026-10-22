@@ -100,8 +100,12 @@ class ChatbotSecurityTest extends TestCase
         foreach (['admin', 'superadmin', 'employee'] as $claimed) {
             $res = $this->chatAs(['message' => 'What jobs are open?', 'role' => $claimed]);
             $res->assertOk();
-            $this->assertContains('What jobs are open?', $res->json('quick_replies'));
-            $this->assertNotContains('How do I approve a promotion?', $res->json('quick_replies'));
+
+            $quickReplies = $res->json('quick_replies');
+            $this->assertIsArray($quickReplies);
+            $this->assertNotEmpty($quickReplies);
+            $this->assertNotContains('How do I approve a promotion?', $quickReplies);
+            $this->assertNotContains('How do I file leave?', $quickReplies);
             $this->assertDatabaseHas('chatbot_messages', ['role' => 'guest']);
         }
     }
