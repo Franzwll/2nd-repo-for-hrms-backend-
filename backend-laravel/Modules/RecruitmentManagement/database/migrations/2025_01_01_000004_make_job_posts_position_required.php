@@ -36,7 +36,10 @@ return new class extends Migration
             'SET jp.title = p.title WHERE jp.title <> p.title'
         );
 
-        foreach (JobPost::all() as $jobPost) {
+        /* withTrashed(): this migration runs before job_posts gets its
+           deleted_at column, so the default SoftDeletes scope would query a
+           column that does not exist yet. */
+        foreach (JobPost::withTrashed()->get() as $jobPost) {
             $position = $jobPost->position()->first();
             if (! $position) {
                 continue;

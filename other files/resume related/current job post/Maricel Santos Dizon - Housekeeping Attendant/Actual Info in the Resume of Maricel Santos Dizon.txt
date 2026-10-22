@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Maricel Santos Dizon.txt
+TARGET CANDIDATE: Maricel Santos Dizon
+TARGET ROLE: Housekeeping Attendant
+EXTRACTION MODE: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-10-05
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Maricel Santos Dizon
+Target Position:       Housekeeping Attendant
+Contact Phone Number:  +63 918 672 9014
+Email Address:         maricel.dizon.housekeeping@outlook.ph
+Residential Address:   18 Kalayaan Avenue, Guadalupe Nuevo, 1212 Makati City, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/maricel-dizon-housekeeping
+
+[PROFESSIONAL SUMMARY]
+"Dedicated, energetic, and detail-driven Housekeeping Attendant with 4+ years of hands-on experience servicing luxury suites, guest rooms, and hotel public areas. Certified in TESDA Housekeeping NC II. Highly adept at bed making, deep bathroom sanitization, linen replenishment, chemical dilution safety, and swift guestroom turnover. Committed to upholding five-star cleanliness standards, defect reporting, and courteous guest service."
+
+[CORE COMPETENCIES & SKILLS]
+1. Luxury Guestroom Make-Up, Bed Making & Triple-Sheeting Techniques
+2. Bathroom Deep Cleaning, Fixture Sanitization & Grout Descaling
+3. Housekeeping Caddy & Linen Trolley Par Stock Organization
+4. Safe Chemical Dilution, MSDS Protocols & PPE Safety Compliance
+5. Lost & Found Procedure Adherence & Item Custody Registration
+6. Defect Identification & Maintenance Work Order Logging
+7. Turn-Down Evening Service & Personalized Guest Amenity Replenishment
+8. TESDA Housekeeping NC II Standards & Waste Segregation
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Ascott Makati
+   Location:     Makati City, Metro Manila
+   Job Title:    Housekeeping Room Attendant
+   Duration:     August 2022 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Clean, sanitize, and dress 16-18 luxury serviced apartments daily adhering to stringent 35-point hygiene checklists.
+   • Execute flawless bed making, linen replacement, and bathroom disinfection within 25 minutes per standard room.
+   • Restock complimentary vanity amenities, bathrobes, tea/coffee sets, and fresh drinking water.
+   • Log plumbing and air-conditioning maintenance defects immediately via handheld mobile housekeeping terminals.
+
+2. Employer:     BSA Tower Serviced Residences
+   Location:     Makati City, Metro Manila
+   Job Title:    Housekeeping Attendant
+   Duration:     October 2020 – July 2022
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Maintained cleanliness across guest corridors, service elevator vestibules, and assigned floor linen pantries.
+   • Logged 100% of discovered guest lost-and-found belongings with security dispatch following chain of custody.
+   • Managed chemical cleaning agents with zero chemical spill incidents or safety violations.
+
+3. Employer:     Red Planet Hotel Makati
+   Location:     Makati City, Metro Manila
+   Job Title:    Public Area Cleaner
+   Duration:     May 2019 – September 2020
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Cleaned and polished lobby marble floors, elevator tracks, and public restroom facilities.
+   • Handled guest requests for extra pillows, ironing boards, and towels with prompt courtesy.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Associate in Hotel and Restaurant Services
+Institution:    Polytechnic University of the Philippines (PUP) — Sta. Mesa, Manila
+Graduation:     2019
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   TESDA National Certificate II in Housekeeping (NC II)
+   Issuer:  Technical Education and Skills Development Authority (TESDA)
+   Date:    January 2021
+
+2. Title:   Hospitality Chemical Safety and Sanitation Compliance
+   Issuer:  Philippine Safety & Hygiene Council
+   Date:    November 2021
+
+3. Title:   Professional Guestroom Cleaning and Inspection Standards
+   Issuer:  Philippine Hospitality Development Center
+   Date:    June 2020
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Maricel_Santos_Dizon_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Maricel_Santos_Dizon_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Maricel_Santos_Dizon_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Maricel_Santos_Dizon_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Maricel_Santos_Dizon_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Maricel_Santos_Dizon_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Maricel_Santos_Dizon_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Ascott Makati
+   - Recipient / Employee: Maricel Santos Dizon
+   - Certified Position: Housekeeping Room Attendant
+   - Certified Period: August 2022 – Present
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+2. Maricel_Santos_Dizon_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: BSA Tower Serviced Residences
+   - Recipient / Employee: Maricel Santos Dizon
+   - Certified Position: Housekeeping Attendant
+   - Certified Period: January 1, 2021 – July 15, 2022 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+3. Maricel_Santos_Dizon_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: Polytechnic University of the Philippines (PUP) — Sta. Mesa, Manila
+   - Conferred Graduate: Maricel Santos Dizon
+   - Degree Conferred: Associate in Hotel and Restaurant Services
+   - Graduation Year: 2019
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+4. Maricel_Santos_Dizon_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: Technical Education and Skills Development Authority (TESDA)
+   - Recipient Name: Maricel Santos Dizon
+   - Training Title: TESDA National Certificate II in Housekeeping (NC II)
+   - Award Date: January 2021
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+5. Maricel_Santos_Dizon_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Philippine Hospitality Development Center
+   - Recipient Name: Maricel Santos Dizon
+   - Certified Course: Basic Commercial Carpet Shampooing and Floor Polishing Techniques (CONTROLLED DISCREPANCY)
+   - Training Date: June 2020
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+6. Maricel_Santos_Dizon_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Philippine Safety & Hygiene Council
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Hospitality Chemical Safety and Sanitation Compliance
+   - Issuance Date: November 2021
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Ascott Makati | Housekeeping Room Attendant | August 2022 – Present
+• Evidence: Maricel_Santos_Dizon_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: BSA Tower Serviced Residences | Housekeeping Attendant | October 2020 – July 2022
+• Evidence: Maricel_Santos_Dizon_COE_Previous_Employer.pdf (January 1, 2021 – July 15, 2022)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from January 2021 to July 2022, whereas resume claims start date of October 2020 (3-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Associate in Hotel and Restaurant Services | Polytechnic University of the Philippines (PUP) — Sta. Mesa, Manila | 2019
+• Evidence: Maricel_Santos_Dizon_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: TESDA National Certificate II in Housekeeping (NC II) | Technical Education and Skills Development Authority (TESDA) | January 2021
+• Evidence: Maricel_Santos_Dizon_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Professional Guestroom Cleaning and Inspection Standards | Philippine Hospitality Development Center | June 2020
+• Evidence: Maricel_Santos_Dizon_Training_Certificate_Service.pdf (Basic Commercial Carpet Shampooing and Floor Polishing Techniques)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'Professional Guestroom Cleaning and Inspection Standards', but certificate certifies 'Basic Commercial Carpet Shampooing and Floor Polishing Techniques'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: Hospitality Chemical Safety and Sanitation Compliance | Philippine Safety & Hygiene Council | November 2021
+• Evidence: Maricel_Santos_Dizon_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is severed/torn off in the uploaded scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: Red Planet Hotel Makati | Public Area Cleaner | May 2019 – September 2020
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

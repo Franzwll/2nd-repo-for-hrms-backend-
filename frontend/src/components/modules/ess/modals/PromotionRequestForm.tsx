@@ -2,16 +2,14 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Briefcase,
-  Send,
-  Building2,
-  Paperclip,
-  UploadCloud,
-  FileText,
-  X,
-} from "lucide-react";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Briefcase, Send, Building2, Paperclip, UploadCloud, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import { myProfile, myPerformance } from "@/data/ess";
 import { positions as fallbackPositions } from "@/data/hr";
@@ -22,6 +20,8 @@ interface PromotionRequestFormProps {
   onCancel?: () => void;
   competencyScore?: string | undefined;
   lmsCompletedCount?: number | undefined;
+  /** Label used for the filed request (e.g. "Lateral Transfer"). */
+  requestType?: string;
 }
 
 interface PositionOption {
@@ -58,6 +58,7 @@ export function PromotionRequestForm({
   onCancel,
   competencyScore,
   lmsCompletedCount,
+  requestType = "Promotion Request",
 }: PromotionRequestFormProps) {
   const [targetPosition, setTargetPosition] = useState("");
   const [justification, setJustification] = useState("");
@@ -74,11 +75,7 @@ export function PromotionRequestForm({
     // 1. Filter fallback positions exclusively to employee's department and exclude current role.
     // Pastry Chef 2/3/4 are hidden from the promotion dropdown (hotel uses the
     // hot-kitchen ladder + Pastry Chef 1 / Lead / CDP Pastry instead).
-    const HIDDEN_PROMOTION_TITLES = new Set([
-      "pastry chef 2",
-      "pastry chef 3",
-      "pastry chef 4",
-    ]);
+    const HIDDEN_PROMOTION_TITLES = new Set(["pastry chef 2", "pastry chef 3", "pastry chef 4"]);
     const isPromotionVisible = (title: string) =>
       !HIDDEN_PROMOTION_TITLES.has(title.toLowerCase().trim());
 
@@ -87,7 +84,7 @@ export function PromotionRequestForm({
         (p) =>
           matchesDepartment(p.department, myProfile.department) &&
           p.title !== myProfile.position &&
-          isPromotionVisible(p.title)
+          isPromotionVisible(p.title),
       )
       .map((p) => ({
         id: p.id,
@@ -247,12 +244,12 @@ export function PromotionRequestForm({
       const res = await essApi.createRequest({
         category_code: "career_promotion",
         category_name: "Career & Position",
-        request_type: `Promotion Request — ${targetPosition}`,
+        request_type: `${requestType} — ${targetPosition}`,
         details: detailsPayload,
       });
 
       toast.success(
-        "Promotion request submitted successfully! Forwarded to Core HCM & Performance Evaluation team for review."
+        `${requestType} submitted successfully! Forwarded to Core HCM & Performance Evaluation team for review.`,
       );
       onSubmitSuccess?.(res?.request);
       resetForm();
@@ -332,7 +329,8 @@ export function PromotionRequestForm({
       {/* Justification Textarea */}
       <div className="space-y-1.5">
         <Label htmlFor="promotion-justification" className="text-xs font-semibold">
-          Career Advancement Justification &amp; Readiness <span className="text-destructive">*</span>
+          Career Advancement Justification &amp; Readiness{" "}
+          <span className="text-destructive">*</span>
         </Label>
         <Textarea
           id="promotion-justification"
@@ -347,7 +345,8 @@ export function PromotionRequestForm({
       {/* Key Achievements */}
       <div className="space-y-1.5">
         <Label htmlFor="key-achievements" className="text-xs font-semibold">
-          Key Achievements &amp; Contribution Highlights <span className="text-muted-foreground font-normal text-[11px]">(Optional)</span>
+          Key Achievements &amp; Contribution Highlights{" "}
+          <span className="text-muted-foreground font-normal text-[11px]">(Optional)</span>
         </Label>
         <Textarea
           id="key-achievements"
@@ -364,7 +363,8 @@ export function PromotionRequestForm({
         <div className="flex items-center justify-between">
           <Label className="text-xs font-semibold flex items-center gap-1.5">
             <Paperclip className="h-3.5 w-3.5 text-primary" />
-            Supporting Media &amp; Portfolio Files <span className="text-muted-foreground font-normal text-[11px]">(Optional)</span>
+            Supporting Media &amp; Portfolio Files{" "}
+            <span className="text-muted-foreground font-normal text-[11px]">(Optional)</span>
           </Label>
           {attachedFiles.length > 0 && (
             <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
@@ -374,7 +374,8 @@ export function PromotionRequestForm({
         </div>
 
         <p className="text-[11px] text-muted-foreground">
-          Attach photos of your pastry or culinary creations, dish presentations, certificates, commendations, or portfolio documents.
+          Attach photos of your pastry or culinary creations, dish presentations, certificates,
+          commendations, or portfolio documents.
         </p>
 
         {/* Hidden file input */}
@@ -473,7 +474,7 @@ export function PromotionRequestForm({
         )}
         <Button type="submit" size="sm" disabled={submitting} className="gap-1.5">
           <Send className="h-3.5 w-3.5" />
-          {submitting ? "Submitting..." : "Submit Promotion Request"}
+          {submitting ? "Submitting..." : `Submit ${requestType}`}
         </Button>
       </div>
     </form>

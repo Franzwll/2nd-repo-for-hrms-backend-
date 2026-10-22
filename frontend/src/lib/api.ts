@@ -336,6 +336,7 @@ export interface ApiInterview {
   applicant_id: number;
   scheduled_date: string;
   scheduled_time: string;
+  /** End time added by the interview time-range migration; null on legacy rows. */
   scheduled_end_time: string | null;
   mode: "On-site" | "Virtual";
   facility_id: number | null;
@@ -1121,6 +1122,9 @@ export interface ApiJobPost {
   active: boolean;
   experience_level: string | null;
   education_level: string | null;
+  /** Accepted-level chips; the scalars above are the weakest accepted level. */
+  experience_levels?: string[] | null;
+  education_levels?: string[] | null;
   summary: string | null;
   description: string | null;
   responsibilities: string[];
@@ -1163,6 +1167,14 @@ export interface JobDraftPayload {
   vacancies?: number | undefined;
   experience_level?: string | undefined;
   education_level?: string | undefined;
+  /** Accepted-level chips; any of these clears the bar (scalar is the weakest). */
+  experience_levels?: string[] | undefined;
+  education_levels?: string[] | undefined;
+  /** Post-specific requirements handed to the AI draft generator. */
+  skills?: string[] | undefined;
+  /** Reference-Data grounding terms when the post has no explicit skills. */
+  screening_terms?: string[] | undefined;
+  requested_note?: string | undefined;
   blocks?: string[] | undefined;
   notes?: Record<string, string> | undefined;
 }
@@ -1268,7 +1280,12 @@ export const jobPostsApi = {
     });
   },
   delete: (id: number | string) =>
-    request<{ message: string }>(`/job-posts/${id}`, { method: "DELETE" }),
+    request<{
+      message: string;
+      archived?: boolean;
+      applicants?: number;
+      requisitions?: number;
+    }>(`/job-posts/${id}`, { method: "DELETE" }),
   toggle: (id: number | string) =>
     request<ApiJobPost>(`/job-posts/${id}/toggle`, { method: "PATCH" }),
   publish: (id: number | string, platforms: string[]) =>
@@ -2624,12 +2641,23 @@ export interface ApiEssRequestItem {
   status:
     | "Pending"
     | "Under Review"
+    | "For Dispatch"
+    | "With Module"
+    | "For Release"
     | "Approved"
     | "For Fulfillment"
     | "Rejected"
     | "Completed"
     | "Cancelled"
     | "Returned for Clarification";
+  /** Module that currently owns the request after the ESS gate. */
+  module?: string | null;
+  module_label?: string | null;
+  routed_at?: string | null;
+  module_note?: string | null;
+  module_reference?: string | null;
+  module_responded_at?: string | null;
+  released_at?: string | null;
   assignedTo?: string;
   assigned_to?: string;
   details: string;
@@ -2640,9 +2668,9 @@ export interface ApiEssRequestItem {
   completed_at?: string | null;
   employeeDbId?: number;
   attachment_path?: string | null;
-  /** Files attached to the request — employee uploads and HR fulfilment. */
+  /** Files attached to the request — employee uploads and module output. */
   attachments?: ApiEssRequestAttachment[];
-  /** True once HR has attached the requested file. */
+  /** True once ESS Management has released the requested file. */
   has_fulfillment?: boolean;
   /** Filed -> Received -> Fulfilled timeline. */
   timeline?: { status: string; note: string | null; at: string | null }[];
@@ -2651,6 +2679,8 @@ export interface ApiEssRequestItem {
 export interface ApiEssRequestAttachment {
   id: number;
   direction: "employee" | "hr";
+  /** Module that produced an outbound file (erm, attendance, payroll...). */
+  source_module?: string | null;
   original_name: string | null;
   mime_type: string | null;
   file_size_bytes: number | null;
@@ -2690,9 +2720,7 @@ export const essApi = {
     request<{
       summary: {
         present_days: number;
-        late_days: number;
-        absent_days: number;
-        overtime_hours: number;
+        leave_days: number;
         average_hours: number;
       };
       records: {
@@ -2703,8 +2731,11 @@ export const essApi = {
         timeIn: string;
         timeOut: string;
         workedHours: number;
-        overtimeHours: number;
         status: string;
+        remark?: string | null;
+        lateMinutes?: number;
+        undertimeMinutes?: number;
+        overtimeHours?: number;
         device: string;
         remarks: string;
       }[];
@@ -2954,7 +2985,7 @@ export const essApi = {
       body: JSON.stringify({ decision, ...(note ? { note } : {}) }),
     });
   },
-  /** Attach the requested document and complete the request. */
+  /** Attach the requested document and release it (ESS Management override). */
   fulfillRequest: (
     id: string | number,
     data: { file?: File | null; document_id?: number | null; note?: string },
@@ -2967,6 +2998,82 @@ export const essApi = {
       method: "POST",
       body: form,
     });
+  },
+  /** ESS Management releases a module result to the employee. */
+  releaseRequest: (id: string | number, note?: string) =>
+    request<{ message: string; request: ApiEssRequestItem }>(
+      `/ess/admin/requests/${id}/release`,
+      { method: "POST", body: JSON.stringify({ ...(note ? { note } : {}) }) },
+    ),
+  /** ESS Management sends an already-reviewed request to a module. */
+  dispatchRequest: (id: string | number, module?: string, note?: string) =>
+    request<{ message: string; request: ApiEssRequestItem }>(
+      `/ess/admin/requests/${id}/dispatch`,
+      {
+        method: "POST",
+        body: JSON.stringify({ ...(module ? { module } : {}), ...(note ? { note } : {}) }),
+      },
+    ),
+  /** ESS Management reroutes a request; any applied module result is reversed. */
+  rerouteRequest: (id: string | number, module: string, note?: string) =>
+    request<{ message: string; request: ApiEssRequestItem }>(
+      `/ess/admin/requests/${id}/reroute`,
+      { method: "POST", body: JSON.stringify({ module, ...(note ? { note } : {}) }) },
+    ),
+  /** Routing ledger for one request (dispatch/accept/complete/release legs). */
+  requestRoutings: (id: string | number) =>
+    request<{ routings: any[] }>(`/ess/admin/requests/${id}/routings`),
+
+  // Generic module inbox (ERM uses its bespoke endpoints; these serve the
+  // Attendance / Payroll / Performance queues and future modules).
+  moduleRequests: (module: string, params?: Record<string, any>) => {
+    const qs = params ? new URLSearchParams(params).toString() : "";
+    return request<{
+      module: string;
+      module_label: string;
+      counts: {
+        total: number;
+        for_dispatch: number;
+        with_module: number;
+        for_release: number;
+      };
+      requests: ApiEssRequestItem[];
+    }>(`/ess/modules/${module}/requests${qs ? `?${qs}` : ""}`);
+  },
+  acceptModuleRequest: (module: string, id: string | number) =>
+    request<{ message: string; request: ApiEssRequestItem }>(
+      `/ess/modules/${module}/requests/${id}/accept`,
+      { method: "POST" },
+    ),
+  declineModuleRequest: (module: string, id: string | number, reason: string) =>
+    request<{ message: string; request: ApiEssRequestItem }>(
+      `/ess/modules/${module}/requests/${id}/decline`,
+      { method: "POST", body: JSON.stringify({ reason }) },
+    ),
+  completeModuleRequest: (
+    module: string,
+    id: string | number,
+    data: Record<string, any> = {},
+  ) => {
+    const isForm = Object.values(data).some((v) => v instanceof File);
+    if (!isForm) {
+      return request<{ message: string; request: ApiEssRequestItem }>(
+        `/ess/modules/${module}/requests/${id}/complete`,
+        { method: "POST", body: JSON.stringify(data) },
+      );
+    }
+
+    const form = new FormData();
+    Object.entries(data).forEach(([key, value]) => {
+      if (value === null || value === undefined || value === "") return;
+      if (value instanceof File) form.append(key, value);
+      else form.append(key, String(value));
+    });
+
+    return request<{ message: string; request: ApiEssRequestItem }>(
+      `/ess/modules/${module}/requests/${id}/complete`,
+      { method: "POST", body: form },
+    );
   },
   /** Same-origin URL to stream a file attached to the employee's own request
    *  (their upload or HR's fulfilment) with ?token= auth for browser opens. */
@@ -3025,6 +3132,9 @@ export const essApi = {
         total: number;
         pending: number;
         under_review: number;
+        for_dispatch: number;
+        with_module: number;
+        for_release: number;
         approved: number;
         for_fulfillment: number;
         completed: number;
@@ -3065,11 +3175,11 @@ export const essApi = {
 /* ========================================================================= */
 
 export const ermApi = {
-  /** Document requests filed by employees in ESS (hr_document category). */
+  /** Document requests filed by employees in ESS and routed to ERM. */
   documentRequests: (params?: Record<string, any>) => {
     const qs = params ? new URLSearchParams(params).toString() : "";
     return request<{
-      counts: { total: number; pending: number; fulfilled: number };
+      counts: { total: number; pending: number; for_release: number; fulfilled: number };
       requests: ApiDocumentRequest[];
     }>(`/erm/document-requests${qs ? `?${qs}` : ""}`);
   },
@@ -3137,10 +3247,10 @@ export const ermApi = {
       if (data.document_date) form.append("document_date", data.document_date);
       if (data.expiry_date) form.append("expiry_date", data.expiry_date);
       if (data.document_status) form.append("document_status", data.document_status);
-      return request<{ message: string; document: ApiDocument }>(
-        `/erm/employees/${id}/documents`,
-        { method: "POST", body: form },
-      );
+      return request<{ message: string; document: ApiDocument }>(`/erm/employees/${id}/documents`, {
+        method: "POST",
+        body: form,
+      });
     },
     verifyDocument: (id: number | string, documentId: number | string, status: string) =>
       request<{ message: string; document: ApiDocument }>(

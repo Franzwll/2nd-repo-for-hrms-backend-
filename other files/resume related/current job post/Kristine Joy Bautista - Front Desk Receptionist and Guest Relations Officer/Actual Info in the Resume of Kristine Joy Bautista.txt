@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Kristine Joy Bautista.txt
+TARGET CANDIDATE: Kristine Joy Bautista
+TARGET ROLE: Front Desk Receptionist / Guest Relations Officer
+EXTRACTION MODE: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-10-05
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Kristine Joy Bautista
+Target Position:       Front Desk Receptionist / Guest Relations Officer
+Contact Phone Number:  +63 918 392 6174
+Email Address:         kristine.bautista.frontdesk@outlook.ph
+Residential Address:   312 Paseo de Roxas, Legaspi Village, 1229 Makati City, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/kristine-bautista-frontdesk
+
+[PROFESSIONAL SUMMARY]
+"Charming, articulate, and service-driven Front Desk Receptionist and Guest Relations Officer with 4+ years of front office experience in premier business hotels. Proficient in Opera PMS, express check-in/out protocols, VIP arrival arrangements, and proactive complaint recovery. Adept at driving rooms and amenity upselling while delivering authentic Filipino hospitality and maintaining meticulous guest folio accuracy across 24/7 shifting schedules."
+
+[CORE COMPETENCIES & SKILLS]
+1. Front Office PMS Operations (Opera PMS, Micros Fidelio) & Folio Settlement
+2. Guest Check-In / Check-Out Execution & Queue Flow Management
+3. VIP Guest Arrival Staging, Amenity Setup & Executive Lounge Service
+4. Complaint Resolution, Service Recovery Protocols & Guest Satisfaction
+5. Front Desk Revenue Upselling (Room Category Upgrades, Breakfast Packages)
+6. Cash Handling, Foreign Currency Exchange & Shift Reconciliation
+7. Cross-Department Coordination with Housekeeping & Concierge
+8. TESDA Front Office Operations Standards & Telephone Etiquette
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Makati Diamond Residences
+   Location:     Makati City, Metro Manila
+   Job Title:    Front Desk Receptionist & Guest Relations Officer
+   Duration:     October 2022 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Process 60+ daily guest arrivals and departures using Opera PMS with 99.4% billing and credit card transaction accuracy.
+   • Coordinate personalized check-ins for corporate VIPs, long-stay residents, and loyalty program members.
+   • Achieved PHP 420,000 in incremental revenue during Q3 2023 through proactive suite upgrades and breakfast upselling.
+   • Liaise directly with Housekeeping floor supervisors to expedite room turnover for early arrivals.
+
+2. Employer:     New World Makati Hotel
+   Location:     Makati City, Metro Manila
+   Job Title:    Guest Service Agent
+   Duration:     February 2021 – September 2022
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Welcomed domestic and international travelers, managed phone reservations, and handled concierge inquiries.
+   • Resolved guest room placement and noise complaints with immediate on-the-spot service recovery gifts.
+   • Managed cash float balancing and processed daily shift turnover reports with zero variance.
+
+3. Employer:     Valero Grand Suites by Swiss-Belhotel
+   Location:     Makati City, Metro Manila
+   Job Title:    Front Office Intern / Trainee
+   Duration:     July 2019 – January 2020
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Escorted arriving VIP guests to rooms, assisted with luggage handling, and maintained lobby presentation.
+   • Managed message distribution and answered switchboard telephone calls adhering to luxury brand voice.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Tourism Management
+Institution:    University of Santo Tomas (UST) — España, Manila
+Graduation:     2020
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   TESDA National Certificate II in Front Office Services (NC II)
+   Issuer:  Technical Education and Skills Development Authority (TESDA)
+   Date:    August 2021
+
+2. Title:   Service Excellence and VIP Guest Relations Certification
+   Issuer:  Philippine Hospitality Development Center
+   Date:    May 2022
+
+3. Title:   Opera PMS Front Desk Operations Mastery
+   Issuer:  Hospitality Technology Training Institute
+   Date:    January 2021
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Kristine_Joy_Bautista_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Kristine_Joy_Bautista_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Kristine_Joy_Bautista_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Kristine_Joy_Bautista_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Kristine_Joy_Bautista_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Kristine_Joy_Bautista_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Kristine_Joy_Bautista_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Makati Diamond Residences
+   - Recipient / Employee: Kristine Joy Bautista
+   - Certified Position: Front Desk Receptionist & Guest Relations Officer
+   - Certified Period: October 2022 – Present
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+2. Kristine_Joy_Bautista_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: New World Makati Hotel
+   - Recipient / Employee: Kristine Joy Bautista
+   - Certified Position: Guest Service Agent
+   - Certified Period: May 1, 2021 – September 15, 2022 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+3. Kristine_Joy_Bautista_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: University of Santo Tomas (UST) — España, Manila
+   - Conferred Graduate: Kristine Joy Bautista
+   - Degree Conferred: Bachelor of Science in Tourism Management
+   - Graduation Year: 2020
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+4. Kristine_Joy_Bautista_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: Technical Education and Skills Development Authority (TESDA)
+   - Recipient Name: Kristine Joy Bautista
+   - Training Title: TESDA National Certificate II in Front Office Services (NC II)
+   - Award Date: August 2021
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+5. Kristine_Joy_Bautista_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Hospitality Technology Training Institute
+   - Recipient Name: Kristine Joy Bautista
+   - Certified Course: Basic Reservations & Call Center Telephone Etiquette (CONTROLLED DISCREPANCY)
+   - Training Date: January 2021
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+6. Kristine_Joy_Bautista_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Philippine Hospitality Development Center
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Service Excellence and VIP Guest Relations Certification
+   - Issuance Date: May 2022
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Makati Diamond Residences | Front Desk Receptionist & Guest Relations Officer | October 2022 – Present
+• Evidence: Kristine_Joy_Bautista_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: New World Makati Hotel | Guest Service Agent | February 2021 – September 2022
+• Evidence: Kristine_Joy_Bautista_COE_Previous_Employer.pdf (May 1, 2021 – September 15, 2022)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from May 2021 to September 2022, whereas resume claims start date of February 2021 (3-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Bachelor of Science in Tourism Management | University of Santo Tomas (UST) — España, Manila | 2020
+• Evidence: Kristine_Joy_Bautista_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: TESDA National Certificate II in Front Office Services (NC II) | Technical Education and Skills Development Authority (TESDA) | August 2021
+• Evidence: Kristine_Joy_Bautista_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Opera PMS Front Desk Operations Mastery | Hospitality Technology Training Institute | January 2021
+• Evidence: Kristine_Joy_Bautista_Training_Certificate_Service.pdf (Basic Reservations & Call Center Telephone Etiquette)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'Opera PMS Front Desk Operations Mastery', but certificate certifies 'Basic Reservations & Call Center Telephone Etiquette'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: Service Excellence and VIP Guest Relations Certification | Philippine Hospitality Development Center | May 2022
+• Evidence: Kristine_Joy_Bautista_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is severed/torn off in the uploaded scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: Valero Grand Suites by Swiss-Belhotel | Front Office Intern / Trainee | July 2019 – January 2020
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

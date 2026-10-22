@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\EmployeeSelfService\Http\Controllers\EssAdminController;
+use Modules\EmployeeSelfService\Http\Controllers\EssModuleInboxController;
 use Modules\EmployeeSelfService\Http\Controllers\EssPortalController;
 
 /*
@@ -61,19 +62,37 @@ Route::middleware(['auth:sanctum', 'permission:ESS Management'])->prefix('v1/ess
     // ESS-safe view of the employee's OWN onboarding checklist.
     Route::get('my-checklist', [EssPortalController::class, 'myChecklist']);
 
-    // Admin & Super Admin Read Endpoints (View access)
-    Route::get('admin/requests', [EssAdminController::class, 'getRequests']);
-    Route::get('admin/categories', [EssAdminController::class, 'getCategories']);
-    Route::get('admin/audit-logs', [EssAdminController::class, 'getAuditLogs']);
-    Route::get('admin/learning', [EssAdminController::class, 'getLearning']);
-
-    // Admin & Super Admin Action Endpoints (requires edit-level access)
+    // Admin & Super Admin endpoints require edit-grade access. The Employee
+    // role has View on ESS Management so it can reach the portal, but it must
+    // not read the company-wide request queue.
     Route::middleware('permission:ESS Management:Edit')->group(function () {
+        Route::get('admin/requests', [EssAdminController::class, 'getRequests']);
+        Route::get('admin/categories', [EssAdminController::class, 'getCategories']);
+        Route::get('admin/audit-logs', [EssAdminController::class, 'getAuditLogs']);
+        Route::get('admin/learning', [EssAdminController::class, 'getLearning']);
+
         Route::patch('admin/requests/{id}/status', [EssAdminController::class, 'updateStatus']);
         Route::post('admin/requests/{id}/review', [EssAdminController::class, 'review']);
         Route::post('admin/requests/{id}/fulfill', [EssAdminController::class, 'fulfill']);
+        Route::post('admin/requests/{id}/dispatch', [EssAdminController::class, 'dispatch']);
+        Route::post('admin/requests/{id}/release', [EssAdminController::class, 'release']);
+        Route::post('admin/requests/{id}/reroute', [EssAdminController::class, 'reroute']);
+        Route::get('admin/requests/{id}/routings', [EssAdminController::class, 'routings']);
         Route::post('admin/requests/behalf', [EssAdminController::class, 'fileOnBehalf']);
         Route::put('admin/categories/{id}/toggle', [EssAdminController::class, 'toggleCategory']);
         Route::patch('admin/learning/{id}/status', [EssAdminController::class, 'verifyLearning']);
     });
+});
+
+/*
+ * Generic module inbox. Permission is enforced per module inside the
+ * controller because each module uses its own permission (Employee Records for
+ * ERM; ESS Management as the interim owner for the not-yet-built modules).
+ */
+Route::middleware(['auth:sanctum'])->prefix('v1/ess/modules/{module}')->group(function () {
+    Route::get('requests', [EssModuleInboxController::class, 'index']);
+    Route::get('requests/{id}', [EssModuleInboxController::class, 'show']);
+    Route::post('requests/{id}/accept', [EssModuleInboxController::class, 'accept']);
+    Route::post('requests/{id}/decline', [EssModuleInboxController::class, 'decline']);
+    Route::post('requests/{id}/complete', [EssModuleInboxController::class, 'complete']);
 });

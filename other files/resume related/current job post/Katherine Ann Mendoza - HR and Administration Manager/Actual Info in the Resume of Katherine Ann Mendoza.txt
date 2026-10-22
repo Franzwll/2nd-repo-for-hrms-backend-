@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Katherine Ann Mendoza.txt
+TARGET CANDIDATE: Katherine Ann Mendoza
+TARGET ROLE: HR & Administration Manager
+EXTRACTION MODE: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-10-05
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Katherine Ann Mendoza
+Target Position:       HR & Administration Manager
+Contact Phone Number:  +63 919 448 3209
+Email Address:         katherine.mendoza.hr@outlook.ph
+Residential Address:   84 Legaspi St., San Lorenzo, 1223 Makati City, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/katherine-mendoza-hr
+
+[PROFESSIONAL SUMMARY]
+"Accomplished, empathetic HR & Administration Manager with 7+ years of human resources leadership in premier hospitality and corporate lodging properties. Expert in end-to-end talent acquisition, DOLE labor law compliance, automated payroll administration, 201-file governance, and structured employee engagement. Holds certified First Aid credentials and is passionate about championing Filipino hospitality values while sustaining high employee retention."
+
+[CORE COMPETENCIES & SKILLS]
+1. Full-Lifecycle Talent Acquisition & Hospitality Recruitment Strategy
+2. Philippine Labor Code Compliance, DOLE Reporting & Statutory Benefits
+3. Payroll Administration Support, Timekeeping & Compensation Structuring
+4. Employee Relations, Conflict Mediation & Grievance Handling
+5. 201 File Management, HRIS Records Documentation & Audit Readiness
+6. Hospitality Onboarding & Service Standards Training Facilitation
+7. First Aid & Occupational Safety and Health (OSH) Committee Leadership
+8. Administrative Office Operations, Procurement & Vendor Management
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Fairmont Makati
+   Location:     Makati City, Metro Manila
+   Job Title:    HR & Administration Assistant Manager
+   Duration:     August 2021 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Oversee talent acquisition for 180+ hotel staff across Front Office, Housekeeping, Culinary, and Engineering divisions.
+   • Maintain 100% compliance on 201 employee files, DOLE mandatory reporting, and SSS/PhilHealth/Pag-IBIG remittances.
+   • Spearheaded employee engagement and wellness programs, reducing annual voluntary staff turnover by 16%.
+   • Coordinate bi-monthly payroll audit reconciliations with Finance, resolving timekeeping discrepancies promptly.
+
+2. Employer:     Berjaya Makati Hotel
+   Location:     Makati City, Metro Manila
+   Job Title:    Human Resources Supervisor
+   Duration:     January 2019 – July 2021
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Managed end-to-end recruitment pipelines, interviewed hospitality applicants, and issued employment offers.
+   • Conducted employee counseling, managed disciplinary grievance hearings, and ensured fair labor code adherence.
+   • Organized new-hire orientation sessions focusing on brand standards and guest service hospitality excellence.
+
+3. Employer:     St. Giles Southgate Hotel
+   Location:     Makati City, Metro Manila
+   Job Title:    HR Assistant
+   Duration:     July 2017 – December 2018
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Administered 201 file archiving, issued Certificates of Employment (COE), and tracked staff attendance logs.
+   • Facilitated candidate interview scheduling and coordinated pre-employment medical examinations.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Psychology
+Institution:    Ateneo de Manila University (ADMU) — Loyola Heights, Quezon City
+Graduation:     2017
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   Certified Human Resources Professional (CHRP)
+   Issuer:  Human Resource Management Philippines / HRCI
+   Date:    October 2021
+
+2. Title:   Standard First Aid and Basic Life Support (BLS)
+   Issuer:  Philippine Red Cross
+   Date:    September 2022
+
+3. Title:   Philippine Labor Law and Industrial Relations Mastery
+   Issuer:  Philippine Hospitality Development Center
+   Date:    May 2019
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Katherine_Ann_Mendoza_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Katherine_Ann_Mendoza_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Katherine_Ann_Mendoza_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Katherine_Ann_Mendoza_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Katherine_Ann_Mendoza_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Katherine_Ann_Mendoza_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Katherine_Ann_Mendoza_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Fairmont Makati
+   - Recipient / Employee: Katherine Ann Mendoza
+   - Certified Position: HR & Administration Assistant Manager
+   - Certified Period: August 2021 – Present
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+2. Katherine_Ann_Mendoza_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: Berjaya Makati Hotel
+   - Recipient / Employee: Katherine Ann Mendoza
+   - Certified Position: Human Resources Supervisor
+   - Certified Period: March 1, 2019 – July 15, 2021 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+3. Katherine_Ann_Mendoza_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: Ateneo de Manila University (ADMU) — Loyola Heights, Quezon City
+   - Conferred Graduate: Katherine Ann Mendoza
+   - Degree Conferred: Bachelor of Science in Psychology
+   - Graduation Year: 2017
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+4. Katherine_Ann_Mendoza_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: Human Resource Management Philippines / HRCI
+   - Recipient Name: Katherine Ann Mendoza
+   - Training Title: Certified Human Resources Professional (CHRP)
+   - Award Date: October 2021
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+5. Katherine_Ann_Mendoza_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: Philippine Hospitality Development Center
+   - Recipient Name: Katherine Ann Mendoza
+   - Certified Course: Fundamentals of Corporate Payroll and Tax Calculation (CONTROLLED DISCREPANCY)
+   - Training Date: May 2019
+   - Extraction Mode: DIGITAL VECTOR TEXT (Directly extractable without OCR)
+
+6. Katherine_Ann_Mendoza_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Philippine Red Cross
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Standard First Aid and Basic Life Support (BLS)
+   - Issuance Date: September 2022
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Fairmont Makati | HR & Administration Assistant Manager | August 2021 – Present
+• Evidence: Katherine_Ann_Mendoza_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: Berjaya Makati Hotel | Human Resources Supervisor | January 2019 – July 2021
+• Evidence: Katherine_Ann_Mendoza_COE_Previous_Employer.pdf (March 1, 2019 – July 15, 2021)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from March 2019 to July 2021, whereas resume claims start date of January 2019 (2-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Bachelor of Science in Psychology | Ateneo de Manila University (ADMU) — Loyola Heights, Quezon City | 2017
+• Evidence: Katherine_Ann_Mendoza_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: Certified Human Resources Professional (CHRP) | Human Resource Management Philippines / HRCI | October 2021
+• Evidence: Katherine_Ann_Mendoza_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Philippine Labor Law and Industrial Relations Mastery | Philippine Hospitality Development Center | May 2019
+• Evidence: Katherine_Ann_Mendoza_Training_Certificate_Service.pdf (Fundamentals of Corporate Payroll and Tax Calculation)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'Philippine Labor Law and Industrial Relations Mastery', but certificate certifies 'Fundamentals of Corporate Payroll and Tax Calculation'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: Standard First Aid and Basic Life Support (BLS) | Philippine Red Cross | September 2022
+• Evidence: Katherine_Ann_Mendoza_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is severed/torn off in the uploaded scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: St. Giles Southgate Hotel | HR Assistant | July 2017 – December 2018
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

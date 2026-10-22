@@ -100,7 +100,9 @@ export function EssAllRequestsTab() {
               ? 0
               : r.status === "Under Review"
               ? 1
-              : r.status === "Approved" || r.status === "For Fulfillment"
+              : ["For Dispatch", "With Module", "For Release", "Approved", "For Fulfillment"].includes(
+                    r.status,
+                  )
               ? 2
               : r.status === "Completed"
               ? 3
@@ -111,6 +113,10 @@ export function EssAllRequestsTab() {
             ? { note: r.review_note ?? r.note }
             : {}),
           ...(r.attachments ? { attachments: r.attachments } : {}),
+          ...(r.has_fulfillment != null ? { has_fulfillment: r.has_fulfillment } : {}),
+          ...(r.module ? { module: r.module } : {}),
+          ...(r.module_label ? { moduleLabel: r.module_label } : {}),
+          ...(r.module_note ? { moduleNote: r.module_note } : {}),
           ...(r.timeline ? { timeline: r.timeline } : {}),
         }));
         setRequests(liveItems);
@@ -249,7 +255,9 @@ export function EssAllRequestsTab() {
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="Pending">Pending</SelectItem>
                 <SelectItem value="Under Review">Under Review</SelectItem>
-                <SelectItem value="Approved">Approved</SelectItem>
+                <SelectItem value="For Dispatch">For Dispatch</SelectItem>
+                <SelectItem value="With Module">With Module</SelectItem>
+                <SelectItem value="For Release">For Release</SelectItem>
                 <SelectItem value="Completed">Completed</SelectItem>
                 <SelectItem value="Rejected">Rejected</SelectItem>
               </SelectContent>

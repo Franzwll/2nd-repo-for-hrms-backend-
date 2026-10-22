@@ -27,6 +27,7 @@ import {
   Trash2,
   Sparkles,
   ArrowUpDown,
+  CheckCheck,
 } from "lucide-react";
 import type { Announcement, Audience } from "@/components/portal/portal-state";
 import { isVisibleTo, usePortalState } from "@/components/portal/portal-state";
@@ -47,7 +48,13 @@ export function AnnouncementsModal({
   initialSelectedId,
   role,
 }: AnnouncementsModalProps) {
-  const { announcements, removeAnnouncement } = usePortalState();
+  const {
+    announcements,
+    removeAnnouncement,
+    readAnnouncementIds,
+    markAnnouncementRead,
+    markAnnouncementsRead,
+  } = usePortalState();
   const canManage = role === "superadmin";
 
   const [search, setSearch] = useState("");
@@ -61,6 +68,11 @@ export function AnnouncementsModal({
   const visibleToRole = useMemo(() => {
     return announcements.filter((a) => isVisibleTo(a.audience, role));
   }, [announcements, role]);
+
+  // Seen announcements drop out of the header/notification numbers.
+  const unreadToRole = useMemo(() => {
+    return visibleToRole.filter((a) => !readAnnouncementIds.has(String(a.id)));
+  }, [visibleToRole, readAnnouncementIds]);
 
   // 2. Search and Audience filter
   const filtered = useMemo(() => {
@@ -127,6 +139,11 @@ export function AnnouncementsModal({
     if (!initialSelectedId) return null;
     return visibleToRole.find((a) => a.id === initialSelectedId) ?? null;
   }, [visibleToRole, initialSelectedId]);
+
+  // Opening a post counts as seeing it — its number leaves the bell/card.
+  useEffect(() => {
+    if (open && selected?.id) void markAnnouncementRead(String(selected.id));
+  }, [open, selected?.id, markAnnouncementRead]);
 
   /** Single-post view is a mode, so "Back to all" leaves it without closing. */
   const [singleView, setSingleView] = useState(false);
@@ -236,15 +253,29 @@ export function AnnouncementsModal({
             <div>
               <DialogTitle className="font-display text-xl font-semibold flex items-center gap-2">
                 Company Announcements
-                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs font-semibold">
-                  {visibleToRole.length} Total
-                </Badge>
+                {unreadToRole.length > 0 && (
+                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs font-semibold">
+                    {unreadToRole.length} new
+                  </Badge>
+                )}
               </DialogTitle>
               <p className="text-xs text-muted-foreground">
                 Official updates and bulletins from Oxford Suites Makati HR.
               </p>
             </div>
           </div>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0 gap-1.5 text-xs"
+            onClick={() => void markAnnouncementsRead(visibleToRole.map((a) => String(a.id)))}
+            disabled={unreadToRole.length === 0}
+            title="Mark all announcements as read"
+          >
+            <CheckCheck className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Mark all read</span>
+          </Button>
         </div>
 
         {/* Filter & Search Bar Controls */}
@@ -334,10 +365,14 @@ export function AnnouncementsModal({
                   key={a.id}
                   role="button"
                   tabIndex={0}
-                  onClick={() => setFocusedId(isFocused ? null : a.id)}
+                  onClick={() => {
+                    void markAnnouncementRead(String(a.id));
+                    setFocusedId(isFocused ? null : a.id);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
+                      void markAnnouncementRead(String(a.id));
                       setFocusedId(isFocused ? null : a.id);
                     }
                   }}

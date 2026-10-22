@@ -498,11 +498,23 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
   };
 
-  const { notifications, unreadCount, markAllRead, markRead, announcements, removeAnnouncement } =
-
-    usePortalState();
+  const {
+    notifications,
+    unreadCount,
+    markAllRead,
+    markRead,
+    announcements,
+    removeAnnouncement,
+    readAnnouncementIds,
+    markAnnouncementRead,
+    markAnnouncementsRead,
+  } = usePortalState();
 
   const visibleAnnouncements = announcements.filter((a) => isVisibleTo(a.audience, role));
+
+  const unreadAnnouncements = visibleAnnouncements.filter(
+    (a) => !readAnnouncementIds.has(String(a.id)),
+  );
 
   const canAnnounce = role === "superadmin";
 
@@ -708,35 +720,47 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
             <div className="ml-5 mt-1 space-y-0.5 border-l border-sidebar-border pl-3">
 
-              {item.children!.map((child) => (
+              {item.children!.map((child) => {
 
-                <Link
+                // Child targets may carry a query string (e.g.
+                // `/employee/ess?category=Payroll`). Split it into `to` +
+                // `search` so the link stays a client-side navigation.
+                const [childPath, childQuery] = child.to.split("?");
 
-                  key={child.to}
+                const childSearch = childQuery
+                  ? Object.fromEntries(new URLSearchParams(childQuery))
+                  : undefined;
 
-                  to={child.to}
+                return (
+                  <Link
 
-                  onClick={onNavigate}
+                    key={child.to}
 
-                  className={cn(
+                    to={childPath as never}
 
-                    "block rounded-md px-3 py-2 text-[0.8rem] transition-colors",
+                    search={childSearch as never}
 
-                    isChildActive(child.to)
+                    onClick={onNavigate}
 
-                      ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                    className={cn(
 
-                      : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+                      "block rounded-md px-3 py-2 text-[0.8rem] transition-colors",
 
-                  )}
+                      isChildActive(child.to)
 
-                >
+                        ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
 
-                  {child.label}
+                        : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
 
-                </Link>
+                    )}
 
-              ))}
+                  >
+
+                    {child.label}
+
+                  </Link>
+                );
+              })}
 
             </div>
 
@@ -1038,11 +1062,11 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                   <Megaphone className="h-5 w-5" />
 
-                  {visibleAnnouncements.length > 0 && (
+                  {unreadAnnouncements.length > 0 && (
 
                     <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-gold px-1 text-[0.6rem] font-semibold text-primary-foreground">
 
-                      {visibleAnnouncements.length}
+                      {unreadAnnouncements.length}
 
                     </span>
 
@@ -1058,7 +1082,17 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                   <p className="font-display text-lg font-semibold">Announcements</p>
 
-                  {canAnnounce && (
+                  {unreadAnnouncements.length > 0 && (
+
+                    <Badge variant="outline" className="text-[0.65rem]">
+
+                      {unreadAnnouncements.length} new
+
+                    </Badge>
+
+                  )}
+
+                  <div className="ml-auto flex items-center gap-1">
 
                     <Button
 
@@ -1066,21 +1100,51 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
 
                       size="icon"
 
-                      className="ml-auto h-8 w-8 text-primary"
+                      className="h-8 w-8"
 
-                      aria-label="New announcement"
+                      aria-label="Mark all announcements as read"
 
-                      title="New announcement"
+                      title="Mark all as read"
 
-                      onClick={() => setAnnounceOpen(true)}
+                      disabled={unreadAnnouncements.length === 0}
+
+                      onClick={() =>
+                        void markAnnouncementsRead(
+                          visibleAnnouncements.map((a) => String(a.id)),
+                        )
+                      }
 
                     >
 
-                      <Plus className="h-4 w-4" />
+                      <CheckCheck className="h-4 w-4" />
 
                     </Button>
 
-                  )}
+                    {canAnnounce && (
+
+                      <Button
+
+                        variant="ghost"
+
+                        size="icon"
+
+                        className="h-8 w-8 text-primary"
+
+                        aria-label="New announcement"
+
+                        title="New announcement"
+
+                        onClick={() => setAnnounceOpen(true)}
+
+                      >
+
+                        <Plus className="h-4 w-4" />
+
+                      </Button>
+
+                    )}
+
+                  </div>
 
                 </div>
 
@@ -1107,6 +1171,8 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                         type="button"
 
                         onClick={() => {
+
+                          void markAnnouncementRead(String(a.id));
 
                           setAnnouncementViewId(String(a.id));
 
@@ -1313,6 +1379,8 @@ export function PortalShell({ role, children }: { role: Role; children: ReactNod
                         if (!target) return;
 
                         if (target === "announcement-modal") {
+
+                          if (n.targetId) void markAnnouncementRead(String(n.targetId));
 
                           setAnnouncementViewId(n.targetId ? String(n.targetId) : null);
 

@@ -1,0 +1,233 @@
+================================================================================
+HOSPITALITY RESUME & SUPPORTING DOCUMENT BENCHMARK DATASET (SINGLE PROFILE)
+GROUND TRUTH & VERIFICATION REFERENCE
+================================================================================
+
+DOCUMENT IDENTIFIER: Actual Info in the Resume of Lorenzo Miguel Santiago.txt
+TARGET CANDIDATE: Lorenzo Miguel Santiago
+TARGET ROLE: Executive Pastry Chef & Bakery Operations Head
+EXTRACTION MODE: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+TOTAL DATASET FILES: 13 Files (6 Resumes, 6 Supporting Documents, 1 Ground Truth)
+DATE GENERATED: 2026-09-18
+
+================================================================================
+PART 1 — CANDIDATE MASTER PROFILE (STANDARDIZED CANONICAL RECORD)
+================================================================================
+
+[PERSONAL & CONTACT INFORMATION]
+Full Name:             Lorenzo Miguel Santiago
+Target Position:       Executive Pastry Chef & Bakery Operations Head
+Contact Phone Number:  +63 917 482 9153
+Email Address:         lorenzo.santiago.pastry@outlook.ph
+Residential Address:   28 McKinley Parkway, BGC, 1634 Taguig City, Philippines
+LinkedIn / Portfolio:  linkedin.com/in/lorenzo-santiago-pastry
+
+[PROFESSIONAL SUMMARY]
+"Artistic, commercially astute Executive Pastry Chef with over 8 years of luxury hotel bakery operations, signature dessert menu development, and high-volume banquet production leadership. Skilled in classical French viennoiserie, large-scale artisan bread baking, sugar artistry, and strict HACCP kitchen sanitation protocols. Adept in managing brigade teams of up to 18 pastry cooks while reducing food wastage and maintaining high profit margins."
+
+[CORE COMPETENCIES & SKILLS]
+1. Classical French Pastry, Viennoiserie & Artisan Bread Baking
+2. Banquet Dessert Staging & High-Volume Event Buffets (up to 800 covers)
+3. Recipe Standardisation, Food Cost Control & Pastry Yield Optimization
+4. Chocolate Tempering, Showpiece Construction & Sugar Artistry
+5. Pastry Brigade Rostering, Station Supervision & Culinary Mentorship
+6. Food Safety, Sanitation Auditing & HACCP Kitchen Standards
+7. Allergen Management, Gluten-Free & Vegan Dessert Formulation
+8. Bakery Requisition, Par Stock Inventory & Premium Ingredient Sourcing
+
+[CHRONOLOGICAL WORK EXPERIENCE]
+
+1. Employer:     Grand Hyatt Manila
+   Location:     BGC, Taguig City
+   Job Title:    Executive Pastry Chef
+   Duration:     October 2021 – Present
+   Tenure Type:  Current Employment
+   Responsibilities & Achievements:
+   • Lead pastry and bakery production across 5 hotel restaurants, executive lounge, and grand ballroom banquets.
+   • Manage daily operations of an 18-member pastry kitchen brigade with zero cross-contamination incidents.
+   • Introduced a seasonal afternoon tea pastry program generating PHP 1.4M quarterly incremental revenue.
+   • Decreased monthly kitchen ingredient spoilage by 16% through real-time batch baking schedules.
+
+2. Employer:     City of Dreams Manila
+   Location:     Parañaque City, Metro Manila
+   Job Title:    Pastry Sous Chef
+   Duration:     January 2018 – September 2021
+   Tenure Type:  Previous Employment
+   Responsibilities & Achievements:
+   • Supervised daily dessert production for 6 signature integrated resort dining venues.
+   • Formulated standard operational procedure manuals for artisan bread baking and chocolate pralines.
+   • Conducted temperature logging and daily hygiene audits in compliance with five-star hotel guidelines.
+
+3. Employer:     Spiral Manila — Sofitel
+   Location:     Pasay City, Metro Manila
+   Job Title:    Chef de Partie Pastry
+   Duration:     June 2015 – December 2017
+   Tenure Type:  Historical Employment
+   Responsibilities & Achievements:
+   • Oversaw the French pastry and chocolate atelier atelier station serving up to 600 buffet guests daily.
+   • Maintained consistent production quotas for plated wedding cakes and VIP corporate amenities.
+
+[EDUCATION & ACADEMIC CREDENTIALS]
+Degree:         Bachelor of Science in Hospitality and Culinary Arts Management
+Institution:    San Beda University — Mendiola, Manila
+Graduation:     2015
+
+[TRAINING & PROFESSIONAL CERTIFICATIONS]
+1. Title:   Certified Executive Pastry Chef (CEPC)
+   Issuer:  World Association of Chefs Societies (WACS)
+   Date:    November 2020
+
+2. Title:   Advanced HACCP & Commercial Kitchen Sanitation
+   Issuer:  Food Safety Council of the Philippines
+   Date:    August 2022
+
+3. Title:   Artisanal Bread & Viennoiserie Mastery
+   Issuer:  French Culinary Institute Manila
+   Date:    March 2019
+
+
+================================================================================
+PART 2 — RESUME BENCHMARK & MULTI-TEMPLATE DETAILS
+================================================================================
+
+Across all six (6) resume files below, 100% identical underlying textual data is preserved.
+Each format implements a distinctive visual design, layout architecture, and typographic hierarchy.
+
+1. Lorenzo_Miguel_Santiago_Resume.pdf
+   - File Format: Portable Document Format (.pdf)
+   - Layout Template: Template 1 - Modern Executive Two-Column Layout
+   - PDF Stream Status: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+   - Layout Design: Sidebar with contact channels, education, and certifications; main column with executive summary, competencies, and experience.
+
+2. Lorenzo_Miguel_Santiago_Resume.docx
+   - File Format: Microsoft Word (.docx)
+   - Layout Template: Template 2 - Corporate Single-Column Traditional
+   - Typographic System: Georgia Serif Typography
+   - Layout Design: Centered formal header, accent paragraph divider rules, tabular competencies.
+
+3. Lorenzo_Miguel_Santiago_Resume.png
+   - File Format: Portable Network Graphics (.png) (200 DPI High-Resolution)
+   - Layout Template: Template 3 - Contemporary Split-Grid Layout
+   - Typographic System: Modern Sans-Serif
+   - Layout Design: Header box with candidate title pill, split grid with rounded badge skill tags and vertical timeline markers.
+
+4. Lorenzo_Miguel_Santiago_Resume.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (High Quality 95%)
+   - Layout Template: Template 4 - Hospitality Clean Minimalist
+   - Layout Design: Clean left-aligned typography, generous whitespace, rounded bordered experience cards.
+
+5. Lorenzo_Miguel_Santiago_Resume_Blurred.png
+   - File Format: Portable Network Graphics (.png) (Degraded Image Benchmark)
+   - Layout Template: Template 5 - Infographic / Accent-Bar Layout
+   - Degradation Parameters: Full-page uniform Gaussian blur (radius = 1.3), uniform contrast reduction, subtle scanner noise.
+   - Degradation Integrity: 100% UNIFORM across entire page. NO black censor bars. OCR remains partially readable for benchmark resilience evaluation.
+
+6. Lorenzo_Miguel_Santiago_Resume_Blurred.jpg
+   - File Format: Joint Photographic Experts Group (.jpg) (Degraded Scan Benchmark)
+   - Layout Template: Template 6 - Elegant Hotelier Formal Layout
+   - Degradation Parameters: Full-page uniform scanner softening, moderate JPEG recompression (quality = 40), uniform paper noise texture.
+   - Degradation Integrity: 100% UNIFORM across entire page. Preserves formal styling while realistically challenging OCR text extractors.
+
+
+================================================================================
+PART 3 — SUPPORTING DOCUMENTS UNDERLYING TEXT & METADATA
+================================================================================
+
+1. Lorenzo_Miguel_Santiago_COE_Current_Employer.pdf
+   - Document Type: Certificate of Employment (COE)
+   - Issuing Entity: Grand Hyatt Manila
+   - Recipient / Employee: Lorenzo Miguel Santiago
+   - Certified Position: Executive Pastry Chef
+   - Certified Period: October 2021 – Present
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+2. Lorenzo_Miguel_Santiago_COE_Previous_Employer.pdf
+   - Document Type: Certificate of Employment and Clearance
+   - Issuing Entity: City of Dreams Manila
+   - Recipient / Employee: Lorenzo Miguel Santiago
+   - Certified Position: Pastry Sous Chef
+   - Certified Period: June 1, 2018 – September 15, 2021 (CONTROLLED DISCREPANCY)
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+3. Lorenzo_Miguel_Santiago_Diploma.pdf
+   - Document Type: Academic University Diploma
+   - Issuing Entity: San Beda University — Mendiola, Manila
+   - Conferred Graduate: Lorenzo Miguel Santiago
+   - Degree Conferred: Bachelor of Science in Hospitality and Culinary Arts Management
+   - Graduation Year: 2015
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+4. Lorenzo_Miguel_Santiago_Training_Certificate_FoodSafety.pdf
+   - Document Type: Training & Competency Certificate
+   - Issuing Entity: World Association of Chefs Societies (WACS)
+   - Recipient Name: Lorenzo Miguel Santiago
+   - Training Title: Certified Executive Pastry Chef (CEPC)
+   - Award Date: November 2020
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+5. Lorenzo_Miguel_Santiago_Training_Certificate_Service.pdf
+   - Document Type: Training Completion Certificate
+   - Issuing Entity: French Culinary Institute Manila
+   - Recipient Name: Lorenzo Miguel Santiago
+   - Certified Course: Foundations of Basic Sugar Art and Commercial Cake Decorating (CONTROLLED DISCREPANCY)
+   - Training Date: March 2019
+   - Extraction Mode: SCANNED / IMAGE-ONLY (No digital text layer, forces OCR processing)
+
+6. Lorenzo_Miguel_Santiago_Incomplete_Certificate.pdf
+   - Document Type: Professional Credential Certificate
+   - Issuing Entity: Food Safety Council of the Philippines
+   - Recipient Name: [MISSING / CUT OFF DUE TO TORN SCAN] (CONTROLLED DATA INADEQUACY)
+   - Credential Conferred: Certified Executive Pastry Chef (CEPC)
+   - Issuance Date: August 2022
+   - Extraction Mode: Scanned image with physically severed/torn name area.
+
+
+================================================================================
+PART 4 — RESUME ↔ SUPPORTING DOCUMENT VERIFICATION MATRIX
+================================================================================
+
+CASE 1: Current Employment Claim Verification
+• Resume Claim: Grand Hyatt Manila | Executive Pastry Chef | October 2021 – Present
+• Evidence: Lorenzo_Miguel_Santiago_COE_Current_Employer.pdf
+• Comparison Result: EXACT MATCH across candidate name, employer, role, and tenure.
+• Verification Engine Outcome: VERIFIED
+
+CASE 2: Previous Employment Claim Verification
+• Resume Claim: City of Dreams Manila | Pastry Sous Chef | January 2018 – September 2021
+• Evidence: Lorenzo_Miguel_Santiago_COE_Previous_Employer.pdf (June 1, 2018 – September 15, 2021)
+• Comparison Result: DISCREPANCY DETECTED. Official COE certifies employment from June 2018 to September 2021, whereas resume claims start date of January 2018 (5-month discrepancy).
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 3: Tertiary Education Claim Verification
+• Resume Claim: Bachelor of Science in Hospitality and Culinary Arts Management | San Beda University — Mendiola, Manila | 2015
+• Evidence: Lorenzo_Miguel_Santiago_Diploma.pdf
+• Comparison Result: EXACT MATCH across candidate name, degree title, institution, and year.
+• Verification Engine Outcome: VERIFIED
+
+CASE 4: Role-Specific Training Cert 1 Verification
+• Resume Claim: Certified Executive Pastry Chef (CEPC) | World Association of Chefs Societies (WACS) | November 2020
+• Evidence: Lorenzo_Miguel_Santiago_Training_Certificate_FoodSafety.pdf
+• Comparison Result: EXACT MATCH across recipient name, certification title, and issuer.
+• Verification Engine Outcome: VERIFIED
+
+CASE 5: Hospitality Training Cert 2 Verification
+• Resume Claim: Artisanal Bread & Viennoiserie Mastery | French Culinary Institute Manila | March 2019
+• Evidence: Lorenzo_Miguel_Santiago_Training_Certificate_Service.pdf (Foundations of Basic Sugar Art and Commercial Cake Decorating)
+• Comparison Result: DISCREPANCY DETECTED. Resume claims 'Artisanal Bread & Viennoiserie Mastery', but certificate certifies 'Foundations of Basic Sugar Art and Commercial Cake Decorating'.
+• Verification Engine Outcome: DISCREPANCY_FOUND
+
+CASE 6: Professional Credential Claim Verification
+• Resume Claim: Advanced HACCP & Commercial Kitchen Sanitation | Food Safety Council of the Philippines | August 2022
+• Evidence: Lorenzo_Miguel_Santiago_Incomplete_Certificate.pdf
+• Comparison Result: UNABLE TO ATTRIBUTE. Recipient name area is torn and missing from document scan, preventing candidate verification.
+• Verification Engine Outcome: UNABLE_TO_VERIFY
+
+CASE 7: Historical Employment Claim Verification
+• Resume Claim: Spiral Manila — Sofitel | Chef de Partie Pastry | June 2015 – December 2017
+• Evidence: [NO DOCUMENT SUBMITTED]
+• Comparison Result: PENDING EVIDENCE SUBMISSION. Expected verification record unfulfilled.
+• Verification Engine Outcome: PENDING
+
+================================================================================
+END OF GROUND TRUTH FILE
+================================================================================

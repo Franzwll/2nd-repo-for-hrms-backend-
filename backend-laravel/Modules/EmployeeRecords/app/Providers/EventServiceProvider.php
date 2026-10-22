@@ -16,9 +16,8 @@ class EventServiceProvider extends ServiceProvider
      * @var array<string, array<int, string>>
      */
     protected $listen = [
-        \Modules\EmployeeSelfService\Events\EssRequestFiled::class => [
-            \Modules\EmployeeRecords\Listeners\NotifyRecordsInboxOfNewRequest::class,
-        ],
+        // The module is notified by the ESS dispatcher only after the gate.
+        // Listening to EssRequestFiled would expose unapproved requests.
         \Modules\EmployeeSelfService\Events\EssRequestFulfilled::class => [
             \Modules\EmployeeRecords\Listeners\NotifyEmployeeRequestFulfilled::class,
         ],

@@ -38,7 +38,19 @@ export interface RequestItem {
   note?: string | null;
   attachments?: ApiEssRequestAttachment[];
   has_fulfillment?: boolean;
+  module?: string | null;
+  moduleLabel?: string | null;
+  moduleNote?: string | null;
   timeline?: { status: string; note: string | null; at: string | null }[];
+}
+
+const PIPELINE_STEPS = ["Filed", "ESS Review", "Module", "Release"] as const;
+
+function pipelineStage(status: string): number {
+  if (status === "For Dispatch" || status === "With Module" || status === "For Fulfillment") return 2;
+  if (status === "For Release") return 3;
+  if (status === "Completed") return 4;
+  return 1;
 }
 
 function formatBytes(bytes: number | null | undefined) {
@@ -67,7 +79,7 @@ function formatTimelineDate(value: string | null | undefined) {
 }
 
 function statusIcon(status: string) {
-  if (["Completed", "Approved", "For Fulfillment"].includes(status)) {
+  if (["Completed", "For Release", "Approved", "For Fulfillment"].includes(status)) {
     return <CheckCircle2 className="h-3.5 w-3.5" />;
   }
   if (["Rejected", "Cancelled"].includes(status)) {
@@ -172,6 +184,38 @@ export function RequestTimelineModal({
           </div>
         </DialogHeader>
 
+        {!["Rejected", "Cancelled"].includes(request.status) && (
+          <div className="grid grid-cols-4 gap-1.5">
+            {PIPELINE_STEPS.map((step, index) => {
+              const stage = pipelineStage(request.status);
+              const number = index + 1;
+              const done = stage > number;
+              const active = stage === number;
+
+              return (
+                <div key={step} className="space-y-1">
+                  <div
+                    className={`h-1.5 rounded-full ${
+                      done || active ? "bg-primary" : "bg-muted"
+                    }`}
+                  />
+                  <p
+                    className={`text-[10px] font-medium ${
+                      active
+                        ? "text-primary"
+                        : done
+                          ? "text-foreground"
+                          : "text-muted-foreground"
+                    }`}
+                  >
+                    {step}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {isReturned && (
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3.5 text-sm">
             <p className="flex items-center gap-1.5 font-semibold text-amber-700 dark:text-amber-300">
@@ -194,13 +238,26 @@ export function RequestTimelineModal({
           </div>
         )}
 
-        {request.status === "For Fulfillment" && (
+        {["For Dispatch", "With Module", "For Fulfillment"].includes(request.status) && (
           <div className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 p-3.5 text-sm">
             <p className="font-semibold text-indigo-700 dark:text-indigo-300">
-              Approved — your document is being prepared
+              Approved — being processed by the responsible team
             </p>
             <p className="mt-1 text-xs text-indigo-800/90 dark:text-indigo-200/90">
-              You will be notified here once the file is ready to download.
+              {request.moduleLabel
+                ? `With ${request.moduleLabel}. You will be notified here once the result is ready.`
+                : "You will be notified here once the result is ready."}
+            </p>
+          </div>
+        )}
+
+        {request.status === "For Release" && (
+          <div className="rounded-lg border border-teal-500/40 bg-teal-500/10 p-3.5 text-sm">
+            <p className="font-semibold text-teal-700 dark:text-teal-300">
+              Approved — waiting for final release
+            </p>
+            <p className="mt-1 text-xs text-teal-800/90 dark:text-teal-200/90">
+              HR is reviewing the result. Any file appears here once it is released to you.
             </p>
           </div>
         )}
@@ -211,7 +268,10 @@ export function RequestTimelineModal({
               <CheckCircle2 className="h-4 w-4" /> Ready
             </p>
             <p className="mt-1 text-xs text-emerald-800/90 dark:text-emerald-200/90">
-              Your request is complete. Download the file from the Documents section below.
+              Your request is complete.
+              {request.moduleNote
+                ? ` Result: ${request.moduleNote}`
+                : " Download any released file from the Documents section below."}
             </p>
           </div>
         )}

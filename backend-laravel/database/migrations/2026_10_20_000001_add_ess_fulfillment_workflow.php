@@ -46,6 +46,10 @@ return new class extends Migration
             ->orWhere('name', 'HR Document')
             ->update(['requires_fulfillment' => true]);
 
+        // Widen the status CHECK before rewriting rows: the original constraint
+        // does not allow "For Fulfillment".
+        $this->setStatusConstraint(self::STATUSES);
+
         // Existing Approved document requests were stuck at a dead-end; move
         // them into the fulfiller's queue so they can be completed.
         $legacy = DB::table('ess_requests as r')
@@ -68,8 +72,6 @@ return new class extends Migration
                 'updated_at' => now(),
             ]);
         }
-
-        $this->setStatusConstraint(self::STATUSES);
     }
 
     public function down(): void

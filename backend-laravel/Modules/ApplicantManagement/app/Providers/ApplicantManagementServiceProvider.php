@@ -22,7 +22,9 @@ class ApplicantManagementServiceProvider extends ModuleServiceProvider
      *
      * @var string[]
      */
-    // protected array $commands = [];
+    protected array $commands = [
+        \Modules\ApplicantManagement\Console\VerifyPendingDocuments::class,
+    ];
 
     /**
      * Provider classes to register.

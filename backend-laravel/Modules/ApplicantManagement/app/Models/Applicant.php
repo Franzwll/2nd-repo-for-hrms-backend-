@@ -58,11 +58,13 @@ class Applicant extends Model
 
     public function jobPost(): BelongsTo
     {
+        /* Archived job posts stay visible on existing applicant records so
+           their position title and department never disappear. */
         return $this->belongsTo(
             \Modules\RecruitmentManagement\Models\JobPost::class,
             'job_post_id',
             'job_post_id'
-        );
+        )->withTrashed();
     }
 
     public function screeningEntities(): HasMany

@@ -9,7 +9,6 @@ use App\Models\EmployeeDocument;
 use App\Models\EssCategory;
 use App\Models\EssRequest;
 use App\Models\EssRequestStatusHistory;
-use App\Models\LeaveBalance;
 use App\Services\AuditLogger;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -17,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Modules\EmployeeSelfService\Services\EssRequestWorkflow;
+use Modules\EmployeeSelfService\Services\EssRoutingService;
 
 class EssAdminController extends Controller
 {
@@ -64,17 +64,23 @@ class EssAdminController extends Controller
             'total' => EssRequest::count(),
             'pending' => EssRequest::where('status', 'Pending')->count(),
             'under_review' => EssRequest::where('status', 'Under Review')->count(),
-            'approved' => EssRequest::where('status', 'Approved')->count(),
-            'for_fulfillment' => EssRequest::where('status', 'For Fulfillment')->count(),
+            'for_dispatch' => EssRequest::where('status', 'For Dispatch')->count(),
+            'with_module' => EssRequest::where('status', 'With Module')->count(),
+            'for_release' => EssRequest::where('status', 'For Release')->count(),
+            // Legacy keys kept for older clients.
+            'approved' => EssRequest::where('status', 'For Release')->count(),
+            'for_fulfillment' => EssRequest::where('status', 'With Module')->count(),
             'completed' => EssRequest::where('status', 'Completed')->count(),
             'rejected' => EssRequest::where('status', 'Rejected')->count(),
             'returned' => EssRequest::where('status', 'Returned for Clarification')->count(),
             'cancelled' => EssRequest::where('status', 'Cancelled')->count(),
         ];
 
+        $routing = app(EssRoutingService::class);
+
         return response()->json([
             'counts' => $counts,
-            'requests' => $allRequests->map(function ($r) {
+            'requests' => $allRequests->map(function ($r) use ($routing) {
                 return [
                     'id' => $r->request_code,
                     'db_id' => $r->ess_request_id,
@@ -88,13 +94,23 @@ class EssAdminController extends Controller
                     'date_from' => $r->date_from?->toDateString(),
                     'date_to' => $r->date_to?->toDateString(),
                     'status' => $r->status,
-                    'assignedTo' => $r->assignedTo?->full_name ?? ($r->status === 'Pending' ? 'Unassigned' : 'HR Admin'),
+                    'assignedTo' => $r->assignedTo?->full_name
+                        ?? ($r->status === 'Pending'
+                            ? 'Unassigned'
+                            : ($r->routed_module ? $routing->label($r->routed_module) : 'HR Admin')),
                     'details' => $r->details,
                     'note' => $r->review_note,
                     'returnedCount' => $r->returned_count,
                     'attachment_path' => $r->attachment_path,
                     'employeeDbId' => $r->employee_id,
                     'completed_at' => $r->completed_at?->toIso8601String(),
+                    'module' => $r->routed_module,
+                    'module_label' => $r->routed_module ? $routing->label($r->routed_module) : null,
+                    'routed_at' => $r->routed_at?->toIso8601String(),
+                    'module_responded_at' => $r->module_responded_at?->toIso8601String(),
+                    'module_note' => $r->module_note,
+                    'module_reference' => $r->module_reference,
+                    'released_at' => $r->released_at?->toIso8601String(),
                     'attachments' => $r->attachments->map(fn ($a) => [
                         'id' => $a->ess_request_attachment_id,
                         'direction' => $a->direction,
@@ -118,14 +134,14 @@ class EssAdminController extends Controller
     /**
      * PATCH /api/v1/ess/admin/requests/{id}/status
      *
-     * Legacy status endpoint. Kept for bulk/older clients, but it refuses to
-     * complete document requests: those must go through the fulfil action so
-     * a file is guaranteed to exist.
+     * Legacy status endpoint. It can only move a request within the gate
+     * (Pending / Under Review / Returned / Cancelled). Approval, dispatch,
+     * completion and release have dedicated, guarded actions.
      */
     public function updateStatus(Request $request, $id): JsonResponse
     {
         $validated = $request->validate([
-            'status' => 'required|in:Pending,Under Review,Approved,For Fulfillment,Rejected,Completed,Returned for Clarification,Cancelled',
+            'status' => 'required|in:Pending,Under Review,Rejected,Returned for Clarification,Cancelled',
             'note' => 'nullable|string',
         ]);
 
@@ -138,7 +154,18 @@ class EssAdminController extends Controller
         $workflow = app(EssRequestWorkflow::class);
         $user = $request->user();
         $targetStatus = $validated['status'];
-        $previousStatus = $essRequest->status;
+
+        // The legacy endpoint stays inside the gate. Module/release stages must
+        // go through review/dispatch/release so their invariants hold.
+        if (! in_array($essRequest->status, [
+            'Pending',
+            'Under Review',
+            'Returned for Clarification',
+        ], true)) {
+            return response()->json([
+                'message' => 'This request has moved past the review stage; use the guarded actions instead.',
+            ], 422);
+        }
 
         if (
             in_array($targetStatus, ['Rejected', 'Returned for Clarification'], true)
@@ -151,88 +178,48 @@ class EssAdminController extends Controller
             ], 422);
         }
 
-        if ($targetStatus === 'Completed') {
-            return response()->json([
-                'message' => 'Attach the requested document through the fulfil action to complete this request.',
-            ], 422);
-        }
-
-        if ($targetStatus === 'Approved' && $workflow->requiresFulfillment($essRequest)) {
-            $targetStatus = 'For Fulfillment';
-        }
-
-        if ($targetStatus === 'For Fulfillment' && ! $workflow->requiresFulfillment($essRequest)) {
-            return response()->json(['message' => 'This request does not require a document.'], 422);
-        }
-
-        $essRequest->status = $targetStatus;
-
-        if ($targetStatus === 'Returned for Clarification') {
-            $essRequest->returned_count = (int) $essRequest->returned_count + 1;
-        }
-
-        if ($user) {
-            $essRequest->assigned_to_user_id = $user->system_user_id;
-        }
-
-        if (! empty($validated['note'])) {
-            $essRequest->review_note = $validated['note'];
-        }
-
-        $essRequest->save();
-
-        // Timeline entry for every admin-driven status change.
-        EssRequestStatusHistory::create([
-            'ess_request_id' => $essRequest->ess_request_id,
-            'status' => $essRequest->status,
-            'actor_user_id' => $user?->system_user_id,
-            'note' => $validated['note'] ?? "Marked {$targetStatus}.",
-        ]);
-
-        // Leave requests still deduct on approval.
-        if ($targetStatus === 'Approved' && $previousStatus !== 'Approved') {
-            if (stripos($essRequest->request_type, 'Leave') !== false) {
-                $days = 1.0;
-                if ($essRequest->date_from && $essRequest->date_to) {
-                    $start = Carbon::parse($essRequest->date_from);
-                    $end = Carbon::parse($essRequest->date_to);
-                    $days = max(1.0, (float) ($start->diffInDays($end) + 1));
+        try {
+            if ($targetStatus === 'Rejected') {
+                $workflow->review($essRequest, $user, 'reject', $validated['note'] ?? null);
+            } elseif ($targetStatus === 'Returned for Clarification') {
+                $workflow->review($essRequest, $user, 'return', $validated['note'] ?? null);
+            } else {
+                $essRequest->status = $targetStatus;
+                if ($user) {
+                    $essRequest->assigned_to_user_id = $user->system_user_id;
                 }
-
-                $leaveType = 'Vacation Leave';
-                if (stripos($essRequest->request_type, 'Sick') !== false) {
-                    $leaveType = 'Sick Leave';
-                } elseif (stripos($essRequest->request_type, 'Emergency') !== false) {
-                    $leaveType = 'Emergency Leave';
+                if (! empty($validated['note'])) {
+                    $essRequest->review_note = $validated['note'];
                 }
+                $essRequest->save();
 
-                $balance = LeaveBalance::firstOrCreate([
-                    'employee_id' => $essRequest->employee_id,
-                    'leave_type' => $leaveType,
-                    'period_year' => Carbon::today()->year,
-                ], [
-                    'total_days' => 15.0,
-                    'used_days' => 0.0,
+                EssRequestStatusHistory::create([
+                    'ess_request_id' => $essRequest->ess_request_id,
+                    'status' => $essRequest->status,
+                    'actor_user_id' => $user?->system_user_id,
+                    'note' => $validated['note'] ?? "Marked {$targetStatus}.",
                 ]);
 
-                $balance->used_days = min($balance->total_days, $balance->used_days + $days);
-                $balance->save();
+                AuditLogger::log(
+                    action: "ESS Request {$targetStatus}",
+                    module: 'ESS Management',
+                    severity: 'Info',
+                    targetType: 'EssRequest',
+                    targetId: (string) $essRequest->ess_request_id,
+                    details: "Request {$essRequest->request_code} marked as {$targetStatus} by "
+                        . ($user?->full_name ?? 'Admin'),
+                    request: $request
+                );
             }
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        AuditLogger::log(
-            action: "ESS Request {$targetStatus}",
-            module: 'ESS Management',
-            severity: $targetStatus === 'Rejected' ? 'Warning' : 'Info',
-            targetType: 'EssRequest',
-            targetId: (string) $essRequest->ess_request_id,
-            details: "Request {$essRequest->request_code} marked as {$targetStatus} by " . ($user?->full_name ?? 'Admin') . (! empty($validated['note']) ? ": {$validated['note']}" : ''),
-            request: $request
-        );
+        $essRequest->refresh();
 
         return response()->json([
-            'message' => "Request {$essRequest->request_code} updated to {$targetStatus}.",
-            'request' => $essRequest->fresh(['employee', 'category', 'attachments', 'statusHistory']),
+            'message' => "Request {$essRequest->request_code} updated to {$essRequest->status}.",
+            'request' => $essRequest->load(['employee', 'category', 'attachments', 'statusHistory']),
         ]);
     }
 
@@ -240,12 +227,12 @@ class EssAdminController extends Controller
      * POST /api/v1/ess/admin/requests/{id}/review
      *
      * decision=start    -> Pending becomes Under Review
-     * decision=approve  -> Approved (non-documents) or For Fulfillment (documents)
+     * decision=approve  -> For Dispatch (routed module) or For Release (no module)
      * decision=return   -> Returned for Clarification (note required)
      * decision=reject   -> Rejected (note required)
      *
-     * A document may be attached with an approval; when present the request is
-     * completed immediately.
+     * Supplying a file with an approval is an explicit manual override: the
+     * document is attached and released in one step by ESS Management.
      */
     public function review(Request $request, $id): JsonResponse
     {
@@ -264,34 +251,45 @@ class EssAdminController extends Controller
         $workflow = app(EssRequestWorkflow::class);
         $user = $request->user();
 
+        // Explicit manual override: the gate attaches the document and releases
+        // it immediately. Keep this out of dispatch so ERM is never notified
+        // about a request that is already complete.
+        $manualDocument = $validated['decision'] === 'approve'
+            && $request->hasFile('file')
+            && $workflow->requiresFulfillment($essRequest);
+
         try {
             if ($validated['decision'] === 'start') {
                 $workflow->startReview($essRequest, $user);
+            } elseif ($manualDocument) {
+                $essRequest = $workflow->approveManually(
+                    $essRequest,
+                    $user,
+                    $validated['note'] ?? null
+                );
+
+                $payload = $workflow->storeUpload(
+                    $request->file('file'),
+                    'ess-request-fulfillments'
+                );
+                $workflow->fulfill(
+                    $essRequest->fresh(),
+                    $user,
+                    $payload,
+                    $validated['note'] ?? null
+                );
+                $workflow->release(
+                    $essRequest->fresh(),
+                    $user,
+                    'Released manually after attaching the document.'
+                );
             } else {
-                $workflow->review(
+                $essRequest = $workflow->review(
                     $essRequest,
                     $user,
                     $validated['decision'],
                     $validated['note'] ?? null
                 );
-
-                // Approval + file in one step: complete immediately.
-                if (
-                    $validated['decision'] === 'approve'
-                    && $request->hasFile('file')
-                    && $workflow->requiresFulfillment($essRequest->fresh())
-                ) {
-                    $payload = $workflow->storeUpload(
-                        $request->file('file'),
-                        'ess-request-fulfillments'
-                    );
-                    $workflow->fulfill(
-                        $essRequest->fresh(),
-                        $user,
-                        $payload,
-                        $validated['note'] ?? null
-                    );
-                }
             }
         } catch (\RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -310,8 +308,9 @@ class EssAdminController extends Controller
     /**
      * POST /api/v1/ess/admin/requests/{id}/fulfill
      *
-     * The only path that can complete a document request. A fresh upload or an
-     * archived employee document is required.
+     * ESS Management manual override: attach a document (fresh upload or an
+     * archived employee document) and release it. Normal document requests are
+     * fulfilled by ERM and only released here.
      */
     public function fulfill(Request $request, $id): JsonResponse
     {
@@ -333,7 +332,7 @@ class EssAdminController extends Controller
             return response()->json(['message' => 'This request does not require a document.'], 422);
         }
 
-        if (! in_array($essRequest->status, ['For Fulfillment', 'Approved', 'Completed'], true)) {
+        if (! in_array($essRequest->status, ['For Dispatch', 'With Module', 'For Release', 'Completed'], true)) {
             return response()->json([
                 'message' => 'Approve the request before attaching the document.',
             ], 422);
@@ -370,6 +369,14 @@ class EssAdminController extends Controller
                 $payload,
                 $validated['note'] ?? null
             );
+
+            if ($essRequest->fresh()->status !== 'Completed') {
+                $workflow->release(
+                    $essRequest->fresh(),
+                    $request->user(),
+                    'Released manually after attaching the document.'
+                );
+            }
         } catch (\RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -377,6 +384,132 @@ class EssAdminController extends Controller
         return response()->json([
             'message' => "Request {$essRequest->request_code} fulfilled.",
             'request' => $essRequest->fresh(['employee', 'category', 'attachments', 'statusHistory']),
+        ]);
+    }
+
+    /**
+     * POST /api/v1/ess/admin/requests/{id}/release
+     */
+    public function release(Request $request, $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'note' => 'nullable|string|max:2000',
+        ]);
+
+        $essRequest = $this->findRequest($id);
+
+        if (! $essRequest) {
+            return response()->json(['message' => 'Request not found.'], 404);
+        }
+
+        try {
+            app(EssRequestWorkflow::class)->release(
+                $essRequest,
+                $request->user(),
+                $validated['note'] ?? null
+            );
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => "Request {$essRequest->request_code} released to the employee.",
+            'request' => $essRequest->fresh(['employee', 'category', 'attachments', 'statusHistory', 'routings']),
+        ]);
+    }
+
+    /**
+     * POST /api/v1/ess/admin/requests/{id}/reroute
+     */
+    public function reroute(Request $request, $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'module' => 'required|string|max:40',
+            'note' => 'nullable|string|max:2000',
+        ]);
+
+        $essRequest = $this->findRequest($id);
+
+        if (! $essRequest) {
+            return response()->json(['message' => 'Request not found.'], 404);
+        }
+
+        try {
+            app(EssRequestWorkflow::class)->reroute(
+                $essRequest,
+                $request->user(),
+                $validated['module'],
+                $validated['note'] ?? null
+            );
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => "Request {$essRequest->request_code} rerouted.",
+            'request' => $essRequest->fresh(['employee', 'category', 'attachments', 'statusHistory', 'routings']),
+        ]);
+    }
+
+    /**
+     * POST /api/v1/ess/admin/requests/{id}/dispatch
+     */
+    public function dispatch(Request $request, $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'module' => 'nullable|string|max:40',
+            'note' => 'nullable|string|max:2000',
+        ]);
+
+        $essRequest = $this->findRequest($id);
+
+        if (! $essRequest) {
+            return response()->json(['message' => 'Request not found.'], 404);
+        }
+
+        try {
+            app(EssRequestWorkflow::class)->dispatch(
+                $essRequest,
+                $request->user(),
+                $validated['module'] ?? null,
+                $validated['note'] ?? null
+            );
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => "Request {$essRequest->request_code} dispatched.",
+            'request' => $essRequest->fresh(['employee', 'category', 'attachments', 'statusHistory']),
+        ]);
+    }
+
+    /**
+     * GET /api/v1/ess/admin/requests/{id}/routings
+     */
+    public function routings(Request $request, $id): JsonResponse
+    {
+        $essRequest = $this->findRequest($id);
+
+        if (! $essRequest) {
+            return response()->json(['message' => 'Request not found.'], 404);
+        }
+
+        return response()->json([
+            'routings' => $essRequest->routings()
+                ->with('actor')
+                ->get()
+                ->map(fn ($routing) => [
+                    'id' => $routing->ess_request_routing_id,
+                    'leg' => $routing->leg,
+                    'from_module' => $routing->from_module,
+                    'to_module' => $routing->to_module,
+                    'action' => $routing->action,
+                    'actor' => $routing->actor?->full_name,
+                    'note' => $routing->note,
+                    'result_payload' => $routing->result_payload,
+                    'at' => $routing->created_at?->toIso8601String(),
+                ])->values(),
         ]);
     }
 

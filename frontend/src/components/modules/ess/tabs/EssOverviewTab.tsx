@@ -30,7 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
+import { StatCardsSkeleton, TableRowsSkeleton } from "@/components/ui/loading-skeletons";
 import { usePagination } from "@/hooks/usePagination";
 import { EssStatusBadge } from "@/components/modules/ess/shared/EssStatusBadge";
 import {
@@ -298,6 +298,9 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
       )}
 
       {/* 5 Feature Stat Cards */}
+      {loading ? (
+        <StatCardsSkeleton count={5} />
+      ) : (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {/* Attendance Card */}
         <Card className="border-border/70 h-full flex flex-col justify-between transition-all shadow-xs group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
@@ -452,6 +455,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
           </CardContent>
         </Card>
       </div>
+      )}
 
 
 

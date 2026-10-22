@@ -66,8 +66,18 @@ export function StatCard({
   );
 
   if (to) {
+    // Split any inline query string into a `search` object so TanStack Router
+    // treats this as a client-side navigation instead of resolving the whole
+    // string (query included) as a pathname.
+    const [pathname, queryString] = to.split("?");
+    const search = queryString ? Object.fromEntries(new URLSearchParams(queryString)) : undefined;
+
     return (
-      <Link to={to as never} className="block h-full focus-visible:outline-none">
+      <Link
+        to={pathname as never}
+        search={search as never}
+        className="block h-full focus-visible:outline-none"
+      >
         <Card className={cardClass}>{body}</Card>
       </Link>
     );

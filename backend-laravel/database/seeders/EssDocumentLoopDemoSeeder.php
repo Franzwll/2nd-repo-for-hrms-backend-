@@ -11,9 +11,10 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Seeds the ESS <-> ERM document-request demo loop with one Pending request
- * (waiting in the Employee Records inbox) and one Completed request with the
- * fulfilled file attached (so the employee side shows a working download).
+ * Seeds the ESS <-> ERM document-request demo loop with one request routed to
+ * Employee Records (For Dispatch — ESS Management already accepted it) and one
+ * released request with the fulfilled file attached (so the employee side shows
+ * a working download).
  *
  * Run: php artisan db:seed --class=EssDocumentLoopDemoSeeder
  */
@@ -77,7 +78,12 @@ class EssDocumentLoopDemoSeeder extends Seeder
                 'category_id' => $categoryId,
                 'request_type' => $type,
                 'filed_at' => now()->subDays(2),
-                'status' => $fulfil ? 'Completed' : 'Pending',
+                'status' => $fulfil ? 'Completed' : 'For Dispatch',
+                'routed_module' => 'erm',
+                'routed_at' => now()->subDays(2)->addHour(),
+                'module_responded_at' => $fulfil ? now()->subDays(1) : null,
+                'released_at' => $fulfil ? now()->subDay() : null,
+                'completed_at' => $fulfil ? now()->subDay() : null,
                 'details' => $details,
             ]
         );
@@ -92,6 +98,12 @@ class EssDocumentLoopDemoSeeder extends Seeder
             'note' => 'Request filed by employee.',
         ]);
 
+        EssRequestStatusHistory::create([
+            'ess_request_id' => $request->ess_request_id,
+            'status' => 'For Dispatch',
+            'note' => 'Approved by ESS Management and routed to Employee Records.',
+        ]);
+
         if (! $fulfil || ! $fulfilmentPath) {
             return;
         }
@@ -99,16 +111,23 @@ class EssDocumentLoopDemoSeeder extends Seeder
         EssRequestAttachment::create([
             'ess_request_id' => $request->ess_request_id,
             'direction' => 'hr',
+            'source_module' => 'erm',
             'file_path' => $fulfilmentPath,
             'original_name' => $fulfilmentName ?: basename($fulfilmentPath),
             'mime_type' => 'application/pdf',
             'file_size_bytes' => Storage::disk('public')->size($fulfilmentPath),
         ]);
 
-        EssRequestStatusHistory::create([
-            'ess_request_id' => $request->ess_request_id,
-            'status' => 'Completed',
-            'note' => 'Document fulfilled and sent to employee.',
-        ]);
+        foreach ([
+            ['status' => 'With Module', 'note' => 'Employee Records accepted the request.'],
+            ['status' => 'For Release', 'note' => 'Employee Records sent the document back for release.'],
+            ['status' => 'Completed', 'note' => 'Released to the employee by ESS Management.'],
+        ] as $step) {
+            EssRequestStatusHistory::create([
+                'ess_request_id' => $request->ess_request_id,
+                'status' => $step['status'],
+                'note' => $step['note'],
+            ]);
+        }
     }
 }

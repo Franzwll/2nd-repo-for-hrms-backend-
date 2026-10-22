@@ -14,6 +14,7 @@ use App\Models\EssRequestStatusHistory;
 use App\Models\LeaveBalance;
 use App\Models\WorkSchedule;
 use App\Services\AuditLogger;
+use App\Services\HandbookTextCleaner;
 use App\Services\LmsQuizGenerator;
 use App\Services\NlpService;
 use Carbon\Carbon;
@@ -567,20 +568,32 @@ class EssPortalController extends Controller
                 'date_from' => $r->date_from?->toDateString(),
                 'date_to' => $r->date_to?->toDateString(),
                 'status' => $r->status,
+                'module' => $r->routed_module,
+                'module_label' => $r->routed_module
+                    ? (config("ess_routing.modules.{$r->routed_module}.label") ?? ucfirst($r->routed_module))
+                    : null,
                 'details' => $r->details,
                 'review_note' => $r->review_note,
                 'returned_count' => $r->returned_count,
                 'completed_at' => $r->completed_at?->toIso8601String(),
+                'released_at' => $r->released_at?->toIso8601String(),
+                // Module output/notes are only visible after release.
+                'module_note' => $r->status === 'Completed' ? $r->module_note : null,
                 'assigned_to' => $r->assignedTo?->full_name ?? 'HR Admin',
-                'attachments' => $r->attachments->map(fn ($a) => [
-                    'id' => $a->ess_request_attachment_id,
-                    'direction' => $a->direction,
-                    'original_name' => $a->original_name,
-                    'mime_type' => $a->mime_type,
-                    'file_size_bytes' => $a->file_size_bytes,
-                    'has_file' => $this->attachmentFileExists($a->file_path),
-                ])->values(),
-                'has_fulfillment' => $r->attachments->contains(fn ($a) => $a->direction === 'hr'),
+                'attachments' => $r->attachments
+                    ->filter(fn ($a) => $a->direction !== 'hr' || $r->status === 'Completed')
+                    ->map(fn ($a) => [
+                        'id' => $a->ess_request_attachment_id,
+                        'direction' => $a->direction,
+                        'source_module' => $a->source_module,
+                        'original_name' => $a->original_name,
+                        'mime_type' => $a->mime_type,
+                        'file_size_bytes' => $a->file_size_bytes,
+                        'has_file' => $this->attachmentFileExists($a->file_path),
+                    ])->values(),
+                // Module output stays hidden until ESS Management releases it.
+                'has_fulfillment' => $r->status === 'Completed'
+                    && $r->attachments->contains(fn ($a) => $a->direction === 'hr'),
                 'timeline' => $r->statusHistory->map(fn ($h) => [
                     'status' => $h->status,
                     'note' => $h->note,
@@ -963,7 +976,7 @@ class EssPortalController extends Controller
                     'overtime_hours' => ($i % 5 === 0 && ! $isWeekend) ? 1.5 : 0.0,
                     'status' => $isWeekend ? 'Rest Day' : ($i === 3 ? 'Late' : 'Present'),
                     'biometric_device_id' => $isWeekend ? null : 'BIO-MAIN-01',
-                    'remarks' => $isWeekend ? 'Scheduled Weekly Rest Day' : 'Biometric Terminal Clock',
+                    'remark' => $isWeekend ? 'Scheduled Weekly Rest Day' : 'Biometric Terminal Clock',
                 ]);
             }
 
@@ -974,7 +987,7 @@ class EssPortalController extends Controller
 
         $presentCount = $records->where('status', 'Present')->count();
         $leaveCount = EssRequest::where('employee_id', $employee->employee_id)
-            ->where('status', 'Approved')
+            ->whereIn('status', ['For Release', 'Completed'])
             ->where('request_type', 'like', '%Leave%')
             ->count();
 
@@ -985,7 +998,7 @@ class EssPortalController extends Controller
                 'average_hours' => 8.0,
             ],
             'records' => $records->map(fn ($r) => [
-                'id' => $r->attendance_record_id,
+                'id' => $r->attendance_id,
                 'date' => Carbon::parse($r->work_date)->format('M d, Y'),
                 'day' => Carbon::parse($r->work_date)->format('l'),
                 'rawDate' => $r->work_date?->toDateString() ?? $r->work_date,
@@ -993,8 +1006,16 @@ class EssPortalController extends Controller
                 'timeOut' => $r->time_out ? Carbon::parse($r->time_out)->format('h:i A') : '—',
                 'workedHours' => (float) $r->hours_worked,
                 'status' => $r->status,
+                // `status` is the processing state ("Completed" / leave type),
+                // while `remark` holds the attendance verdict ("Present",
+                // "Late 7 mins", "Overtime 2h", ...). Expose both so the ESS
+                // calendar can colour days correctly.
+                'remark' => $r->remark,
+                'remarks' => $r->remark ?: 'Verified via HR Biometric Sync',
+                'lateMinutes' => (int) $r->late_minutes,
+                'undertimeMinutes' => (int) $r->undertime_minutes,
+                'overtimeHours' => (float) $r->overtime_hours,
                 'device' => $r->biometric_device_id ?: 'Web Portal / Mobile Clock',
-                'remarks' => $r->remarks ?: 'Verified via HR Biometric Sync',
             ]),
         ]);
     }
@@ -1171,6 +1192,14 @@ class EssPortalController extends Controller
             ->first();
         if (! $attachment) {
             return response()->json(['message' => 'Attachment not found.'], 404);
+        }
+
+        // Release gate: the employee cannot open a module/HR file until ESS
+        // Management has explicitly released the request.
+        if ($attachment->direction === 'hr' && $essRequest->status !== 'Completed') {
+            return response()->json([
+                'message' => 'This document has not been released to you yet.',
+            ], 403);
         }
 
         $relative = ltrim((string) $attachment->file_path, '/');
@@ -1399,6 +1428,11 @@ class EssPortalController extends Controller
         $courseList = $courses->map(function ($c) use ($byCourse) {
             $row = $byCourse->get($c->course_id);
             $status = $row?->status ?? 'Assigned';
+            // Text courses may not have been opened yet; derive the badge from
+            // their content rather than showing a hand-typed (or missing) value.
+            $meta = filled($c->content_text)
+                ? $this->deriveReadingMeta((string) $c->content_text)
+                : ['pages' => null, 'minutes' => null];
             return [
                 'id' => $c->course_code,
                 'course_id' => $c->course_id,
@@ -1415,8 +1449,9 @@ class EssPortalController extends Controller
                 // lets the cards show the parity badge (pages / read-time).
                 'reading_completed_at' => $row?->reading_completed_at,
                 'estimated_reading_minutes' => $c->estimated_reading_minutes !== null
-                    ? (int) $c->estimated_reading_minutes : null,
-                'estimated_pages' => $c->estimated_pages !== null ? (int) $c->estimated_pages : null,
+                    ? (int) $c->estimated_reading_minutes : $meta['minutes'],
+                'estimated_pages' => $c->estimated_pages !== null
+                    ? (int) $c->estimated_pages : $meta['pages'],
                 'mandatory' => (bool) ($c->mandatory ?? false),
             ];
         })->values()->all();
@@ -1800,21 +1835,45 @@ class EssPortalController extends Controller
     /* Tier-1 thin LMS: handbook -> AI quiz -> auto-score (ESS only)        */
     /* ------------------------------------------------------------------ */
 
+    private const CHARS_PER_PAGE = 1800;
+    private const WORDS_PER_MINUTE = 200;
+
     /**
-     * Lazy handbook text: the cached content_text, or (for file-based
-     * handbooks) text extracted once via the NLP service and cached back onto
-     * the course. Returns null when nothing usable is available.
+     * Estimate reading metadata from handbook text. A real PDF page count
+     * (from the NLP extractor) always wins over the character estimate.
+     *
+     * @return array{pages:int, minutes:int}
      */
-    private function resolveCourseText(object $course): ?string
+    private function deriveReadingMeta(string $text, ?int $realPageCount = null): array
+    {
+        $words = str_word_count(strip_tags($text));
+        $pages = ($realPageCount !== null && $realPageCount > 0)
+            ? $realPageCount
+            : max(1, (int) ceil(mb_strlen($text) / self::CHARS_PER_PAGE));
+
+        return [
+            'pages' => $pages,
+            'minutes' => max(1, (int) ceil($words / self::WORDS_PER_MINUTE)),
+        ];
+    }
+
+    /**
+     * Lazy handbook material: the cached content_text, or (for file-based
+     * handbooks) text extracted once via the NLP service and cached back onto
+     * the course together with its real page count.
+     *
+     * @return array{text:?string, source:?string, page_count:?int}
+     */
+    private function resolveCourseMaterial(object $course): array
     {
         $cached = trim((string) ($course->content_text ?? ''));
         if ($cached !== '') {
-            return $cached;
+            return ['text' => $cached, 'source' => 'content_text', 'page_count' => null];
         }
 
         $relative = $this->courseFilePath($course);
         if ($relative === null) {
-            return null;
+            return ['text' => null, 'source' => null, 'page_count' => null];
         }
 
         $result = app(NlpService::class)->extractDocumentText(
@@ -1822,16 +1881,27 @@ class EssPortalController extends Controller
             basename($relative),
         );
 
-        $text = trim((string) data_get($result, 'data.text', ''));
+        $text = HandbookTextCleaner::clean((string) data_get($result, 'data.text', ''));
         if (! ($result['ok'] ?? false) || $text === '') {
-            return null;
+            return ['text' => null, 'source' => null, 'page_count' => null];
+        }
+
+        $pageCount = (int) data_get($result, 'data.page_count', 0) ?: null;
+        $meta = $this->deriveReadingMeta($text, $pageCount);
+
+        $patch = ['content_text' => $text];
+        if ($course->estimated_pages === null) {
+            $patch['estimated_pages'] = $meta['pages'];
+        }
+        if ($course->estimated_reading_minutes === null) {
+            $patch['estimated_reading_minutes'] = $meta['minutes'];
         }
 
         DB::table('learning_courses')
             ->where('course_id', $course->course_id)
-            ->update(['content_text' => $text]);
+            ->update($patch);
 
-        return $text;
+        return ['text' => $text, 'source' => 'file', 'page_count' => $pageCount];
     }
 
     /** Normalised, existing public-disk path for a course handbook, or null. */
@@ -1871,6 +1941,28 @@ class EssPortalController extends Controller
         }
 
         $relative = $this->courseFilePath($course);
+        $material = $this->resolveCourseMaterial($course);
+
+        // Backfill derived metadata so the badge is honest on first open, and
+        // patch the in-memory row so this response already reflects it.
+        if ($material['text'] !== null
+            && ($course->estimated_pages === null || $course->estimated_reading_minutes === null)) {
+            $meta = $this->deriveReadingMeta($material['text'], $material['page_count']);
+            $patch = [];
+            if ($course->estimated_pages === null) {
+                $patch['estimated_pages'] = $meta['pages'];
+            }
+            if ($course->estimated_reading_minutes === null) {
+                $patch['estimated_reading_minutes'] = $meta['minutes'];
+            }
+            if ($patch !== []) {
+                DB::table('learning_courses')
+                    ->where('course_id', $course->course_id)
+                    ->update($patch);
+                $course = (object) array_merge((array) $course, $patch);
+            }
+        }
+
         $row = $this->learningRow((int) $employee->employee_id, (int) $course->course_id);
 
         return response()->json([
@@ -1884,7 +1976,7 @@ class EssPortalController extends Controller
                     ? (int) $course->estimated_pages : null,
                 'mandatory' => (bool) ($course->mandatory ?? false),
             ],
-            'content' => $this->resolveCourseText($course),
+            'content' => $material['text'],
             'file_url' => $relative !== null
                 ? '/api/v1/ess/my-learning/' . rawurlencode($courseCode) . '/file'
                 : null,
@@ -1980,7 +2072,8 @@ class EssPortalController extends Controller
         $quiz = $course->quiz_json ? json_decode((string) $course->quiz_json, true) : null;
 
         if (! is_array($quiz) || empty($quiz['questions'])) {
-            $text = $this->resolveCourseText($course);
+            $material = $this->resolveCourseMaterial($course);
+            $text = $material['text'];
             if ($text === null) {
                 return response()->json([
                     'code' => 'ai_unavailable',

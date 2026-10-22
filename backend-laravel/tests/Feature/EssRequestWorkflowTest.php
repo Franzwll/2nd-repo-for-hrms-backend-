@@ -13,10 +13,12 @@ use Tests\TestCase;
 
 /**
  * End-to-end guard rails for the ESS request lifecycle:
- * Pending -> Under Review -> Returned -> Under Review -> For Fulfillment -> Completed.
+ * Pending -> Under Review -> Returned -> Under Review -> For Dispatch ->
+ * With Module -> For Release -> Completed.
  *
- * The important invariant: a document request cannot be completed without an
- * HR attachment, and the legacy status endpoint cannot bypass that rule.
+ * The important invariants: a document request cannot be completed without an
+ * HR attachment, module output is invisible until ESS Management releases it,
+ * and leave is deducted by the Attendance module — not by the gate.
  */
 class EssRequestWorkflowTest extends TestCase
 {
@@ -59,7 +61,7 @@ class EssRequestWorkflowTest extends TestCase
 
         $this->postJson("/api/v1/ess/admin/requests/{$code}/review", [
             'decision' => 'approve',
-        ], $admin)->assertOk()->assertJsonPath('request.status', 'For Fulfillment');
+        ], $admin)->assertOk()->assertJsonPath('request.status', 'For Dispatch');
 
         // The legacy status endpoint must not complete a document request.
         $this->patchJson("/api/v1/ess/admin/requests/{$code}/status", [
@@ -148,7 +150,7 @@ class EssRequestWorkflowTest extends TestCase
         ]);
     }
 
-    public function test_non_document_request_is_approved_and_leave_is_deducted(): void
+    public function test_non_document_request_is_dispatched_and_leave_is_deducted_by_the_module(): void
     {
         Storage::fake('public');
 
@@ -165,24 +167,49 @@ class EssRequestWorkflowTest extends TestCase
 
         $code = $created['request_code'];
         $employeeId = (int) $created['employee_id'];
+        $admin = $this->authHeaders($this->superAdminToken());
 
         $before = (float) (LeaveBalance::where('employee_id', $employeeId)
             ->where('leave_type', 'Vacation Leave')
             ->where('period_year', now()->year)
             ->value('used_days') ?? 0);
 
+        // The gate approves and routes to Attendance, but does NOT deduct leave.
         $this->postJson("/api/v1/ess/admin/requests/{$code}/review", [
             'decision' => 'approve',
-        ], $this->authHeaders($this->superAdminToken()))
+        ], $admin)
             ->assertOk()
-            ->assertJsonPath('request.status', 'Approved');
+            ->assertJsonPath('request.status', 'For Dispatch')
+            ->assertJsonPath('request.routed_module', 'attendance');
 
-        $after = (float) LeaveBalance::where('employee_id', $employeeId)
+        $this->assertSame($before, (float) LeaveBalance::where('employee_id', $employeeId)
             ->where('leave_type', 'Vacation Leave')
             ->where('period_year', now()->year)
-            ->value('used_days');
+            ->value('used_days'));
 
-        $this->assertSame($before + 2.0, $after);
+        // Attendance owns the approval decision. Deduction happens HERE.
+        $this->postJson("/api/v1/ess/modules/attendance/requests/{$code}/complete", [
+            'decision' => 'approved',
+            'leave_type' => 'Vacation Leave',
+            'note' => 'Approved by Attendance.',
+        ], $admin)
+            ->assertOk()
+            ->assertJsonPath('request.status', 'For Release');
+
+        $this->assertSame($before + 2.0, (float) LeaveBalance::where('employee_id', $employeeId)
+            ->where('leave_type', 'Vacation Leave')
+            ->where('period_year', now()->year)
+            ->value('used_days'));
+
+        // Release must not touch the balance again.
+        $this->postJson("/api/v1/ess/admin/requests/{$code}/release", [], $admin)
+            ->assertOk()
+            ->assertJsonPath('request.status', 'Completed');
+
+        $this->assertSame($before + 2.0, (float) LeaveBalance::where('employee_id', $employeeId)
+            ->where('leave_type', 'Vacation Leave')
+            ->where('period_year', now()->year)
+            ->value('used_days'));
     }
 
     public function test_returned_request_can_be_resubmitted_by_the_employee(): void
@@ -225,7 +252,7 @@ class EssRequestWorkflowTest extends TestCase
             'decision' => 'approve',
         ], $this->authHeaders($this->superAdminToken()))
             ->assertOk()
-            ->assertJsonPath('request.status', 'For Fulfillment');
+            ->assertJsonPath('request.status', 'For Dispatch');
 
         $this->post("/api/v1/ess/admin/requests/{$code}/fulfill", [
             'file' => UploadedFile::fake()->create('coe.pdf', 12, 'application/pdf'),

@@ -23,7 +23,13 @@ return [
 
     // Allow any local dev origin (localhost / 127.0.0.1 on any port) so the
     // frontend can fetch document blobs cross-origin for in-browser preview.
-    'allowed_origins_patterns' => ['/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/'],
+    // Also allow any HTTPS subdomain of oxfordsuitesmakati.io so deployed
+    // frontends (hrms1 / testhrms1) can call their API host (testapi-hrms1)
+    // without editing CORS_ALLOWED_ORIGINS on every server.
+    'allowed_origins_patterns' => [
+        '/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/',
+        '/^https:\/\/([a-z0-9-]+\.)*oxfordsuitesmakati\.io(:\d+)?$/',
+    ],
 
 
     'allowed_headers' => ['*'],

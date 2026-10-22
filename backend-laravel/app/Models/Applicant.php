@@ -40,6 +40,8 @@ class Applicant extends Model
 
     public function jobPost(): BelongsTo
     {
-        return $this->belongsTo(JobPost::class, 'job_post_id', 'job_post_id');
+        /* Archived job posts stay visible on existing applicant records so
+           their position title and department never disappear. */
+        return $this->belongsTo(JobPost::class, 'job_post_id', 'job_post_id')->withTrashed();
     }
 }

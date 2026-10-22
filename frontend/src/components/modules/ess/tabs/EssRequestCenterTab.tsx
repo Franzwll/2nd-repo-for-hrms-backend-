@@ -159,6 +159,9 @@ export function EssRequestCenterTab() {
       ...(r.db_id != null ? { dbId: r.db_id } : {}),
       ...(r.attachments ? { attachments: r.attachments } : {}),
       ...(r.has_fulfillment != null ? { has_fulfillment: r.has_fulfillment } : {}),
+      ...(r.module ? { module: r.module } : {}),
+      ...(r.module_label ? { moduleLabel: r.module_label } : {}),
+      ...(r.module_note ? { moduleNote: r.module_note } : {}),
       ...(r.timeline ? { timeline: r.timeline } : {}),
     });
     setTimelineOpen(true);
@@ -196,8 +199,9 @@ export function EssRequestCenterTab() {
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="Pending">Pending</SelectItem>
                 <SelectItem value="Under Review">Under Review</SelectItem>
-                <SelectItem value="For Fulfillment">For Fulfillment</SelectItem>
-                <SelectItem value="Approved">Approved</SelectItem>
+                <SelectItem value="For Dispatch">For Dispatch</SelectItem>
+                <SelectItem value="With Module">With Module</SelectItem>
+                <SelectItem value="For Release">For Release</SelectItem>
                 <SelectItem value="Completed">Completed</SelectItem>
                 <SelectItem value="Rejected">Rejected</SelectItem>
                 <SelectItem value="Returned for Clarification">Returned</SelectItem>
