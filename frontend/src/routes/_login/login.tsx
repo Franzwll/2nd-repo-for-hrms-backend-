@@ -91,42 +91,40 @@ export const Route = createFileRoute("/_login/login")({
   component: LoginPage,
 });
 
-const brigades = [
-  "Front Office",
-  "Housekeeping",
-  "Food & Beverage Service",
-  "Kitchen Brigade",
-  "Banquets & Events",
-];
-
 const montageImages = [
   {
     src: interior1,
+    title: "Grand Lobby",
     alt: "Oxford Suites Makati grand interior hall with elegant ambient lighting",
     animation: "animate-[kenburns-1_20s_infinite_alternate_ease-in-out]",
   },
   {
     src: suiteb,
+    title: "Executive Suite",
     alt: "Oxford Suites Makati executive suite room",
     animation: "animate-[kenburns-2_20s_infinite_alternate_ease-in-out]",
   },
   {
     src: loginDining,
+    title: "Fine Dining",
     alt: "Oxford Suites Makati fine dining restaurant",
     animation: "animate-[kenburns-3_20s_infinite_alternate_ease-in-out]",
   },
   {
     src: interior3b,
+    title: "Suite Lounge",
     alt: "Oxford Suites Makati suite lounge area",
     animation: "animate-[kenburns-1_20s_infinite_alternate_ease-in-out]",
   },
   {
     src: suite1b,
+    title: "Premier Suite",
     alt: "Oxford Suites Makati premier suite living area",
     animation: "animate-[kenburns-2_20s_infinite_alternate_ease-in-out]",
   },
   {
     src: suite2b,
+    title: "Deluxe King",
     alt: "Oxford Suites Makati deluxe king bedroom view",
     animation: "animate-[kenburns-3_20s_infinite_alternate_ease-in-out]",
   },
@@ -144,8 +142,16 @@ function LoginPage() {
   const [ready, setReady] = useState(false);
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaReset, setCaptchaReset] = useState(0);
+  /** OS "reduce motion" preference — softens the entrance animation (not the slideshow). */
+  const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
+    // The montage only renders at lg+ — below that there's nothing to wait for,
+    // so phones/tablets skip the preloader entirely.
+    if (!window.matchMedia("(min-width: 1024px)").matches) {
+      setReady(true);
+      return;
+    }
     let cancelled = false;
     const first = new Image();
     first.src = montageImages[0]!.src;
@@ -163,13 +169,30 @@ function LoginPage() {
     };
   }, []);
 
-  // Montage slideshow transition
+  // The OS "reduce motion" preference only skips the copy's staggered entrance;
+  // the slideshow interval and Ken Burns zoom always run, like the original.
   useEffect(() => {
-    const slideTimer = setInterval(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReducedMotion(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  // Montage slideshow — classic auto-advance, same as the original page:
+  // one interval that swaps the slide every 6 seconds, no conditions.
+  useEffect(() => {
+    const slideTimer = window.setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % montageImages.length);
     }, 6000);
-    return () => clearInterval(slideTimer);
+    return () => window.clearInterval(slideTimer);
   }, []);
+
+  /** Staggered entrance for the hero copy — starts only once the preloader clears. */
+  const enter = (delay: string) =>
+    ready && !reducedMotion
+      ? cn("animate-in fade-in slide-in-from-bottom-8 duration-700", delay)
+      : "";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -251,7 +274,7 @@ function LoginPage() {
   };
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
+    <div className="grid min-h-screen grid-rows-[auto_1fr] lg:grid-cols-[1.1fr_1fr] lg:grid-rows-none">
       {/* Preloader screen until first image frame decodes */}
       {!ready && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#520c19] text-white">
@@ -286,14 +309,15 @@ function LoginPage() {
       )}
 
       {/* Property panel with omni-directional slow-motion montage edit */}
-      <div className="relative hidden flex-col justify-between overflow-hidden px-12 py-10 text-primary-foreground lg:flex">
-        {/* Montage Slideshow Container */}
-        <div className="absolute inset-0 z-0 overflow-hidden">
+      <div className="login-hero relative flex flex-col justify-between gap-4 overflow-hidden bg-primary px-5 py-3 text-primary-foreground lg:gap-0 lg:px-12 lg:py-10">
+        {/* Montage Slideshow Container — desktop (lg+) only; smaller screens get the logo strip */}
+        <div className="absolute inset-0 z-0 hidden overflow-hidden lg:block">
           {montageImages.map((img, index) => (
             <img
               key={img.src}
               src={img.src}
               alt={img.alt}
+              aria-hidden={index !== currentSlide}
               className={cn(
                 "absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ease-in-out scale-110",
                 index === currentSlide ? "opacity-100" : "opacity-0",
@@ -303,49 +327,96 @@ function LoginPage() {
           ))}
         </div>
 
-        {/* Lightened Maroon Foreshadow Background Overlay */}
-        <div className="absolute inset-0 z-10 bg-primary/45 mix-blend-multiply transition-colors duration-700" />
+        {/* Lightened Maroon Foreshadow Background Overlay (image frames only) */}
+        <div className="absolute inset-0 z-10 hidden bg-primary/45 mix-blend-multiply transition-colors duration-700 lg:block" />
         <div className="absolute inset-0 z-10 bg-gradient-to-t from-foreground/80 via-foreground/25 to-foreground/45" />
+        {/* Localized vignette keeps the headline legible over bright frames */}
+        <div className="absolute inset-0 z-10 bg-[radial-gradient(78%_62%_at_18%_58%,rgb(0_0_0/0.55),transparent_72%)]" />
 
-        <div className="relative z-20 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-3">
-            <div className="scale-170 origin-left">
+        <div
+          className={cn(
+            "relative z-20 flex items-center justify-between gap-4",
+            enter("delay-100"),
+          )}
+        >
+          <Link to="/" className="flex min-w-0 items-center gap-3">
+            <div className="scale-100 origin-left sm:scale-150 lg:scale-170">
               <Logo mark="white" tone="invert" />
             </div>
           </Link>
-          <span className="rounded-full border border-primary-foreground/30 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-primary-foreground/90 backdrop-blur-sm bg-black/20">
+          <span className="hidden shrink-0 rounded-full border border-primary-foreground/30 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-primary-foreground/90 backdrop-blur-sm bg-black/20 lg:block">
             Est. 1995
           </span>
         </div>
 
-        <div className="relative z-20 max-w-lg">
-          <p className="eyebrow text-gold drop-shadow-md">
+        {/* Hero copy — lg+ only (smaller screens show just the logo strip) */}
+        <div className="relative z-20 hidden max-w-2xl lg:block">
+          <p
+            className={cn(
+              "text-sm font-medium uppercase leading-none tracking-[0.2em] text-gold drop-shadow-md",
+              enter("delay-100"),
+            )}
+          >
             Staff Portal
           </p>
-          <div className="mt-4 h-px w-16 bg-gold/70" />
-          <h1 className="mt-6 font-display text-5xl font-semibold leading-[1.08] drop-shadow-lg">
-            Welcome back.
+          <div className={cn("mt-5 h-0.5 w-24 origin-left bg-gold/70", enter("delay-200"))} />
+          <h1
+            className={cn(
+              "mt-7 font-display text-[3.75rem] font-semibold leading-[1.05] drop-shadow-lg lg:text-[4.25rem]",
+              enter("delay-200"),
+            )}
+          >
+            Welcome back<span className="text-gold">.</span>
           </h1>
-          <p className="mt-5 text-sm leading-relaxed text-primary-foreground/90 drop-shadow">
-            Schedules, payroll, and requests — all in one place.
+          <p
+            className={cn(
+              "mt-5 max-w-xl font-display text-2xl italic leading-snug text-primary-foreground/90 drop-shadow",
+              enter("delay-300"),
+            )}
+          >
+            The pleasure is ours.
           </p>
         </div>
 
-        <div className="relative z-20 flex items-center justify-between border-t border-primary-foreground/20 pt-5 text-xs text-primary-foreground/80">
+        <div
+          className={cn(
+            "relative z-20 hidden flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-primary-foreground/20 pt-5 text-xs text-primary-foreground/80 lg:flex",
+            enter("delay-700"),
+          )}
+        >
           <span className="flex items-center gap-2">
             <ShieldCheck className="h-3.5 w-3.5 text-gold" />
             Authorized staff only
           </span>
+
+          {/* Slide progress dots */}
+          <div className="flex items-center gap-1.5">
+            {montageImages.map((img, index) => (
+              <button
+                key={img.src}
+                type="button"
+                onClick={() => setCurrentSlide(index)}
+                aria-label={`Show ${img.title}`}
+                aria-current={index === currentSlide}
+                className="group cursor-pointer rounded-full p-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold"
+              >
+                <span
+                  className={cn(
+                    "block h-1 rounded-full transition-all duration-500 ease-out",
+                    index === currentSlide
+                      ? "w-8 bg-gold"
+                      : "w-3 bg-primary-foreground/30 group-hover:bg-primary-foreground/60",
+                  )}
+                />
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Credential panel */}
-      <div className="flex items-center justify-center bg-background px-5 py-12 sm:px-10">
-        <div className="w-full max-w-md">
-          <Link to="/" className="mb-10 flex items-center gap-3 lg:hidden">
-            <Logo mark="maroon" />
-          </Link>
-
+      <div className="flex items-center justify-center bg-background px-5 py-9 sm:px-10 sm:py-12">
+        <div className="w-full max-w-md sm:max-w-lg lg:max-w-md">
           <p className="eyebrow">Staff Portal Access</p>
           <h2 className="mt-2 font-display text-4xl font-semibold">Sign in</h2>
           <p className="mt-2 text-sm text-muted-foreground">Sign in with your work credentials.</p>

@@ -320,6 +320,36 @@
   }
 }
 
+/* Indeterminate bar on the login preloader ("Preparing your workspace"). */
+@keyframes hero-progress {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(340%);
+  }
+}
+
+.hero-progress {
+  animation: hero-progress 1.4s ease-in-out infinite;
+}
+
+/* Staggered hero entrance: hold each block at its "from" state while the
+ * delay runs (tw-animate-css defaults to fill-mode none, which would flash
+ * the copy on screen before it animates in). */
+.login-hero .animate-in {
+  --tw-animation-fill-mode: both;
+}
+
+/* The montage's Ken Burns slow-zoom always runs (same as the original login) —
+ * it is subtle ambient motion, so it is intentionally NOT frozen for
+ * prefers-reduced-motion. Only the tiny preloader bar is softened. */
+@media (prefers-reduced-motion: reduce) {
+  .hero-progress {
+    animation-duration: 3s;
+  }
+}
+
 /* Print Optimization for Official Payslip Receipts */
 @media print {
   @page {
