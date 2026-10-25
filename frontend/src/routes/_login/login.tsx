@@ -340,7 +340,7 @@ function LoginPage() {
           )}
         >
           <Link to="/" className="flex min-w-0 items-center gap-3">
-            <div className="scale-100 origin-left sm:scale-150 lg:scale-170">
+            <div className="origin-left scale-100 lg:scale-170">
               <Logo mark="white" tone="invert" />
             </div>
           </Link>

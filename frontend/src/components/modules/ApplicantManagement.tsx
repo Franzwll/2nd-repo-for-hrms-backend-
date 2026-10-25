@@ -3453,9 +3453,7 @@ export function ScreeningReferenceManager() {
               Reference Data &amp; Aliases
             </h2>
             <p className="text-xs text-muted-foreground">
-              Database-managed vocabulary used by the NLP service to classify education,
-              certificates, skills, job roles and experience as RECOGNIZED or UNRECOGNIZED — each
-              entity type is managed in its own section below. Changes apply to every new screening.
+              Terms the NLP service recognizes in resumes. Changes apply to every screening.
             </p>
           </div>
           <Button size="sm" onClick={openCreate}>
@@ -3491,10 +3489,6 @@ export function ScreeningReferenceManager() {
                   className="w-64 pl-8"
                 />
               </div>
-              <p className="text-[0.7rem] text-muted-foreground">
-                One section per entity type — education, certificates, skills, job roles and
-                experience.
-              </p>
             </div>
 
             <div className="max-h-[22rem] overflow-y-auto rounded-md border border-border">

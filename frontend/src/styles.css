@@ -29,6 +29,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-strong: var(--primary-strong);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -79,6 +80,9 @@
 
   --primary: oklch(0.427 0.166 22.5);
   --primary-foreground: oklch(0.985 0.006 85);
+  /* Solid CTA fill. Matches --primary in light; dark mode deepens it so the
+   * button reads "maroon" instead of competing with the gold accent. */
+  --primary-strong: oklch(0.427 0.166 22.5);
 
   --secondary: oklch(0.962 0.011 84);
   --secondary-foreground: oklch(0.3 0.03 28);
@@ -133,11 +137,14 @@
 
   --primary: oklch(0.53 0.19 22);
   --primary-foreground: oklch(0.97 0.01 58);
+  /* Deep maroon for solid CTAs — keeps the bright crimson above for text,
+   * links, icons and charts where it needs to stay legible on espresso. */
+  --primary-strong: oklch(0.45 0.15 22);
 
   --secondary: oklch(0.33 0.008 59);
   --secondary-foreground: oklch(0.88 0.014 61);
   --muted: oklch(0.33 0.008 59);
-  --muted-foreground: oklch(0.83 0.016 56);
+  --muted-foreground: oklch(0.72 0.016 56);
   --accent: oklch(0.77 0.11 88);
   --accent-foreground: oklch(0.18 0.008 55);
 
@@ -156,7 +163,8 @@
 
   --border: oklch(0.41 0.01 56);
   --input: oklch(0.44 0.012 48);
-  --ring: oklch(0.53 0.19 22);
+  /* Gold focus ring: a crimson ring was invisible on crimson buttons. */
+  --ring: oklch(0.8 0.12 80);
 
   --chart-1: oklch(0.53 0.19 22);
   --chart-2: oklch(0.77 0.11 88);
