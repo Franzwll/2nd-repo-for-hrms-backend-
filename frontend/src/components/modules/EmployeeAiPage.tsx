@@ -68,7 +68,7 @@ const SUGGESTED_PROMPTS = [
     icon: Calendar,
     title: "Leave Credits",
     desc: "How many vacation and sick leave days do I have left?",
-    color: "text-emerald-600 bg-emerald-500/10",
+    color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 dark:bg-emerald-400/10",
     query: "What is my remaining leave balance?",
   },
   {
@@ -82,14 +82,14 @@ const SUGGESTED_PROMPTS = [
     icon: Building2,
     title: "Request a COE",
     desc: "How do I request an official Certificate of Employment?",
-    color: "text-blue-600 bg-blue-500/10",
+    color: "text-blue-600 dark:text-blue-400 bg-blue-500/10 dark:bg-blue-400/10",
     query: "How do I request a Certificate of Employment (COE)?",
   },
   {
     icon: ShieldCheck,
     title: "HMO & Medical",
     desc: "What does my Maxicare healthcare coverage include?",
-    color: "text-purple-600 bg-purple-500/10",
+    color: "text-purple-600 dark:text-purple-400 bg-purple-500/10 dark:bg-purple-400/10",
     query: "What does my HMO healthcare cover?",
   },
 ];
@@ -381,7 +381,6 @@ export function EmployeeAiPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        eyebrow="Employee Concierge"
         title="HR AI Assistant"
         description="Your 24/7 personal HR assistant for policy guidance, leave balances, payroll cut-offs, and request shortcuts."
       />
@@ -638,7 +637,7 @@ export function EmployeeAiPage() {
                       className={`flex items-start gap-3.5 ${isUser ? "flex-row-reverse" : "flex-row"}`}
                     >
                       <Avatar className={`h-8 w-8 shrink-0 border ${isUser ? "bg-primary text-primary-foreground border-primary" : "bg-muted border-border"}`}>
-                        <AvatarFallback className={isUser ? "bg-primary text-primary-foreground font-bold text-xs" : "bg-amber-500/15 text-amber-600 font-bold text-xs"}>
+                        <AvatarFallback className={isUser ? "bg-primary text-primary-foreground font-bold text-xs" : "bg-amber-500/15 dark:bg-amber-400/10 text-amber-600 dark:text-amber-400 font-bold text-xs"}>
                           {isUser ? (firstName || "ME").slice(0, 2).toUpperCase() : <Bot className="h-4 w-4" />}
                         </AvatarFallback>
                       </Avatar>
@@ -719,7 +718,7 @@ export function EmployeeAiPage() {
                 {isThinking && (
                   <div className="flex items-start gap-3.5 animate-in fade-in-50 duration-200">
                     <Avatar className="h-8 w-8 shrink-0 border bg-muted border-border">
-                      <AvatarFallback className="bg-amber-500/15 text-amber-600 font-bold text-xs">
+                      <AvatarFallback className="bg-amber-500/15 dark:bg-amber-400/10 text-amber-600 dark:text-amber-400 font-bold text-xs">
                         <Bot className="h-4 w-4 text-primary animate-pulse" />
                       </AvatarFallback>
                     </Avatar>

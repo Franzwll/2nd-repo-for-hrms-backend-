@@ -205,7 +205,7 @@ export function EssRequestCoeTab() {
                     >
                       <div className="flex items-center gap-2">
                         <RadioGroupItem value="hardcopy" id="full-fmt-hardcopy" className="sr-only" />
-                        <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                        <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                         <span className="text-xs font-bold">Physical Hardcopy</span>
                       </div>
                       <p className="text-[11px] text-muted-foreground pl-6">
@@ -283,19 +283,19 @@ export function EssRequestCoeTab() {
             </CardHeader>
             <CardContent className="space-y-3 text-xs text-muted-foreground">
               <div className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <span>
                   <strong>QR-Code Authenticity:</strong> All digital documents contain a cryptographic QR code for instant third-party verification.
                 </span>
               </div>
               <div className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <span>
                   <strong>Official Embossed Seal:</strong> Hardcopy documents include an official dry seal and authorized signatory.
                 </span>
               </div>
               <div className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <span>
                   <strong>Embassy &amp; Bank Compliant:</strong> Formatted in accordance with standard financial and diplomatic visa requirements.
                 </span>

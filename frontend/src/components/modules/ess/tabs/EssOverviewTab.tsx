@@ -220,8 +220,8 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
         <Card
           className={
             onboarding.pending.length === 0
-              ? "border-emerald-500/30 bg-emerald-500/5 shadow-xs"
-              : "border-amber-500/30 bg-amber-500/5 shadow-xs"
+              ? "border-emerald-500/30 dark:border-emerald-400/20 bg-emerald-500/5 dark:bg-emerald-400/10 shadow-xs"
+              : "border-amber-500/30 dark:border-amber-400/20 bg-amber-500/5 dark:bg-amber-400/10 shadow-xs"
           }
         >
           <CardContent className="p-4">
@@ -230,8 +230,8 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
                 <span
                   className={
                     onboarding.pending.length === 0
-                      ? "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600"
-                      : "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-600"
+                      ? "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400"
+                      : "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 dark:bg-amber-400/10 text-amber-600 dark:text-amber-400"
                   }
                 >
                   {onboarding.pending.length === 0 ? (
@@ -247,8 +247,8 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
                       variant="outline"
                       className={
                         onboarding.pending.length === 0
-                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/40 text-[10px]"
-                          : "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/40 text-[10px]"
+                          ? "bg-emerald-500/15 dark:bg-emerald-400/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/40 dark:border-emerald-400/25 text-[10px]"
+                          : "bg-amber-500/15 dark:bg-amber-400/10 text-amber-700 dark:text-amber-400 border-amber-500/40 dark:border-amber-400/25 text-[10px]"
                       }
                     >
                       {onboarding.pending.length === 0
@@ -267,7 +267,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
                             key={idx}
                             className="inline-flex items-center gap-1 text-[11px] rounded-md bg-background/80 px-2 py-0.5 border border-border text-foreground"
                           >
-                            <ClipboardCheck className="h-3 w-3 text-amber-600 shrink-0" />
+                            <ClipboardCheck className="h-3 w-3 text-amber-600 dark:text-amber-400 shrink-0" />
                             {task}
                           </span>
                         ))}
@@ -338,7 +338,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Payroll</span>
-              <div className="rounded-md bg-emerald-500/10 p-2 text-emerald-600">
+              <div className="rounded-md bg-emerald-500/10 dark:bg-emerald-400/10 p-2 text-emerald-600 dark:text-emerald-400">
                 <FileText className="h-4 w-4" />
               </div>
             </div>
@@ -367,7 +367,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Performance</span>
-              <div className="rounded-md bg-purple-500/10 p-2 text-purple-600">
+              <div className="rounded-md bg-purple-500/10 dark:bg-purple-400/10 p-2 text-purple-600 dark:text-purple-400">
                 <TrendingUp className="h-4 w-4" />
               </div>
             </div>
@@ -398,7 +398,7 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Documents</span>
-              <div className="rounded-md bg-blue-500/10 p-2 text-blue-600">
+              <div className="rounded-md bg-blue-500/10 dark:bg-blue-400/10 p-2 text-blue-600 dark:text-blue-400">
                 <FileCheck className="h-4 w-4" />
               </div>
             </div>
@@ -425,11 +425,11 @@ export function EssOverviewTab({}: EssOverviewTabProps) {
         </Card>
 
         {/* Recognition Card (5th Card from Spec) */}
-        <Card className="border-border/70 h-full flex flex-col justify-between transition-all shadow-xs group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md bg-gradient-to-br from-amber-500/5 via-card to-card">
+        <Card className="border-border/70 h-full flex flex-col justify-between transition-all shadow-xs group cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md bg-gradient-to-br from-amber-500/5 dark:from-amber-400/10 via-card to-card">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">Recognition</span>
-              <div className="rounded-md bg-amber-500/15 p-2 text-amber-600 dark:text-amber-400">
+              <div className="rounded-md bg-amber-500/15 dark:bg-amber-400/10 p-2 text-amber-600 dark:text-amber-400">
                 <Sparkles className="h-4 w-4" />
               </div>
             </div>

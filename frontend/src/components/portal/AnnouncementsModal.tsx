@@ -196,8 +196,8 @@ export function AnnouncementsModal({
                     selected.audience === "All"
                       ? "bg-primary/10 text-primary border-primary/20"
                       : selected.audience === "Employee"
-                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
-                        : "bg-purple-500/10 text-purple-600 border-purple-500/30"
+                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:bg-emerald-400/10 dark:text-emerald-400 dark:border-emerald-400/20"
+                        : "bg-purple-500/10 text-purple-600 border-purple-500/30 dark:bg-purple-400/10 dark:text-purple-400 dark:border-purple-400/20"
                   }`}
                 >
                   {selected.audience}
@@ -417,8 +417,8 @@ export function AnnouncementsModal({
                           a.audience === "All"
                             ? "bg-primary/10 text-primary border-primary/20"
                             : a.audience === "Employee"
-                            ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
-                            : "bg-purple-500/10 text-purple-600 border-purple-500/30"
+                            ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:bg-emerald-400/10 dark:text-emerald-400 dark:border-emerald-400/20"
+                            : "bg-purple-500/10 text-purple-600 border-purple-500/30 dark:bg-purple-400/10 dark:text-purple-400 dark:border-purple-400/20"
                         }`}
                       >
                         {a.audience}

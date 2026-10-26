@@ -470,8 +470,8 @@ export function ReportedEntitiesManager() {
             {pending.length > 0 && <Badge variant="secondary">{pending.length} pending</Badge>}
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Entities HR flagged as UNRECOGNIZED from a Resume Screening Result. Promote them into
-            the vocabulary so every future screening recognizes them.
+            Flagged as unrecognized during screening. Add them to the vocabulary so future runs
+            recognize them.
           </p>
         </div>
         {handled.length > 0 && (
@@ -488,8 +488,8 @@ export function ReportedEntitiesManager() {
 
       {pending.length === 0 ? (
         <p className="rounded-md border border-dashed border-border bg-muted/20 p-6 text-center text-xs text-muted-foreground">
-          Nothing reported yet. Open a Resume Screening Result and use the flag button on an
-          UNRECOGNIZED skill, job role, certificate, education or experience entry.
+          Nothing reported yet. Flag an unrecognized entry from a Resume Screening Result and it
+          will appear here.
         </p>
       ) : (
         <div className="space-y-2">
@@ -1987,7 +1987,7 @@ const AI_LIMIT_CODES = new Set(["quota_day", "rate_minute", "daily_limit", "quot
 const AI_TONE_CLASS = {
   ready: "border-success/30 bg-success/10 text-success",
   busy: "border-primary/30 bg-primary/10 text-primary",
-  limit: "border-amber-500/40 bg-amber-500/10 text-amber-600",
+  limit: "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-400",
   off: "border-border bg-muted text-muted-foreground",
   muted: "border-border bg-muted text-muted-foreground",
 } as const;
@@ -2522,12 +2522,9 @@ export function RequirementTemplateManager({
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold">Requirement templates per position</h3>
+          <h3 className="text-sm font-semibold">Templates by position</h3>
           <p className="text-xs text-muted-foreground">
-            What to <span className="font-medium text-foreground">require</span> for a role. Each
-            template lists screening entities — skill, job role, certification, education,
-            experience — and can be applied to a job post, seeding Screening Requirements, Qualifications
-            and the education / experience levels.
+            Reusable requirements you can apply to a job post in one click.
           </p>
         </div>
         <Button size="sm" className="cursor-pointer" onClick={openCreate}>
@@ -2583,7 +2580,7 @@ export function RequirementTemplateManager({
             : "No templates match your filters."}
         </p>
       ) : (
-        <div className="max-h-[24rem] space-y-3 overflow-y-auto pr-1">
+        <div className="space-y-3">
           {filtered.map((template) => (
             <div
               key={template.template_id}
@@ -7590,7 +7587,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                           className="flex items-start gap-1.5 text-[0.68rem] leading-relaxed text-muted-foreground"
                                         >
                                           {p.blocked ? (
-                                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
+                                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500 dark:text-amber-400" />
                                           ) : (
                                             <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-success" />
                                           )}
@@ -7607,7 +7604,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                                       ))}
                                     </ul>
                                     {aiUsage.blocked_until && aiBlockedSeconds > 0 && (
-                                      <p className="text-[0.68rem] font-medium text-amber-600">
+                                      <p className="text-[0.68rem] font-medium text-amber-600 dark:text-amber-400">
                                         Limit reached — ready again in{" "}
                                         {aiCountdown(aiBlockedSeconds)}.
                                       </p>
@@ -9640,61 +9637,52 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
             className="flex min-h-0 w-full flex-1 flex-col"
           >
             {/* Header + live NLP service status */}
-            <div className="space-y-3 border-b border-border px-6 pb-4 pt-6">
-              <DialogHeader className="space-y-2 text-left">
-                <DialogTitle className="flex items-center gap-2 font-display text-2xl">
-                  <ScanLine className="h-5 w-5 text-primary" /> Screening Setup
-                </DialogTitle>
-                <DialogDescription>
-                  Requirement Templates — the requirement entities a resume must satisfy per
-                  position, ready to apply in a job post. Scoring — how resumes are scored.
-                  Reference Data — the vocabulary the model recognizes in resumes, one section per
-                  entity type with bulk upload. Reported Entities — unrecognized entities flagged
-                  from screening results, ready to add. Saved settings apply to every new screening
-                  run.
-                </DialogDescription>
+            <div className="border-b border-border px-6 pb-4 pt-6">
+              <DialogHeader className="space-y-0 text-left">
+                <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
+                  <div className="min-w-0">
+                    <DialogTitle className="flex items-center gap-2 font-display text-2xl">
+                      <ScanLine className="h-5 w-5 text-primary" /> Screening Setup
+                    </DialogTitle>
+                    <DialogDescription className="mt-1">
+                      Requirements, scoring and vocabulary used by every screening run.
+                    </DialogDescription>
+                  </div>
+                  <span
+                    title={
+                      nlpStatus === null
+                        ? "Checking the NLP service…"
+                        : nlpStatus.online
+                          ? `NLP service: ${nlpStatus.base_model ?? "spaCy"}${nlpStatus.custom_ner_loaded ? " · custom NER loaded" : " · custom NER not loaded"}`
+                          : "Resume screening fails until the NLP service is running on port 8001."
+                    }
+                    className={cn(
+                      "mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.7rem] font-medium",
+                      nlpStatus && !nlpStatus.online
+                        ? "border-destructive/40 bg-destructive/10 text-destructive"
+                        : "border-border bg-muted/40 text-muted-foreground",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        nlpStatus === null
+                          ? "bg-muted-foreground"
+                          : nlpStatus.online
+                            ? "bg-success"
+                            : "bg-destructive animate-pulse",
+                      )}
+                    />
+                    {nlpStatus === null
+                      ? "Checking NLP…"
+                      : nlpStatus.online
+                        ? "NLP online"
+                        : "NLP offline"}
+                  </span>
+                </div>
               </DialogHeader>
 
-              <div
-                className={cn(
-                  "flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs",
-                  nlpStatus?.online
-                    ? "border-success/40 bg-success/10 text-success"
-                    : "border-destructive/40 bg-destructive/10 text-destructive",
-                )}
-              >
-                <span
-                  className={cn(
-                    "h-2 w-2 rounded-full",
-                    nlpStatus?.online ? "bg-success" : "bg-destructive animate-pulse",
-                  )}
-                />
-                {nlpStatus === null ? (
-                  <span className="text-muted-foreground">Checking NLP service…</span>
-                ) : nlpStatus.online ? (
-                  <>
-                    <span className="font-medium">NLP service online</span>
-                    <Badge variant="secondary">{nlpStatus.base_model ?? "spaCy"}</Badge>
-                    {nlpStatus.custom_ner_loaded ? (
-                      <Badge variant="secondary">Custom NER model loaded</Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="border-warning/40 text-warning-foreground"
-                      >
-                        Custom NER not loaded
-                      </Badge>
-                    )}
-                  </>
-                ) : (
-                  <span className="font-medium">
-                    NLP service offline — resume screening will fail until it is running on port
-                    8001.
-                  </span>
-                )}
-              </div>
-
-              <TabsList>
+              <TabsList className="mt-4">
                 {[
                   { value: "templates", label: "Requirement Templates", icon: ClipboardList },
                   { value: "scoring", label: "Scoring", icon: Sliders },
@@ -9813,8 +9801,8 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                         onValueChange={(v) => setPassing(v[0] ?? passing)}
                       />
                       <p className="text-[0.7rem] text-muted-foreground">
-                        Resumes scoring at or above this are classified “Perfect for the Job” —
-                        provided mandatory requirements are also met.
+                        At or above this score, a resume is “Perfect for the Job” when mandatory
+                        requirements are met.
                       </p>
                     </div>
 
@@ -9832,8 +9820,7 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                         onValueChange={(v) => setCoverageMin(v[0] ?? coverageMin)}
                       />
                       <p className="text-[0.7rem] text-muted-foreground">
-                        A resume must match at least this fraction of the job post&apos;s required
-                        skills before it can pass — even when the weighted score is high.
+                        Minimum share of the job post&apos;s required skills needed to pass.
                       </p>
                     </div>
 
@@ -9841,24 +9828,14 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
                     <div className="space-y-2 rounded-md border border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
                       <p className="font-medium text-foreground">How a resume is scored</p>
                       <ol className="list-decimal space-y-1 pl-4">
+                        <li>Text is extracted (PDF/DOCX/OCR) and entities are tagged.</li>
+                        <li>Entities are matched against the job post&apos;s requirements.</li>
+                        <li>Weighted criteria add up to the match score.</li>
                         <li>
-                          Text is extracted (PDF/DOCX/OCR) and entities are tagged by the NER model.
-                        </li>
-                        <li>
-                          Skills, experience, education and certifications are matched against the
-                          job post&apos;s requirements.
-                        </li>
-                        <li>
-                          Each criterion earns a share of its weight; the sum is the match score.
-                        </li>
-                        <li>
-                          Classification:{" "}
-                          <span className="font-medium text-foreground">Perfect for the Job</span>{" "}
-                          (passes thresholds),{" "}
-                          <span className="font-medium text-foreground">Fit for other Job</span>{" "}
-                          (better match among open posts),{" "}
-                          <span className="font-medium text-foreground">Invalid credential</span>{" "}
-                          (credential issue found), otherwise{" "}
+                          Thresholds decide the result:{" "}
+                          <span className="font-medium text-foreground">Perfect for the Job</span>,{" "}
+                          <span className="font-medium text-foreground">Fit for other Job</span>,{" "}
+                          <span className="font-medium text-foreground">Invalid credential</span> or{" "}
                           <span className="font-medium text-foreground">Not fitted to Job</span>.
                         </li>
                       </ol>
@@ -9884,12 +9861,6 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               </TabsContent>
 
               <TabsContent value="reference" className="mt-0">
-                <p className="mb-3 rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">Vocabulary, not requirements.</span>{" "}
-                  These are the terms the NLP model matches in resumes — with aliases for spelling
-                  variants. Managing them here affects every screening; it does not change what a
-                  job post requires (that lives in each post&apos;s skills list).
-                </p>
                 <ScreeningReferenceManager />
               </TabsContent>
 
@@ -9898,33 +9869,31 @@ export function RecruitmentManagement({ role }: { role: "superadmin" | "admin" }
               </TabsContent>
             </div>
 
-            {/* Footer — sticky save bar for the scoring tab */}
-            <div className="border-t border-border bg-muted/30 px-6 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[0.7rem] text-muted-foreground">
-                  {screeningTab === "scoring"
-                    ? "Weights and thresholds apply to every new resume screening after saving."
-                    : screeningTab === "templates"
-                      ? "Templates seed a job post's requirements; the + buttons add terms to the screening vocabulary."
-                      : "Reference Data changes apply to the next screening immediately."}
-                </p>
-                <Button
-                  className="cursor-pointer"
-                  disabled={savingConfig || totalWeight !== 100}
-                  onClick={saveScreeningConfiguration}
-                >
-                  {savingConfig ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…
-                    </>
-                  ) : (
-                    <>
-                      <Sliders className="mr-2 h-4 w-4" /> Save configuration
-                    </>
-                  )}
-                </Button>
+            {/* Footer — sticky save bar, only where there is something to save */}
+            {screeningTab === "scoring" && (
+              <div className="border-t border-border bg-muted/30 px-6 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[0.7rem] text-muted-foreground">
+                    Applies to every new screening after saving.
+                  </p>
+                  <Button
+                    className="cursor-pointer"
+                    disabled={savingConfig || totalWeight !== 100}
+                    onClick={saveScreeningConfiguration}
+                  >
+                    {savingConfig ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…
+                      </>
+                    ) : (
+                      <>
+                        <Sliders className="mr-2 h-4 w-4" /> Save configuration
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
           </Tabs>
         </DialogContent>
       </Dialog>

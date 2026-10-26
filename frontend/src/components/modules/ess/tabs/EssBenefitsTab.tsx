@@ -48,7 +48,7 @@ export function EssBenefitsTab() {
               <CardContent className="p-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider">{b.benefit_name}</span>
-                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px]">
+                  <Badge variant="outline" className="bg-emerald-500/10 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 dark:border-emerald-400/20 text-[10px]">
                     {b.status || "Active"}
                   </Badge>
                 </div>

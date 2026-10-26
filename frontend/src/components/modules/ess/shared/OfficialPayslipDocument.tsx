@@ -115,12 +115,12 @@ export function OfficialPayslipDocument({
     <div
       id="official-payslip-receipt"
       className={cn(
-        "w-full bg-white dark:bg-card text-slate-900 dark:text-card-foreground font-sans p-6 sm:p-8 rounded-xl border border-slate-200 dark:border-border shadow-xs text-xs space-y-6 print:p-0 print:border-none print:shadow-none print:bg-white print:text-black",
+        "w-full bg-white dark:bg-card text-slate-900 dark:text-foreground font-sans p-6 sm:p-8 rounded-xl border border-slate-200 dark:border-border shadow-xs text-xs space-y-6 print:p-0 print:border-none print:shadow-none print:bg-white print:text-black",
         className,
       )}
     >
       {/* 1. Header Section */}
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-200 dark:border-border/80">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-200 dark:border-border">
         <div className="flex items-center gap-3">
           <Logo variant="full" mark="maroon" className="scale-95 origin-left" />
           <div className="border-l border-slate-200 dark:border-border pl-3">
@@ -147,7 +147,7 @@ export function OfficialPayslipDocument({
       <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
         {/* Left 7 cols: Employee Details */}
         <div className="md:col-span-7 space-y-2">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-muted-foreground border-b border-slate-100 dark:border-border/50 pb-1">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600 border-b border-slate-100 dark:border-white/5 pb-1">
             Employee Summary
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
@@ -208,9 +208,9 @@ export function OfficialPayslipDocument({
         </div>
 
         {/* Right 5 cols: Net Pay & Work Days Box */}
-        <div className="md:col-span-5 bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 rounded-xl p-3.5 space-y-3">
+        <div className="md:col-span-5 bg-emerald-50/70 dark:bg-emerald-400/10 border border-emerald-200 dark:border-emerald-400/25 rounded-xl p-3.5 space-y-3">
           <div className="flex items-center gap-3">
-            <div className="w-1.5 h-10 bg-emerald-600 rounded-full shrink-0" />
+            <div className="w-1.5 h-10 bg-emerald-600 dark:bg-emerald-400 rounded-full shrink-0" />
             <div>
               <p className="text-2xl font-bold font-mono tracking-tight text-emerald-900 dark:text-emerald-300">
                 {formatCurrency(calculatedNetPay)}
@@ -221,15 +221,15 @@ export function OfficialPayslipDocument({
             </div>
           </div>
 
-          <div className="border-t border-emerald-200/80 dark:border-emerald-800/40 pt-2.5 grid grid-cols-1 gap-2 text-xs min-[420px]:grid-cols-2 print:grid-cols-2">
+          <div className="border-t border-emerald-200/80 dark:border-emerald-400/20 pt-2.5 grid grid-cols-1 gap-2 text-xs min-[420px]:grid-cols-2 print:grid-cols-2">
             <div className="flex items-center justify-between">
-              <span className="text-emerald-800 dark:text-emerald-300/80">Paid Days</span>
+              <span className="text-emerald-800 dark:text-emerald-300">Paid Days</span>
               <span className="font-bold text-slate-900 dark:text-foreground font-mono">
                 : {paidDays}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-emerald-800 dark:text-emerald-300/80">LOP / Unpaid</span>
+              <span className="text-emerald-800 dark:text-emerald-300">LOP / Unpaid</span>
               <span className="font-bold text-slate-900 dark:text-foreground font-mono">
                 : {lopDays}
               </span>
@@ -239,7 +239,7 @@ export function OfficialPayslipDocument({
       </div>
 
       {/* 3. Statutory Identification Bar */}
-      <div className="rounded-lg bg-slate-50 dark:bg-muted/30 border border-slate-200 dark:border-border/70 px-4 py-2.5 text-[11px]">
+      <div className="rounded-lg bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-border px-4 py-2.5 text-[11px]">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
           <div>
             <span className="text-slate-500 dark:text-muted-foreground block text-[10px] uppercase font-semibold">
@@ -285,13 +285,13 @@ export function OfficialPayslipDocument({
       </div>
 
       {/* 4. Side-by-Side Itemized Earnings & Deductions Table */}
-      <div className="border border-slate-200 dark:border-border/80 rounded-xl overflow-hidden shadow-2xs">
+      <div className="border border-slate-200 dark:border-border rounded-xl overflow-hidden shadow-2xs">
         <table className="w-full text-xs text-left border-collapse">
           <thead>
-            <tr className="bg-slate-100/90 dark:bg-muted/60 text-slate-700 dark:text-muted-foreground font-bold border-b border-slate-200 dark:border-border/80 text-[11px] uppercase tracking-wider">
+            <tr className="bg-slate-100/90 dark:bg-white/10 text-slate-700 dark:text-muted-foreground font-bold border-b border-slate-200 dark:border-border text-[11px] uppercase tracking-wider">
               <th className="p-3 w-1/4">Earnings</th>
               <th className="p-3 text-right w-1/8">Amount</th>
-              <th className="p-3 text-right w-1/8 border-r border-slate-200 dark:border-border/80">
+              <th className="p-3 text-right w-1/8 border-r border-slate-200 dark:border-border">
                 YTD
               </th>
               <th className="p-3 w-1/4">Deductions</th>
@@ -299,27 +299,27 @@ export function OfficialPayslipDocument({
               <th className="p-3 text-right w-1/8">YTD</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-border/40">
+          <tbody className="divide-y divide-slate-100 dark:divide-white/10">
             {normalizedEarnings.map((earn, index) => {
               const ded = normalizedDeductions[index];
               return (
                 <tr
                   key={index}
-                  className="hover:bg-slate-50/60 dark:hover:bg-muted/20 transition-colors"
+                  className="hover:bg-slate-50/60 dark:hover:bg-white/5 transition-colors"
                 >
                   {/* Earnings Left Side */}
-                  <td className="p-2.5 font-medium text-slate-700 dark:text-foreground/90">
+                  <td className="p-2.5 font-medium text-slate-700 dark:text-muted-foreground">
                     {earn.label || "—"}
                   </td>
                   <td className="p-2.5 text-right font-mono font-semibold text-slate-900 dark:text-foreground">
                     {earn.label ? formatCurrency(earn.amount) : "—"}
                   </td>
-                  <td className="p-2.5 text-right font-mono text-slate-500 dark:text-muted-foreground border-r border-slate-200 dark:border-border/80">
+                  <td className="p-2.5 text-right font-mono text-slate-500 dark:text-muted-foreground border-r border-slate-200 dark:border-border">
                     {earn.label ? formatCurrency(earn.ytd) : "—"}
                   </td>
 
                   {/* Deductions Right Side */}
-                  <td className="p-2.5 font-medium text-slate-700 dark:text-foreground/90">
+                  <td className="p-2.5 font-medium text-slate-700 dark:text-muted-foreground">
                     {ded?.label || "—"}
                   </td>
                   <td className="p-2.5 text-right font-mono font-semibold text-rose-600 dark:text-rose-400">
@@ -333,12 +333,12 @@ export function OfficialPayslipDocument({
             })}
           </tbody>
           <tfoot>
-            <tr className="bg-slate-50 dark:bg-muted/40 font-bold border-t-2 border-slate-200 dark:border-border">
+            <tr className="bg-slate-50 dark:bg-white/5 font-bold border-t-2 border-slate-200 dark:border-border">
               <td className="p-3 text-slate-900 dark:text-foreground">Gross Earnings</td>
               <td className="p-3 text-right font-mono text-emerald-600 dark:text-emerald-400 text-sm">
                 {formatCurrency(grossEarnings)}
               </td>
-              <td className="p-3 border-r border-slate-200 dark:border-border/80" />
+              <td className="p-3 border-r border-slate-200 dark:border-border" />
               <td className="p-3 text-slate-900 dark:text-foreground">Total Deductions</td>
               <td className="p-3 text-right font-mono text-rose-600 dark:text-rose-400 text-sm">
                 {formatCurrency(totalDeductions)}
@@ -350,7 +350,7 @@ export function OfficialPayslipDocument({
       </div>
 
       {/* 5. Total Net Payable Banner */}
-      <div className="border border-slate-200 dark:border-border/80 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50 dark:bg-muted/20">
+      <div className="border border-slate-200 dark:border-border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50 dark:bg-white/5">
         <div>
           <p className="text-xs uppercase font-extrabold tracking-wider text-slate-900 dark:text-foreground">
             TOTAL NET PAYABLE
@@ -360,18 +360,18 @@ export function OfficialPayslipDocument({
           </p>
         </div>
 
-        <div className="bg-emerald-100/90 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 px-5 py-2.5 rounded-lg text-right">
+        <div className="bg-emerald-100/90 dark:bg-emerald-400/15 border border-emerald-300 dark:border-emerald-400/30 px-5 py-2.5 rounded-lg text-right">
           <p className="text-xl sm:text-2xl font-bold font-mono text-emerald-900 dark:text-emerald-300">
             {formatCurrency(calculatedNetPay)}
           </p>
-          <p className="text-[11px] sm:text-xs font-semibold text-emerald-800 dark:text-emerald-300/90 mt-0.5 tracking-tight">
+          <p className="text-[11px] sm:text-xs font-semibold text-emerald-800 dark:text-emerald-300 mt-0.5 tracking-tight">
             {amountWords}
           </p>
         </div>
       </div>
 
       {/* 7. Footer Disclaimer */}
-      <div className="pt-4 border-t border-slate-200 dark:border-border/80 text-center">
+      <div className="pt-4 border-t border-slate-200 dark:border-border text-center">
         <p className="text-[11px] text-slate-400 dark:text-muted-foreground/80 italic">
           -- This document has been automatically generated by Oxford Suites Makati HRMS;
           therefore, a signature is not required. --

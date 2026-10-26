@@ -193,6 +193,7 @@ def match_profile_to_requirements(
     validation: Dict,
     requirements: Dict,
     weights_override: Optional[Dict] = None,
+    required_coverage_min_override: Optional[float] = None,
 ) -> Dict:
     """Component-by-component matching with full explanation data.
 
@@ -299,7 +300,7 @@ def match_profile_to_requirements(
     mandatory_ok = (
         education_met
         and experience_met
-        and required_coverage >= config.REQUIRED_SKILLS_COVERAGE_MIN
+        and required_coverage >= (required_coverage_min_override if required_coverage_min_override is not None else config.REQUIRED_SKILLS_COVERAGE_MIN)
         and completeness_ok
     )
 
@@ -311,7 +312,7 @@ def match_profile_to_requirements(
             "education_requirement_met": education_met,
             "experience_requirement_met": experience_met,
             "required_skills_coverage": round(required_coverage, 4),
-            "required_skills_coverage_min": config.REQUIRED_SKILLS_COVERAGE_MIN,
+            "required_skills_coverage_min": (required_coverage_min_override if required_coverage_min_override is not None else config.REQUIRED_SKILLS_COVERAGE_MIN),
             "essential_information_complete": completeness_ok,
         },
         "missing_requirements": {

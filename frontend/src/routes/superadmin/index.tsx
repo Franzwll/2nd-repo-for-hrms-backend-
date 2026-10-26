@@ -141,7 +141,6 @@ function SuperAdminDashboard() {
   return (
     <div>
       <PageHeader
-        eyebrow="Super Admin"
         title="System Dashboard"
         description="Whole-system oversight across property operations, users, and HRMS modules."
       />

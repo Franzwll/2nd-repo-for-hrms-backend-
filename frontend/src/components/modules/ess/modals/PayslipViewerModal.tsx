@@ -88,7 +88,7 @@ export function PayslipViewerModal({
         <DialogHeader className="print:hidden">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="rounded-md bg-emerald-500/10 p-2 text-emerald-600 dark:text-emerald-400">
+              <div className="rounded-md bg-emerald-500/10 dark:bg-emerald-400/10 p-2 text-emerald-600 dark:text-emerald-400">
                 <FileText className="h-5 w-5" />
               </div>
               <div>
@@ -98,7 +98,7 @@ export function PayslipViewerModal({
             </div>
             <Badge
               variant="outline"
-              className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-xs"
+              className="bg-emerald-500/10 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 dark:border-emerald-400/20 text-xs"
             >
               {stubStatus}
             </Badge>

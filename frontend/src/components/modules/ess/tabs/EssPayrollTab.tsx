@@ -207,7 +207,7 @@ export function EssPayrollTab() {
       sensitiveValue: "12-345678901-2",
       amount: philhealth,
       unit: "/ month",
-      tone: "bg-emerald-500/10 text-emerald-600",
+      tone: "bg-emerald-500/10 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400",
     },
     {
       icon: Building,
@@ -215,7 +215,7 @@ export function EssPayrollTab() {
       sensitiveValue: "1234-5678-9012",
       amount: pagibig,
       unit: "/ month",
-      tone: "bg-blue-500/10 text-blue-600",
+      tone: "bg-blue-500/10 dark:bg-blue-400/10 text-blue-600 dark:text-blue-400",
     },
     {
       icon: Landmark,
@@ -223,7 +223,7 @@ export function EssPayrollTab() {
       detail: "Monthly tax deduction",
       amount: tax,
       unit: "/ month",
-      tone: "bg-rose-500/10 text-rose-600",
+      tone: "bg-rose-500/10 dark:bg-rose-400/10 text-rose-600 dark:text-rose-400",
     },
     {
       icon: Stethoscope,
@@ -231,7 +231,7 @@ export function EssPayrollTab() {
       detail: "Maxicare · MX-****014",
       amount: 150000,
       unit: "MBL / yr",
-      tone: "bg-purple-500/10 text-purple-600",
+      tone: "bg-purple-500/10 dark:bg-purple-400/10 text-purple-600 dark:text-purple-400",
     },
   ];
 
@@ -277,7 +277,7 @@ export function EssPayrollTab() {
               </div>
               <Badge
                 variant="outline"
-                className="shrink-0 border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-600"
+                className="shrink-0 border-emerald-500/30 dark:border-emerald-400/20 bg-emerald-500/10 dark:bg-emerald-400/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400"
               >
                 5 Active
               </Badge>
@@ -396,7 +396,7 @@ export function EssPayrollTab() {
                   ))}
                   <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-1.5 text-[11px] font-semibold">
                     <span className="text-foreground">Total Deductions</span>
-                    <span className="font-mono text-rose-600">
+                    <span className="font-mono text-rose-600 dark:text-rose-400">
                       -{money(calculation.totalDeductions)}
                     </span>
                   </div>
@@ -404,7 +404,7 @@ export function EssPayrollTab() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+            <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-emerald-500/30 dark:border-emerald-400/20 bg-emerald-500/5 dark:bg-emerald-400/10 p-4">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
                   3. Net Take-Home Pay
@@ -453,7 +453,7 @@ export function EssPayrollTab() {
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 Per Cut-off Deduction
               </p>
-              <p className="mt-1 text-xl font-extrabold font-display text-rose-600">-₱450.00</p>
+              <p className="mt-1 text-xl font-extrabold font-display text-rose-600 dark:text-rose-400">-₱450.00</p>
             </div>
             <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">

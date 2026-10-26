@@ -379,7 +379,7 @@ export function LmsActivityPlayer({
               }`}
             >
               <BookOpen className="h-3 w-3" /> 1. Read handbook
-              {readDone && <CheckCircle2 className="h-3 w-3 text-emerald-600" />}
+              {readDone && <CheckCircle2 className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />}
             </span>
             <span className="h-px w-6 bg-border" />
             <span
@@ -419,7 +419,7 @@ export function LmsActivityPlayer({
                   </Badge>
                 )}
                 {material.course.mandatory && (
-                  <Badge variant="outline" className="border-red-500/40 text-red-600">
+                  <Badge variant="outline" className="border-red-500/40 dark:border-red-400/20 text-red-600 dark:text-red-400">
                     Mandatory
                   </Badge>
                 )}
@@ -458,7 +458,7 @@ export function LmsActivityPlayer({
           {/* ---------------- reading gate / errors ---------------- */}
           {stage === "gated" && (
             <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 p-6 text-center">
-              <div className="rounded-full bg-amber-500/10 p-3 text-amber-600">
+              <div className="rounded-full bg-amber-500/10 dark:bg-amber-400/10 p-3 text-amber-600 dark:text-amber-400">
                 <BookOpen className="h-6 w-6" />
               </div>
               <p className="text-sm font-semibold text-foreground">Read the handbook first</p>
@@ -480,7 +480,7 @@ export function LmsActivityPlayer({
 
           {stage === "error" && (
             <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 p-6 text-center">
-              <div className="rounded-full bg-red-500/10 p-3 text-red-600">
+              <div className="rounded-full bg-red-500/10 dark:bg-red-400/10 p-3 text-red-600 dark:text-red-400">
                 <XCircle className="h-6 w-6" />
               </div>
               <p className="text-sm font-semibold text-foreground">Activity unavailable</p>
@@ -501,7 +501,7 @@ export function LmsActivityPlayer({
           {/* ---------------- quiz stage (locked when already completed) --- */}
           {stage === "quiz" && quiz && quizLocked && (
             <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 p-6 text-center">
-              <div className="rounded-full bg-emerald-500/10 p-3 text-emerald-600">
+              <div className="rounded-full bg-emerald-500/10 dark:bg-emerald-400/10 p-3 text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 className="h-6 w-6" />
               </div>
               <p className="text-sm font-semibold text-foreground">Module already completed</p>
@@ -542,7 +542,7 @@ export function LmsActivityPlayer({
                 {secondsLeft != null && (
                   <span
                     className={`ml-auto flex items-center gap-1 font-mono text-xs font-bold ${
-                      secondsLeft <= 60 ? "text-red-600" : "text-foreground"
+                      secondsLeft <= 60 ? "text-red-600 dark:text-red-400" : "text-foreground"
                     }`}
                     title="Time remaining"
                   >
@@ -599,8 +599,8 @@ export function LmsActivityPlayer({
               <div
                 className={`flex flex-wrap items-center gap-3 rounded-lg border p-4 ${
                   result.passed
-                    ? "border-emerald-500/40 bg-emerald-500/10"
-                    : "border-amber-500/40 bg-amber-500/10"
+                    ? "border-emerald-500/40 dark:border-emerald-400/25 bg-emerald-500/10 dark:bg-emerald-400/10"
+                    : "border-amber-500/40 dark:border-amber-400/25 bg-amber-500/10 dark:bg-amber-400/10"
                 }`}
               >
                 <div
@@ -656,8 +656,8 @@ export function LmsActivityPlayer({
                       <span
                         className={`mt-0.5 rounded-full p-1 ${
                           item.is_correct
-                            ? "bg-emerald-500/15 text-emerald-600"
-                            : "bg-red-500/15 text-red-600"
+                            ? "bg-emerald-500/15 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400"
+                            : "bg-red-500/15 dark:bg-red-400/10 text-red-600 dark:text-red-400"
                         }`}
                       >
                         {item.is_correct ? (
@@ -679,9 +679,9 @@ export function LmsActivityPlayer({
                                 key={optionIndex}
                                 className={`rounded px-2 py-1 text-[11px] ${
                                   isCorrect
-                                    ? "bg-emerald-500/10 font-semibold text-emerald-700 dark:text-emerald-400"
+                                    ? "bg-emerald-500/10 dark:bg-emerald-400/10 font-semibold text-emerald-700 dark:text-emerald-400"
                                     : isYourWrong
-                                      ? "bg-red-500/10 text-red-700 line-through dark:text-red-400"
+                                      ? "bg-red-500/10 dark:bg-red-400/10 text-red-700 line-through dark:text-red-400"
                                       : "text-muted-foreground"
                                 }`}
                               >

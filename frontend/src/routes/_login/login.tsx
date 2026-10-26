@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Eye, EyeOff, Lock, Mail, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import oxfordMarkWhite from "@/assets/oxford-mark-white.png";
@@ -20,8 +20,8 @@ import { Turnstile, TURNSTILE_SITE_KEY } from "@/components/ui/turnstile";
 import { cn } from "@/lib/utils";
 
 import { authApi } from "@/lib/api";
-import { setToken, setUser } from "@/lib/auth";
 import { useLightOnly } from "@/lib/theme";
+import { setToken, setUser } from "@/lib/auth";
 
 const LOGIN_CONTEXT_KEY = "oxford_hrms_login";
 
@@ -91,42 +91,40 @@ export const Route = createFileRoute("/_login/login")({
   component: LoginPage,
 });
 
-const brigades = [
-  "Front Office",
-  "Housekeeping",
-  "Food & Beverage Service",
-  "Kitchen Brigade",
-  "Banquets & Events",
-];
-
 const montageImages = [
   {
     src: interior1,
+    title: "Grand Lobby",
     alt: "Oxford Suites Makati grand interior hall with elegant ambient lighting",
     animation: "animate-[kenburns-1_20s_infinite_alternate_ease-in-out]",
   },
   {
     src: suiteb,
+    title: "Executive Suite",
     alt: "Oxford Suites Makati executive suite room",
     animation: "animate-[kenburns-2_20s_infinite_alternate_ease-in-out]",
   },
   {
     src: loginDining,
+    title: "Fine Dining",
     alt: "Oxford Suites Makati fine dining restaurant",
     animation: "animate-[kenburns-3_20s_infinite_alternate_ease-in-out]",
   },
   {
     src: interior3b,
+    title: "Suite Lounge",
     alt: "Oxford Suites Makati suite lounge area",
     animation: "animate-[kenburns-1_20s_infinite_alternate_ease-in-out]",
   },
   {
     src: suite1b,
+    title: "Premier Suite",
     alt: "Oxford Suites Makati premier suite living area",
     animation: "animate-[kenburns-2_20s_infinite_alternate_ease-in-out]",
   },
   {
     src: suite2b,
+    title: "Deluxe King",
     alt: "Oxford Suites Makati deluxe king bedroom view",
     animation: "animate-[kenburns-3_20s_infinite_alternate_ease-in-out]",
   },
@@ -144,8 +142,16 @@ function LoginPage() {
   const [ready, setReady] = useState(false);
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaReset, setCaptchaReset] = useState(0);
+  /** OS "reduce motion" preference — softens the entrance animation (not the slideshow). */
+  const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
+    // The montage only renders at lg+ — below that there's nothing to wait for,
+    // so phones/tablets skip the preloader entirely.
+    if (!window.matchMedia("(min-width: 1024px)").matches) {
+      setReady(true);
+      return;
+    }
     let cancelled = false;
     const first = new Image();
     first.src = montageImages[0]!.src;
@@ -163,13 +169,30 @@ function LoginPage() {
     };
   }, []);
 
-  // Montage slideshow transition
+  // The OS "reduce motion" preference only skips the copy's staggered entrance;
+  // the slideshow interval and Ken Burns zoom always run, like the original.
   useEffect(() => {
-    const slideTimer = setInterval(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReducedMotion(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  // Montage slideshow — classic auto-advance, same as the original page:
+  // one interval that swaps the slide every 6 seconds, no conditions.
+  useEffect(() => {
+    const slideTimer = window.setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % montageImages.length);
     }, 6000);
-    return () => clearInterval(slideTimer);
+    return () => window.clearInterval(slideTimer);
   }, []);
+
+  /** Staggered entrance for the hero copy — starts only once the preloader clears. */
+  const enter = (delay: string) =>
+    ready && !reducedMotion
+      ? cn("animate-in fade-in slide-in-from-bottom-8 duration-700", delay)
+      : "";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -251,7 +274,7 @@ function LoginPage() {
   };
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
+    <div className="flex min-h-screen flex-col lg:grid lg:grid-cols-[1.1fr_1fr] lg:grid-rows-none">
       {/* Preloader screen until first image frame decodes */}
       {!ready && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#520c19] text-white">
@@ -285,15 +308,18 @@ function LoginPage() {
         </div>
       )}
 
-      {/* Property panel with omni-directional slow-motion montage edit */}
-      <div className="relative hidden flex-col justify-between overflow-hidden px-12 py-10 text-primary-foreground lg:flex">
-        {/* Montage Slideshow Container */}
-        <div className="absolute inset-0 z-0 overflow-hidden">
+      {/* Property panel with omni-directional slow-motion montage edit.
+          Below lg this is a minimal light strip with the maroon logo + label;
+          at lg+ it keeps the original maroon montage hero. */}
+      <div className="login-hero relative mt-auto flex flex-col justify-between gap-4 overflow-hidden bg-background px-5 py-3 text-primary lg:mt-0 lg:gap-0 lg:bg-primary lg:px-12 lg:py-10 lg:text-primary-foreground">
+        {/* Montage Slideshow Container — desktop (lg+) only; smaller screens get the logo strip */}
+        <div className="absolute inset-0 z-0 hidden overflow-hidden lg:block">
           {montageImages.map((img, index) => (
             <img
               key={img.src}
               src={img.src}
               alt={img.alt}
+              aria-hidden={index !== currentSlide}
               className={cn(
                 "absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ease-in-out scale-110",
                 index === currentSlide ? "opacity-100" : "opacity-0",
@@ -303,53 +329,64 @@ function LoginPage() {
           ))}
         </div>
 
-        {/* Lightened Maroon Foreshadow Background Overlay */}
-        <div className="absolute inset-0 z-10 bg-primary/45 mix-blend-multiply transition-colors duration-700" />
-        <div className="absolute inset-0 z-10 bg-gradient-to-t from-foreground/80 via-foreground/25 to-foreground/45" />
+        {/* Lightened Maroon Foreshadow Background Overlay (image frames only) */}
+        <div className="absolute inset-0 z-10 hidden bg-primary/45 mix-blend-multiply transition-colors duration-700 lg:block" />
+        <div className="absolute inset-0 z-10 hidden bg-gradient-to-t from-foreground/80 via-foreground/25 to-foreground/45 lg:block" />
+        {/* Localized vignette keeps the headline legible over bright frames */}
+        <div className="absolute inset-0 z-10 hidden bg-[radial-gradient(78%_62%_at_18%_58%,rgb(0_0_0/0.55),transparent_72%)] lg:block" />
 
-        <div className="relative z-20 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-3">
-            <div className="scale-170 origin-left">
+        <div
+          className={cn(
+            "relative z-20 flex items-center justify-center gap-4 lg:justify-between",
+            enter("delay-100"),
+          )}
+        >
+          <Link to="/" className="flex min-w-0 items-center gap-3">
+            {/* Small screens: maroon logo + label on the light strip */}
+            <div className="origin-left scale-100 lg:hidden">
+              <Logo tone="primary" />
+            </div>
+            {/* Desktop (lg+): original white logo on the maroon montage hero */}
+            <div className="origin-left scale-100 lg:scale-170 hidden lg:block">
               <Logo mark="white" tone="invert" />
             </div>
           </Link>
-          <span className="rounded-full border border-primary-foreground/30 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-primary-foreground/90 backdrop-blur-sm bg-black/20">
+          <span className="hidden shrink-0 rounded-full border border-primary-foreground/30 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-primary-foreground/90 backdrop-blur-sm bg-black/20 lg:block">
             Est. 1995
           </span>
         </div>
 
-        <div className="relative z-20 max-w-lg">
-          <p className="eyebrow text-gold drop-shadow-md">
-            Staff Portal
-          </p>
-          <div className="mt-4 h-px w-16 bg-gold/70" />
-          <h1 className="mt-6 font-display text-5xl font-semibold leading-[1.08] drop-shadow-lg">
-            Welcome back.
+        {/* Hero copy — lg+ only (smaller screens show just the maroon logo strip).
+            Flex-fills the hero so "Welcome back" sits vertically centered. */}
+        <div className="relative z-20 hidden max-w-2xl flex-1 lg:flex lg:flex-col lg:justify-center">
+          <h1
+            className={cn(
+              "font-display text-[3.75rem] font-semibold leading-[1.05] drop-shadow-lg lg:text-[4.25rem]",
+              enter("delay-200"),
+            )}
+          >
+            Welcome back
           </h1>
-          <p className="mt-5 text-sm leading-relaxed text-primary-foreground/90 drop-shadow">
-            Schedules, payroll, and requests — all in one place.
+          <p
+            className={cn(
+              "mt-5 max-w-xl font-display text-2xl italic leading-snug text-primary-foreground/90 drop-shadow",
+              enter("delay-300"),
+            )}
+          >
+            The pleasure is ours.
           </p>
-        </div>
-
-        <div className="relative z-20 flex items-center justify-between border-t border-primary-foreground/20 pt-5 text-xs text-primary-foreground/80">
-          <span className="flex items-center gap-2">
-            <ShieldCheck className="h-3.5 w-3.5 text-gold" />
-            Authorized staff only
-          </span>
         </div>
       </div>
 
-      {/* Credential panel */}
-      <div className="flex items-center justify-center bg-background px-5 py-12 sm:px-10">
-        <div className="w-full max-w-md">
-          <Link to="/" className="mb-10 flex items-center gap-3 lg:hidden">
-            <Logo mark="maroon" />
-          </Link>
-
-          <p className="eyebrow">Staff Portal Access</p>
-          <h2 className="mt-2 font-display text-4xl font-semibold">Sign in</h2>
-          <p className="mt-2 text-sm text-muted-foreground">Sign in with your work credentials.</p>
-          <div className="gold-rule my-7" />
+      {/* Credential panel — mobile: starts right under the logo strip, the
+          whole group vertically centered; lg+: side-by-side, vertically centered */}
+      <div className="mb-auto flex items-start justify-center bg-background px-5 pt-3 pb-9 sm:px-10 lg:mb-0 lg:items-center lg:px-12 lg:py-12">
+        <div className="w-full max-w-md sm:max-w-lg lg:max-w-md">
+          <h2 className="mt-2 text-center font-display text-4xl font-semibold">Sign in</h2>
+          <p className="mt-2 text-center text-sm text-muted-foreground">
+            Sign in with your work credentials.
+          </p>
+          <div className="my-7" />
 
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="space-y-1.5">
@@ -392,7 +429,11 @@ function LoginPage() {
               </p>
             )}
 
-            <div className="flex items-center justify-end gap-3">
+            <Button type="submit" size="lg" className="w-full" disabled={submitting}>
+              {submitting ? "Signing in…" : "Sign in"}
+            </Button>
+
+            <div className="flex items-center justify-center gap-3">
               <button
                 type="button"
                 className="text-sm text-muted-foreground transition-colors hover:text-primary hover:underline"
@@ -401,10 +442,6 @@ function LoginPage() {
                 Forgot password?
               </button>
             </div>
-
-            <Button type="submit" size="lg" className="w-full" disabled={submitting}>
-              {submitting ? "Signing in…" : "Sign in"}
-            </Button>
 
             <div className="flex justify-center">
               <Turnstile

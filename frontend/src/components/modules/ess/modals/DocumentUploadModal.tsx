@@ -75,7 +75,7 @@ export function DocumentUploadModal({
       <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[480px]">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <div className="rounded-md bg-blue-500/10 p-2 text-blue-600">
+            <div className="rounded-md bg-blue-500/10 dark:bg-blue-400/10 p-2 text-blue-600 dark:text-blue-400">
               <Upload className="h-5 w-5" />
             </div>
             <div>

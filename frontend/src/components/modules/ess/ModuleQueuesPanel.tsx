@@ -55,10 +55,10 @@ const EMPTY_COUNTS: QueueCounts = {
 };
 
 function statusClass(status: string): string {
-  if (status === "For Dispatch") return "border-sky-500/30 bg-sky-500/10 text-sky-700";
-  if (status === "With Module") return "border-indigo-500/30 bg-indigo-500/10 text-indigo-700";
-  if (status === "For Release") return "border-teal-500/30 bg-teal-500/10 text-teal-700";
-  if (status === "Completed") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700";
+  if (status === "For Dispatch") return "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-400";
+  if (status === "With Module") return "border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:border-indigo-400/20 dark:bg-indigo-400/10 dark:text-indigo-400";
+  if (status === "For Release") return "border-teal-500/30 bg-teal-500/10 text-teal-700 dark:border-teal-400/20 dark:bg-teal-400/10 dark:text-teal-400";
+  if (status === "Completed") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-400";
   return "border-border bg-muted text-muted-foreground";
 }
 
@@ -424,7 +424,7 @@ export function ModuleQueuesPanel({ onChanged }: { onChanged?: () => void }) {
                         )}
 
                         {row.status === "Completed" && (
-                          <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
+                          <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
                             <CheckCircle2 className="h-3.5 w-3.5" /> Released
                           </span>
                         )}

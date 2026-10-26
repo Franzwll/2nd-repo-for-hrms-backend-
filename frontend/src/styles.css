@@ -29,6 +29,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-strong: var(--primary-strong);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -79,6 +80,9 @@
 
   --primary: oklch(0.427 0.166 22.5);
   --primary-foreground: oklch(0.985 0.006 85);
+  /* Solid CTA fill. Matches --primary in light; dark mode deepens it so the
+   * button reads "maroon" instead of competing with the gold accent. */
+  --primary-strong: oklch(0.427 0.166 22.5);
 
   --secondary: oklch(0.962 0.011 84);
   --secondary-foreground: oklch(0.3 0.03 28);
@@ -123,55 +127,63 @@
 .dark {
   /* Espresso & Champagne — elegant + professional HRMS dark mode.
    * 🖤 Espresso structure / 🤍 Warm Ivory text / ❤️ Crimson actions /
-   * ✨ Champagne Gold accents / semantic HR statuses. */
-  --background: oklch(0.18 0.008 55);
+   * ✨ Champagne Gold accents / semantic HR statuses.
+   * Tuned for contrast & layering: page < card < popover, brighter
+   * borders/charts so every element stays visible on espresso. */
+  --background: oklch(0.165 0.01 55);
   --foreground: oklch(0.93 0.015 60);
-  --card: oklch(0.25 0.008 55);
+  --card: oklch(0.245 0.011 55);
   --card-foreground: oklch(0.93 0.015 60);
-  --popover: oklch(0.28 0.008 55);
+  --popover: oklch(0.285 0.012 55);
   --popover-foreground: oklch(0.93 0.015 60);
 
   --primary: oklch(0.53 0.19 22);
   --primary-foreground: oklch(0.97 0.01 58);
+  /* Deep maroon for solid CTAs — keeps the bright crimson above for text,
+   * links, icons and charts where it needs to stay legible on espresso. */
+  --primary-strong: oklch(0.45 0.15 22);
 
-  --secondary: oklch(0.33 0.008 59);
+  --secondary: oklch(0.325 0.011 59);
   --secondary-foreground: oklch(0.88 0.014 61);
-  --muted: oklch(0.33 0.008 59);
-  --muted-foreground: oklch(0.83 0.016 56);
-  --accent: oklch(0.77 0.11 88);
-  --accent-foreground: oklch(0.18 0.008 55);
+  --muted: oklch(0.325 0.011 59);
+  --muted-foreground: oklch(0.73 0.018 56);
+  --accent: oklch(0.78 0.11 88);
+  --accent-foreground: oklch(0.17 0.009 55);
 
-  --gold: oklch(0.77 0.11 88);
-  --gold-foreground: oklch(0.18 0.008 55);
-  --gold-soft: oklch(0.35 0.038 93);
+  --gold: oklch(0.78 0.11 88);
+  --gold-foreground: oklch(0.17 0.009 55);
+  --gold-soft: oklch(0.345 0.04 93);
 
-  --destructive: oklch(0.64 0.18 23);
+  --destructive: oklch(0.66 0.18 23);
   --destructive-foreground: oklch(0.97 0.01 58);
-  --success: oklch(0.65 0.14 152);
-  --success-foreground: oklch(0.18 0.02 152);
+  --success: oklch(0.66 0.14 152);
+  --success-foreground: oklch(0.17 0.03 152);
   --warning: oklch(0.84 0.13 87);
   --warning-foreground: oklch(0.24 0.03 60);
-  --caution: oklch(0.68 0.15 48);
-  --caution-foreground: oklch(0.18 0.02 46);
+  --caution: oklch(0.69 0.15 48);
+  --caution-foreground: oklch(0.17 0.02 46);
 
-  --border: oklch(0.41 0.01 56);
-  --input: oklch(0.44 0.012 48);
-  --ring: oklch(0.53 0.19 22);
+  --border: oklch(0.43 0.012 56);
+  --input: oklch(0.46 0.014 48);
+  /* Gold focus ring: a crimson ring was invisible on crimson buttons. */
+  --ring: oklch(0.82 0.12 80);
 
-  --chart-1: oklch(0.53 0.19 22);
-  --chart-2: oklch(0.77 0.11 88);
-  --chart-3: oklch(0.65 0.14 152);
-  --chart-4: oklch(0.68 0.15 48);
-  --chart-5: oklch(0.75 0.018 56);
+  /* Brighter on espresso so axis lines, bars and series pop (they also
+   * feed recharts via var(--color-chart-n) in components/chart.tsx). */
+  --chart-1: oklch(0.63 0.17 22);
+  --chart-2: oklch(0.8 0.12 88);
+  --chart-3: oklch(0.72 0.15 152);
+  --chart-4: oklch(0.72 0.15 48);
+  --chart-5: oklch(0.8 0.022 52);
 
-  --sidebar: oklch(0.24 0.065 23);
+  --sidebar: oklch(0.23 0.065 23);
   --sidebar-foreground: oklch(0.94 0.014 68);
   --sidebar-primary: oklch(0.66 0.185 22);
   --sidebar-primary-foreground: oklch(0.985 0.006 85);
-  --sidebar-accent: oklch(0.32 0.06 23);
+  --sidebar-accent: oklch(0.33 0.06 23);
   --sidebar-accent-foreground: oklch(0.96 0.01 70);
-  --sidebar-border: oklch(0.95 0.012 72 / 13%);
-  --sidebar-ring: oklch(0.8 0.12 80);
+  --sidebar-border: oklch(0.95 0.012 72 / 14%);
+  --sidebar-ring: oklch(0.82 0.12 80);
 }
 
 @layer base {
@@ -194,6 +206,61 @@
 
   .dark ::placeholder {
     color: oklch(0.83 0.016 56 / 70%);
+  }
+
+  /* champagne selection so highlighted text reads on espresso */
+  .dark ::selection {
+    background-color: oklch(0.82 0.12 80 / 32%);
+    color: oklch(0.98 0.01 58);
+  }
+
+  .dark [data-slot="dialog-content"],
+  .dark [data-slot="sheet-content"],
+  .dark [data-slot="alert-dialog-content"],
+  .dark [data-slot="popover-content"],
+  .dark [data-slot="dropdown-menu-content"],
+  .dark [data-slot="select-content"],
+  .dark [data-slot="hover-card-content"],
+  .dark [data-slot="tooltip-content"],
+  .dark [data-slot="command"] {
+    /* rim + drop so floating surfaces never blend into the page */
+    box-shadow:
+      0 0 0 1px oklch(0.93 0.015 60 / 10%),
+      0 24px 64px -12px oklch(0 0 0 / 72%);
+  }
+
+  .dark table thead tr {
+    background-color: oklch(0.93 0.015 60 / 4%);
+  }
+
+  .dark table tbody tr:hover td,
+  .dark table tbody tr:hover th {
+    background-color: oklch(0.93 0.015 60 / 4%);
+  }
+
+  /* warm espresso scrollbars */
+  .dark *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .dark *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .dark *::-webkit-scrollbar-thumb {
+    background-color: oklch(0.93 0.015 60 / 16%);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .dark *::-webkit-scrollbar-thumb:hover {
+    background-color: oklch(0.93 0.015 60 / 28%);
+  }
+
+  .dark *::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }
 
@@ -328,6 +395,36 @@
   }
 }
 
+/* Indeterminate bar on the login preloader ("Preparing your workspace"). */
+@keyframes hero-progress {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(340%);
+  }
+}
+
+.hero-progress {
+  animation: hero-progress 1.4s ease-in-out infinite;
+}
+
+/* Staggered hero entrance: hold each block at its "from" state while the
+ * delay runs (tw-animate-css defaults to fill-mode none, which would flash
+ * the copy on screen before it animates in). */
+.login-hero .animate-in {
+  --tw-animation-fill-mode: both;
+}
+
+/* The montage's Ken Burns slow-zoom always runs (same as the original login) —
+ * it is subtle ambient motion, so it is intentionally NOT frozen for
+ * prefers-reduced-motion. Only the tiny preloader bar is softened. */
+@media (prefers-reduced-motion: reduce) {
+  .hero-progress {
+    animation-duration: 3s;
+  }
+}
+
 /* Print Optimization for Official Payslip Receipts */
 @media print {
   @page {
@@ -410,6 +507,25 @@
     padding: 0 !important;
     max-width: 100% !important;
     width: 100% !important;
+  }
+
+  /* Direct Ctrl+P while the app is dark: the receipt preview renders with
+   * dark: variants, so the whole subtree is forced back to white paper with
+   * dark ink — and the logo's dark-swap is undone so the maroon mark prints. */
+  .dark #official-payslip-receipt,
+  .dark #official-payslip-receipt * {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #e2e8f0 !important;
+  }
+
+  .dark #official-payslip-receipt .dark\:hidden {
+    display: initial !important;
+  }
+
+  .dark #official-payslip-receipt .dark\:block {
+    display: none !important;
   }
 
   nav,
