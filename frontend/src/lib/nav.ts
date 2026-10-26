@@ -48,7 +48,7 @@ const essChildren = (base: string) => [
   { label: "My Performance", to: `${base}/ess?category=Promotion` },
   { label: "My Documents", to: `${base}/ess?category=Documents` },
   { label: "My Request", to: `${base}/my-requests` },
-  { label: "Social Recognition", to: `${base}/ess?category=Recognition` },
+  { label: "My Feed", to: `${base}/ess?category=Recognition` },
   { label: "HR AI Concierge", to: `${base}/ai` },
 ];
 

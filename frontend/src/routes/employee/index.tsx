@@ -319,13 +319,13 @@ function EmployeeDashboard() {
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        {/* Social Recognition & Wall of Fame Card */}
+        {/* My Feed & Wall of Fame Card */}
         <Card className="border-border/70 flex flex-col justify-between shadow-xs">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 font-display text-xl font-semibold">
                 <Award className="h-5 w-5 text-primary" />
-                Social Recognition
+                My Feed
               </div>
               <Button asChild variant="ghost" size="sm" className="text-primary hover:text-primary/90 hover:bg-primary/5 font-semibold text-xs">
                 <Link to="/employee/ess" search={{ category: "Recognition" }}>

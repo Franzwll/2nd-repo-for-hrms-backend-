@@ -1,26 +1,15 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-  AlertTriangle,
-  Check,
-  CheckCircle2,
-  Edit2,
   KeyRound,
-  Lock,
-  LogOut,
   MoreHorizontal,
-  Plus,
   RotateCcw,
   Search,
-  Shield,
-  ShieldAlert,
   ShieldCheck,
-  Smartphone,
   Trash2,
   UserCheck,
   UserPlus,
   Users,
   UserX,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,7 +29,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -64,7 +52,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -74,14 +61,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-const ListBody = TableBody;
 import { TablePagination } from "@/components/ui/table-pagination";
 import { TableRowsSkeleton } from "@/components/ui/loading-skeletons";
-import { usePagination } from "@/hooks/usePagination";
-import { hcmApi, userManagementApi, type ApiSystemUser } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { authApi, hcmApi, userManagementApi, type ApiSystemUser } from "@/lib/api";
 
-type SystemUserRole = "Super Admin" | "Admin" | "Employee";
 type SystemUserStatus = "Active" | "Suspended" | "Disabled";
 
 interface SystemUser {
@@ -90,14 +73,34 @@ interface SystemUser {
   name: string;
   username: string;
   email: string;
-  role: SystemUserRole;
+  role: string;
   department: string;
   status: SystemUserStatus;
   lastLogin: string;
   ipAddress: string;
 }
 
-const ROLE_ID_BY_NAME: Record<string, number> = { "Super Admin": 1, Admin: 2, Employee: 3 };
+interface RoleOption {
+  role_id: number;
+  role_name: string;
+  is_protected: boolean;
+}
+
+type PermissionMatrix = Record<number, Record<string, string>>;
+
+type UserStats = {
+  total: number;
+  active: number;
+  suspended: number;
+  admins: number;
+};
+
+type RolePolicy = {
+  token_minutes: number;
+  idle_minutes: number;
+};
+
+const USER_PAGE_SIZE = 25;
 
 const FALLBACK_DEPARTMENTS = [
   "Administration / HR",
@@ -106,6 +109,45 @@ const FALLBACK_DEPARTMENTS = [
   "Kitchen / Culinary",
   "Housekeeping",
 ];
+
+const FALLBACK_ROLES: RoleOption[] = [
+  { role_id: 1, role_name: "Super Admin", is_protected: true },
+  { role_id: 2, role_name: "Admin", is_protected: false },
+  { role_id: 3, role_name: "Employee", is_protected: false },
+];
+
+const PERMISSION_LEVELS = [
+  "None",
+  "View",
+  "Read",
+  "Edit",
+  "Write",
+  "Approve / Reject Only",
+  "Full",
+] as const;
+
+const ROLE_LABELS: Record<string, string> = {
+  "Super Admin": "Super Admin",
+  Admin: "HR Admin",
+  Employee: "Employee",
+};
+
+const SESSION_ROLE_LABELS: Record<string, string> = {
+  superadmin: "Super Admin",
+  admin: "Admin",
+  employee: "Employee",
+};
+
+const EMPTY_META = {
+  current_page: 1,
+  last_page: 1,
+  per_page: USER_PAGE_SIZE,
+  total: 0,
+};
+
+const EMPTY_STATS: UserStats = { total: 0, active: 0, suspended: 0, admins: 0 };
+
+const roleLabel = (name: string) => ROLE_LABELS[name] ?? name;
 
 const formatLastLogin = (iso: string | null) => {
   if (!iso) return "Never";
@@ -119,236 +161,48 @@ const formatLastLogin = (iso: string | null) => {
   });
 };
 
+const statusToApi = (status: SystemUserStatus) => (status === "Disabled" ? "Inactive" : status);
+
+const statusFromApi = (status: ApiSystemUser["status"]): SystemUserStatus =>
+  status === "Inactive" ? "Disabled" : status;
+
 const toUiUser = (u: ApiSystemUser): SystemUser => ({
   id: String(u.system_user_id),
   dbId: u.system_user_id,
   name: u.full_name || u.username,
   username: u.username,
   email: u.email,
-  role: (u.role as SystemUserRole) ?? "Employee",
+  role: u.role || "Employee",
   department: u.department_name ?? "",
-  status: u.status === "Inactive" ? "Disabled" : (u.status as SystemUserStatus),
+  status: statusFromApi(u.status),
   lastLogin: formatLastLogin(u.last_login_at),
   ipAddress: u.last_login_ip ?? "—",
 });
 
-const DEFAULT_PASSWORD = "Password123!";
-
-const roleLabels: Record<SystemUser["role"], string> = {
-  "Super Admin": "Super Admin",
-  Admin: "HR Admin",
-  Employee: "Employee",
-};
-
-export type PermissionGroup =
-  | "Dashboard Analytics"
-  | "Applicant Management"
-  | "Recruitment Management"
-  | "Employee Records"
-  | "Lifecycle Actions"
-  | "Request Queue & ESS"
-  | "Audit & Compliance"
-  | "User Management";
-
-export type PermissionLevel =
-  "Full" | "Edit" | "View" | "Delete" | "Approve / Reject Only" | "None";
-
-export const permissionGroups: PermissionGroup[] = [
-  "Dashboard Analytics",
-  "Applicant Management",
-  "Recruitment Management",
-  "Employee Records",
-  "Lifecycle Actions",
-  "Request Queue & ESS",
-  "Audit & Compliance",
-  "User Management",
-];
-
-export const roleGroupMatrix: Record<
-  SystemUser["role"],
-  Record<PermissionGroup, PermissionLevel>
-> = {
-  "Super Admin": {
-    "Dashboard Analytics": "Full",
-    "Applicant Management": "Full",
-    "Recruitment Management": "Full",
-    "Employee Records": "Full",
-    "Lifecycle Actions": "Full",
-    "Request Queue & ESS": "Full",
-    "Audit & Compliance": "Full",
-    "User Management": "Full",
-  },
-  Admin: {
-    "Dashboard Analytics": "View",
-    "Applicant Management": "Edit",
-    "Recruitment Management": "Edit",
-    "Employee Records": "Edit",
-    "Lifecycle Actions": "Edit",
-    "Request Queue & ESS": "Approve / Reject Only",
-    "Audit & Compliance": "View",
-    "User Management": "None",
-  },
-  Employee: {
-    "Dashboard Analytics": "None",
-    "Applicant Management": "None",
-    "Recruitment Management": "None",
-    "Employee Records": "View",
-    "Lifecycle Actions": "None",
-    "Request Queue & ESS": "Edit",
-    "Audit & Compliance": "None",
-    "User Management": "None",
-  },
-};
-
-export type ActiveSession = {
-  id: string;
-  user: string;
-  department: string;
-  position: string;
-  device: string;
-  browserOs: string;
-  location: string;
-  ipAddress: string;
-  lastActive: string;
-  current?: boolean;
-};
-
-const activeSessionsSeed: ActiveSession[] = [
-  {
-    id: "SES-1",
-    user: "Bullseur Santiago",
-    department: "Administration / HR",
-    position: "System Administrator",
-    device: "Desktop",
-    browserOs: "Chrome 126 on Windows 11",
-    location: "Makati, PH",
-    ipAddress: "192.168.10.4",
-    lastActive: "Active now",
-    current: true,
-  },
-  {
-    id: "SES-2",
-    user: "Juan Dela Cruz",
-    department: "Administration / HR",
-    position: "HR Officer",
-    device: "Mobile",
-    browserOs: "Safari 17 on iOS 17",
-    location: "Makati, PH",
-    ipAddress: "120.28.44.10",
-    lastActive: "12 mins ago",
-  },
-  {
-    id: "SES-3",
-    user: "Ana Ramos",
-    department: "Front Office",
-    position: "Front Office Supervisor",
-    device: "Desktop",
-    browserOs: "Edge 125 on Windows 10",
-    location: "Quezon City, PH",
-    ipAddress: "203.177.65.2",
-    lastActive: "3 hrs ago",
-  },
-  {
-    id: "SES-4",
-    user: "Kevin Dela Cruz",
-    department: "Kitchen / Culinary",
-    position: "Line Cook",
-    device: "Mobile",
-    browserOs: "Chrome 126 on Android 14",
-    location: "Makati, PH",
-    ipAddress: "10.0.4.88",
-    lastActive: "26 mins ago",
-  },
-  {
-    id: "SES-5",
-    user: "Rosa Aquino",
-    department: "Housekeeping",
-    position: "Room Attendant",
-    device: "Desktop",
-    browserOs: "Chrome 125 on Windows 10",
-    location: "Pasay, PH",
-    ipAddress: "10.0.4.57",
-    lastActive: "1 hr ago",
-  },
-];
-
-const permissionLevelTone: Record<PermissionLevel, string> = {
-  Full: "border-success/30 bg-success/15 text-success",
-  Edit: "border-primary/30 bg-primary/10 text-primary",
-  View: "border-border bg-muted/40 text-foreground",
-  Delete: "border-destructive/30 bg-destructive/15 text-destructive",
-  "Approve / Reject Only": "border-warning/40 bg-warning/20 text-warning-foreground",
-  None: "border-border bg-muted/20 text-muted-foreground",
-};
-
-const GROUP_MODULE_MAP: Record<PermissionGroup, string[]> = {
-  "Dashboard Analytics": ["Dashboard"],
-  "Applicant Management": ["Applicant Management"],
-  "Recruitment Management": ["Recruitment Management"],
-  "Employee Records": ["Employee Records", "Core HCM"],
-  "Lifecycle Actions": ["New Hire Onboarding", "Core HCM"],
-  "Request Queue & ESS": ["ESS Management", "Employee Records"],
-  "Audit & Compliance": ["Audit Logs"],
-  "User Management": ["User Management", "Settings"],
-};
-
-const groupToBackendLevel = (level: PermissionLevel): string => {
-  if (level === "Full") return "Full";
-  if (level === "Edit") return "Write";
-  if (level === "View") return "View";
-  return "None";
-};
-
-const buildMatrixFromBackend = (
-  roles: {
-    role_id: number;
-    role_name: string;
-    is_protected?: boolean;
-    permissions: { module_name: string; permission_level: string }[];
-  }[]
-): Record<SystemUserRole, Record<PermissionGroup, PermissionLevel>> => {
-  const next: Record<SystemUserRole, Record<PermissionGroup, PermissionLevel>> = JSON.parse(
-    JSON.stringify(roleGroupMatrix),
-  );
-  roles.forEach((r) => {
-    const name = r.role_name as SystemUserRole;
-    if (!next[name]) return;
-    const levels: Record<string, string> = {};
-    r.permissions.forEach((p) => {
-      levels[p.module_name] = p.permission_level;
-    });
-    permissionGroups.forEach((g) => {
-      let hasFull = false;
-      let hasEdit = false;
-      let hasView = false;
-      GROUP_MODULE_MAP[g].forEach((m) => {
-        const lvl = levels[m];
-        if (!lvl || lvl === "None") return;
-        if (lvl === "Full") hasFull = true;
-        else if (["Write", "Edit", "Approve / Reject Only", "Delete"].includes(lvl)) hasEdit = true;
-        else if (["View", "Read"].includes(lvl)) hasView = true;
-      });
-      let level: PermissionLevel = "None";
-      if (hasFull) level = "Full";
-      else if (hasEdit) level = "Edit";
-      else if (hasView) level = "View";
-      next[name][g] = level;
-    });
-  });
-  return next;
-};
+const copyMatrix = (matrix: PermissionMatrix): PermissionMatrix =>
+  Object.fromEntries(Object.entries(matrix).map(([roleId, levels]) => [roleId, { ...levels }]));
 
 export function UserManagement() {
   const [users, setUsers] = useState<SystemUser[]>([]);
+  const [usersMeta, setUsersMeta] = useState(EMPTY_META);
+  const [userStats, setUserStats] = useState<UserStats>(EMPTY_STATS);
+  const [page, setPage] = useState(1);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [activeTab, setActiveTab] = useState<string>("users");
   const [deptOptions, setDeptOptions] = useState<string[]>(FALLBACK_DEPARTMENTS);
-  const [roleIdByName, setRoleIdByName] = useState<Record<string, number>>({});
-  const [roleProtectedByName, setRoleProtectedByName] = useState<Record<string, boolean>>({});
-  const [existingPerms, setExistingPerms] = useState<
-    Record<number, { module_name: string; permission_level: string }[]>
-  >({});
+  const [roles, setRoles] = useState<RoleOption[]>(FALLBACK_ROLES);
+  const [rolesLoaded, setRolesLoaded] = useState(false);
+  const [roleIdByName, setRoleIdByName] = useState<Record<string, number>>({
+    "Super Admin": 1,
+    Admin: 2,
+    Employee: 3,
+  });
+  const [permissionModules, setPermissionModules] = useState<string[]>([]);
+  const [matrix, setMatrix] = useState<PermissionMatrix>({});
+  const [matrixDraft, setMatrixDraft] = useState<PermissionMatrix>({});
+  const [isEditingMatrix, setIsEditingMatrix] = useState(false);
   const [savingMatrix, setSavingMatrix] = useState(false);
+  const [sessionPolicy, setSessionPolicy] = useState<Record<string, RolePolicy> | null>(null);
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -365,38 +219,43 @@ export function UserManagement() {
     name: "",
     username: "",
     email: "",
-    phone: "",
     role: "Employee",
     department: "",
     password: "",
+    status: "Active" as "Active" | "Suspended",
   });
 
-  const [matrix, setMatrix] =
-    useState<Record<SystemUser["role"], Record<PermissionGroup, PermissionLevel>>>(roleGroupMatrix);
-  const [matrixDraft, setMatrixDraft] =
-    useState<Record<SystemUser["role"], Record<PermissionGroup, PermissionLevel>>>(roleGroupMatrix);
-  const [isEditingMatrix, setIsEditingMatrix] = useState(false);
-
-  const [sessions, setSessions] = useState<ActiveSession[]>(activeSessionsSeed);
-  const [twoFactor, setTwoFactor] = useState(true);
-  const [passwordPolicy, setPasswordPolicy] = useState("strong");
-  const [sessionTimeout, setSessionTimeout] = useState("30");
-  const [maxAttempts, setMaxAttempts] = useState("3");
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
+    setLoadingUsers(true);
     try {
-      const res = await userManagementApi.users.list({ per_page: 100 });
+      const res = await userManagementApi.users.list({
+        page,
+        per_page: USER_PAGE_SIZE,
+        q: search.trim() || undefined,
+        role_id: roleFilter !== "all" ? roleIdByName[roleFilter] : undefined,
+        status: statusFilter === "all" ? undefined : statusToApi(statusFilter as SystemUserStatus),
+      });
       setUsers(res.data.map(toUiUser));
-    } catch (e: any) {
-      toast.error(e?.message || "Unable to load users.");
+      setUsersMeta(res.meta ?? EMPTY_META);
+      setUserStats(
+        res.stats ?? {
+          total: res.meta?.total ?? 0,
+          active: 0,
+          suspended: 0,
+          admins: 0,
+        },
+      );
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Unable to load users.");
     } finally {
       setLoadingUsers(false);
     }
-  };
+  }, [page, search, roleFilter, statusFilter, roleIdByName]);
 
   useEffect(() => {
-    loadUsers();
-  }, []);
+    const timer = setTimeout(() => void loadUsers(), search ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [loadUsers, search]);
 
   useEffect(() => {
     hcmApi.departments
@@ -405,78 +264,96 @@ export function UserManagement() {
         const names = res.data.map((d) => d.name);
         if (names.length) setDeptOptions(names);
       })
-      .catch(() => { });
+      .catch(() => undefined);
+
     userManagementApi.roles
-      .list()
-      .then(async (rolesRes) => {
+      .list({ per_page: 100 })
+      .then((rolesRes) => {
+        const options: RoleOption[] = rolesRes.data.map((r) => ({
+          role_id: r.role_id,
+          role_name: r.role_name,
+          is_protected: !!r.is_protected,
+        }));
         const byName: Record<string, number> = {};
-        const perms: Record<number, { module_name: string; permission_level: string }[]> = {};
-        const protectedByName: Record<string, boolean> = {};
-        for (const r of rolesRes.data) {
-          byName[r.role_name] = r.role_id;
-          perms[r.role_id] = r.permissions;
-          protectedByName[r.role_name] = !!r.is_protected;
-        }
+        const nextMatrix: PermissionMatrix = {};
+        const modules = new Set<string>();
+
+        rolesRes.data.forEach((role) => {
+          const levels: Record<string, string> = {};
+          byName[role.role_name] = role.role_id;
+          role.permissions.forEach((permission) => {
+            levels[permission.module_name] = permission.permission_level;
+            modules.add(permission.module_name);
+          });
+          nextMatrix[role.role_id] = levels;
+        });
+
+        setRoles(options.length ? options : FALLBACK_ROLES);
         setRoleIdByName(byName);
-        setRoleProtectedByName(protectedByName);
-        setExistingPerms(perms);
-        const built = buildMatrixFromBackend(rolesRes.data);
-        setMatrix(built);
-        setMatrixDraft(built);
+        setPermissionModules(Array.from(modules).sort((a, b) => a.localeCompare(b)));
+        setMatrix(nextMatrix);
+        setMatrixDraft(nextMatrix);
+        setRolesLoaded(true);
       })
-      .catch(() => { });
+      .catch(() => toast.error("Unable to load roles."));
+
+    authApi
+      .sessionPolicy()
+      .then((res) => setSessionPolicy(res.roles ?? {}))
+      .catch(() => undefined);
   }, []);
 
-  const filteredUsers = users.filter((u) => {
-    const q = search.trim().toLowerCase();
-    const matchesSearch =
-      !q ||
-      u.name.toLowerCase().includes(q) ||
-      u.username.toLowerCase().includes(q) ||
-      u.email.toLowerCase().includes(q);
-    const matchesRole = roleFilter === "all" || u.role === roleFilter;
-    const matchesStatus = statusFilter === "all" || u.status === statusFilter;
-    return matchesSearch && matchesRole && matchesStatus;
-  });
+  const roleIdFor = (roleName: string) =>
+    roleIdByName[roleName] ?? roles.find((role) => role.role_name === roleName)?.role_id ?? 3;
 
-  const usersPage = usePagination(filteredUsers);
+  const userUpdatePayload = (user: SystemUser, status: SystemUserStatus) => ({
+    username: user.username,
+    email: user.email,
+    full_name: user.name,
+    role_id: roleIdFor(user.role),
+    department_name: user.department || null,
+    status: statusToApi(status),
+  });
 
   const openEdit = (u: SystemUser) => {
     setEditUser(u);
     setEditDraft({ ...u });
   };
+
   const saveEdit = async () => {
     if (!editDraft) return;
     try {
-      await userManagementApi.users.update(Number(editDraft.id), {
-        username: editDraft.username,
-        email: editDraft.email,
-        full_name: editDraft.name,
-        role_id: ROLE_ID_BY_NAME[editDraft.role] ?? 3,
-        department_name: editDraft.department || null,
-        status: editDraft.status === "Disabled" ? "Inactive" : editDraft.status,
-      });
+      await userManagementApi.users.update(
+        Number(editDraft.id),
+        userUpdatePayload(editDraft, editDraft.status),
+      );
       await loadUsers();
       setEditUser(null);
       setEditDraft(null);
       toast.success("User updated successfully");
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to update user.");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to update user.");
     }
   };
 
   const openReset = (u: SystemUser) => {
     setResetUser(u);
-    setResetPassword(DEFAULT_PASSWORD);
+    setResetPassword("");
   };
+
   const saveReset = async () => {
     if (!resetUser) return;
+    if (resetPassword.length < 8) {
+      toast.error("Password must be at least 8 characters.");
+      return;
+    }
     try {
       await userManagementApi.users.resetPassword(Number(resetUser.id), resetPassword);
       toast.success(`Password for ${resetUser.username} was reset.`);
       setResetUser(null);
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to reset password.");
+      setResetPassword("");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to reset password.");
     }
   };
 
@@ -485,74 +362,86 @@ export function UserManagement() {
       toast.error("Name, username, and email are required.");
       return;
     }
+    if (newUser.password.length < 8) {
+      toast.error("Password must be at least 8 characters.");
+      return;
+    }
     try {
       await userManagementApi.users.create({
         username: newUser.username,
         email: newUser.email,
-        password: newUser.password || DEFAULT_PASSWORD,
+        password: newUser.password,
         full_name: newUser.name,
-        role_id: ROLE_ID_BY_NAME[newUser.role] ?? 3,
+        role_id: roleIdFor(newUser.role),
         department_name: newUser.department || null,
+        status: newUser.status,
       });
+      setPage(1);
       await loadUsers();
       setCreateOpen(false);
       setNewUser({
         name: "",
         username: "",
         email: "",
-        phone: "",
         role: "Employee",
         department: "",
         password: "",
+        status: "Active",
       });
       toast.success(`User ${newUser.username} created successfully`);
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to create user.");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to create user.");
+    }
+  };
+
+  const recoverUser = async (u: SystemUser) => {
+    try {
+      await userManagementApi.users.update(Number(u.id), userUpdatePayload(u, "Active"));
+      await loadUsers();
+      toast.success(`${u.username} account recovered`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to recover account.");
     }
   };
 
   const saveMatrix = async () => {
+    if (!rolesLoaded) {
+      toast.error("Roles are not available yet.");
+      return;
+    }
+
     setSavingMatrix(true);
     try {
-      for (const roleName of ["Super Admin", "Admin", "Employee"] as const) {
-        const roleId = roleIdByName[roleName];
-        if (!roleId) continue;
-        // System roles (e.g. Super Admin) have a protected permission matrix
-        // and must not be sent to the backend for update.
-        if (roleProtectedByName[roleName]) continue;
-        const merged = new Map<string, string>();
-        (existingPerms[roleId] ?? []).forEach((p) => merged.set(p.module_name, p.permission_level));
-        for (const group of permissionGroups) {
-          const level = matrixDraft[roleName]?.[group] ?? "None";
-          const mapped = groupToBackendLevel(level);
-          GROUP_MODULE_MAP[group].forEach((m) => merged.set(m, mapped));
-        }
-        const permissions = Array.from(merged.entries()).map(([module_name, permission_level]) => ({
-          module_name,
-          permission_level,
+      for (const role of roles) {
+        if (role.is_protected) continue;
+
+        const current = matrixDraft[role.role_id] ?? matrix[role.role_id] ?? {};
+        const permissions = permissionModules.map((module) => ({
+          module_name: module,
+          permission_level: current[module] ?? "None",
         }));
-        await userManagementApi.roles.updatePermissions(roleId, permissions);
+
+        await userManagementApi.roles.updatePermissions(role.role_id, permissions);
       }
-      setMatrix({ ...matrixDraft });
+      const saved = copyMatrix(matrixDraft);
+      setMatrix(saved);
+      setMatrixDraft(saved);
       setIsEditingMatrix(false);
       toast.success("Permission matrix saved successfully");
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to save permission matrix.");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to save permission matrix.");
     } finally {
       setSavingMatrix(false);
     }
   };
 
-  const revokeSession = (id: string) => {
-    const s = sessions.find((x) => x.id === id);
-    setSessions((p) => p.filter((x) => x.id !== id));
-    if (s) toast(`Session on ${s.device} (${s.browserOs}) revoked`);
-  };
+  const totalUsers = userStats.total || usersMeta.total;
+  const activeUsers = userStats.active;
+  const suspendedUsers = userStats.suspended;
+  const adminUsers = userStats.admins;
 
-  const revokeAllOtherSessions = () => {
-    setSessions((p) => p.filter((x) => x.current));
-    toast.success("All other sessions were revoked");
-  };
+  const from = usersMeta.total === 0 ? 0 : (usersMeta.current_page - 1) * usersMeta.per_page + 1;
+  const to = Math.min(usersMeta.current_page * usersMeta.per_page, usersMeta.total);
 
   return (
     <div>
@@ -564,45 +453,49 @@ export function UserManagement() {
       <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Total Users"
-          value={users.length}
+          value={totalUsers}
           tone="primary"
           icon={Users}
           onClick={() => {
             setRoleFilter("all");
             setStatusFilter("all");
+            setPage(1);
             setActiveTab("users");
           }}
         />
         <StatCard
           label="Active"
-          value={users.filter((u) => u.status === "Active").length}
+          value={activeUsers}
           tone="success"
           icon={UserCheck}
           onClick={() => {
             setStatusFilter("Active");
             setRoleFilter("all");
+            setPage(1);
             setActiveTab("users");
           }}
         />
         <StatCard
           label="Suspended"
-          value={users.filter((u) => u.status === "Suspended").length}
+          value={suspendedUsers}
           tone="caution"
           icon={UserX}
           onClick={() => {
             setStatusFilter("Suspended");
             setRoleFilter("all");
+            setPage(1);
             setActiveTab("users");
           }}
         />
         <StatCard
           label="Admins"
-          value={users.filter((u) => u.role !== "Employee").length}
+          value={adminUsers}
           tone="gold"
           icon={ShieldCheck}
           onClick={() => {
             setRoleFilter("Admin");
             setStatusFilter("all");
+            setPage(1);
             setActiveTab("users");
           }}
         />
@@ -626,7 +519,7 @@ export function UserManagement() {
             className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm cursor-pointer"
             value="auth"
           >
-            <KeyRound className="h-3.5 w-3.5" /> Authentication &amp; Login Security
+            <KeyRound className="h-3.5 w-3.5" /> Session Policy
           </TabsTrigger>
         </TabsList>
 
@@ -640,7 +533,10 @@ export function UserManagement() {
                 <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-wrap md:justify-end [&_input]:w-full [&_button[role=combobox]]:w-full md:[&_button[role=combobox]]:w-44">
                   <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                     <DialogTrigger asChild>
-                      <Button size="sm" className="order-last col-span-2 cursor-pointer md:order-none">
+                      <Button
+                        size="sm"
+                        className="order-last col-span-2 cursor-pointer md:order-none"
+                      >
                         <UserPlus className="mr-2 h-4 w-4" /> Create User
                       </Button>
                     </DialogTrigger>
@@ -676,13 +572,6 @@ export function UserManagement() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>Phone number</Label>
-                          <Input
-                            value={newUser.phone}
-                            onChange={(e) => setNewUser((p) => ({ ...p, phone: e.target.value }))}
-                          />
-                        </div>
-                        <div className="space-y-2">
                           <Label>Role</Label>
                           <Select
                             value={newUser.role}
@@ -699,9 +588,9 @@ export function UserManagement() {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {(["Super Admin", "Admin", "Employee"] as const).map((r) => (
-                                <SelectItem key={r} value={r}>
-                                  {roleLabels[r]}
+                              {roles.map((role) => (
+                                <SelectItem key={role.role_id} value={role.role_name}>
+                                  {roleLabel(role.role_name)}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -726,27 +615,40 @@ export function UserManagement() {
                             </SelectContent>
                           </Select>
                         </div>
+                        <div className="space-y-2">
+                          <Label>Status</Label>
+                          <Select
+                            value={newUser.status}
+                            onValueChange={(v) =>
+                              setNewUser((p) => ({
+                                ...p,
+                                status: v as "Active" | "Suspended",
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {["Active", "Suspended"].map((s) => (
+                                <SelectItem key={s} value={s}>
+                                  {s}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                         <div className="space-y-2 sm:col-span-2">
                           <Label>Password</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              type="text"
-                              value={newUser.password}
-                              onChange={(e) =>
-                                setNewUser((p) => ({ ...p, password: e.target.value }))
-                              }
-                              placeholder="Enter password"
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={() =>
-                                setNewUser((p) => ({ ...p, password: DEFAULT_PASSWORD }))
-                              }
-                            >
-                              Use default password
-                            </Button>
-                          </div>
+                          <Input
+                            type="password"
+                            value={newUser.password}
+                            onChange={(e) =>
+                              setNewUser((p) => ({ ...p, password: e.target.value }))
+                            }
+                            placeholder="At least 8 characters"
+                            autoComplete="new-password"
+                          />
                         </div>
                       </div>
                       <DialogFooter>
@@ -761,23 +663,38 @@ export function UserManagement() {
                       className="pl-8"
                       placeholder="Search users…"
                       value={search}
-                      onChange={(e) => setSearch(e.target.value)}
+                      onChange={(e) => {
+                        setSearch(e.target.value);
+                        setPage(1);
+                      }}
                     />
                   </div>
-                  <Select value={roleFilter} onValueChange={setRoleFilter}>
+                  <Select
+                    value={roleFilter}
+                    onValueChange={(value) => {
+                      setRoleFilter(value);
+                      setPage(1);
+                    }}
+                  >
                     <SelectTrigger className="w-44">
                       <SelectValue placeholder="Role" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All roles</SelectItem>
-                      {(["Super Admin", "Admin", "Employee"] as const).map((r) => (
-                        <SelectItem key={r} value={r}>
-                          {roleLabels[r]}
+                      {roles.map((role) => (
+                        <SelectItem key={role.role_id} value={role.role_name}>
+                          {roleLabel(role.role_name)}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <Select
+                    value={statusFilter}
+                    onValueChange={(value) => {
+                      setStatusFilter(value);
+                      setPage(1);
+                    }}
+                  >
                     <SelectTrigger className="w-44">
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
@@ -808,7 +725,7 @@ export function UserManagement() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {usersPage.pageItems.map((u) => (
+                    {users.map((u) => (
                       <TableRow key={u.id}>
                         <TableCell className="text-xs font-mono font-semibold text-primary">
                           USR-{String(u.dbId || u.id).padStart(3, "0")}
@@ -817,7 +734,7 @@ export function UserManagement() {
                           <p className="text-sm font-medium">{u.name}</p>
                           <p className="text-xs text-muted-foreground">{u.email}</p>
                         </TableCell>
-                        <TableCell className="text-sm">{roleLabels[u.role]}</TableCell>
+                        <TableCell className="text-sm">{roleLabel(u.role)}</TableCell>
                         <TableCell className="text-sm">{u.department}</TableCell>
                         <TableCell className="text-xs">{u.lastLogin}</TableCell>
                         <TableCell className="text-xs font-mono">{u.ipAddress}</TableCell>
@@ -854,19 +771,7 @@ export function UserManagement() {
                                   Reset password
                                 </DropdownMenuItem>
                                 {u.status !== "Active" && (
-                                  <DropdownMenuItem
-                                    onClick={async () => {
-                                      try {
-                                        await userManagementApi.users.update(Number(u.id), {
-                                          status: "Active",
-                                        });
-                                        await loadUsers();
-                                        toast.success(`${u.username} account recovered`);
-                                      } catch (e: any) {
-                                        toast.error(e?.message || "Failed to recover account.");
-                                      }
-                                    }}
-                                  >
+                                  <DropdownMenuItem onClick={() => void recoverUser(u)}>
                                     <RotateCcw className="mr-2 h-4 w-4" />
                                     Recover account
                                   </DropdownMenuItem>
@@ -895,8 +800,10 @@ export function UserManagement() {
                                         await userManagementApi.users.remove(Number(u.id));
                                         await loadUsers();
                                         toast(`${u.username} deleted`);
-                                      } catch (e: any) {
-                                        toast.error(e?.message || "Failed to delete user.");
+                                      } catch (e: unknown) {
+                                        toast.error(
+                                          e instanceof Error ? e.message : "Failed to delete user.",
+                                        );
                                       }
                                     }}
                                   >
@@ -910,7 +817,7 @@ export function UserManagement() {
                       </TableRow>
                     ))}
                     {loadingUsers && <TableRowsSkeleton cols={8} rows={6} />}
-                    {!loadingUsers && filteredUsers.length === 0 && (
+                    {!loadingUsers && users.length === 0 && (
                       <TableRow>
                         <TableCell
                           colSpan={8}
@@ -924,14 +831,14 @@ export function UserManagement() {
                 </Table>
               </div>
               <TablePagination
-                page={usersPage.page}
-                pageCount={usersPage.pageCount}
-                from={usersPage.from}
-                to={usersPage.to}
-                total={usersPage.total}
+                page={usersMeta.current_page}
+                pageCount={Math.max(1, usersMeta.last_page)}
+                from={from}
+                to={to}
+                total={usersMeta.total}
                 label="users"
                 showRangeLabel={false}
-                onPageChange={usersPage.setPage}
+                onPageChange={setPage}
               />
             </CardContent>
           </Card>
@@ -946,33 +853,22 @@ export function UserManagement() {
                     <ShieldCheck className="h-5 w-5 text-primary" /> Permission Matrix
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    Role-based access matrix — click Edit to modify checkbox permissions.
+                    Per-module permissions. Each module is saved independently, including Read and
+                    Approve / Reject Only levels.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {!isEditingMatrix ? (
-                    <>
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setMatrixDraft({ ...matrix });
-                          setIsEditingMatrix(true);
-                        }}
-                      >
-                        Edit matrix
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setMatrix(roleGroupMatrix);
-                          setMatrixDraft(roleGroupMatrix);
-                          toast.success("Permission matrix reset to default settings");
-                        }}
-                      >
-                        Reset to default
-                      </Button>
-                    </>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setMatrixDraft(copyMatrix(matrix));
+                        setIsEditingMatrix(true);
+                      }}
+                      disabled={!rolesLoaded}
+                    >
+                      Edit matrix
+                    </Button>
                   ) : (
                     <>
                       <Button size="sm" onClick={saveMatrix} disabled={savingMatrix}>
@@ -983,20 +879,10 @@ export function UserManagement() {
                         variant="outline"
                         onClick={() => {
                           setIsEditingMatrix(false);
-                          setMatrixDraft({ ...matrix });
+                          setMatrixDraft(copyMatrix(matrix));
                         }}
                       >
                         Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setMatrixDraft(roleGroupMatrix);
-                          toast.info("Draft permissions reset to defaults");
-                        }}
-                      >
-                        Reset to default
                       </Button>
                     </>
                   )}
@@ -1006,108 +892,71 @@ export function UserManagement() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-36">Role</TableHead>
-                      {permissionGroups.map((g) => (
-                        <TableHead key={g} className="min-w-[12rem]">
-                          {g}
+                      <TableHead className="min-w-[14rem]">Module</TableHead>
+                      {roles.map((role) => (
+                        <TableHead key={role.role_id} className="min-w-[12rem]">
+                          {roleLabel(role.role_name)}
+                          {role.is_protected && (
+                            <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                              System
+                            </span>
+                          )}
                         </TableHead>
                       ))}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {loadingUsers && <TableRowsSkeleton cols={permissionGroups.length + 1} rows={5} />}
-                    {!loadingUsers && (["Super Admin", "Admin", "Employee"] as const).map((role) => {
-                      const isProtected = roleProtectedByName[role] ?? false;
-                      return (
-                        <TableRow key={role}>
-                          <TableCell className="text-sm font-medium align-top pt-4">
-                            {roleLabels[role]}
-                            {isProtected && (
-                              <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-400/10 dark:text-amber-400">
-                                System
-                              </span>
-                            )}
-                          </TableCell>
-                          {permissionGroups.map((g) => {
-                            const active = isEditingMatrix ? matrixDraft : matrix;
-                            const level = active[role]?.[g] ?? "None";
-                            const isView =
-                              level === "View" ||
-                              level === "Edit" ||
-                              level === "Full" ||
-                              level === "Approve / Reject Only";
-                            const isEdit =
-                              level === "Edit" ||
-                              level === "Full" ||
-                              level === "Approve / Reject Only";
-                            const isFull = level === "Full";
-
-                            const handleToggle = (
-                              type: "View" | "Edit" | "Full",
-                              checked: boolean,
-                            ) => {
-                              let next: PermissionLevel = level;
-                              if (type === "View") {
-                                next = checked ? (level === "None" ? "View" : level) : "None";
-                              } else if (type === "Edit") {
-                                next = checked ? (level === "Full" ? "Full" : "Edit") : "View";
-                              } else if (type === "Full") {
-                                next = checked ? "Full" : "Edit";
-                              }
-                              setMatrixDraft((prev) => ({
-                                ...prev,
-                                [role]: { ...prev[role], [g]: next },
-                              }));
-                            };
-
+                    {loadingUsers && (
+                      <TableRowsSkeleton cols={Math.max(2, roles.length + 1)} rows={5} />
+                    )}
+                    {!loadingUsers &&
+                      permissionModules.map((module) => (
+                        <TableRow key={module}>
+                          <TableCell className="text-sm font-medium">{module}</TableCell>
+                          {roles.map((role) => {
+                            const activeMatrix = isEditingMatrix ? matrixDraft : matrix;
+                            const level = activeMatrix[role.role_id]?.[module] ?? "None";
                             return (
-                              <TableCell key={g} className="align-top py-3">
-                                <div
-                                  className={cn(
-                                    "space-y-1.5 rounded-md border border-border bg-card p-2.5 transition-opacity",
-                                    (!isEditingMatrix || isProtected) && "opacity-85 pointer-events-none bg-muted/30",
-                                  )}
+                              <TableCell key={`${role.role_id}-${module}`}>
+                                <Select
+                                  value={level}
+                                  disabled={!isEditingMatrix || role.is_protected}
+                                  onValueChange={(value) =>
+                                    setMatrixDraft((prev) => ({
+                                      ...prev,
+                                      [role.role_id]: {
+                                        ...(prev[role.role_id] ?? {}),
+                                        [module]: value,
+                                      },
+                                    }))
+                                  }
                                 >
-                                  <div className="flex items-center gap-2 text-xs font-normal select-none">
-                                    <Checkbox
-                                      id={`view-${role}-${g}`}
-                                      checked={isView}
-                                      disabled={!isEditingMatrix || isProtected}
-                                      onCheckedChange={(c) => handleToggle("View", !!c)}
-                                    />
-                                    <Label className="cursor-pointer" htmlFor={`view-${role}-${g}`}>
-                                      View access
-                                    </Label>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-xs font-normal select-none">
-                                    <Checkbox
-                                      id={`edit-${role}-${g}`}
-                                      checked={isEdit}
-                                      disabled={!isEditingMatrix || isProtected}
-                                      onCheckedChange={(c) => handleToggle("Edit", !!c)}
-                                    />
-                                    <Label className="cursor-pointer" htmlFor={`edit-${role}-${g}`}>
-                                      Edit access
-                                    </Label>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-xs font-normal select-none">
-                                    <Checkbox
-                                      id={`full-${role}-${g}`}
-                                      checked={isFull}
-                                      disabled={!isEditingMatrix || isProtected}
-                                      onCheckedChange={(c) => handleToggle("Full", !!c)}
-                                    />
-                                    <Label className="cursor-pointer" htmlFor={`full-${role}-${g}`}>
-                                      Full control
-                                    </Label>
-                                  </div>
-                                </div>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {PERMISSION_LEVELS.map((permissionLevel) => (
+                                      <SelectItem key={permissionLevel} value={permissionLevel}>
+                                        {permissionLevel}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
                               </TableCell>
                             );
                           })}
                         </TableRow>
-                      );
-                    })}
+                      ))}
+                    {!loadingUsers && permissionModules.length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={Math.max(2, roles.length + 1)}
+                          className="py-8 text-center text-sm text-muted-foreground"
+                        >
+                          No permission modules are available.
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </div>
@@ -1118,119 +967,72 @@ export function UserManagement() {
         <TabsContent value="auth" className="mt-4">
           <div className="grid gap-4 lg:grid-cols-2">
             <Card className="border-border/70">
-              <CardContent className="flex flex-1 flex-col space-y-4 p-6">
-                <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                  <Shield className="h-5 w-5 text-primary" /> Login Security Policy
-                </h2>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">Two-factor authentication</p>
+              <CardContent className="space-y-4 p-6">
+                <div>
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                    <KeyRound className="h-5 w-5 text-primary" /> Effective Session Policy
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Read-only limits enforced by the authentication service. Sessions expire after
+                    the role token limit or the idle limit, whichever comes first.
+                  </p>
+                </div>
+                {sessionPolicy && Object.keys(sessionPolicy).length > 0 ? (
+                  <div className="space-y-3">
+                    {Object.entries(sessionPolicy).map(([key, policy]) => (
+                      <div
+                        key={key}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 text-sm"
+                      >
+                        <p className="font-semibold">{SESSION_ROLE_LABELS[key] ?? key}</p>
+                        <div className="text-xs text-muted-foreground">
+                          Token {policy.token_minutes} min · Idle {policy.idle_minutes} min
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <Switch checked={twoFactor} onCheckedChange={setTwoFactor} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Password policy</Label>
-                  <Select value={passwordPolicy} onValueChange={setPasswordPolicy}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="basic">Basic (min 6 characters)</SelectItem>
-                      <SelectItem value="strong">Strong (upper, lower, number, symbol)</SelectItem>
-                      <SelectItem value="strict">Strict (12+ chars, no reuse)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Session timeout (minutes)</Label>
-                  <Select value={sessionTimeout} onValueChange={setSessionTimeout}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {["15", "30", "60", "120"].map((v) => (
-                        <SelectItem key={v} value={v}>
-                          {v} minutes
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Max failed login attempts / lockout</Label>
-                  <Select value={maxAttempts} onValueChange={setMaxAttempts}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {["3", "5", "10"].map((v) => (
-                        <SelectItem key={v} value={v}>
-                          {v} attempts
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button
-                  onClick={() => toast.success("Authentication & login security settings saved")}
-                >
-                  Save security settings
-                </Button>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Session policy is currently unavailable.
+                  </p>
+                )}
               </CardContent>
             </Card>
 
             <Card className="border-border/70">
-              <CardContent className="p-6">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
-                  <div>
-                    <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
-                      <Smartphone className="h-5 w-5 text-primary" /> Active Sessions
-                    </h2>
-                    <p className="text-xs text-muted-foreground">
-                      Devices currently signed into portal accounts.
-                    </p>
-                  </div>
-                  <Button size="sm" variant="outline" onClick={revokeAllOtherSessions}>
-                    Revoke all other sessions
-                  </Button>
+              <CardContent className="space-y-4 p-6">
+                <div>
+                  <h2 className="flex items-center gap-2 font-display text-2xl font-semibold">
+                    <ShieldCheck className="h-5 w-5 text-primary" /> Password &amp; Lockout
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Current enforced baseline for portal accounts.
+                  </p>
                 </div>
-                <ul className="mt-4 space-y-3">
-                  {sessions.map((s) => (
-                    <li
-                      key={s.id}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 text-xs"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-semibold text-foreground">{s.user}</p>
-                          {s.current && (
-                            <Badge variant="outline" className="border-primary/40 text-primary">
-                              Current session
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-muted-foreground">
-                          {s.position} В· {s.department}
-                        </p>
-                        <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-                          {s.device} ({s.browserOs}) В· {s.ipAddress} ({s.location})
-                        </p>
-                      </div>
-                      {!s.current && (
-                        <Button size="sm" variant="ghost" onClick={() => revokeSession(s.id)}>
-                          Revoke
-                        </Button>
-                      )}
-                    </li>
-                  ))}
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3">
+                    <span>Minimum password length</span>
+                    <span className="font-semibold">8 characters</span>
+                  </li>
+                  <li className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3">
+                    <span>Failed login lockout</span>
+                    <span className="font-semibold">5 attempts / 15 minutes</span>
+                  </li>
+                  <li className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3">
+                    <span>Admin password reset</span>
+                    <span className="font-semibold">Revokes active sessions</span>
+                  </li>
                 </ul>
+                <p className="text-xs text-muted-foreground">
+                  Global security settings are not enforced by the authentication service yet, so
+                  they are not editable here.
+                </p>
               </CardContent>
             </Card>
           </div>
         </TabsContent>
       </Tabs>
 
-      {/* Edit User Dialog */}
       <Dialog open={!!editUser} onOpenChange={(open) => !open && setEditUser(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -1270,10 +1072,10 @@ export function UserManagement() {
                     setEditDraft((p) =>
                       p
                         ? {
-                          ...p,
-                          role: v as SystemUser["role"],
-                          department: v === "Super Admin" ? "Administration / HR" : p.department,
-                        }
+                            ...p,
+                            role: v,
+                            department: v === "Super Admin" ? "Administration / HR" : p.department,
+                          }
                         : p,
                     )
                   }
@@ -1282,9 +1084,9 @@ export function UserManagement() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {(["Super Admin", "Admin", "Employee"] as const).map((r) => (
-                      <SelectItem key={r} value={r}>
-                        {roleLabels[r]}
+                    {roles.map((role) => (
+                      <SelectItem key={role.role_id} value={role.role_name}>
+                        {roleLabel(role.role_name)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1314,7 +1116,7 @@ export function UserManagement() {
                 <Select
                   value={editDraft.status}
                   onValueChange={(v) =>
-                    setEditDraft((p) => (p ? { ...p, status: v as SystemUser["status"] } : p))
+                    setEditDraft((p) => (p ? { ...p, status: v as SystemUserStatus } : p))
                   }
                 >
                   <SelectTrigger>
@@ -1340,8 +1142,15 @@ export function UserManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Reset Password Dialog */}
-      <Dialog open={!!resetUser} onOpenChange={(open) => !open && setResetUser(null)}>
+      <Dialog
+        open={!!resetUser}
+        onOpenChange={(open) => {
+          if (!open) {
+            setResetUser(null);
+            setResetPassword("");
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Reset Password</DialogTitle>
@@ -1355,26 +1164,24 @@ export function UserManagement() {
             <div className="space-y-2">
               <Label>New password</Label>
               <Input
-                type="text"
+                type="password"
                 value={resetPassword}
                 onChange={(e) => setResetPassword(e.target.value)}
-                placeholder="Enter new password"
+                placeholder="At least 8 characters"
+                autoComplete="new-password"
               />
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setResetPassword(DEFAULT_PASSWORD)}
-            >
-              Use default password ({DEFAULT_PASSWORD})
-            </Button>
+            <p className="text-xs text-muted-foreground">
+              Existing sessions for this account will be revoked.
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setResetUser(null)}>
               Cancel
             </Button>
-            <Button onClick={saveReset}>Save password</Button>
+            <Button onClick={saveReset} disabled={resetPassword.length < 8}>
+              Save password
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

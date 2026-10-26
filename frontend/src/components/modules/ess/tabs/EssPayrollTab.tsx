@@ -5,6 +5,7 @@ import {
   Calculator,
   CheckCircle2,
   Eye,
+  EyeOff,
   FileText,
   HeartHandshake,
   Landmark,
@@ -33,7 +34,7 @@ import { ReportMenu } from "@/components/ui/report-menu";
 import { myPayroll } from "@/data/ess";
 import { essApi, type ApiPayrollData } from "@/lib/api";
 import { PayslipViewerModal } from "@/components/modules/ess/modals/PayslipViewerModal";
-import { toast } from "sonner";
+import { maskSensitiveId } from "@/components/modules/ess/shared/OfficialPayslipDocument";
 
 const money = (value: number) => `₱${value.toLocaleString()}`;
 
@@ -41,6 +42,18 @@ interface CalcLine {
   label: string;
   amount: number;
   hint?: string;
+}
+
+interface StatutoryRow {
+  icon: typeof ShieldCheck;
+  label: string;
+  /** Plain, non-sensitive supporting text. */
+  detail?: string;
+  /** Full identification number; displayed masked until revealed. */
+  sensitiveValue?: string;
+  amount: number;
+  unit: string;
+  tone: string;
 }
 
 export function EssPayrollTab() {
@@ -55,7 +68,10 @@ export function EssPayrollTab() {
     null,
   );
   const [payslipModalOpen, setPayslipModalOpen] = useState(false);
-  const [loanSubmitting, setLoanSubmitting] = useState(false);
+  const [revealedIds, setRevealedIds] = useState<Record<string, boolean>>({});
+
+  const toggleRevealId = (label: string) =>
+    setRevealedIds((prev) => ({ ...prev, [label]: !prev[label] }));
 
   useEffect(() => {
     essApi
@@ -176,31 +192,11 @@ export function EssPayrollTab() {
     setPayslipModalOpen(true);
   };
 
-  // Salary loan application — files a real ESS payroll request.
-  const handleSalaryLoanApply = async () => {
-    if (loanSubmitting) return;
-    setLoanSubmitting(true);
-    try {
-      await essApi.createRequest({
-        category_code: "payroll",
-        category_name: "Payroll",
-        request_type: "Salary Loan Application",
-        details:
-          "Employee requests a company salary loan application with an amortization schedule. Requested via ESS Statutory Benefits & Active Loans.",
-      });
-      toast.success("Salary loan application filed — Payroll will follow up.");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to file salary loan application.");
-    } finally {
-      setLoanSubmitting(false);
-    }
-  };
-
-  const statutoryRows = [
+  const statutoryRows: StatutoryRow[] = [
     {
       icon: ShieldCheck,
       label: "SSS",
-      detail: "**-*****67-8",
+      sensitiveValue: "34-1234567-8",
       amount: sss,
       unit: "/ month",
       tone: "bg-primary/10 text-primary",
@@ -208,7 +204,7 @@ export function EssPayrollTab() {
     {
       icon: HeartHandshake,
       label: "PhilHealth",
-      detail: "**-*******01-2",
+      sensitiveValue: "12-345678901-2",
       amount: philhealth,
       unit: "/ month",
       tone: "bg-emerald-500/10 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400",
@@ -216,7 +212,7 @@ export function EssPayrollTab() {
     {
       icon: Building,
       label: "Pag-IBIG (HDMF)",
-      detail: "****-****-*012",
+      sensitiveValue: "1234-5678-9012",
       amount: pagibig,
       unit: "/ month",
       tone: "bg-blue-500/10 dark:bg-blue-400/10 text-blue-600 dark:text-blue-400",
@@ -290,6 +286,7 @@ export function EssPayrollTab() {
           <CardContent className="space-y-2">
             {statutoryRows.map((row) => {
               const Icon = row.icon;
+              const isRevealed = Boolean(revealedIds[row.label]);
               return (
                 <div
                   key={row.label}
@@ -300,7 +297,33 @@ export function EssPayrollTab() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold text-foreground">{row.label}</p>
-                    <p className="text-[11px] text-muted-foreground">{row.detail}</p>
+                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      {row.sensitiveValue ? (
+                        <>
+                          <span className="font-mono">
+                            {isRevealed ? row.sensitiveValue : maskSensitiveId(row.sensitiveValue)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => toggleRevealId(row.label)}
+                            aria-label={
+                              isRevealed ? `Hide ${row.label} number` : `Show ${row.label} number`
+                            }
+                            aria-pressed={isRevealed}
+                            title={isRevealed ? "Hide number" : "Show number"}
+                            className="inline-flex items-center justify-center rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            {isRevealed ? (
+                              <EyeOff className="h-3.5 w-3.5" />
+                            ) : (
+                              <Eye className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        </>
+                      ) : (
+                        <span>{row.detail}</span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-right">
                     <p className="font-mono text-xs font-semibold text-foreground">
@@ -416,16 +439,6 @@ export function EssPayrollTab() {
                 Active company / SSS salary loan and amortization schedule.
               </p>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-fit gap-1.5 text-xs shadow-xs"
-              disabled={loanSubmitting}
-              onClick={handleSalaryLoanApply}
-            >
-              <Landmark className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-              {loanSubmitting ? "Filing…" : "Apply for Salary Loan"}
-            </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

@@ -162,13 +162,6 @@ function StatusDayButton({
       )}
     >
       <span className="font-semibold leading-none">{day.date.getDate()}</span>
-      <span
-        className={cn(
-          compact ? "h-1 w-1" : "h-1.5 w-1.5",
-          "rounded-full",
-          modifiers["selected"] ? "bg-white" : status ? DOT_CLASS[status] : "bg-transparent",
-        )}
-      />
     </button>
   );
 }

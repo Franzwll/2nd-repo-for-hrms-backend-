@@ -324,6 +324,7 @@ export function EssPerformanceTab() {
               type="button"
               onClick={closeModuleDetail}
               className="inline-flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400 hover:underline"
+              className="inline-flex cursor-pointer items-center gap-1.5 font-semibold text-amber-600 hover:underline"
             >
               <ArrowLeft className="h-3.5 w-3.5" /> Learning Materials
             </button>
@@ -360,7 +361,7 @@ export function EssPerformanceTab() {
                         setOpenModuleId(isOpen ? null : course.id);
                         if (!isOpen) setDetailCourse(course);
                       }}
-                      className="group flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-muted/30 sm:px-6"
+                      className="group flex w-full cursor-pointer items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-muted/30 sm:px-6"
                     >
                       <span
                         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
@@ -387,7 +388,7 @@ export function EssPerformanceTab() {
                           <button
                             type="button"
                             onClick={() => handleOpenPlayer(course, "handbook")}
-                            className="group flex w-full items-start gap-4 py-4 text-left transition-colors hover:bg-muted/30"
+                            className="group flex w-full cursor-pointer items-start gap-4 py-4 text-left transition-colors hover:bg-muted/30"
                           >
                             <BookOpen className="mt-0.5 h-5 w-5 shrink-0 text-amber-500 dark:text-amber-400" />
                             <div className="min-w-0 flex-1">
@@ -433,7 +434,7 @@ export function EssPerformanceTab() {
                               else handleOpenPlayer(course, "quiz");
                             }}
                             title={!read && !done ? "Read the handbook first" : undefined}
-                            className="group flex w-full items-start gap-4 py-4 text-left transition-colors hover:bg-muted/30 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="group flex w-full cursor-pointer items-start gap-4 py-4 text-left transition-colors hover:bg-muted/30 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-teal-600 dark:text-teal-400" />
                             <div className="min-w-0 flex-1">

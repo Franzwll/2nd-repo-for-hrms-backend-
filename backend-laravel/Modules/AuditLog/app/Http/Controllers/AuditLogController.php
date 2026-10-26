@@ -12,36 +12,28 @@ class AuditLogController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $data = $request->validate([
+            'q' => ['nullable', 'string', 'max:255'],
+            'module' => ['nullable', 'string', 'max:255'],
+            'severity' => ['nullable', 'in:Info,Warning,Critical'],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date'],
+            'per_page' => ['nullable', 'integer', 'min:1'],
+            'sort' => ['nullable', 'in:occurred_at,action,module_name,severity'],
+            'direction' => ['nullable', 'in:asc,desc'],
+        ]);
 
-        if ($request->filled('module')) {
-            $module = $request->string('module')->value();
-            if (! $user || (! $user->hasModuleAccess('Audit Logs') && ! $user->hasModuleAccess($module))) {
-                return response()->json([
-                    'message' => "Access denied: you do not have permission to view audit logs for the {$module} module.",
-                ], 403);
-            }
-        } else {
-            if (! $user || (! $user->hasModuleAccess('Audit Logs') && $user->role?->role_name !== 'Super Admin')) {
-                $accessibleModules = $user->role ? $user->role->permissions()->pluck('module_name')->toArray() : [];
-                if (empty($accessibleModules)) {
-                    return response()->json([
-                        'message' => 'Access denied: you do not have permission to access the Audit Logs module.',
-                    ], 403);
-                }
-            }
+        if (! empty($data['from']) && ! empty($data['to']) && strtotime($data['to']) < strtotime($data['from'])) {
+            return response()->json([
+                'message' => 'The end date must be after or equal to the start date.',
+                'errors' => ['to' => ['The end date must be after or equal to the start date.']],
+            ], 422);
         }
 
         $query = AuditLog::query()->with('user');
 
-        if (! $user->hasModuleAccess('Audit Logs') && $user->role?->role_name !== 'Super Admin' && ! $request->filled('module')) {
-            $accessibleModules = $user->role ? $user->role->permissions()->pluck('module_name')->toArray() : [];
-            $query->whereIn('module_name', $accessibleModules);
-        }
-
-        if ($request->filled('module')) {
-            $rawModule = $request->string('module')->value();
-            $modules = array_filter(array_map('trim', explode(',', $rawModule)));
+        if (! empty($data['module'])) {
+            $modules = array_values(array_filter(array_map('trim', explode(',', $data['module']))));
 
             if (in_array('Applicant Management', $modules, true)) {
                 $modules = array_unique(array_merge($modules, [
@@ -65,25 +57,25 @@ class AuditLogController extends Controller
 
             if (count($modules) === 1) {
                 $query->where('module_name', reset($modules));
-            } else {
+            } elseif ($modules !== []) {
                 $query->whereIn('module_name', $modules);
             }
         }
 
-        if ($request->filled('severity')) {
-            $query->where('severity', $request->string('severity'));
+        if (! empty($data['severity'])) {
+            $query->where('severity', $data['severity']);
         }
 
-        if ($request->filled('from')) {
-            $query->whereDate('occurred_at', '>=', $request->string('from'));
+        if (! empty($data['from'])) {
+            $query->whereDate('occurred_at', '>=', $data['from']);
         }
 
-        if ($request->filled('to')) {
-            $query->whereDate('occurred_at', '<=', $request->string('to'));
+        if (! empty($data['to'])) {
+            $query->whereDate('occurred_at', '<=', $data['to']);
         }
 
-        if ($request->filled('q')) {
-            $search = $request->string('q');
+        if (! empty($data['q'])) {
+            $search = $data['q'];
 
             $query->where(function ($q) use ($search) {
                 $q->where('action', 'like', "%{$search}%")
@@ -95,8 +87,9 @@ class AuditLogController extends Controller
             });
         }
 
-        $logs = $query->orderByDesc('occurred_at')
-            ->paginate($request->integer('per_page', 25));
+        $logs = $query
+            ->orderBy($data['sort'] ?? 'occurred_at', $data['direction'] ?? 'desc')
+            ->paginate(min(max((int) ($data['per_page'] ?? 25), 1), 100));
 
         return response()->json([
             'data' => AuditLogResource::collection($logs),
@@ -118,6 +111,8 @@ class AuditLogController extends Controller
 
     public function stats(): JsonResponse
     {
+        $latest = AuditLog::with('user')->latest('occurred_at')->first();
+
         return response()->json([
             'data' => [
                 'total' => AuditLog::count(),
@@ -129,7 +124,15 @@ class AuditLogController extends Controller
                     ->orderByDesc('count')
                     ->limit(10)
                     ->pluck('count', 'module_name'),
-                'latest' => new AuditLogResource(AuditLog::with('user')->latest('occurred_at')->first()),
+                'modules' => AuditLog::query()
+                    ->distinct()
+                    ->orderBy('module_name')
+                    ->pluck('module_name'),
+                'unique_actors' => AuditLog::query()
+                    ->whereNotNull('system_user_id')
+                    ->distinct()
+                    ->count('system_user_id'),
+                'latest' => $latest ? new AuditLogResource($latest) : null,
             ],
         ]);
     }
