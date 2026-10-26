@@ -1359,19 +1359,19 @@ export const coreHcmApi = {
     return request<{ data: ApiDepartment[]; meta: any }>(`/departments${qs ? `?${qs}` : ""}`);
   },
   createDepartment: (data: Record<string, any>) =>
-    request<ApiDepartment>("/departments", {
+    request<{ message: string; data: ApiDepartment }>("/departments", {
       method: "POST",
       body: JSON.stringify(data),
-    }),
+    }).then((res) => res.data),
   positions: (params?: Record<string, any>) => {
     const qs = new URLSearchParams(params).toString();
     return request<{ data: ApiPosition[]; meta: any }>(`/positions${qs ? `?${qs}` : ""}`);
   },
   createPosition: (data: Record<string, any>) =>
-    request<ApiPosition>("/positions", {
+    request<{ message: string; data: ApiPosition }>("/positions", {
       method: "POST",
       body: JSON.stringify(data),
-    }),
+    }).then((res) => res.data),
   salaryGrades: {
     list: (params?: Record<string, any>) => {
       const qs = new URLSearchParams(params).toString();
@@ -3130,14 +3130,10 @@ export const essApi = {
       data: any[];
       new_hire: { new_hire_id: number; new_hire_code: string; name: string; stage: string } | null;
     }>("/ess/my-checklist"),
-  createPromotionRequest: (data: {
-    requested_position_id?: number | null;
-    requested_salary_grade_id?: number | null;
-    justification: string;
-  }) =>
+  createPromotionRequest: (data: FormData) =>
     request<{ message: string; data: ApiPromotionRequest }>("/ess/my-promotion-requests", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: data,
     }),
 
   // Admin & Superadmin Management

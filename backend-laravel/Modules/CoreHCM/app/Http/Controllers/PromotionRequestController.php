@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\EmployeeExitRecord;
 use App\Models\EmployeePositionHistory;
+use App\Models\EssRequest;
+use App\Models\EssRequestStatusHistory;
 use App\Models\Hr3Recommendation;
 use App\Models\Position;
 use App\Models\PromotionRequest;
@@ -25,6 +27,37 @@ use Modules\CoreHCM\Http\Controllers\Concerns\AppliesTableQuery;
 class PromotionRequestController extends Controller
 {
     use AppliesTableQuery;
+
+    /**
+     * Keep the employee-visible ESS request in lockstep with the HR promotion
+     * work item so My Requests reflects review outcomes instead of staying
+     * Pending forever.
+     */
+    private function syncEssRequest(PromotionRequest $promo, string $status, ?string $note, ?int $actorId): void
+    {
+        if (! $promo->ess_request_id) {
+            return;
+        }
+
+        $essRequest = EssRequest::find($promo->ess_request_id);
+        if (! $essRequest) {
+            return;
+        }
+
+        $essRequest->status = $status;
+        $essRequest->review_note = $note;
+        if ($status === 'Completed') {
+            $essRequest->completed_at = now();
+        }
+        $essRequest->save();
+
+        EssRequestStatusHistory::create([
+            'ess_request_id' => $essRequest->ess_request_id,
+            'status' => $status,
+            'actor_user_id' => $actorId,
+            'note' => $note ?: "Promotion request marked {$status}.",
+        ]);
+    }
 
     public function index(Request $request): JsonResponse
     {
@@ -109,6 +142,13 @@ class PromotionRequestController extends Controller
             'review_notes' => $data['note'] ?? $promo->review_notes,
         ]);
 
+        $this->syncEssRequest(
+            $promo,
+            'Under Review',
+            $data['note'] ?? 'Promotion request forwarded to HR3 for evaluation.',
+            $user?->system_user_id,
+        );
+
         AuditLogger::log(
             'Promotion request forwarded to HR3',
             'Core HCM',
@@ -186,6 +226,13 @@ class PromotionRequestController extends Controller
             'hr3_recommendation_id' => $recommendation->recommendation_id,
         ]);
 
+        $this->syncEssRequest(
+            $promo,
+            'Under Review',
+            'HR3 evaluation received. Awaiting final HR decision.',
+            $request->user()?->system_user_id,
+        );
+
         AuditLogger::log(
             'HR3 evaluation received',
             'Core HCM',
@@ -254,7 +301,7 @@ class PromotionRequestController extends Controller
 
             $oldPositionId = $employee->position_id;
 
-            DB::transaction(function () use ($employee, $promo, $newPositionId, $newGradeId, $data, $oldPositionId) {
+            DB::transaction(function () use ($employee, $promo, $newPositionId, $newGradeId, $data, $oldPositionId, $user, $hr3) {
                 EmployeePositionHistory::create([
                     'employee_id' => $employee->employee_id,
                     'effective_date' => $data['effective_date'] ?? now()->toDateString(),
@@ -289,6 +336,13 @@ class PromotionRequestController extends Controller
                     $hr3->update(['status' => 'Approved & Processed']);
                 }
             });
+
+            $this->syncEssRequest(
+                $promo,
+                'Completed',
+                $data['review_notes'] ?? 'Promotion request approved and applied.',
+                $user?->system_user_id,
+            );
 
             AuditLogger::log(
                 'Promotion request approved',
@@ -345,6 +399,13 @@ class PromotionRequestController extends Controller
                 }
             });
 
+            $this->syncEssRequest(
+                $promo,
+                'Completed',
+                $data['review_notes'] ?? "Promotion request closed after succession decision ({$exitType}).",
+                $user?->system_user_id,
+            );
+
             AuditLogger::log(
                 'Promotion request terminated',
                 'Core HCM',
@@ -369,6 +430,13 @@ class PromotionRequestController extends Controller
                 $hr3->update(['status' => 'Deferred']);
             }
 
+            $this->syncEssRequest(
+                $promo,
+                'Under Review',
+                $data['review_notes'] ?? 'Promotion request deferred by HR.',
+                $user?->system_user_id,
+            );
+
             AuditLogger::log(
                 'Promotion request deferred',
                 'Core HCM',
@@ -387,6 +455,13 @@ class PromotionRequestController extends Controller
             'reviewed_at' => now(),
             'review_notes' => $data['review_notes'],
         ]);
+
+        $this->syncEssRequest(
+            $promo,
+            $data['decision'] === 'reject' ? 'Rejected' : 'Returned for Clarification',
+            $data['review_notes'],
+            $user?->system_user_id,
+        );
 
         AuditLogger::log(
             $data['decision'] === 'reject' ? 'Promotion request rejected' : 'Promotion request returned',

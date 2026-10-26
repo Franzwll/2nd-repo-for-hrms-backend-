@@ -604,6 +604,25 @@ class EssPortalController extends Controller
     }
 
     /**
+     * Generate a unique employee-facing request code. Derive the next number
+     * from the highest existing numeric suffix (not the auto-increment id,
+     * which can drift from the seeded REQ-44xx codes) and guard collisions.
+     */
+    private function nextRequestCode(): string
+    {
+        $highest = (int) EssRequest::query()
+            ->selectRaw('MAX(CAST(SUBSTRING(request_code, 5) AS UNSIGNED)) as n')
+            ->value('n');
+        $nextNumber = ($highest ?: 4400) + 1;
+        do {
+            $requestCode = 'REQ-' . $nextNumber;
+            $nextNumber++;
+        } while (EssRequest::where('request_code', $requestCode)->exists());
+
+        return $requestCode;
+    }
+
+    /**
      * POST /api/v1/ess/requests
      */
     public function createRequest(Request $request): JsonResponse
@@ -637,17 +656,21 @@ class EssPortalController extends Controller
             $category = EssCategory::where('name', $validated['category_name'])->first();
         }
 
-        // Generate a unique request code: REQ-XXXX. Derive the next number from
-        // the highest existing numeric suffix (not the auto-increment id, which
-        // can drift from the seeded REQ-44xx codes) and guard for collisions.
-        $highest = (int) EssRequest::query()
-            ->selectRaw('MAX(CAST(SUBSTRING(request_code, 5) AS UNSIGNED)) as n')
-            ->value('n');
-        $nextNumber = ($highest ?: 4400) + 1;
-        do {
-            $requestCode = 'REQ-' . $nextNumber;
-            $nextNumber++;
-        } while (EssRequest::where('request_code', $requestCode)->exists());
+        // Promotions must be filed through the dedicated endpoint so the ESS
+        // request and the PromotionRequest pipeline stay linked (no orphans).
+        $isPromotion = ($category
+                && ($category->code === 'career_promotion'
+                    || stripos((string) $category->name, 'promotion') !== false))
+            || stripos($validated['request_type'], 'promotion') !== false;
+        if ($isPromotion) {
+            return response()->json([
+                'message' => 'Promotion requests must be filed through the promotion form.',
+                'code' => 'USE_PROMOTION_ENDPOINT',
+            ], 422);
+        }
+
+        // Generate a unique request code: REQ-XXXX.
+        $requestCode = $this->nextRequestCode();
 
         $essRequest = EssRequest::create([
             'request_code' => $requestCode,
@@ -2439,10 +2462,19 @@ class EssPortalController extends Controller
         }
 
         $data = $request->validate([
-            'requested_position_id' => ['nullable', 'integer', 'exists:positions,position_id'],
+            'requested_position_id' => ['required', 'integer', 'exists:positions,position_id'],
             'requested_salary_grade_id' => ['nullable', 'integer', 'exists:salary_grades,salary_grade_id'],
             'justification' => ['required', 'string', 'min:10', 'max:2000'],
+            'details' => ['nullable', 'string', 'max:5000'],
+            'attachments' => ['nullable', 'array', 'max:5'],
+            'attachments.*' => ['file', 'max:10240', 'mimes:pdf,png,jpg,jpeg,doc,docx'],
         ]);
+
+        if ((int) $data['requested_position_id'] === (int) $employee->position_id) {
+            return response()->json([
+                'message' => 'Choose a target position different from your current position.',
+            ], 422);
+        }
 
         $pending = \App\Models\PromotionRequest::where('employee_id', $employee->employee_id)
             ->active()
@@ -2454,14 +2486,67 @@ class EssPortalController extends Controller
             ], 409);
         }
 
-        $row = \App\Models\PromotionRequest::create([
-            'employee_id' => $employee->employee_id,
-            'current_position_id' => $employee->position_id,
-            'requested_position_id' => $data['requested_position_id'] ?? null,
-            'requested_salary_grade_id' => $data['requested_salary_grade_id'] ?? null,
-            'justification' => $data['justification'],
-            'status' => 'Pending',
-        ]);
+        $position = \App\Models\Position::find($data['requested_position_id']);
+        $category = EssCategory::where('code', 'career_promotion')
+            ->orWhere('name', 'like', '%Career%')
+            ->first();
+
+        $requestCode = $this->nextRequestCode();
+        $detailLines = [
+            "Target Position: {$position?->title}",
+            "Current Role: {$employee->position?->title}",
+            $data['details'] ?? null,
+            "Justification: {$data['justification']}",
+        ];
+
+        $result = DB::transaction(function () use ($request, $employee, $data, $position, $category, $requestCode, $detailLines) {
+            $essRequest = EssRequest::create([
+                'request_code' => $requestCode,
+                'employee_id' => $employee->employee_id,
+                'category_id' => $category?->ess_category_id,
+                'request_type' => 'Promotion Request - ' . ($position?->title ?? 'Position'),
+                'filed_at' => now(),
+                'status' => 'Pending',
+                'details' => implode("\n\n", array_filter($detailLines)),
+            ]);
+
+            EssRequestStatusHistory::create([
+                'ess_request_id' => $essRequest->ess_request_id,
+                'status' => 'Pending',
+                'actor_user_id' => $request->user()?->system_user_id,
+                'note' => 'Promotion request filed by employee.',
+            ]);
+
+            $workflow = app(EssRequestWorkflow::class);
+            if ($request->hasFile('attachments')) {
+                foreach ($request->file('attachments') as $file) {
+                    $payload = $workflow->storeUpload($file, 'ess-request-attachments');
+                    EssRequestAttachment::create([
+                        'ess_request_id' => $essRequest->ess_request_id,
+                        'direction' => 'employee',
+                        'file_path' => $payload['file_path'],
+                        'original_name' => $payload['original_name'],
+                        'mime_type' => $payload['mime_type'],
+                        'file_size_bytes' => $payload['file_size_bytes'],
+                        'uploaded_by_user_id' => $request->user()?->system_user_id,
+                    ]);
+                }
+            }
+
+            $promotion = \App\Models\PromotionRequest::create([
+                'employee_id' => $employee->employee_id,
+                'ess_request_id' => $essRequest->ess_request_id,
+                'current_position_id' => $employee->position_id,
+                'requested_position_id' => $data['requested_position_id'],
+                'requested_salary_grade_id' => $data['requested_salary_grade_id'] ?? null,
+                'justification' => $data['justification'],
+                'status' => 'Pending',
+            ]);
+
+            return [$promotion, $essRequest];
+        });
+
+        [$row, $essRequest] = $result;
 
         AuditLogger::log(
             'Promotion request filed',
@@ -2469,9 +2554,13 @@ class EssPortalController extends Controller
             'Info',
             'employee',
             (string) $employee->employee_code,
-            "Employee {$employee->full_name} filed promotion request #{$row->promotion_request_id}.",
+            "Employee {$employee->full_name} filed promotion request #{$row->promotion_request_id} ({$requestCode}).",
         );
 
-        return response()->json(['message' => 'Promotion request submitted for HR review.', 'data' => $row], 201);
+        return response()->json([
+            'message' => 'Promotion request submitted for HR review.',
+            'data' => $row->fresh(['employee', 'currentPosition', 'requestedPosition']),
+            'request' => $essRequest->load(['category', 'employee', 'attachments', 'statusHistory']),
+        ], 201);
     }
 }

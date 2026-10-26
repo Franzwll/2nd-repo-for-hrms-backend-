@@ -15,6 +15,7 @@ import { myProfile } from "@/data/ess";
 import { getUser } from "@/lib/auth";
 import { essApi } from "@/lib/api";
 import { downloadCertificatePdf } from "@/lib/downloadCertificatePdf";
+import { usePasswordGate } from "@/components/ui/report-menu";
 
 interface LmsCertificateModalProps {
   open: boolean;
@@ -46,6 +47,7 @@ export function LmsCertificateModal({
   const recipientRole = authUser?.department_name ? `${authUser.department_name} Staff` : myProfile.position;
   const recipientDept = authUser?.department_name || myProfile.department;
   const [downloading, setDownloading] = useState(false);
+  const { gateSensitive, gateDialog } = usePasswordGate();
 
   // Server-verified credential: eligibility + deterministic verification code
   // for COMPLETED courses only (404 otherwise — never fabricate a code).
@@ -65,8 +67,10 @@ export function LmsCertificateModal({
   }, [open, courseId]);
 
   const handlePrint = () => {
-    window.print();
-    toast.success("Printing certificate...");
+    gateSensitive({ sensitive: true }, () => {
+      window.print();
+      toast.success("Printing certificate...");
+    });
   };
 
   const handleDownload = async () => {
@@ -94,7 +98,9 @@ export function LmsCertificateModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      {gateDialog}
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[560px] print:p-0 print:border-none">
         <DialogHeader>
           <div className="flex items-center gap-2">
@@ -169,5 +175,6 @@ export function LmsCertificateModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
