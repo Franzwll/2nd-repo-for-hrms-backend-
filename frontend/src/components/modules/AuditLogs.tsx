@@ -110,8 +110,6 @@ export function AuditLogs() {
   const [severity, setSeverity] = useState("all");
   const [moduleFilter, setModuleFilter] = useState("all");
   const [search, setSearch] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
   const [entries, setEntries] = useState<ApiAuditLog[]>([]);
   const [meta, setMeta] = useState<AuditMeta>(EMPTY_META);
   const [stats, setStats] = useState<AuditStats | null>(null);
@@ -126,10 +124,8 @@ export function AuditLogs() {
       q: search.trim() || undefined,
       module: moduleFilter !== "all" ? moduleFilter : undefined,
       severity: severity !== "all" ? severity : undefined,
-      from: fromDate || undefined,
-      to: toDate || undefined,
     }),
-    [search, moduleFilter, severity, fromDate, toDate],
+    [search, moduleFilter, severity],
   );
 
   useEffect(() => {
@@ -375,26 +371,6 @@ export function AuditLogs() {
                   ))}
                 </SelectContent>
               </Select>
-              <Input
-                type="date"
-                aria-label="From date"
-                className="w-40"
-                value={fromDate}
-                onChange={(e) => {
-                  setFromDate(e.target.value);
-                  setPage(1);
-                }}
-              />
-              <Input
-                type="date"
-                aria-label="To date"
-                className="w-40"
-                value={toDate}
-                onChange={(e) => {
-                  setToDate(e.target.value);
-                  setPage(1);
-                }}
-              />
             </div>
           </div>
           <div className="mt-4 overflow-x-auto">
